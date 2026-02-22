@@ -1,0 +1,40 @@
+# Ignore the archive so LLM doesn't read old MD files
+_archived_memories/
+
+# Ignore the heavy DB files (binary data eats tokens)
+db/memory.db
+db/*.db
+
+# Ignore Python cache
+__pycache__/
+*.pyc
+
+# Ignore Logs
+logs/
+
+# Credentials - keep secrets out of git
+workspace/skills/gog/client_secret.json
+workspace/skills/gog/token.pickle
+qdrant/storage/
+*.db-shm
+*.db-wal
+_archived_memories/
+logs/
+*.log
+*.bak
+__pycache__/
+.DS_Store
+db/backups/
+db/*.gz
+
+# Large Data Files
+*.txt
+*.json
+*.bak
+*.gz
+db/memory.db*
+db/backups/
+qdrant/storage/
+
+# Change tracker kill-switch
+.pause_tracking

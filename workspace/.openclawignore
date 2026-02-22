@@ -1,0 +1,20 @@
+# Ignore the database binary (Critical for performance)
+db/memory.db
+db/*.db
+db/*.sqlite
+db/vec_items.bin
+
+# Ignore the old memory archive
+_archived_memories/
+
+# Ignore Python artifacts
+__pycache__/
+*.pyc
+
+# Ignore Logs
+*.log
+logs/
+
+# Ignore large media
+*.mp4
+*.mov

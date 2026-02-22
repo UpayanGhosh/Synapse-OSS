@@ -1,0 +1,59 @@
+#!/bin/bash
+
+# One-Click Jarvis Revival Script
+# Run after reboot to bring everything back online.
+
+echo "🦞 Awakening Jarvis..."
+
+# 1. Start Ollama (Required for Memory/Embeddings)
+if ! pgrep -x "ollama" > /dev/null; then
+    echo "🧠 Starting Ollama..."
+    open -a Ollama
+    sleep 5
+else
+    echo "✅ Ollama is running."
+fi
+
+# 2. Check Redis (Required for Celery Worker)
+if ! pgrep -x "redis-server" > /dev/null; then
+    echo "🔴 Redis not found! Please ensure Redis is running (brew services start redis)."
+    # Optional: Try to start if brew is available
+    # brew services start redis
+fi
+
+# 3. Start OpenClaw Gateway (The Brain)
+echo "🌐 Starting OpenClaw Gateway..."
+# Using the standard CLI command which handles daemonizing
+openclaw gateway start
+
+# 4. Start Memory Server (The Soul)
+echo "👻 Starting Memory Server (Soul)..."
+# Check if already running
+if ! pgrep -f "memory/server.py" > /dev/null; then
+    cd /path/to/openclaw/workspace
+    nohup /path/to/openclaw/.venv/bin/python3 db/server.py > /path/to/openclaw/server.log 2>&1 &
+    echo "✅ Memory Server launched (PID: $!)"
+else
+    echo "✅ Memory Server already running."
+fi
+
+# 5. Start Worker (The Hands - Celery)
+echo "✋ Starting Worker (Hands)..."
+if ! pgrep -f "celery worker" > /dev/null; then
+    cd /path/to/openclaw/workspace
+    nohup /path/to/openclaw/.venv/bin/celery -A db.worker worker --loglevel=info > /path/to/openclaw/worker.log 2>&1 &
+    echo "✅ Worker launched (PID: $!)"
+else
+    echo "✅ Worker already running."
+fi
+
+# 6. Prevent System Sleep (Caffeine)
+echo "☕ Injecting Caffeine..."
+if ! pgrep -x "caffeinate" > /dev/null; then
+    caffeinate -u -t 86400 &
+    echo "✅ Sleep prevention active for 24h."
+else
+    echo "✅ Caffeine already active."
+fi
+
+echo "🚀 Jarvis is Online! Ping me on WhatsApp."
