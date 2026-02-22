@@ -47,3 +47,6 @@ workspace/*.gz
 
 # Environment variables
 .env
+
+# Learning / Teaching documents (local only)
+LEARN_SYSTEM_DESIGN*.md
