@@ -27,26 +27,16 @@
 ### 🏗️ System Architecture
 
 ```mermaid
-graph LR
-    %% Styling Classes
-    classDef user fill:#2d3436,stroke:#74b9ff,stroke-width:2px,color:#fff
-    classDef gateway fill:#0984e3,stroke:#74b9ff,stroke-width:3px,color:#fff
-    classDef async fill:#00cec9,stroke:#81ecec,stroke-width:2px,color:#000
-    classDef memory fill:#00b894,stroke:#55efc4,stroke-width:2px,color:#fff
-    classDef sbs fill:#fdcb6e,stroke:#f39c12,stroke-width:2px,color:#000
-    classDef moa fill:#6c5ce7,stroke:#a29bfe,stroke-width:2px,color:#fff
-    classDef local fill:#d63031,stroke:#ff7675,stroke-width:2px,color:#fff
-
+%%{init: {'theme': 'dark', 'themeVariables': { 'primaryColor': 'transparent', 'primaryTextColor': '#ffffff', 'primaryBorderColor': '#ffffff', 'lineColor': '#ffffff', 'textColor': '#ffffff', 'nodeBorder': '#ffffff', 'mainBkg': 'transparent', 'clusterBkg': 'transparent', 'clusterBorder': '#aaaaaa'}}}%%
+graph TD
     %% --- SECTION 1: INGRESS (LEFT) ---
     subgraph Inputs ["User Inputs"]
-        direction TB
         U1["📱 WhatsApp Webhook<br/>Node Gateway"]:::user
         U2["💻 OpenClaw CLI<br/>Proxy Request"]:::user
     end
 
     %% --- SECTION 2: ASYNC PIPELINE (LEFT-CENTER) ---
     subgraph Async_Pipeline ["Async Gateway Pipeline"]
-        direction LR
         FG{"🛡️ FloodGate<br/>Batch Window 3s"}:::async
         DD["🔁 MessageDeduplicator<br/>5-min window"]:::async
         Q["📦 TaskQueue<br/>max 100"]:::async
@@ -68,7 +58,6 @@ graph LR
     %% --- SECTION 4: CONTEXT & MEMORY (ABOVE GATEWAY) ---
     %% Placed above to show they are background services supporting the Gateway
     subgraph Brain_Context ["🤖 Context Engine"]
-        direction TB
         subgraph SBS ["Soul-Brain Sync — Persona Engine"]
             SBS_O["🎭 SBS Orchestrator"]:::sbs
             SBS_P["📋 Profile Manager"]:::sbs
@@ -110,11 +99,9 @@ graph LR
 
     %% --- SECTION 5: MOA AGENTS (RIGHT) ---
     subgraph Mixture_of_Agents ["🚀 Mixture of Agents"]
-        direction TB
         TC{"🚦 Traffic Cop<br/>Intent Classifier"}:::moa
         
         subgraph Agents ["LLM Agents"]
-            direction LR
             LLM1["🟢 Gemini 3 Flash<br/>(CASUAL)"]:::moa
             LLM2["💻 The Hacker<br/>(CODING)"]:::moa
             LLM3["🏛️ The Architect<br/>(ANALYSIS)"]:::moa
