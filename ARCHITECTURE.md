@@ -63,9 +63,9 @@ graph TD
     %% ── Memory Subsystem ─────────────────────────────────────────────────────
     subgraph Cognitive_Memory [Cognitive Memory — Hybrid RAG]
         ME[🧠 Memory Engine\nHybrid Retrieval v3]:::memory
-        M1[(🗃️ SQLite Graph DB\nTriples · knowledge_graph.db)]:::memory
+        M1[("🗃️ SQLite Graph DB\nTriples · knowledge_graph.db")]:::memory
         M2[(🔷 Qdrant Vector DB\nnomic-embed-text\n:6333)]:::memory
-        RE[🏅 FlashRank Reranker\nms-marco-TinyBERT]:::memory
+        RE[("🏅 FlashRank Reranker\nms-marco-TinyBERT")]:::memory
         G <-->|Semantic + Graph Query| ME
         ME <--> M1
         ME <--> M2
@@ -86,10 +86,10 @@ graph TD
         G -->|Classify Intent| TC
 
         TC -->|CASUAL| LLM1[🟢 Gemini 3 Flash\nAG_CASUAL\nFast · Low Cost]:::moa
-        TC -->|CODING| LLM2[💻 The Hacker\nClaude Sonnet 4.5\nHigh Logic]:::moa
+        TC -->|CODING| LLM2[("💻 The Hacker\nClaude Sonnet 4.5\nHigh Logic")]:::moa
         TC -->|ANALYSIS| LLM3[🏛️ The Architect\nGemini 3 Pro\nDeep Synthesis]:::moa
-        TC -->|REVIEW| LLM4[🧐 The Philosopher\nClaude Opus 4.6\nCritique · Judgment]:::moa
-        TC -->|SPICY / Private| LLM5[🌶️ The Vault\nLocal Stheno on Ollama\nZero Cloud Leakage]:::local
+        TC -->|REVIEW| LLM4[("🧐 The Philosopher\nClaude Opus 4.6\nCritique · Judgment")]:::moa
+        TC -->|SPICY / Private| LLM5[("🌶️ The Vault\nLocal Stheno on Ollama\nZero Cloud Leakage")]:::local
     end
 
     %% ── Return Path ──────────────────────────────────────────────────────────
@@ -192,7 +192,7 @@ graph LR
     VQ --> MERGE
     MERGE --> FG2{High Confidence\n> 0.80?}
     FG2 -->|Yes| FAST[⚡ Fast Gate\nReturn top-k directly]
-    FG2 -->|No| RR[🏅 FlashRank Reranker\nms-marco-TinyBERT]
+    FG2 -->|No| RR[("🏅 FlashRank Reranker\nms-marco-TinyBERT")]
     RR --> OUT[Ranked Context\nfor Prompt]
     FAST --> OUT
 ```
@@ -252,7 +252,7 @@ Before generating a reply, JARVIS thinks. The `DualCognitionEngine` generates an
 
 ```mermaid
 graph LR
-    UM[User Message] --> DC[DualCognitionEngine.think()]
+    UM[User Message] --> DC["DualCognitionEngine.think()"]
     DC --> IM[Inner Monologue\nvia Gemini Flash]
     DC --> TL[Tension Level\n0.0 – 1.0]
     DC --> TT[Tension Type\nAMBIVALENT · CERTAIN · etc.]
