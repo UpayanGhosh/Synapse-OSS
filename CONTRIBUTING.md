@@ -1,4 +1,4 @@
-# Contributing to OpenClaw
+# Contributing to Jarvis
 
 First off, thanks for taking the time to contribute! 🎉
 

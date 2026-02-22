@@ -1,4 +1,4 @@
-# 🚀 How to Run the Digital Organism (OpenClaw-OSS)
+# 🚀 How to Run the Digital Organism (Jarvis-OSS)
 
 This repository is a deeply customized, modular RAG system built on top of the incredible **OpenClaw** platform. Before diving in, please read the [Manifesto (README.md)](README.md) to understand what this system does and why it was built.
 
@@ -46,8 +46,8 @@ You do **not** need to blindly replace your existing `.openclaw` folder. The saf
 
 1. Clone this repository anywhere on your machine:
 ```bash
-git clone https://github.com/YOUR_GIT_HUB_NAME/OpenClaw-OSS.git
-cd OpenClaw-OSS
+git clone https://github.com/YOUR_GIT_HUB_NAME/Jarvis-OSS.git
+cd Jarvis-OSS
 ```
 2. Create and activate the Python environment:
 ```bash
@@ -107,7 +107,7 @@ python3 api_gateway.py
 Now, run your vanilla OpenClaw CLI, but tell it to use this custom downloaded folder as its workspace, and point it to the proxy gateway!
 
 ```bash
-openclaw start --workspace /path/to/where/you/cloned/OpenClaw-OSS/workspace 
+openclaw start --workspace /path/to/where/you/cloned/Jarvis-OSS/workspace 
 ```
 *(Alternatively, configure OpenClaw globally to hit your `localhost:8000` custom endpoint proxy instead of the default gateway).*
 

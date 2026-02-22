@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# OpenClaw Manager - Handles start/stop for launchd
+# Jarvis Manager - Handles start/stop for launchd
 # Works with OrbStack (lighter than Docker)
 #
 
@@ -11,7 +11,7 @@ log() {
 }
 
 start_services() {
-    log "Starting OpenClaw services..."
+    log "Starting Jarvis services..."
     
     # Activate venv and set env
     export PATH="$HOME/.openclaw/.venv/bin:$PATH"
@@ -60,7 +60,7 @@ start_services() {
 }
 
 stop_services() {
-    log "Stopping OpenClaw services..."
+    log "Stopping Jarvis services..."
     
     pkill -f "uvicorn.*api_gateway" 2>/dev/null
     pkill -f "ollama serve" 2>/dev/null

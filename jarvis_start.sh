@@ -5,7 +5,7 @@ source /path/to/openclaw/.venv/bin/activate
 mkdir -p ~/.openclaw/logs
 
 echo "╔══════════════════════════════════════╗"
-echo "║  OpenClaw v3.0 — Lean Architecture   ║"
+echo "║  Jarvis v3.0 — Lean Architecture   ║"
 echo "╚══════════════════════════════════════╝"
 echo ""
 echo "Memory before:"

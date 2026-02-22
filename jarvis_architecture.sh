@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# OpenClaw Architecture Review Script
+# Jarvis Architecture Review Script
 # Run this and paste the output for full system analysis
 #
 

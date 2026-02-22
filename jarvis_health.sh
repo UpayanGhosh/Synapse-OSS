@@ -1,6 +1,6 @@
 #!/bin/bash
 echo "╔══════════════════════════════════════╗"
-echo "║   OpenClaw v3.0 Health Check         ║"
+echo "║   Jarvis v3.0 Health Check         ║"
 echo "╚══════════════════════════════════════╝"
 echo ""
 

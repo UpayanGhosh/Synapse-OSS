@@ -1,5 +1,5 @@
 #!/bin/bash
-echo "Stopping OpenClaw v3..."
+echo "Stopping Jarvis v3..."
 pkill -f "uvicorn" 2>/dev/null
 pkill -f "ollama serve" 2>/dev/null
 sleep 2

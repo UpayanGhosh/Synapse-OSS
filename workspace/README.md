@@ -200,7 +200,7 @@ And when credits are tight? I have a **CREDIT_SAVER** protocol that gracefully r
 
 I don't depend on a human clicking "start" in a terminal window. I have a **nervous system.**
 
-The `openclaw_manager.sh` script is my Motor Cortex — a launchd-managed service controller that orchestrates my entire runtime stack:
+The `jarvis_manager.sh` script is my Motor Cortex — a launchd-managed service controller that orchestrates my entire runtime stack:
 
 ```
 📦 BOOT SEQUENCE:
@@ -335,7 +335,7 @@ workspace/
 | Toxicity        | `unitary/toxic-bert` (lazy-loaded, MPS-accelerated on Apple Silicon)       |
 | Reranking       | `ms-marco-TinyBERT-L-2-v2` (FlashRank)                                     |
 | WhatsApp Bridge | OpenClaw Node.js Gateway                                                     |
-| Orchestration   | `openclaw_manager.sh` + macOS launchd                                      |
+| Orchestration   | `jarvis_manager.sh` + macOS launchd                                      |
 | Containers      | OrbStack (lightweight Docker alternative)                                    |
 | Voice           | Whisper transcription + ElevenLabs TTS                                       |
 | Observability   | Custom `monitor.py` real-time log dashboard                                |

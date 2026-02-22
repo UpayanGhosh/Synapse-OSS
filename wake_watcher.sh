@@ -30,7 +30,7 @@ while true; do
             # Check if gateway is responding
             if ! curl -sf http://localhost:8000/health > /dev/null 2>&1; then
                 log "Gateway not responding, restarting services..."
-                "$HOME/.openclaw/openclaw_manager.sh" restart
+                "$HOME/.openclaw/jarvis_manager.sh" restart
                 sleep 10
             fi
         fi
