@@ -21,13 +21,13 @@ graph TD
     G((🚀 Core API Gateway\nFastAPI)):::gateway
 
     %% Persona Injection
-    subgraph Persona Subsystem
+    subgraph Persona_Subsystem [Persona Subsystem]
         P1[📝 JSON Identity Profiles\nBrother / Assistant]:::user
         G <-->|1. Inject Target Context| P1
     end
 
     %% Memory Subsystem
-    subgraph Cognitive Memory (Hybrid RAG)
+    subgraph Cognitive_Memory [Cognitive Memory Hybrid RAG]
         ME[🧠 Memory Engine]:::memory
         M1[(SQLite Graph DB\nTriples)]:::memory 
         M2[(Qdrant Vector DB\nSemantic)]:::memory
@@ -37,7 +37,7 @@ graph TD
     end
 
     %% Routing & Mixture of Agents
-    subgraph Mixture of Agents (MoA)
+    subgraph Mixture_of_Agents [Mixture of Agents MoA]
         TC{🚦 Traffic Cop\nIntent Classifier}:::moa
         G -->|3. Analyze Intent & Cost| TC
         
