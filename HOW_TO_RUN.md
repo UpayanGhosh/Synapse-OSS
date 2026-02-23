@@ -1,6 +1,6 @@
-# 🚀 How to Run the Digital Organism (Jarvis-OSS)
+# 🚀 How to Run Jarvis-OSS
 
-This repository is a deeply customized, modular RAG system built on top of the incredible **OpenClaw** platform. Before diving in, please read the [Manifesto (README.md)](README.md) to understand what this system does and why it was built.
+This repository is a deeply customized, modular RAG system built on top of the incredible **OpenClaw** platform. For a high-level overview of the system, see the [README](README.md). For the full design philosophy, see [MANIFESTO.md](MANIFESTO.md).
 
 > **🙏 Immense Gratitude & Respect**
 > This entire project exists because of **[OpenClaw](https://github.com/openclaw/openclaw)**. OpenClaw provides the foundational shell, tool-use capabilities, and gateway architecture that allowed me to build this hyper-personalized "brain." To the creator(s) and maintainers of OpenClaw: thank you for giving us a platform to dream and engineer on. 
@@ -46,7 +46,7 @@ You do **not** need to blindly replace your existing `.openclaw` folder. The saf
 
 1. Clone this repository anywhere on your machine:
 ```bash
-git clone https://github.com/YOUR_GIT_HUB_NAME/Jarvis-OSS.git
+git clone https://github.com/UpayanGhosh/Jarvis-OSS.git
 cd Jarvis-OSS
 ```
 2. Create and activate the Python environment:

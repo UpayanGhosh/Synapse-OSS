@@ -1,4 +1,4 @@
-# 🧠 How to Train Your Dragon (Persona Setup)
+# 🧠 Persona Setup Guide
 
 The architecture of this system uses "Few-Shot Examples" and dynamically constructed JSON profiles held in RAM. It doesn't use hardcoded system prompts; it uses an aggregated **"Relationship Context."**
 
