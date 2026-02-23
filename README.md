@@ -38,111 +38,86 @@ A self-hosted, model-agnostic AI assistant with hybrid memory retrieval, multi-m
 > *For the full interactive diagram with Mermaid breakdowns of each subsystem, see [ARCHITECTURE.md](ARCHITECTURE.md).*
 
 ```mermaid
-graph TD
-    classDef user    fill:#2d3436,stroke:#74b9ff,stroke-width:2px,color:#fff
-    classDef gateway fill:#0984e3,stroke:#74b9ff,stroke-width:3px,color:#fff
-    classDef async   fill:#00cec9,stroke:#81ecec,stroke-width:2px,color:#000
-    classDef memory  fill:#00b894,stroke:#55efc4,stroke-width:2px,color:#fff
-    classDef sbs     fill:#fdcb6e,stroke:#f39c12,stroke-width:2px,color:#000
-    classDef moa     fill:#6c5ce7,stroke:#a29bfe,stroke-width:2px,color:#fff
-    classDef local   fill:#d63031,stroke:#ff7675,stroke-width:2px,color:#fff
-
-    %% --- SECTION 1: INGRESS ---
-    subgraph Inputs [User Inputs]
-        U1[📱 WhatsApp Webhook\nNode Gateway]:::user
-        U2[💻 OpenClaw CLI\nProxy Request]:::user
+flowchart LR
+    subgraph Inputs["① User Inputs"]
+        CLI["💻 OpenClaw CLI\n─────────────\nDeveloper proxy\ndirect to gateway"]
+        WA["📱 WhatsApp Webhook\n─────────────\nNode gateway\nPOST /webhook"]
     end
-
-    %% --- SECTION 2: ASYNC PIPELINE ---
-    subgraph Async_Pipeline [Async Gateway Pipeline]
-        FG{🛡️ FloodGate\nBatch Window 3s}:::async
-        DD[🔁 MessageDeduplicator\n5-min window]:::async
-        Q[📦 TaskQueue\nmax 100]:::async
-        W[⚙️ MessageWorker\n2 concurrent]:::async
-
-        FG --> DD
-        DD --> Q
-        Q --> W
+    subgraph Async["② Async Gateway Pipeline (WhatsApp only)"]
+        direction TB
+        FG["🛡️ FloodGate\nBatches messages\nover a 3 s window"]
+        DD["🔁 Deduplicator\nDrops duplicates\nwithin 5 min"]
+        Q["📦 Task Queue\nHolds up to\n100 tasks"]
+        W["⚙️ Worker\n2 concurrent\ntasks"]
     end
-
-    %% --- SECTION 3: CORE GATEWAY ---
-    G((🚀 Core API Gateway\nFastAPI Uvicorn\n:8000)):::gateway
-
-    U1 -->|HTTP POST /webhook| FG
-    U2 -->|CLI Proxy| G
+    subgraph SBS["🎭 Persona Engine — Soul-Brain Sync"]
+        direction LR
+        SBS_O["Orchestrator"]
+        SBS_P["Profile\nManager"]
+        SBS_RT["Realtime\nProcessor"]
+        SBS_B["Batch\nProcessor"]
+        SBS_C["Prompt\nCompiler"]
+        SBS_L["Conversation\nLogger"]
+    end
+    subgraph Mem["💾 Cognitive Memory"]
+        direction LR
+        ME["🧠 Memory Engine\nHybrid Retrieval v3"]
+        M1["🗃️ SQLite\nGraph DB"]
+        M2["🔷 Qdrant\nVector DB"]
+        RE["🏅 FlashRank\nReranker"]
+    end
+    subgraph DC["🧩 Dual Cognition"]
+        direction LR
+        DCE["DualCognitionEngine"]
+        TS["☣️ LazyToxicScorer\ndeferred tension check"]
+    end
+    subgraph Brain["③ Context Engine (bidirectional with Gateway)"]
+        direction TB
+        SBS
+        Mem
+        DC
+    end
+    subgraph MoA["④ Mixture of Agents"]
+        direction TB
+        TC{"🚦 Traffic Cop\nIntent Classifier"}
+        LLM1["🟢 Gemini 3 Flash\nCASUAL — everyday chat"]
+        LLM2["💻 The Hacker\nCODING — code and debug"]
+        LLM3["🏛️ The Architect\nANALYSIS — deep planning"]
+        LLM4["🧐 The Philosopher\nREVIEW — critical review"]
+        LLM5["🌶️ The Vault\nSPICY — local model"]
+    end
+    subgraph Out["⑤ Output"]
+        direction TB
+        AC["✂️ Auto-Continue\nDetects cut-off responses\nand re-requests completion"]
+        FO["📨 Final Output\nBack to WhatsApp\nor CLI caller"]
+    end
+    G(["🚀 Core API Gateway\nFastAPI / Uvicorn / :8000"])
+    FG --> DD --> Q --> W
+    SBS_O --- SBS_P & SBS_RT & SBS_C
+    SBS_RT --- SBS_B
+    SBS_P --- SBS_L
+    ME <--> M1 & M2
+    ME --> RE
+    DCE --- TS
+    TC -- casual --> LLM1
+    TC -- coding --> LLM2
+    TC -- analysis --> LLM3
+    TC -- review --> LLM4
+    TC -- spicy --> LLM5
+    WA -- HTTP POST /webhook --> FG
+    CLI -- CLI proxy --> G
     W --> G
-
-    %% --- SECTION 4: CONTEXT & MEMORY ---
-    subgraph Brain_Context [🤖 Context Engine]
-        subgraph SBS [Soul-Brain Sync]
-            SBS_O[🎭 SBS Orchestrator]:::sbs
-            SBS_P[📋 Profile Manager]:::sbs
-            SBS_L[📝 Conversation Logger]:::sbs
-            SBS_RT[⚡ Realtime Processor]:::sbs
-            SBS_B[🔄 Batch Processor]:::sbs
-            SBS_C[🖊️ Prompt Compiler]:::sbs
-
-            SBS_O --- SBS_P
-            SBS_P --- SBS_L
-            SBS_O --- SBS_RT
-            SBS_RT --- SBS_B
-            SBS_O --- SBS_C
-        end
-
-        subgraph Cognitive_Memory [💾 Cognitive Memory]
-            ME[🧠 Memory Engine\nHybrid Retrieval v3]:::memory
-            M1[🗃️ SQLite Graph DB]:::memory
-            M2[🔷 Qdrant Vector DB]:::memory
-            RE[🏅 FlashRank Reranker]:::memory
-
-            ME <--> M1
-            ME <--> M2
-            ME --> RE
-        end
-
-        subgraph Dual_Cognition [🧩 Dual Cognition]
-            DC[🧩 DualCognitionEngine]:::memory
-            TS[☣️ LazyToxicScorer]:::memory
-            DC --- TS
-        end
-    end
-
-    G <-->|Inject Persona Context| SBS_O
-    G <-->|Semantic + Graph Query| ME
-    G -->|Tension Check| DC
-
-    %% --- SECTION 5: MOA AGENTS ---
-    subgraph Mixture_of_Agents [🚀 Mixture of Agents]
-        TC{🚦 Traffic Cop\nIntent Classifier}:::moa
-
-        subgraph Agents [LLM Agents]
-            LLM1[🟢 Gemini 3 Flash\nCASUAL]:::moa
-            LLM2[💻 The Hacker\nCODING]:::moa
-            LLM3[🏛️ The Architect\nANALYSIS]:::moa
-            LLM4[🧐 The Philosopher\nREVIEW]:::moa
-            LLM5[🌶️ The Vault\nSPICY]:::local
-        end
-
-        TC -->|CASUAL| LLM1
-        TC -->|CODING| LLM2
-        TC -->|ANALYSIS| LLM3
-        TC -->|REVIEW| LLM4
-        TC -->|SPICY| LLM5
-    end
-
-    %% --- SECTION 6: RETURN PATH ---
-    G -->|Classify Intent| TC
-
-    LLM1 -->|Response + Stats| G
-    LLM2 -->|Response + Stats| G
-    LLM3 -->|Response + Stats| G
-    LLM4 -->|Response + Stats| G
-    LLM5 -->|Response + Stats| G
-
-    G -->|Auto-Continue if cut-off| AC[✂️ Auto-Continue]:::async
-    G -->|Final Output| Out[📨 Output]:::user
-
-    AC -.->|continues...| G
+    G <-- inject persona context --> SBS_O
+    G <-- semantic + graph query --> ME
+    G -- tension check --> DCE
+    G -- classify intent --> TC
+    LLM1 -- response + stats --> G
+    LLM2 -- response + stats --> G
+    LLM3 -- response + stats --> G
+    LLM4 -- response + stats --> G
+    LLM5 -- response + stats --> G
+    G --> AC & FO
+    AC -. re-requests if cut off .-> G
 ```
 
 ---

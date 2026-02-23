@@ -19,84 +19,92 @@ GitHub automatically renders the Mermaid diagrams below. If you are viewing this
 This diagram illustrates the full end-to-end flow: from user input, through the Async Gateway Pipeline, across the Cognitive Engine (MoA + Dual Cognition), and back out as a response.
 
 ```mermaid
-graph TD
-    %% ── Styling ──────────────────────────────────────────────────────────────
-    classDef user      fill:#2d3436,stroke:#74b9ff,stroke-width:2px,color:#fff
-    classDef gateway   fill:#0984e3,stroke:#74b9ff,stroke-width:3px,color:#fff
-    classDef async     fill:#00cec9,stroke:#81ecec,stroke-width:2px,color:#000
-    classDef memory    fill:#00b894,stroke:#55efc4,stroke-width:2px,color:#fff
-    classDef sbs       fill:#fdcb6e,stroke:#f39c12,stroke-width:2px,color:#000
-    classDef moa       fill:#6c5ce7,stroke:#a29bfe,stroke-width:2px,color:#fff
-    classDef local     fill:#d63031,stroke:#ff7675,stroke-width:2px,color:#fff
+flowchart LR
+    %% ── INPUTS ──────────────────────────────────────────────
+    subgraph Inputs["① User Inputs"]
+        WA["📱 WhatsApp Webhook\n─────────────\nNode gateway\nPOST /webhook"]
+        CLI["💻 OpenClaw CLI\n─────────────\nDeveloper proxy\ndirect to gateway"]
+    end
 
-    %% ── Ingress ──────────────────────────────────────────────────────────────
-    U1[📱 WhatsApp Webhook\nNode Gateway]:::user -->|HTTP POST /webhook| FG
-    U2[💻 OpenClaw CLI\nProxy Request]:::user   -->|CLI Proxy| G
-
-    %% ── Async Pipeline ───────────────────────────────────────────────────────
-    subgraph Async_Pipeline [Async Gateway Pipeline]
-        FG{🛡️ FloodGate\nBatch Window 3s}:::async
-        DD[🔁 MessageDeduplicator\n5-min window]:::async
-        Q[(📦 TaskQueue\nmax 100)]:::async
-        W[⚙️ MessageWorker\n2 concurrent]:::async
+    %% ── ASYNC PIPELINE ───────────────────────────────────────
+    subgraph Async["② Async Gateway Pipeline  (WhatsApp only)"]
+        direction TB
+        FG["🛡️ FloodGate\nBatches messages\nover a 3 s window"]
+        DD["🔁 Deduplicator\nDrops duplicates\nwithin 5 min"]
+        Q["📦 Task Queue\nHolds up to\n100 tasks"]
+        W["⚙️ Worker\n2 concurrent\ntasks"]
         FG --> DD --> Q --> W
     end
+
+    %% ── CORE GATEWAY ─────────────────────────────────────────
+    G(["🚀 Core API Gateway\n──────────────────\nFastAPI / Uvicorn\n:8000"])
+
+    %% ── CONTEXT ENGINE ───────────────────────────────────────
+    subgraph Brain["③ Context Engine  (bidirectional with Gateway)"]
+        direction TB
+
+        subgraph SBS["🎭 Persona Engine — Soul-Brain Sync"]
+            direction LR
+            SBS_O["Orchestrator"] --- SBS_P["Profile\nManager"]
+            SBS_O --- SBS_RT["Realtime\nProcessor"] --- SBS_B["Batch\nProcessor"]
+            SBS_O --- SBS_C["Prompt\nCompiler"]
+            SBS_P --- SBS_L["Conversation\nLogger"]
+        end
+
+        subgraph Mem["💾 Cognitive Memory"]
+            direction LR
+            ME["🧠 Memory Engine\nHybrid Retrieval v3"]
+            ME <--> M1["🗃️ SQLite\nGraph DB"]
+            ME <--> M2["🔷 Qdrant\nVector DB"]
+            ME --> RE["🏅 FlashRank\nReranker"]
+        end
+
+        subgraph DC["🧩 Dual Cognition"]
+            direction LR
+            DCE["DualCognitionEngine"] --- TS["☣️ LazyToxicScorer\n(deferred tension check)"]
+        end
+    end
+
+    %% ── MIXTURE OF AGENTS ────────────────────────────────────
+    subgraph MoA["④ Mixture of Agents"]
+        direction TB
+        TC{"🚦 Traffic Cop\nIntent Classifier"}
+        LLM1["🟢 Gemini 3 Flash\nCASUAL — everyday chat"]
+        LLM2["💻 The Hacker\nCODING — code & debug"]
+        LLM3["🏛️ The Architect\nANALYSIS — deep planning"]
+        LLM4["🧐 The Philosopher\nREVIEW — critical review"]
+        LLM5["🌶️ The Vault\nSPICY — local model"]
+
+        TC -->|casual| LLM1
+        TC -->|coding| LLM2
+        TC -->|analysis| LLM3
+        TC -->|review| LLM4
+        TC -->|spicy| LLM5
+    end
+
+    %% ── OUTPUT ───────────────────────────────────────────────
+    subgraph Out["⑤ Output"]
+        direction TB
+        AC["✂️ Auto-Continue\nDetects cut-off responses\nand re-requests completion"]
+        FO["📨 Final Output\nBack to WhatsApp\nor CLI caller"]
+    end
+
+    %% ── CONNECTIONS ──────────────────────────────────────────
+    WA -->|HTTP POST /webhook| FG
+    CLI -->|CLI proxy| G
     W --> G
 
-    %% ── Core Gateway ─────────────────────────────────────────────────────────
-    G((🚀 Core API Gateway\nFastAPI / Uvicorn\n:8000)):::gateway
+    G <-->|inject persona context| SBS_O
+    G <-->|semantic + graph query| ME
+    G -->|tension check| DCE
 
-    %% ── Soul-Brain Sync (SBS) ────────────────────────────────────────────────
-    subgraph SBS [Soul-Brain Sync — Persona Engine]
-        SBS_O[🎭 SBS Orchestrator\nthe_creator / the_partner]:::sbs
-        SBS_P[📋 Profile Manager\nMood · Vocab · Sentiment]:::sbs
-        SBS_L[📝 Conversation Logger\nSQLite per-session]:::sbs
-        SBS_RT[⚡ Realtime Processor\nSentiment · Language · Mood]:::sbs
-        SBS_B[🔄 Batch Processor\nEvery 50 msgs or 6h]:::sbs
-        SBS_C[🖊️ Prompt Compiler\nSystem Prompt Assembly]:::sbs
-        G <-->|Inject Persona Context| SBS_O
-        SBS_O --- SBS_P --- SBS_L
-        SBS_O --- SBS_RT --- SBS_B
-        SBS_O --- SBS_C
-    end
+    G -->|classify intent| TC
 
-    %% ── Memory Subsystem ─────────────────────────────────────────────────────
-    subgraph Cognitive_Memory [Cognitive Memory — Hybrid RAG]
-        ME[🧠 Memory Engine\nHybrid Retrieval v3]:::memory
-        M1[(🗃️ SQLite Graph DB\nTriples · knowledge_graph.db)]:::memory
-        M2[(🔷 Qdrant Vector DB\nnomic-embed-text\n:6333)]:::memory
-        RE[(🏅 FlashRank Reranker\nms-marco-TinyBERT)]:::memory
-        G <-->|Semantic + Graph Query| ME
-        ME <--> M1
-        ME <--> M2
-        ME --> RE
-    end
+    LLM1 & LLM2 & LLM3 & LLM4 & LLM5 -->|response + stats| G
 
-    %% ── Dual Cognition ───────────────────────────────────────────────────────
-    subgraph Dual_Cognition [Dual Cognition Engine]
-        DC[🧩 DualCognitionEngine\nInner Monologue · Tension Calc]:::memory
-        TS[☣️ LazyToxicScorer\nidle timeout 30s]:::memory
-        G --> DC
-        DC --- TS
-    end
-
-    %% ── Mixture of Agents ────────────────────────────────────────────────────
-    subgraph Mixture_of_Agents [Mixture of Agents — MoA Router]
-        TC{🚦 Traffic Cop\nIntent Classifier}:::moa
-        G -->|Classify Intent| TC
-
-        TC -->|CASUAL|        LLM1[🟢 Gemini 3 Flash\nAG_CASUAL\nFast · Low Cost]:::moa
-        TC -->|CODING|        LLM2[(💻 The Hacker\nClaude Sonnet 4.5\nHigh Logic)]:::moa
-        TC -->|ANALYSIS|      LLM3[🏛️ The Architect\nGemini 3 Pro\nDeep Synthesis]:::moa
-        TC -->|REVIEW|        LLM4[(🧐 The Philosopher\nClaude Opus 4.6\nCritique · Judgment)]:::moa
-        TC -->|SPICY / Private| LLM5[(🌶️ The Vault\nLocal Stheno on Ollama\nZero Cloud Leakage)]:::local
-    end
-
-    %% ── Return Path ──────────────────────────────────────────────────────────
-    LLM1 & LLM2 & LLM3 & LLM4 & LLM5 -->|Response + Footer Stats| G
-    G -->|Auto-Continue if cut-off| AC[✂️ Auto-Continue\nBackground Task]:::async
-    G -->|Final Output| U1
-    G -->|Final Output| U2
+    G --> AC
+    G --> FO
+    AC -.->|"re-requests if cut off"| G
 ```
 
 ---
@@ -105,10 +113,10 @@ graph TD
 
 ### 1. 📱 Ingress Layer
 
-| Input Channel | Transport | Handler |
-|---|---|---|
+| Input Channel               | Transport              | Handler                                            |
+| --------------------------- | ---------------------- | -------------------------------------------------- |
 | WhatsApp (via Node Gateway) | HTTP POST `/webhook` | `FloodGate` → `Deduplicator` → `TaskQueue` |
-| OpenClaw CLI | CLI Proxy subprocess | Direct → `Core API Gateway` |
+| OpenClaw CLI                | CLI Proxy subprocess   | Direct →`Core API Gateway`                      |
 
 ### 2. ⚙️ Async Gateway Pipeline (`workspace/sci_fi_dashboard/gateway/`)
 
@@ -134,13 +142,13 @@ sequenceDiagram
     W->>WA: send_via_cli()
 ```
 
-| File | Role |
-|---|---|
-| `gateway/queue.py` | `TaskQueue` — asyncio-based FIFO, max 100 tasks |
-| `gateway/flood.py` | `FloodGate` — batches messages within a 3-second window |
-| `gateway/dedup.py` | `MessageDeduplicator` — 5-minute seen-set for exact deduplication |
-| `gateway/worker.py` | `MessageWorker` — 2 concurrent async workers consuming the queue |
-| `gateway/sender.py` | `WhatsAppSender` — wraps the OpenClaw CLI `send` command |
+| File                  | Role                                                                 |
+| --------------------- | -------------------------------------------------------------------- |
+| `gateway/queue.py`  | `TaskQueue` — asyncio-based FIFO, max 100 tasks                   |
+| `gateway/flood.py`  | `FloodGate` — batches messages within a 3-second window           |
+| `gateway/dedup.py`  | `MessageDeduplicator` — 5-minute seen-set for exact deduplication |
+| `gateway/worker.py` | `MessageWorker` — 2 concurrent async workers consuming the queue  |
+| `gateway/sender.py` | `WhatsAppSender` — wraps the OpenClaw CLI `send` command        |
 
 ---
 
@@ -150,21 +158,21 @@ The central FastAPI application running on **port 8000**. Every cognitive operat
 
 **API Routes:**
 
-| Method | Route | Description |
-|---|---|---|
-| `POST` | `/chat/the_creator` | Chat endpoint for primary user (brother mode) |
-| `POST` | `/chat/the_partner` | Chat endpoint for partner (caring PA mode) |
-| `POST` | `/chat` | Generic fallback (Banglish persona) |
-| `POST` | `/whatsapp/enqueue` | Async WhatsApp ingress entry point |
-| `GET`  | `/whatsapp/status/{id}` | Poll status of an enqueued message |
-| `POST` | `/persona/rebuild` | Re-parse chat logs and rebuild persona profiles |
-| `GET`  | `/persona/status` | Profile statistics and embedding mode |
-| `POST` | `/ingest` | Ingest a structured fact into the knowledge graph |
-| `POST` | `/add` | Unstructured memory → LLM → triple extraction |
-| `POST` | `/query` | Query the knowledge graph |
-| `GET`  | `/health` | System health check |
-| `GET`  | `/v1/models` | OpenAI-compatible model list (for Node Gateway discovery) |
-| `POST` | `/v1/chat/completions` | OpenAI-compatible proxy endpoint |
+| Method   | Route                     | Description                                               |
+| -------- | ------------------------- | --------------------------------------------------------- |
+| `POST` | `/chat/the_creator`     | Chat endpoint for primary user (brother mode)             |
+| `POST` | `/chat/the_partner`     | Chat endpoint for partner (caring PA mode)                |
+| `POST` | `/chat`                 | Generic fallback (Banglish persona)                       |
+| `POST` | `/whatsapp/enqueue`     | Async WhatsApp ingress entry point                        |
+| `GET`  | `/whatsapp/status/{id}` | Poll status of an enqueued message                        |
+| `POST` | `/persona/rebuild`      | Re-parse chat logs and rebuild persona profiles           |
+| `GET`  | `/persona/status`       | Profile statistics and embedding mode                     |
+| `POST` | `/ingest`               | Ingest a structured fact into the knowledge graph         |
+| `POST` | `/add`                  | Unstructured memory → LLM → triple extraction           |
+| `POST` | `/query`                | Query the knowledge graph                                 |
+| `GET`  | `/health`               | System health check                                       |
+| `GET`  | `/v1/models`            | OpenAI-compatible model list (for Node Gateway discovery) |
+| `POST` | `/v1/chat/completions`  | OpenAI-compatible proxy endpoint                          |
 
 **Singleton Modules (initialized once at boot):**
 
@@ -197,11 +205,11 @@ graph LR
     FAST --> OUT
 ```
 
-| Store | Technology | Port | Purpose |
-|---|---|---|---|
-| `memory.db` | SQLite | local file | Document store & embedding queue |
-| `knowledge_graph.db` | SQLite (graph) | local file | Subject–Predicate–Object triple store |
-| Qdrant | Qdrant (native binary) | `:6333` | High-speed semantic vector search |
+| Store                  | Technology             | Port       | Purpose                                 |
+| ---------------------- | ---------------------- | ---------- | --------------------------------------- |
+| `memory.db`          | SQLite                 | local file | Document store & embedding queue        |
+| `knowledge_graph.db` | SQLite (graph)         | local file | Subject–Predicate–Object triple store |
+| Qdrant                 | Qdrant (native binary) | `:6333`  | High-speed semantic vector search       |
 
 **Retrieval Tiers:**
 
@@ -233,14 +241,15 @@ graph TD
 
 **Profile Layers tracked per target:**
 
-| Layer | Data captured |
-|---|---|
-| `emotional_state` | Dominant mood, sentiment average, mood trajectory |
-| `linguistic` | Banglish ratio, formality index, language mix |
-| `vocabulary` | Unique word count, preferred phrases, emoji frequency |
-| `meta` | Total messages processed, last batch run timestamp, profile version |
+| Layer               | Data captured                                                       |
+| ------------------- | ------------------------------------------------------------------- |
+| `emotional_state` | Dominant mood, sentiment average, mood trajectory                   |
+| `linguistic`      | Banglish ratio, formality index, language mix                       |
+| `vocabulary`      | Unique word count, preferred phrases, emoji frequency               |
+| `meta`            | Total messages processed, last batch run timestamp, profile version |
 
 **Two SBS instances run simultaneously:**
+
 - `sbs_the_creator` — tuned for primary user (casual, direct, sibling-like)
 - `sbs_the_partner` — tuned for the partner (warm, supportive, PA-like)
 
@@ -280,18 +289,19 @@ All cloud models route through the **Antigravity Proxy** (`localhost:8080`) usin
 
 **Model constants (configurable via env):**
 
-| Constant | Default Model |
-|---|---|
-| `MODEL_CASUAL` | `gemini-3-flash` |
-| `MODEL_CODING` | `gemini-3-flash` *(placeholder — Claude on credit restore)* |
-| `MODEL_ANALYSIS` | `gemini-3-pro-high` |
-| `MODEL_REVIEW` | `gemini-3-pro-high` *(placeholder — Opus on credit restore)* |
+| Constant           | Default Model                                                     |
+| ------------------ | ----------------------------------------------------------------- |
+| `MODEL_CASUAL`   | `gemini-3-flash`                                                |
+| `MODEL_CODING`   | `gemini-3-flash` *(placeholder — Claude on credit restore)*  |
+| `MODEL_ANALYSIS` | `gemini-3-pro-high`                                             |
+| `MODEL_REVIEW`   | `gemini-3-pro-high` *(placeholder — Opus on credit restore)* |
 
 ---
 
 ### 8. ✂️ Auto-Continue System
 
 If JARVIS is cut off mid-sentence (no terminal punctuation at end of reply), a **FastAPI BackgroundTask** is spawned to:
+
 1. Append the truncated reply to message history.
 2. Ask the model to "continue exactly from where you stopped."
 3. Push the continuation via `send_via_cli()` as a second message to the user.
@@ -307,6 +317,7 @@ A file-governance module that runs at boot. It enforces structural rules on the 
 ### 10. 👷 Gentle Worker Loop
 
 A background async loop that runs every **10 minutes** (when plugged in and CPU < 20%) to:
+
 - `brain.prune_graph()` — Remove low-confidence or stale knowledge triples.
 - `conflicts.prune_conflicts()` — Deduplicate conflict entries in the conflict graph.
 
@@ -314,13 +325,13 @@ A background async loop that runs every **10 minutes** (when plugged in and CPU 
 
 ## Service Port Map
 
-| Service | Port | Technology |
-|---|---|---|
-| Core API Gateway | `8000` | FastAPI / Uvicorn |
-| Antigravity Proxy (OAuth) | `8080` | OpenClaw built-in |
-| Qdrant Vector DB | `6333` | Qdrant (OrbStack container) |
-| Ollama (Mac — embeddings) | `11434` | Ollama |
-| Ollama (Windows PC — Vault) | `11434` | Ollama (remote) |
+| Service                      | Port      | Technology                  |
+| ---------------------------- | --------- | --------------------------- |
+| Core API Gateway             | `8000`  | FastAPI / Uvicorn           |
+| Antigravity Proxy (OAuth)    | `8080`  | OpenClaw built-in           |
+| Qdrant Vector DB             | `6333`  | Qdrant (OrbStack container) |
+| Ollama (Mac — embeddings)   | `11434` | Ollama                      |
+| Ollama (Windows PC — Vault) | `11434` | Ollama (remote)             |
 
 ---
 
@@ -390,12 +401,12 @@ workspace/
 
 ## Design Principles
 
-| Principle | Implementation |
-|---|---|
-| **Zero-duplication singletons** | All core engines (graph, memory, toxicity) initialized once and shared |
-| **Async-first** | Full asyncio stack; no blocking calls in the hot path |
-| **Memory-optimized** | LazyToxicScorer auto-unloads; `OLLAMA_KEEP_ALIVE=0`; graph/conflict pruning on idle |
-| **Zero cloud leakage for private sessions** | Spicy / private tasks routed to local Ollama Vault; never to cloud APIs |
-| **Self-evolving persona** | SBS batch processor continuously rebuilds personality profile from conversation history |
-| **Cost-aware routing** | Traffic Cop prevents simple greetings from hitting expensive models |
-| **Resilient delivery** | Auto-Continue catches cut-off responses and pushes continuations asynchronously |
+| Principle                                         | Implementation                                                                          |
+| ------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| **Zero-duplication singletons**             | All core engines (graph, memory, toxicity) initialized once and shared                  |
+| **Async-first**                             | Full asyncio stack; no blocking calls in the hot path                                   |
+| **Memory-optimized**                        | LazyToxicScorer auto-unloads;`OLLAMA_KEEP_ALIVE=0`; graph/conflict pruning on idle    |
+| **Zero cloud leakage for private sessions** | Spicy / private tasks routed to local Ollama Vault; never to cloud APIs                 |
+| **Self-evolving persona**                   | SBS batch processor continuously rebuilds personality profile from conversation history |
+| **Cost-aware routing**                      | Traffic Cop prevents simple greetings from hitting expensive models                     |
+| **Resilient delivery**                      | Auto-Continue catches cut-off responses and pushes continuations asynchronously         |
