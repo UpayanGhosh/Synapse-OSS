@@ -1,14 +1,14 @@
 ---
-# 🧬 JARVIS — Production-Grade AI Assistant
+# 🧬 JARVIS — Self-Hosted AI Assistant
 ---
 ![Python](https://img.shields.io/badge/Python-3.11-3776AB?style=for-the-badge&logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white)
 ![SQLite](https://img.shields.io/badge/SQLite-003B57?style=for-the-badge&logo=sqlite&logoColor=white)
 ![Lines of Code](https://img.shields.io/badge/Lines_of_Code-15,000+-blueviolet?style=for-the-badge)
 ![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
-![Status](https://img.shields.io/badge/Status-Production-brightgreen?style=for-the-badge)
+![Status](https://img.shields.io/badge/Status-Active-brightgreen?style=for-the-badge)
 
-A self-hosted, model-agnostic AI assistant with hybrid memory retrieval, multi-model routing, and an autonomous persona-evolution pipeline — running 24/7 on consumer hardware.
+A self-hosted, model-agnostic AI assistant with hybrid memory retrieval, multi-model routing, and an autonomous persona-evolution pipeline — running 24/7 on consumer hardware as a single-user system.
 
 > **New here?** Jump to [Quick Start](#-quick-start) or read [HOW_TO_RUN.md](HOW_TO_RUN.md) for full setup instructions.
 >
@@ -18,15 +18,16 @@ A self-hosted, model-agnostic AI assistant with hybrid memory retrieval, multi-m
 
 ## 📊 By The Numbers
 
-> `15,000+ lines of production code` · `99.2% memory reduction` · `<350ms P95 retrieval` · `6 models orchestrated` · `Zero timeout failures` · `24/7 uptime on $999 hardware` · `92 Python modules`
+> `15,000+ lines` · `99.2% memory reduction` · `<350ms P95 retrieval` · `6 models orchestrated` · `Zero dropped messages` · `24/7 uptime on $999 hardware` · `92 Python modules`
 
-| Metric | Before (v1.0) | After (Phoenix v3) | Improvement |
-|---|---|---|---|
-| Cognitive Memory Footprint | ~155MB in-RAM graph | <1.2MB SQLite-backed | **99.2% reduction** |
-| Host RAM Usage | 81.3% | <25% single-process | **3.3× lower** |
-| Retrieval Latency (P95) | ~1.2s | <350ms hybrid smart gate | **3.4× faster** |
-| Vocabulary Diversity | ~5,000 static terms | 37,868+ unique terms | **7.6× richer** |
-| Message Pipeline | Synchronous, 30s ceiling | Async queue-push | **Zero timeouts** |
+| Metric | Before (v1.0) | After (Phoenix v3) | Why it changed |
+|---|---|:---:|---|
+| Memory Footprint | ~155MB in-RAM graph (NetworkX) | **<1.2MB** | NetworkX required loading the entire graph into RAM, causing 81% memory pressure on an 8GB host. SQLite reads from disk on demand. **99.2% reduction.** |
+| Host RAM Usage | 81.3% | **<25%** | Eliminated Qdrant container + NetworkX + separate memory server process into a single FastAPI app. **3.3× lower.** |
+| Retrieval Latency (P95) | ~1.2s | **<350ms** | High-confidence results (>0.80) bypass the reranker entirely — only ambiguous queries pay the FlashRank overhead. **3.4× faster.** |
+| Vocabulary Diversity | ~5,000 static terms | **37,868+** | Continuous ingestion from 4 years of conversation logs via the SBS batch pipeline. **7.6× richer.** |
+| Message Pipeline | Synchronous | **Async Queue** | Webhook returns `202 Accepted` immediately; processing happens in background workers. **Zero dropped messages** (single-user load). |
+| Cognitive Overhead (TTFT) | N/A | **2-5s** | Dual Cognition pipeline adds 2-5s Time-To-First-Token for enhanced reasoning quality. **Quality-for-speed trade-off.** |
 
 ---
 
@@ -146,14 +147,14 @@ graph TD
 
 | **Competency**                   | **Evidence in This Repo**                                                                                                                                                                                      |
 | :------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **System Design & Architecture** | Designed and implemented a single-process architecture (Phoenix v3) that reduced memory footprint from 155MB to <1.2MB — a **99.2% compression** — while improving retrieval speed by 3.4× |
-| **Distributed Systems**          | Built an async queue-push message gateway with deduplication, flood batching, and concurrent workers — achieving **zero timeout failures** in production                                                       |
-| **Database Engineering**         | Migrated from an in-memory graph (NetworkX + Qdrant) to a custom **SQLite-backed knowledge graph** with hybrid vector + full-text search, eliminating an entire infrastructure dependency                       |
-| **ML Pipeline Orchestration**    | Implemented a **Mixture of Agents (MoA)** routing layer that classifies intent and dispatches to 6 specialized models (Gemini, Claude, Ollama) through a unified OpenAI SDK interface                           |
-| **Performance Optimization**     | Engineered lazy-loading patterns (Toxic-BERT loads on demand, unloads after 30s), `keep_alive: 0` model eviction, and thermal-aware background workers — all to run on a MacBook Air                               |
-| **Security Architecture**        | Designed an air-gapped "Vault Protocol" with hemisphere-enforced memory separation, verified by automated integrity tests                                                                                            |
+| **System Design & Architecture** | Consolidated a 4-process architecture into a single FastAPI process, reducing memory from 155MB to <1.2MB (**99.2% reduction**). Motivated by 81% RAM pressure on an 8GB host — NetworkX loaded the full graph into RAM. |
+| **Async Systems**                | Built an async queue-push message gateway with deduplication, flood batching, and concurrent workers — achieving **zero dropped messages** under single-user load (~50-100 msgs/day)                            |
+| **Database Engineering**         | Designing a migration path from Qdrant to a native `sqlite-vec` implementation to eliminate container dependencies and further reduce RAM footprint (Currently supporting parallel retrieval paths).                 |
+| **ML Pipeline Orchestration**    | Implemented a multi-model intent router (Mixture of Agents pattern) that classifies messages and dispatches to 6 models (Gemini, Claude, Ollama) through a unified OpenAI-compatible proxy                       |
+| **Performance Optimization**     | Engineered lazy-loading patterns (Toxic-BERT loads on demand, unloads after 30s idle), `keep_alive: 0` model eviction, and thermal-aware background workers — all to run on a MacBook Air with 8GB RAM              |
+| **Privacy Engineering**          | Designed air-gapped local inference routing with hemisphere-enforced memory separation, verified by automated integrity tests                                                                                        |
 | **DevOps & Reliability**         | Built a `launchd`-managed boot sequence with idempotent service control, auto-restart, 12-hour backup rotation, and a real-time observability dashboard                                                            |
-| **Autonomous Data Pipelines**    | Created the "Soul-Brain Sync" — an autonomous ingestion → parsing → distillation pipeline that converts raw conversation logs into a 2KB behavioral profile, injected at inference time                           |
+| **Continuous Batch Profiling**   | Built "Soul-Brain Sync" (SBS) — an autonomous ingestion → parsing → distillation pipeline that converts raw conversation logs into a 2KB behavioral profile, injected into the system prompt at inference time    |
 
 ---
 
@@ -163,20 +164,20 @@ graph TD
 | :----------------- | :------------------------------------------------------------------------------------------------------------------- |
 | Languages          | Python 3.11, JavaScript (Node.js), Bash                                                                              |
 | Frameworks         | FastAPI, Uvicorn, OpenAI SDK                                                                                         |
-| Databases          | SQLite, sqlite-vec, Qdrant                                                                           |
+| Databases          | SQLite (WAL Mode), `sqlite-vec`, Qdrant (Active)                                                                     |
 | AI/ML              | Ollama, Google Gemini, Anthropic Claude, OpenRouter, Toxic-BERT, FlashRank, sentence-transformers, Whisper           |
-| Infrastructure     | macOS launchd, OrbStack/Docker, distributed compute (remote GPU node)                                                |
+| Infrastructure     | macOS `launchd`, OrbStack/Docker, distributed compute (remote GPU node)                                              |
 | Practices          | Async programming, queue-based architectures, model-agnostic routing, automated testing, auto-commit version control |
 
 ---
 
-## 🏢 Industry Equivalent
+## 🏢 Functional Scope
 
-> *This system — built and maintained by a single engineer — replicates functionality that typically requires a 3–5 person platform engineering team:*
+> *This is a single-user, single-node system — not a distributed platform. But it covers a broad surface area of concerns typically split across multiple tools and teams:*
 >
-> **Message Queuing** *(like AWS SQS)* · **Model Routing** *(like AWS Bedrock)* · **Knowledge Retrieval** *(like Pinecone)* · **Real-Time Monitoring** *(like Datadog)* · **Behavioral Pipelines** *(like custom ML Ops)* · **Service Orchestration** *(like systemd/Kubernetes)*
+> **Async message processing** · **Multi-model intent routing** · **Hybrid knowledge retrieval** (vector + graph) · **Real-time log monitoring** · **Continuous behavioral profiling** · **Service lifecycle management**
 >
-> *All running on consumer hardware. All production-tested. All in this repo.*
+> *Built and maintained by a single engineer on consumer hardware.*
 
 ---
 
@@ -212,23 +213,23 @@ curl http://localhost:8000/health
 
 ## ⚙️ Key Features
 
-### Async Gateway Pipeline
-Messages enter through a multi-stage async pipeline (`gateway/`) that prevents webhook timeouts. A `FloodGate` batches rapid-fire messages (3s window), a `MessageDeduplicator` absorbs retry storms (5-min window), and a bounded `TaskQueue` (max 100) feeds two concurrent `MessageWorker` instances. The webhook returns `202 Accepted` immediately — the cognitive pipeline processes at its own pace. **Zero timeout failures in production.**
+### Async Gateway Pipeline (Message Queue + Workers)
+Messages enter through a multi-stage async pipeline (`gateway/`) that prevents webhook timeouts. A `FloodGate` (batch aggregator, 3s window) merges rapid-fire messages, a `MessageDeduplicator` (seen-set filter, 5-min window) absorbs retry storms, and a bounded `TaskQueue` (asyncio FIFO, max 100) feeds two concurrent `MessageWorker` instances. The webhook returns `202 Accepted` immediately — the cognitive pipeline processes in the background. **Zero dropped messages** under single-user load (~50-100 messages/day).
 
-### Mixture of Agents (MoA) Routing
-A lightweight intent classifier ("Traffic Cop") routes each message to the best-fit model: Gemini Flash for casual chat, Claude Sonnet for code generation, Gemini Pro for deep analysis, Claude Opus for critical review, or a local Ollama instance for private conversations. All models are accessed through a unified proxy, making the system completely vendor-agnostic.
+### Multi-Model Intent Router (Mixture of Agents Pattern)
+A lightweight intent classifier (zero-shot Gemini Flash call) routes each message to the best-fit model: Gemini Flash for casual chat, Claude Sonnet for code generation, Gemini Pro for deep analysis, Claude Opus for critical review, or a local Ollama instance for private conversations. All models are accessed through a unified OpenAI-compatible proxy, making the system completely vendor-agnostic. A `CREDIT_SAVER` fallback gracefully downgrades to cheaper models when provider credits are exhausted.
 
 ### Hybrid Memory Retrieval (RAG)
 The `MemoryEngine` combines a SQLite-backed knowledge graph (subject–predicate–object triples) with Qdrant vector search (`nomic-embed-text` embeddings). A temporal scoring function blends semantic similarity with recency. High-confidence results (>0.80) skip the reranker for speed; lower-confidence candidates pass through FlashRank (ms-marco-TinyBERT) for precision. Result: **<350ms P95 retrieval** across 37,000+ vocabulary terms.
 
-### Soul-Brain Sync (SBS) — Autonomous Persona Profiling
-Rather than static system prompts, the SBS pipeline continuously builds and evolves a 2KB behavioral profile per conversation target. A `RealtimeProcessor` captures sentiment, language mix, and mood on every message. A `BatchProcessor` runs periodically (every 50 messages or 6 hours) to distill conversation patterns into structured JSON layers (emotional state, linguistic style, vocabulary). The `PromptCompiler` injects this profile into the system prompt at inference time.
+### Soul-Brain Sync (Continuous Batch Profiling Pipeline)
+Rather than static system prompts, the SBS pipeline continuously builds and evolves a 2KB behavioral profile per conversation target. A `RealtimeProcessor` (rule-based sentiment + language detection) captures mood signals on every message. A `BatchProcessor` runs periodically (every 50 messages or 6 hours) to distill conversation patterns into structured JSON layers (emotional state, linguistic style, vocabulary). The `PromptCompiler` injects this profile into the system prompt at inference time. **Why not fine-tuning?** Profile injection is model-agnostic and costs zero training compute — the persona adapts regardless of which LLM is active.
 
-### Dual Cognition Engine
-Before generating a reply, a `DualCognitionEngine` produces an inner monologue and calculates a tension score (0.0–1.0) to detect emotional conflicts between retrieved memory and the current message. This cognitive context is injected into the prompt alongside memories and persona. The `LazyToxicScorer` (Toxic-BERT) loads on demand and auto-unloads after 30s of idle to conserve RAM.
+### Dual Cognition Engine (Pre-Response Reasoning Layer)
+Before generating a reply, a `DualCognitionEngine` produces an inner monologue (chain-of-thought via Gemini Flash) and calculates a tension score (0.0–1.0) to detect emotional conflicts between retrieved memory and the current message. This cognitive context is injected into the prompt alongside memories and persona. The `LazyToxicScorer` (Toxic-BERT) loads on demand and auto-unloads after 30s of idle to conserve RAM — on an 8GB machine, every MB matters.
 
-### Air-Gapped Privacy ("The Vault")
-Sensitive conversations route to a local Ollama instance on a dedicated compute node (RTX 3060Ti). Zero cloud, zero logging, zero leakage. Hemisphere integrity is verified by automated tests (`verify` CLI command).
+### Air-Gapped Local Inference ("The Vault")
+Sensitive conversations route to a local Ollama instance on a dedicated compute node (RTX 3060Ti). Zero cloud API calls, zero external logging. Hemisphere integrity (the separation between cloud-routed and local-only memories) is verified by automated tests (`verify` CLI command).
 
 ---
 

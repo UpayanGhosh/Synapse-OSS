@@ -8,8 +8,40 @@ import gzip
 import sqlite3
 import threading
 from typing import Optional, List, Dict, Any
-from functools import lru_cache
+from functools import lru_cache, wraps
 from flashrank import Ranker, RerankRequest
+
+# Import centralized DB module
+try:
+    from .db import get_db_connection
+except ImportError:
+    try:
+        from db import get_db_connection
+    except ImportError:
+        # Final fallback if working in workspace/sci_fi_dashboard
+        import sys
+        import os
+        sys.path.append(os.path.dirname(__file__))
+        from db import get_db_connection
+
+def with_retry(retries: int = 3, delay: float = 0.5):
+    """Simple decorator for retrying SQLite writes on lock contention."""
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            last_err = None
+            for i in range(retries):
+                try:
+                    return func(*args, **kwargs)
+                except sqlite3.OperationalError as e:
+                    if "locked" in str(e).lower():
+                        last_err = e
+                        time.sleep(delay * (2 ** i))  # Exponential backoff
+                        continue
+                    raise
+            raise last_err
+        return wrapper
+    return decorator
 
 # Paths
 WORKSPACE_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -172,6 +204,7 @@ class MemoryEngine:
             "routing": routing,
         }
 
+    @with_retry(retries=5, delay=0.1)
     def add_memory(self, content: str, category: str = "direct_entry") -> dict:
         try:
             # Backup
@@ -180,8 +213,8 @@ class MemoryEngine:
             with open(BACKUP_FILE, "a", encoding="utf-8") as f:
                 f.write(json.dumps(entry) + "\n")
 
-            # Store
-            conn = sqlite3.connect(DB_PATH)
+            # Store - Unified connection path
+            conn = get_db_connection()
             cursor = conn.cursor()
             cursor.execute(
                 "INSERT INTO documents (filename, content, processed, unix_timestamp) VALUES (?, ?, 0, ?)",
