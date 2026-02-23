@@ -63,9 +63,9 @@ graph TD
     %% ── Memory Subsystem ─────────────────────────────────────────────────────
     subgraph Cognitive_Memory [Cognitive Memory — Hybrid RAG]
         ME[🧠 Memory Engine\nHybrid Retrieval v3]:::memory
-        M1[("🗃️ SQLite Graph DB\nTriples · knowledge_graph.db")]:::memory
+        M1[(🗃️ SQLite Graph DB\nTriples · knowledge_graph.db)]:::memory
         M2[(🔷 Qdrant Vector DB\nnomic-embed-text\n:6333)]:::memory
-        RE[("🏅 FlashRank Reranker\nms-marco-TinyBERT")]:::memory
+        RE[(🏅 FlashRank Reranker\nms-marco-TinyBERT)]:::memory
         G <-->|Semantic + Graph Query| ME
         ME <--> M1
         ME <--> M2
@@ -85,11 +85,11 @@ graph TD
         TC{🚦 Traffic Cop\nIntent Classifier}:::moa
         G -->|Classify Intent| TC
 
-        TC -->|CASUAL| LLM1[🟢 Gemini 3 Flash\nAG_CASUAL\nFast · Low Cost]:::moa
-        TC -->|CODING| LLM2[("💻 The Hacker\nClaude Sonnet 4.5\nHigh Logic")]:::moa
-        TC -->|ANALYSIS| LLM3[🏛️ The Architect\nGemini 3 Pro\nDeep Synthesis]:::moa
-        TC -->|REVIEW| LLM4[("🧐 The Philosopher\nClaude Opus 4.6\nCritique · Judgment")]:::moa
-        TC -->|SPICY / Private| LLM5[("🌶️ The Vault\nLocal Stheno on Ollama\nZero Cloud Leakage")]:::local
+        TC -->|CASUAL|        LLM1[🟢 Gemini 3 Flash\nAG_CASUAL\nFast · Low Cost]:::moa
+        TC -->|CODING|        LLM2[(💻 The Hacker\nClaude Sonnet 4.5\nHigh Logic)]:::moa
+        TC -->|ANALYSIS|      LLM3[🏛️ The Architect\nGemini 3 Pro\nDeep Synthesis]:::moa
+        TC -->|REVIEW|        LLM4[(🧐 The Philosopher\nClaude Opus 4.6\nCritique · Judgment)]:::moa
+        TC -->|SPICY / Private| LLM5[(🌶️ The Vault\nLocal Stheno on Ollama\nZero Cloud Leakage)]:::local
     end
 
     %% ── Return Path ──────────────────────────────────────────────────────────
@@ -188,11 +188,11 @@ graph LR
     Q[User Query] --> EE[Entity Extraction\nFlashText]
     EE --> GQ[Graph Query\nSQLite Triples]
     EE --> VQ[Vector Search\nQdrant + nomic-embed-text]
-    GQ --> MERGE[Score Merge\nα=0.7 semantic + β=0.1 temporal]
+    GQ --> MERGE[Score Merge\na=0.7 semantic + b=0.1 temporal]
     VQ --> MERGE
-    MERGE --> FG2{High Confidence\n> 0.80?}
+    MERGE --> FG2{High Confidence\ngt 0.80?}
     FG2 -->|Yes| FAST[⚡ Fast Gate\nReturn top-k directly]
-    FG2 -->|No| RR[("🏅 FlashRank Reranker\nms-marco-TinyBERT")]
+    FG2 -->|No|  RR[(🏅 FlashRank Reranker\nms-marco-TinyBERT)]
     RR --> OUT[Ranked Context\nfor Prompt]
     FAST --> OUT
 ```
@@ -224,11 +224,11 @@ The SBS system is responsible for making JARVIS feel like a person, not a chatbo
 graph TD
     MSG[Inbound Message] --> RT[Realtime Processor\nSentiment · Language · Mood]
     RT --> LOG[Conversation Logger\nSQLite]
-    LOG --> CNT{≥ 50 msgs\nor 6h elapsed?}
+    LOG --> CNT{50 msgs\nor 6h elapsed?}
     CNT -->|Yes| BATCH[Batch Processor\nProfile Rebuild]
     BATCH --> PM[(Profile Manager\nJSON Layers)]
     PM --> PC[Prompt Compiler\nSystem Prompt Assembly]
-    PC --> SYS[Assembled System Prompt\n→ LLM]
+    PC --> SYS[Assembled System Prompt\nto LLM]
 ```
 
 **Profile Layers tracked per target:**
@@ -252,9 +252,9 @@ Before generating a reply, JARVIS thinks. The `DualCognitionEngine` generates an
 
 ```mermaid
 graph LR
-    UM[User Message] --> DC["DualCognitionEngine.think()"]
+    UM[User Message] --> DC[DualCognitionEngine.think]
     DC --> IM[Inner Monologue\nvia Gemini Flash]
-    DC --> TL[Tension Level\n0.0 – 1.0]
+    DC --> TL[Tension Level\n0.0 to 1.0]
     DC --> TT[Tension Type\nAMBIVALENT · CERTAIN · etc.]
     IM & TL & TT --> CC[Cognitive Context Block\ninjected into System Prompt]
 ```
@@ -269,10 +269,10 @@ The **Traffic Cop** classifies every user message before routing it to the appro
 
 ```mermaid
 graph TD
-    TC{Traffic Cop\nGemini Flash Classifier} -->|CASUAL| A[🟢 AG_CASUAL\nGemini 3 Flash\nHigh throughput / free tier]
-    TC -->|CODING| B[💻 The Hacker\nClaude Sonnet 4.5\nMax logic depth]
+    TC{Traffic Cop\nGemini Flash Classifier} -->|CASUAL|        A[🟢 AG_CASUAL\nGemini 3 Flash\nHigh throughput / free tier]
+    TC -->|CODING|   B[💻 The Hacker\nClaude Sonnet 4.5\nMax logic depth]
     TC -->|ANALYSIS| C[🏛️ The Architect\nGemini 3 Pro\nLong-context synthesis]
-    TC -->|REVIEW| D[🧐 The Philosopher\nClaude Opus 4.6\nNuanced critique]
+    TC -->|REVIEW|   D[🧐 The Philosopher\nClaude Opus 4.6\nNuanced critique]
     TC -->|SPICY session| E[🌶️ The Vault\nStheno v3.2 on Ollama\nZero cloud footprint]
 ```
 
