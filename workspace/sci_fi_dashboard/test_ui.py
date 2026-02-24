@@ -1,31 +1,48 @@
+import sys
+import os
+
+sys.path.insert(0, os.path.dirname(__file__))
+
 from state import DashboardState
 from narrative import translate_log_to_narrative
 from ui_components import UIComponents
 from rich.console import Console
 
-def test_render():
+
+def test_header_renders():
+    """Dashboard header should render without errors."""
+    state = DashboardState()
+    console = Console(width=100)
+    header = UIComponents.create_header(state)
+    assert header is not None
+
+
+def test_activity_stream_renders():
+    """Activity stream should render with added activities."""
     state = DashboardState()
     state.add_activity("Test Activity", "Sub text")
-    state.add_log("INFO", "Test log message")
-    
     console = Console(width=100)
-    
-    # Test individual components
-    print("Testing Header...")
-    header = UIComponents.create_header(state)
-    console.print(header)
-    
-    print("\nTesting Activity Stream...")
     stream = UIComponents.create_activity_stream(state)
-    console.print(stream)
-    
-    print("\nTesting Sidebar...")
+    assert stream is not None
+
+
+def test_sidebar_renders():
+    """Sidebar should render without errors."""
+    state = DashboardState()
+    console = Console(width=100)
     sidebar = UIComponents.create_sidebar(state)
-    console.print(sidebar)
-    
-    print("\nTesting System Log...")
+    assert sidebar is not None
+
+
+def test_system_log_renders():
+    """System log should render with log entries."""
+    state = DashboardState()
+    state.add_log("INFO", "Test log message")
+    console = Console(width=100)
     log = UIComponents.create_system_log(state)
-    console.print(log)
+    assert log is not None
+
 
 if __name__ == "__main__":
-    test_render()
+    import pytest
+    pytest.main([__file__, "-v"])
