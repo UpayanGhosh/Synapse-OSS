@@ -26,7 +26,7 @@ jobs:
     
     - name: Run tests
       run: |
-        source ../../venv/bin/activate
+        source venv/bin/activate
         cd workspace/tests
         PYTHONPATH=../../.. pytest -v --tb=short --cov=sci_fi_dashboard --cov-report=xml
     
@@ -53,4 +53,4 @@ jobs:
         source venv/bin/activate
         pip install pytest pytest-asyncio
         cd workspace/tests
-        PYTHONPATH=../.. pytest -v -m smoke --tb=short
+        PYTHONPATH=../../.. pytest -v -m smoke --tb=short
