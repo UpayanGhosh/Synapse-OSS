@@ -27,11 +27,14 @@ from sci_fi_dashboard.conflict_resolver import ConflictManager
 class TestCoreComponentsSmoke:
     """Smoke tests for core components."""
 
+    @pytest.mark.smoke
+    @pytest.mark.smoke
     def test_dedup_exists(self):
         """Deduplicator should instantiate."""
         dedup = MessageDeduplicator()
         assert dedup is not None
 
+    @pytest.mark.smoke
     def test_dedup_basic_function(self):
         """Deduplicator should detect duplicates."""
         dedup = MessageDeduplicator()
@@ -42,6 +45,7 @@ class TestCoreComponentsSmoke:
         assert is_new is False
         assert is_dup is True
 
+    @pytest.mark.smoke
     def test_queue_exists(self):
         """TaskQueue should instantiate."""
         queue = TaskQueue()
@@ -70,11 +74,13 @@ class TestCoreComponentsSmoke:
         # Verify completion
         assert queue._task_history[0].status == TaskStatus.COMPLETED
 
+    @pytest.mark.smoke
     def test_flood_gate_exists(self):
         """FloodGate should instantiate."""
         flood = FloodGate()
         assert flood is not None
 
+    @pytest.mark.smoke
     def test_graph_exists(self):
         """SQLiteGraph should instantiate."""
         tmp = tempfile.mkdtemp()
@@ -86,6 +92,7 @@ class TestCoreComponentsSmoke:
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 
+    @pytest.mark.smoke
     def test_graph_basic_operations(self, tmp_path):
         """Graph should handle basic operations."""
         db_path = tmp_path / "smoke_graph.db"
@@ -102,6 +109,7 @@ class TestCoreComponentsSmoke:
 
         assert "TestNode" in result
 
+    @pytest.mark.smoke
     def test_conflict_manager_exists(self):
         """ConflictManager should instantiate."""
         tmp = tempfile.mkdtemp()
@@ -117,6 +125,7 @@ class TestCoreComponentsSmoke:
 class TestBasicWorkflowsSmoke:
     """Smoke tests for basic workflows."""
 
+    @pytest.mark.smoke
     def test_message_flow(self):
         """Basic message flow should work."""
         dedup = MessageDeduplicator()
@@ -148,6 +157,7 @@ class TestBasicWorkflowsSmoke:
         assert queue.pending_count == 0
         assert len(queue._task_history) == 1
 
+    @pytest.mark.smoke
     def test_memory_storage_and_retrieval(self, tmp_path):
         """Basic memory storage and retrieval should work."""
         db_path = tmp_path / "memory.db"
@@ -167,6 +177,7 @@ class TestBasicWorkflowsSmoke:
 class TestErrorHandlingSmoke:
     """Smoke tests for error handling."""
 
+    @pytest.mark.smoke
     def test_dedup_handles_empty(self):
         """Deduplicator should handle empty inputs."""
         dedup = MessageDeduplicator()
@@ -189,6 +200,7 @@ class TestErrorHandlingSmoke:
 
         assert queue._task_history[0].status == TaskStatus.COMPLETED
 
+    @pytest.mark.smoke
     def test_graph_handles_missing_data(self, tmp_path):
         """Graph should handle missing data gracefully."""
         db_path = tmp_path / "missing.db"
@@ -204,18 +216,21 @@ class TestErrorHandlingSmoke:
 class TestConfigurationSmoke:
     """Smoke tests for configuration."""
 
+    @pytest.mark.smoke
     def test_dedup_custom_window(self):
         """Deduplicator should accept custom window."""
         dedup = MessageDeduplicator(window_seconds=600)
 
         assert dedup.window == 600
 
+    @pytest.mark.smoke
     def test_queue_custom_size(self):
         """Queue should accept custom size."""
         queue = TaskQueue(max_size=50, max_history=100)
 
         assert queue._queue.maxsize == 50
 
+    @pytest.mark.smoke
     def test_flood_custom_window(self):
         """FloodGate should accept custom window."""
         flood = FloodGate(batch_window_seconds=5.0)
@@ -226,6 +241,7 @@ class TestConfigurationSmoke:
 class TestBasicSecuritySmoke:
     """Smoke tests for basic security."""
 
+    @pytest.mark.smoke
     def test_no_sensitive_data_in_logs(self):
         """Sensitive data should not be logged."""
         # This is a placeholder - in real tests would check logs
@@ -235,6 +251,7 @@ class TestBasicSecuritySmoke:
         # In production, would verify log output
         assert sensitive is not None
 
+    @pytest.mark.smoke
     def test_api_key_validation(self):
         """API keys should be validated."""
         # Placeholder for API key validation tests
@@ -245,6 +262,7 @@ class TestBasicSecuritySmoke:
 class TestDependenciesSmoke:
     """Smoke tests for dependencies."""
 
+    @pytest.mark.smoke
     def test_sqlite_available(self):
         """SQLite should be available."""
         import sqlite3
@@ -253,10 +271,12 @@ class TestDependenciesSmoke:
         conn.close()
         assert True
 
+    @pytest.mark.smoke
     def test_asyncio_available(self):
         """Asyncio should be available."""
         assert asyncio is not None
 
+    @pytest.mark.smoke
     def test_required_modules_importable(self):
         """All required modules should be importable."""
         try:
@@ -274,6 +294,7 @@ class TestDependenciesSmoke:
 class TestDatabaseSmoke:
     """Smoke tests for database operations."""
 
+    @pytest.mark.smoke
     def test_database_creation(self, tmp_path):
         """Database should be created properly."""
         db_path = tmp_path / "create.db"
@@ -282,6 +303,7 @@ class TestDatabaseSmoke:
         # Should create file
         assert os.path.exists(db_path)
 
+    @pytest.mark.smoke
     def test_database_schema(self, tmp_path):
         """Database should have correct schema."""
         db_path = tmp_path / "schema.db"

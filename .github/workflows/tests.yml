@@ -25,10 +25,10 @@ jobs:
         pip install pytest pytest-asyncio pytest-cov pytest-timeout
     
     - name: Run tests
-      working-directory: workspace/tests
       run: |
-        source ../venv/bin/activate
-        PYTHONPATH=../.. pytest -v --tb=short --cov=sci_fi_dashboard --cov-report=xml
+        source ../../venv/bin/activate
+        cd workspace/tests
+        PYTHONPATH=../../.. pytest -v --tb=short --cov=sci_fi_dashboard --cov-report=xml
     
     - name: Upload coverage
       if: always()
