@@ -199,13 +199,12 @@ class TestMessageTask:
         assert task.processing_time_ms == 0
 
     def test_task_id_required(self):
-        """Task should require task_id and chat_id."""
-        # These tests verify the MessageTask accepts optional params
-        task = MessageTask(chat_id="chat_001", user_message="Hello")
-        assert task.chat_id == "chat_001"
+        """Task should require task_id, chat_id, and user_message."""
+        with pytest.raises(TypeError):
+            MessageTask(chat_id="chat_001", user_message="Hello")
 
-        task2 = MessageTask(task_id="task_001", user_message="Hello")
-        assert task2.task_id == "task_001"
+        with pytest.raises(TypeError):
+            MessageTask(task_id="task_001", user_message="Hello")
 
 
 if __name__ == "__main__":
