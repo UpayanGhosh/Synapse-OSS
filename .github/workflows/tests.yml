@@ -28,7 +28,7 @@ jobs:
       working-directory: workspace/tests
       run: |
         source ../venv/bin/activate
-        pytest -v --tb=short --cov=sci_fi_dashboard --cov-report=xml
+        PYTHONPATH=../.. pytest -v --tb=short --cov=sci_fi_dashboard --cov-report=xml
     
     - name: Upload coverage
       if: always()
@@ -53,4 +53,4 @@ jobs:
         source venv/bin/activate
         pip install pytest pytest-asyncio
         cd workspace/tests
-        pytest -v -m smoke --tb=short
+        PYTHONPATH=../.. pytest -v -m smoke --tb=short
