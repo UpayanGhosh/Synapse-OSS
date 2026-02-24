@@ -70,6 +70,13 @@ Copy the environment template:
 cp .env.example .env
 ```
 
+**Required Environment Variables:**
+- `OPENCLAW_GATEWAY_TOKEN` — **Required.** Set a strong random string for API authentication.
+- `OPENCLAW_ENV_PATH` — Path to your `.env` file (auto-detected by default)
+- `API_BIND_HOST` — Server bind address (default: `127.0.0.1` for localhost)
+- `CORS_ORIGINS` — Comma-separated list of allowed origins (default: `http://localhost:3000`)
+- `LLM_SAFETY_LEVEL` — Safety threshold for LLM content filtering (default: `BLOCK_NONE`)
+
 **How many API keys do you need?**
 The full "Mixture of Agents" (MoA) architecture is designed to route requests to the best available models (e.g., Anthropic Claude for coding, Gemini Pro for analysis, Gemini Flash for casual chat).
 
@@ -90,7 +97,11 @@ If you are deeply concerned about privacy and want zero cloud leakage, this arch
 The routing logic checks for usernames to trigger specific personas like `brother` or `caring PA`. You must alter this to serve you.
 **Read [SETUP_PERSONA.md](SETUP_PERSONA.md) to correctly adapt Jarvis's soul to your life.**
 
-## 4. Booting the Core Gateway
+## 4. Google OAuth Token Migration
+
+If you previously used Gmail/Calendar integration, delete your old `.pickle` token files. The system now uses JSON for secure serialization. Re-run `python workspace/scripts/setup_native_auth.py` to generate new tokens.
+
+## 5. Booting the Core Gateway
 
 This project intercepts and routes OpenClaw traffic through a custom FastAPI gateway.
 
@@ -101,7 +112,10 @@ source .venv/bin/activate
 cd workspace/sci_fi_dashboard
 python3 api_gateway.py
 ```
-*(The gateway normally runs on localhost:8000)*
+*(The gateway runs on localhost:8000 by default. If OPENCLAW_GATEWAY_TOKEN is not set, the server will fail to start.)*
+
+**API Authentication:**
+All sensitive endpoints (`/chat`, `/chat/the_creator`, `/chat/the_partner`, `/persona/rebuild`, `/ingest`, `/add`, `/query`) require authentication. Include the header `x-api-key: YOUR_OPENCLAW_GATEWAY_TOKEN` in requests.
 
 **Terminal 2: Pointing OpenClaw to Your Workspace**
 Now, run your vanilla OpenClaw CLI, but tell it to use this custom downloaded folder as its workspace, and point it to the proxy gateway!

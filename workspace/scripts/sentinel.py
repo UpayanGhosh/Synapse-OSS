@@ -5,24 +5,27 @@ Author: Antigravity Engineer
 Description: Monitors Brain (FastAPI), Body (Node), and Vitality (Disk/Swap).
              Auto-heals services and alerts on critical failures.
 """
+
 import os
 import sys
 import time
 import json
 import shutil
 import subprocess
+import glob
 import urllib.request
 import re
 from datetime import datetime
 
 # --- CONFIGURATION ---
 MEMORY_SERVER_URL = "http://127.0.0.1:8989/health"
-OPENCLAW_PROCESS_NAME = "openclaw gateway" 
+OPENCLAW_PROCESS_NAME = "openclaw gateway"
 STATE_FILE = os.path.expanduser("~/.openclaw/sentinel_state.json")
 LOG_FILE = os.path.expanduser("~/.openclaw/logs/sentinel.log")
 MAX_RETRIES = 3
-SWAP_LIMIT_MB = 4096 # 4GB
+SWAP_LIMIT_MB = 4096  # 4GB
 DISK_LIMIT_PERCENT = 90
+
 
 # --- UTILS ---
 def log(message, level="INFO"):
@@ -36,6 +39,7 @@ def log(message, level="INFO"):
     except Exception as e:
         print(f"Failed to write log: {e}")
 
+
 def load_state():
     if os.path.exists(STATE_FILE):
         try:
@@ -45,6 +49,7 @@ def load_state():
             pass
     return {"brain_strikes": 0, "body_strikes": 0}
 
+
 def save_state(state):
     try:
         with open(STATE_FILE, "w") as f:
@@ -52,10 +57,12 @@ def save_state(state):
     except Exception as e:
         log(f"State save failed: {e}", "ERROR")
 
+
 def alert_macos(title, message):
     """Sends a native notification to the Mac (Fallback Voice)."""
     script = f'display notification "{message}" with title "{title}" subtitle "Sentinel Alert" sound name "Submarine"'
     subprocess.run(["osascript", "-e", script])
+
 
 # --- CHECKS ---
 def check_brain():
@@ -68,14 +75,18 @@ def check_brain():
         return False
     return False
 
+
 def check_body():
     """Checks if OpenClaw process is running."""
     try:
         # pgrep returns 0 if process found, 1 if not
-        subprocess.check_call(["/usr/bin/pgrep", "-f", "openclaw"], stdout=subprocess.DEVNULL)
+        subprocess.check_call(
+            ["/usr/bin/pgrep", "-f", "openclaw"], stdout=subprocess.DEVNULL
+        )
         return True
     except subprocess.CalledProcessError:
         return False
+
 
 def check_vitals(state):
     """Checks Disk and RAM pressure."""
@@ -83,16 +94,23 @@ def check_vitals(state):
     # 1. Disk Check
     total, used, free = shutil.disk_usage("/")
     percent_used = (used / total) * 100
-    
+
     if percent_used > DISK_LIMIT_PERCENT:
         msg = f"Disk Critical: {percent_used:.1f}% used. Purging logs."
         log(msg, "CRITICAL")
         alert_macos("Disk Critical", "Disk > 90%. Purging logs.")
-        os.system(f"rm {os.path.expanduser('~/.openclaw/logs/*.log')}")
+        log_files = glob.glob(os.path.expanduser("~/.openclaw/logs/*.log"))
+        for f in log_files:
+            try:
+                os.remove(f)
+            except Exception as e:
+                log(f"Failed to remove {f}: {e}", "ERROR")
 
     # 2. Swap Check (macOS specific)
     try:
-        result = subprocess.check_output(["/usr/sbin/sysctl", "vm.swapusage"]).decode("utf-8")
+        result = subprocess.check_output(["/usr/sbin/sysctl", "vm.swapusage"]).decode(
+            "utf-8"
+        )
         match = re.search(r"used\s*=\s*(\d+\.\d+)M", result)
         if match:
             swap_used = float(match.group(1))
@@ -106,37 +124,58 @@ def check_vitals(state):
     try:
         page_size = int(subprocess.check_output(["pagesize"]).decode("utf-8").strip())
         vm_stat = subprocess.check_output(["vm_stat"]).decode("utf-8")
-        
+
         def get_stat(key):
             match = re.search(f"{key}:\\s+(\\d+)", vm_stat)
             return int(match.group(1)) if match else 0
 
-        available_pages = get_stat("Pages free") + get_stat("Pages inactive") + get_stat("Pages speculative")
+        available_pages = (
+            get_stat("Pages free")
+            + get_stat("Pages inactive")
+            + get_stat("Pages speculative")
+        )
         available_ram_mb = (available_pages * page_size) / 1024 / 1024
-        
+
         # --- KILL LOGIC ---
         if available_ram_mb < 500:
-            log(f"CRITICAL RAM LOW: {available_ram_mb:.2f}MB Available. Executing Lifeboat.", "CRITICAL")
+            log(
+                f"CRITICAL RAM LOW: {available_ram_mb:.2f}MB Available. Executing Lifeboat.",
+                "CRITICAL",
+            )
             # Check if Ollama is running
-            if os.system("pgrep -f 'Ollama.app' > /dev/null") == 0:
+            if (
+                subprocess.run(
+                    ["pgrep", "-f", "Ollama.app"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                ).returncode
+                == 0
+            ):
                 log("Killing Ollama to save Gateway...", "WARN")
-                os.system("pkill -9 -f Ollama")
+                subprocess.run(["pkill", "-9", "-f", "Ollama"], check=False)
                 state["ollama_auto_killed"] = True
-                alert_macos("Low Memory", f"Killed AI to save Gateway. Available: {available_ram_mb:.1f}MB")
+                alert_macos(
+                    "Low Memory",
+                    f"Killed AI to save Gateway. Available: {available_ram_mb:.1f}MB",
+                )
                 dirty = True
 
         # --- REVIVE LOGIC ---
         elif available_ram_mb > 1500 and state.get("ollama_auto_killed", False):
-            log(f"RAM Stable: {available_ram_mb:.2f}MB Available. Reviving Ollama.", "SUCCESS")
-            os.system("open -g -a Ollama") # Background launch
+            log(
+                f"RAM Stable: {available_ram_mb:.2f}MB Available. Reviving Ollama.",
+                "SUCCESS",
+            )
+            subprocess.Popen(["open", "-g", "-a", "Ollama"])
             state["ollama_auto_killed"] = False
             alert_macos("Memory Stable", "Ollama revived by Sentinel.")
             dirty = True
-            
+
     except Exception as e:
         log(f"Lifeboat/Revive check failed: {e}", "ERROR")
-    
+
     return dirty
+
 
 # --- REPAIR LOGIC ---
 def run_sentinel():
@@ -149,15 +188,21 @@ def run_sentinel():
     if not check_brain():
         state["brain_strikes"] = state.get("brain_strikes", 0) + 1
         log(f"Brain Dead (Strike {state['brain_strikes']})", "ERROR")
-        
+
         if state["brain_strikes"] <= MAX_RETRIES:
             log("Attempting Brain Transplant (Restarting Service)...", "WARN")
-            # Restart via LaunchAgent - Corrected Label
-            os.system("launchctl kickstart -k gui/$(id -u)/ai.openclaw.memory")
+            # Restart via LaunchAgent
+            uid = subprocess.check_output(["id", "-u"]).decode().strip()
+            subprocess.run(
+                ["launchctl", "kickstart", "-k", f"gui/{uid}/ai.openclaw.memory"],
+                check=False,
+            )
             alert_macos("Sentinel Action", "Restarted Memory Server.")
         else:
             log("Brain Critical Failure. Max retries exceeded.", "CRITICAL")
-            alert_macos("CRITICAL FAILURE", "Memory Server is dead and refuses to restart.")
+            alert_macos(
+                "CRITICAL FAILURE", "Memory Server is dead and refuses to restart."
+            )
         dirty = True
     else:
         if state.get("brain_strikes", 0) > 0:
@@ -169,10 +214,12 @@ def run_sentinel():
     if not check_body():
         state["body_strikes"] = state.get("body_strikes", 0) + 1
         log(f"Body Dead (Strike {state['body_strikes']})", "ERROR")
-        
+
         if state["body_strikes"] <= MAX_RETRIES:
             log("Attempting CPR (Restarting OpenClaw)...", "WARN")
-            os.system("/opt/homebrew/bin/openclaw gateway start") # Full path
+            subprocess.run(
+                ["/opt/homebrew/bin/openclaw", "gateway", "start"], check=False
+            )
             alert_macos("Sentinel Action", "Restarted OpenClaw Gateway.")
         else:
             log("Body Critical Failure. Max retries exceeded.", "CRITICAL")
@@ -190,6 +237,7 @@ def run_sentinel():
 
     if dirty:
         save_state(state)
+
 
 if __name__ == "__main__":
     run_sentinel()

@@ -29,6 +29,7 @@ from fastapi import FastAPI, Request, BackgroundTasks, HTTPException
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 from pathlib import Path
+
 # from celery import Celery  # REMOVED — using async workers
 from rich import print
 
@@ -39,6 +40,7 @@ if CURRENT_DIR not in sys.path:
     sys.path.append(CURRENT_DIR)
 if WORKSPACE_ROOT not in sys.path:
     sys.path.append(WORKSPACE_ROOT)
+
 
 def _resolve_openclaw_cli_bin() -> str:
     configured = os.environ.get("OPENCLAW_CLI_BIN", "").strip()
@@ -62,6 +64,7 @@ def _extract_cli_send_route(raw_stdout: str) -> str:
         or ""
     )
 
+
 def send_via_cli(target: str, message: str):
     """
     Send a message via the OpenClaw CLI proactively.
@@ -69,23 +72,28 @@ def send_via_cli(target: str, message: str):
     """
     try:
         # Normalize target
-        clean_target = ''.join(filter(str.isdigit, target))
+        clean_target = "".join(filter(str.isdigit, target))
         if not clean_target:
             print(f"⚠️ Invalid target for CLI send: {target}")
             return
-            
+
         # Ensure country code (prefix + if missing)
-        if not target.startswith('+'):
+        if not target.startswith("+"):
             target = f"+{clean_target}"
-            
+
         print(f"🚀 [CLI] Sending async message to {target}...")
         cli_bin = _resolve_openclaw_cli_bin()
         cmd = [
-            cli_bin, "message", "send",
-            "--channel", "whatsapp",
-            "--target", target,
-            "--message", message,
-            "--json"
+            cli_bin,
+            "message",
+            "send",
+            "--channel",
+            "whatsapp",
+            "--target",
+            target,
+            "--message",
+            message,
+            "--json",
         ]
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
         if result.returncode == 0:
@@ -97,23 +105,31 @@ def send_via_cli(target: str, message: str):
     except Exception as e:
         print(f"❌ [CLI] Exception: {e}")
 
+
 async def continue_conversation(target: str, messages: List[dict], last_reply: str):
     """
     Background task to generate and send the rest of the message.
     """
     print(f"🔄 [AUTO-CONTINUE] Handling cut-off response for {target}...")
-    
+
     # 1. Update History
     # We clone messages to avoid mutating the original reference if reused
     new_history = [m.copy() for m in messages]
     new_history.append({"role": "assistant", "content": last_reply})
-    new_history.append({"role": "user", "content": "You were cut off. Continue exactly from where you stopped. Do not repeat what you already said. Just write the rest."})
-    
+    new_history.append(
+        {
+            "role": "user",
+            "content": "You were cut off. Continue exactly from where you stopped. Do not repeat what you already said. Just write the rest.",
+        }
+    )
+
     # 2. Call Model (Gemini Flash for speed/cost)
     # We use a larger token limit here since it's async push
     try:
-        continuation = await call_gemini_flash(new_history, temperature=0.7, max_tokens=2000)
-        
+        continuation = await call_gemini_flash(
+            new_history, temperature=0.7, max_tokens=2000
+        )
+
         # 3. Check emptiness
         if not continuation.strip():
             print("⚠️ Continuation was empty.")
@@ -121,15 +137,16 @@ async def continue_conversation(target: str, messages: List[dict], last_reply: s
 
         # 4. Clean up (sometimes models repeat the last sentence)
         # For now, just send it.
-        
+
         # 5. Send via CLI
         send_via_cli(target, continuation)
-        
+
         # 6. Recursive Check? (If this one is ALSO cut off?)
         # For now, let's limit to one continuation to avoid infinite loops.
-        
+
     except Exception as e:
         print(f"❌ [AUTO-CONTINUE] Failed: {e}")
+
 
 from sci_fi_dashboard.sqlite_graph import SQLiteGraph
 from sci_fi_dashboard.toxic_scorer_lazy import LazyToxicScorer
@@ -137,7 +154,11 @@ from sci_fi_dashboard.memory_engine import MemoryEngine
 from sci_fi_dashboard.dual_cognition import DualCognitionEngine
 from sci_fi_dashboard.smart_entity import EntityGate
 from sci_fi_dashboard.conflict_resolver import ConflictManager
-from sci_fi_dashboard.retriever import query_memories, format_context_for_prompt, get_db_stats
+from sci_fi_dashboard.retriever import (
+    query_memories,
+    format_context_for_prompt,
+    get_db_stats,
+)
 from sci_fi_dashboard.sbs.orchestrator import SBSOrchestrator
 
 # --- Singletons (Optimized v3) ---
@@ -146,7 +167,9 @@ gate = EntityGate(entities_file="entities.json")
 conflicts = ConflictManager(conflicts_file="conflicts.json")
 toxic_scorer = LazyToxicScorer(idle_timeout=30.0)
 memory_engine = MemoryEngine(graph_store=brain, keyword_processor=gate)
-dual_cognition = DualCognitionEngine(memory_engine=memory_engine, graph=brain, toxic_scorer=toxic_scorer)
+dual_cognition = DualCognitionEngine(
+    memory_engine=memory_engine, graph=brain, toxic_scorer=toxic_scorer
+)
 
 # --- Async Gateway Components ---
 from gateway.queue import TaskQueue, MessageTask
@@ -163,24 +186,31 @@ flood = FloodGate(batch_window_seconds=3.0)
 
 # --- Sentinel (File Governance) ---
 from sbs.sentinel.tools import init_sentinel
+
 init_sentinel(project_root=Path(__file__).parent)
 
 # --- SBS Orchestrator (Phase 1) ---
 SBS_DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "jarvis_data")
 sbs_the_creator = (
-    SBSOrchestrator(os.path.join(SBS_DATA_DIR, "the_creator")) 
-    if os.path.exists(os.path.dirname(os.path.abspath(__file__))) else None
+    SBSOrchestrator(os.path.join(SBS_DATA_DIR, "the_creator"))
+    if os.path.exists(os.path.dirname(os.path.abspath(__file__)))
+    else None
 )
 sbs_the_partner = (
-    SBSOrchestrator(os.path.join(SBS_DATA_DIR, "the_partner")) 
-    if os.path.exists(os.path.dirname(os.path.abspath(__file__))) else None
+    SBSOrchestrator(os.path.join(SBS_DATA_DIR, "the_partner"))
+    if os.path.exists(os.path.dirname(os.path.abspath(__file__)))
+    else None
 )
+
 
 def get_sbs_for_target(target: str) -> SBSOrchestrator:
     return sbs_the_partner if target.lower() == "the_partner" else sbs_the_creator
 
+
 # --- Environment ---
-env_path = "/path/to/openclaw/.env"
+env_path = os.environ.get(
+    "OPENCLAW_ENV_PATH", str(Path(__file__).resolve().parent.parent / ".env")
+)
 if os.path.exists(env_path):
     print(f"🌍 Loading .env from {env_path}")
     with open(env_path, "r") as f:
@@ -193,19 +223,27 @@ if os.path.exists(env_path):
 # We route via localhost:8080 (Antigravity Proxy)
 OPENCLAW_GATEWAY_URL = "http://localhost:8080/v1/messages"
 # Ideally read from openclaw.json, but for now using the known token or env
-OPENCLAW_GATEWAY_TOKEN = os.environ.get("OPENCLAW_GATEWAY_TOKEN", "whatever")
+OPENCLAW_GATEWAY_TOKEN = os.environ.get("OPENCLAW_GATEWAY_TOKEN")
+if not OPENCLAW_GATEWAY_TOKEN:
+    raise EnvironmentError("OPENCLAW_GATEWAY_TOKEN environment variable is required")
 
 # REDIS_URL removed — no Redis dependency
 BRIDGE_DB_PATH = Path(__file__).resolve().with_name("whatsapp_bridge.db")
 # bridge_queue REMOVED — Celery no longer needed
 # WhatsApp messages handled by gateway.worker.MessageWorker (async)
 
-async def call_gateway_model(model_id: str, input_messages: list, temperature: float = 0.7, max_tokens: int = 1000) -> str:
+
+async def call_gateway_model(
+    model_id: str,
+    input_messages: list,
+    temperature: float = 0.7,
+    max_tokens: int = 1000,
+) -> str:
     """Helper to call OpenClaw Antigravity Proxy (Anthropic Format). Returns text with thinking blocks prepended."""
     headers = {
         "x-api-key": OPENCLAW_GATEWAY_TOKEN,
         "anthropic-version": "2023-06-01",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
     }
 
     # Extract system prompt
@@ -217,11 +255,7 @@ async def call_gateway_model(model_id: str, input_messages: list, temperature: f
         else:
             messages.append(msg)
 
-    payload = {
-        "model": model_id,
-        "messages": messages,
-        "max_tokens": max_tokens
-    }
+    payload = {"model": model_id, "messages": messages, "max_tokens": max_tokens}
     if system_prompt:
         payload["system"] = system_prompt
     if temperature is not None:
@@ -230,38 +264,42 @@ async def call_gateway_model(model_id: str, input_messages: list, temperature: f
     async with httpx.AsyncClient(timeout=60.0) as client:
         resp = await client.post(OPENCLAW_GATEWAY_URL, json=payload, headers=headers)
         if resp.status_code != 200:
-             print(f"⚠️ Gateway Error ({resp.status_code}): {resp.text}")
-             return f"Error: {resp.text}"
-        
+            print(f"⚠️ Gateway Error ({resp.status_code}): {resp.text}")
+            return f"Error: {resp.text}"
+
         data = resp.json()
         full_text = ""
         thinking_content = ""
         for block in data.get("content", []):
-             if block.get("type") == "text":
-                 full_text += block.get("text", "")
-             elif block.get("type") == "thinking":
-                 thinking = block.get("thinking", "")
-                 thinking_content += thinking + "\n"
-                 print(f"🧠 [Thinking]: {thinking[:50]}...")
-        
+            if block.get("type") == "text":
+                full_text += block.get("text", "")
+            elif block.get("type") == "thinking":
+                thinking = block.get("thinking", "")
+                thinking_content += thinking + "\n"
+                print(f"🧠 [Thinking]: {thinking[:50]}...")
+
         # Prepend thinking to text output for context
         if thinking_content:
             return f"[THINKING]\n{thinking_content}\n[/THINKING]\n{full_text}"
         return full_text if full_text else "(No text output)"
 
+
 # --- Model Constants ---
 MODEL_CASUAL = "gemini-3-flash"
-MODEL_CODING = "gemini-3-flash" # Placeholder
+MODEL_CODING = "gemini-3-flash"  # Placeholder
 MODEL_ANALYSIS = "gemini-3-pro-high"
-MODEL_REVIEW = "gemini-3-pro-high" # Placeholder
+MODEL_REVIEW = "gemini-3-pro-high"  # Placeholder
 
-print(f"🤖 LLM Architecture (OAuth): \n   Casual: {MODEL_CASUAL}\n   Coding: {MODEL_CODING}\n   Analysis: {MODEL_ANALYSIS}\n   Review: {MODEL_REVIEW}")
+print(
+    f"🤖 LLM Architecture (OAuth): \n   Casual: {MODEL_CASUAL}\n   Coding: {MODEL_CODING}\n   Analysis: {MODEL_ANALYSIS}\n   Review: {MODEL_REVIEW}"
+)
 
 # --- Persona Profiles Layer Migrated to SBS ---
 # SBS handles loading persona profiles natively internally.
 
 
 # --- Schemas ---
+
 
 class ChatRequest(BaseModel):
     message: str
@@ -305,6 +343,7 @@ WINDOWS_PC_IP = os.environ.get("WINDOWS_PC_IP", "192.168.1.XXX")
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
 PROXY_URL = "http://localhost:8080"  # Antigravity proxy for Claude/GPT/Gemini-Pro
 
+
 async def call_local_spicy(prompt: str) -> str:
     """
     LOCAL_SPICY: Ollama on Windows PC (fluffy/l3-8b-stheno-v3.2:latest)
@@ -316,7 +355,7 @@ async def call_local_spicy(prompt: str) -> str:
         payload = {
             "model": "fluffy/l3-8b-stheno-v3.2:latest",
             "prompt": prompt,
-            "stream": False
+            "stream": False,
         }
         url = f"http://{WINDOWS_PC_IP}:11434/api/generate"
         response = await client.post(url, json=payload)
@@ -333,16 +372,18 @@ async def call_or_fallback(prompt: str) -> str:
     async with httpx.AsyncClient(timeout=30.0) as client:
         payload = {
             "model": "gryphe/mythomax-l2-13b",
-            "messages": [
-                {"role": "user", "content": prompt}
-            ]
+            "messages": [{"role": "user", "content": prompt}],
         }
         headers = {
             "Authorization": f"Bearer {OPENROUTER_API_KEY}",
             "Content-Type": "application/json",
-            "HTTP-Referer": "http://localhost:8000"
+            "HTTP-Referer": "http://localhost:8000",
         }
-        response = await client.post("https://openrouter.ai/api/v1/chat/completions", json=payload, headers=headers)
+        response = await client.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            json=payload,
+            headers=headers,
+        )
         response.raise_for_status()
         data = response.json()
         return data["choices"][0]["message"]["content"]
@@ -354,7 +395,9 @@ async def call_gemini_flash(input_messages, temperature=0.7, max_tokens=500) -> 
     Used for routing and casual chat.
     """
     # Direct pass-through; call_gateway_model handles system prompt extraction
-    return await call_gateway_model(MODEL_CASUAL, input_messages, temperature, max_tokens)
+    return await call_gateway_model(
+        MODEL_CASUAL, input_messages, temperature, max_tokens
+    )
 
 
 async def call_ag_code(messages: list) -> str:
@@ -362,7 +405,7 @@ async def call_ag_code(messages: list) -> str:
     AG_CODE (The Hacker): Claude Sonnet 4.5 Thinking (Placeholder: Gemini Flash)
     """
     print("💻 Routing to THE HACKER (Claude Sonnet 4.5 via OAuth)...")
-    # Placeholder: Routing to Gemini Flash but using Coding Model ID if credits allowed, 
+    # Placeholder: Routing to Gemini Flash but using Coding Model ID if credits allowed,
     # OR forcefully use Gemini Flash ID but *logically* treat as coding.
     # User said "All models should route through google-antigravity".
     # User said "I'll use Claude models once credits back".
@@ -379,7 +422,9 @@ async def call_ag_oracle(messages: list) -> str:
     print("🏛️ Calling The Architect (Gemini 3 Pro via OAuth)...")
     # But usually better to format cleanly.
     # Re-using logic:
-    return await call_gateway_model(MODEL_ANALYSIS, messages, temperature=0.7, max_tokens=1500)
+    return await call_gateway_model(
+        MODEL_ANALYSIS, messages, temperature=0.7, max_tokens=1500
+    )
 
 
 async def call_ag_review(messages: list) -> str:
@@ -399,18 +444,25 @@ async def translate_banglish(text: str) -> str:
     headers = {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
         "Content-Type": "application/json",
-        "HTTP-Referer": "http://localhost:8000"
+        "HTTP-Referer": "http://localhost:8000",
     }
     payload = {
         "model": "meta-llama/llama-3.3-70b-instruct",
         "messages": [
-            {"role": "system", "content": "You are a translator. Translate Romanized Bengali (Banglish) to English. OUTPUT ONLY ENGLISH."},
-            {"role": "user", "content": text}
-        ]
+            {
+                "role": "system",
+                "content": "You are a translator. Translate Romanized Bengali (Banglish) to English. OUTPUT ONLY ENGLISH.",
+            },
+            {"role": "user", "content": text},
+        ],
     }
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.post("https://openrouter.ai/api/v1/chat/completions", json=payload, headers=headers)
+            resp = await client.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                json=payload,
+                headers=headers,
+            )
             resp.raise_for_status()
             return resp.json()["choices"][0]["message"]["content"].strip()
     except Exception as e:
@@ -420,6 +472,7 @@ async def translate_banglish(text: str) -> str:
 
 # --- Routing Logic ---
 
+
 async def route_traffic_cop(user_message: str) -> str:
     """
     TRAFFIC COP: Classifies message as CASUAL, CODING, ANALYSIS, or REVIEW.
@@ -427,7 +480,7 @@ async def route_traffic_cop(user_message: str) -> str:
     system = "Classify this message. Reply with EXACTLY ONE WORD: CASUAL, CODING, ANALYSIS, or REVIEW.\n\n- CODING: Write code, debug, script, API, python.\n- ANALYSIS (Synthesis/Data): Summarize logs, explain history, deep dive, data aggregation. (Use Gemini Pro Context).\n- REVIEW (Critique/Judgment): Grade this, find flaws, audit, critique logic, opinion. (Use Claude Opus nuance).\n- CASUAL: Chat, greetings, daily life, simple questions."
     messages = [
         {"role": "system", "content": system},
-        {"role": "user", "content": user_message}
+        {"role": "user", "content": user_message},
     ]
     try:
         # Use Flash for speed; Increase tokens for thinking
@@ -435,51 +488,62 @@ async def route_traffic_cop(user_message: str) -> str:
         decision = resp.strip().upper()
         # Clean up punctuation
         import re
-        decision = re.sub(r'[^A-Z]', '', decision)
+
+        decision = re.sub(r"[^A-Z]", "", decision)
         print(f"🚦 Traffic Cop: {decision}")
         return decision
     except Exception:
         return "CASUAL"
 
+
 # --- Persona Chat Handler (MoA Version) ---
 
-async def persona_chat(request: ChatRequest, target: str, background_tasks: Optional[BackgroundTasks] = None):
+
+async def persona_chat(
+    request: ChatRequest,
+    target: str,
+    background_tasks: Optional[BackgroundTasks] = None,
+):
     user_msg = request.message
     print(f"📩 [{target.upper()}] Inbound: {user_msg[:80]}...")
-    
+
     # 1. Memory Retrieval (Phoenix v3 Unified Engine)
     try:
         env_session = os.environ.get("MAC_APP_SESSION_TYPE", "safe")
         session_mode = request.session_type or env_session
-        if session_mode not in ["safe", "spicy"]: session_mode = "safe"
-        
+        if session_mode not in ["safe", "spicy"]:
+            session_mode = "safe"
+
         # Using the new MemoryEngine for hybrid search + graph context
         mem_response = memory_engine.query(user_msg, limit=5)
-        
+
         # Format results for the prompt
         results_list = mem_response.get("results", [])
-        formatted_facts = "\n".join([f"• {r['content']} (Source: {r['source']})" for r in results_list])
+        formatted_facts = "\n".join(
+            [f"• {r['content']} (Source: {r['source']})" for r in results_list]
+        )
         graph_ctx = mem_response.get("graph_context", "")
-        
+
         memory_context = f"{formatted_facts}\n\n{graph_ctx}"
         retrieval_method = mem_response.get("tier", "standard")
     except Exception as e:
         print(f"⚠️ Memory Engine Error: {e}")
         memory_context = "(Memory retrieval unavailable)"
         retrieval_method = "failed"
-    
+
     # 2. Toxicity Check (Auto-Switch to Spicy?)
     # If user explicitly requested "safe", we respect it unless toxicity is extreme?
     # For now, we respect the explicitly passed `request.session_type`.
     # But if `session_type` is None, we could use toxicity to auto-switch.
-    
+
     toxicity = toxic_scorer.score(user_msg)
     if toxicity > 0.8 and session_mode == "safe":
-        print(f"⚠️ High Toxicity ({toxicity:.2f}) detected in Safe Mode. Remaining Safe (Architectural Decision).")
-        # Optional: Auto-switch to vault? User said "Zero cloud leakage". 
+        print(
+            f"⚠️ High Toxicity ({toxicity:.2f}) detected in Safe Mode. Remaining Safe (Architectural Decision)."
+        )
+        # Optional: Auto-switch to vault? User said "Zero cloud leakage".
         # If toxic, maybe we SHOULD switch to vault?
         # For now, sticking to requested mode to avoid surprises.
-
 
     # 2.5 DUAL COGNITION: Think before speaking
     try:
@@ -490,28 +554,35 @@ async def persona_chat(request: ChatRequest, target: str, background_tasks: Opti
             target=target,
             llm_fn=call_gemini_flash,  # Use the fast model for thinking
         )
-        
+
         cognitive_context = dual_cognition.build_cognitive_context(cognitive_merge)
-        
-        print(f"🧠 Cognitive State: {cognitive_merge.tension_type} (tension={cognitive_merge.tension_level:.2f})")
+
+        print(
+            f"🧠 Cognitive State: {cognitive_merge.tension_type} (tension={cognitive_merge.tension_level:.2f})"
+        )
         print(f"💭 Inner thought: {cognitive_merge.inner_monologue[:100]}")
-        
+
     except Exception as e:
         print(f"⚠️ Dual cognition failed: {e}")
         cognitive_context = ""
-    
+
     # 3. Assemble System Prompt
     sbs_orchestrator = get_sbs_for_target(target)
-    
+
     # Log user message here via orchestrator
-    user_log = sbs_orchestrator.on_message("user", user_msg, request.user_id or "default")
+    user_log = sbs_orchestrator.on_message(
+        "user", user_msg, request.user_id or "default"
+    )
     user_msg_id = user_log.get("msg_id")
-    
+
     base_instructions = "You are Jarvis. Follow the persona profile below precisely."
     system_prompt = sbs_orchestrator.get_system_prompt(base_instructions)
     messages = [
         {"role": "system", "content": system_prompt},
-        {"role": "system", "content": f"--- RETRIEVED MEMORIES ---\n{memory_context}\n--- END MEMORIES ---"},
+        {
+            "role": "system",
+            "content": f"--- RETRIEVED MEMORIES ---\n{memory_context}\n--- END MEMORIES ---",
+        },
     ]
     if cognitive_context:
         messages.append({"role": "system", "content": cognitive_context})
@@ -524,7 +595,7 @@ async def persona_chat(request: ChatRequest, target: str, background_tasks: Opti
         # Translate first? Stheno understands Banglish moderately well, but translation helps RAG.
         # But for "Authentic" spicy chat, we might want raw Banglish.
         # Let's keep raw for Stheno to maintain flavor, unless requested otherwise.
-        
+
         full_prompt = f"{system_prompt}\n\nUser: {user_msg}\n\nJarvis:"
         try:
             reply = await call_local_spicy(full_prompt)
@@ -538,13 +609,13 @@ async def persona_chat(request: ChatRequest, target: str, background_tasks: Opti
         # === SAFE HEMISPHERE (MoA Routing) ===
         # 1. Traffic Cop
         classification = await route_traffic_cop(user_msg)
-        
+
         if "CODING" in classification:
             # === THE HACKER (Claude Sonnet 4.5) ===
             print("💻 Routing to THE HACKER (Claude Sonnet 4.5)")
             reply = await call_ag_code(messages)
             model_used = "The Hacker (Sonnet 4.5 [Placeholder])"
-            
+
         elif "ANALYSIS" in classification:
             # === THE ARCHITECT (Gemini 3 Pro) ===
             print("🏛️ Routing to THE ARCHITECT (Gemini 3 Pro)")
@@ -556,84 +627,87 @@ async def persona_chat(request: ChatRequest, target: str, background_tasks: Opti
             print("🧐 Routing to THE PHILOSOPHER (Claude Opus 4.6)")
             reply = await call_ag_review(messages)
             model_used = "The Philosopher (Opus 4.6 [Placeholder])"
-            
+
         else:
             # === AG_CASUAL (Gemini Flash) ===
             print("🟢 Routing to AG_CASUAL (Gemini Flash)")
             reply = await call_gemini_flash(messages, temperature=0.85)
             model_used = "Traffic Cop / Casual (Gemini Flash)"
 
-    
     # --- Programmatic Footer Injection (Memory Check) ---
     # We inject this here to ensure it ALWAYS appears, rather than relying on LLM hallucination.
-    
+
     # Estimate tokens (rough char count / 4)
     out_tokens = len(reply) // 4
     in_tokens = sum(len(m.get("content", "")) for m in messages) // 4
     total_tokens = in_tokens + out_tokens
-    
+
     # Context Usage (Mocked max for now, or based on model)
-    max_context = 1_000_000 # 1M for Gemini Flash
+    max_context = 1_000_000  # 1M for Gemini Flash
     usage_pct = (total_tokens / max_context) * 100
-    
-    stats_footer = f"\n\n---\n**Context Usage:** {total_tokens//1000}k / {max_context//1000000}m ({usage_pct:.2f}%)\n**Model:** {model_used}\n**Turn Total Tokens:** {total_tokens:,}\n**Response Time:** [Calc in Node]"
-    
+
+    stats_footer = f"\n\n---\n**Context Usage:** {total_tokens // 1000}k / {max_context // 1000000}m ({usage_pct:.2f}%)\n**Model:** {model_used}\n**Turn Total Tokens:** {total_tokens:,}\n**Response Time:** [Calc in Node]"
+
     final_reply = reply + stats_footer
     print(f"✨ [{target.upper()}] Response via {model_used}: {final_reply[:60]}...")
-    
+
     # Log assistant message
     sbs_orchestrator = get_sbs_for_target(target)
-    sbs_orchestrator.on_message("assistant", reply, request.user_id or "default", response_to=user_msg_id)
-    
+    sbs_orchestrator.on_message(
+        "assistant", reply, request.user_id or "default", response_to=user_msg_id
+    )
+
     # --- AUTO-CONTINUE LOGIC ---
     # Check for cut-off (no terminal punctuation)
     # Punctuation marks that end a sentence/thought
-    terminals = ['.', '!', '?', '"', "'", '”', '’', ')', ']', '}']
+    terminals = [".", "!", "?", '"', "'", "”", "’", ")", "]", "}"]
     # Only check if length is significant (> 50 chars) to avoid false positives on short replies
     is_long = len(reply) > 50
     cleaned_reply = reply.strip()
     ends_with_terminal = any(cleaned_reply.endswith(t) for t in terminals)
-    
+
     if is_long and not ends_with_terminal:
         print("✂️ DETECTED CUT-OFF! Triggering Auto-Continue...")
         if background_tasks:
             # We must pass the RAW messages (without the user's last msg? No, messages already has it)
-            background_tasks.add_task(continue_conversation, request.user_id, messages, reply)
+            background_tasks.add_task(
+                continue_conversation, request.user_id, messages, reply
+            )
         else:
             print("⚠️ No BackgroundTasks object available. Using asyncio.create_task.")
             asyncio.create_task(continue_conversation(request.user_id, messages, reply))
-            
+
     return {
         "reply": final_reply,
         "persona": f"jarvis_{target}",
         "memory_method": retrieval_method,
-        "model": model_used
+        "model": model_used,
     }
 
 
 # --- Async Gateway Processing Pipeline ---
 
+
 async def process_message_pipeline(user_msg: str, chat_id: str) -> str:
     target = chat_id
     target_lower = target.lower()
-    clean_id = ''.join(filter(str.isdigit, target))
-    PHONE_MAP = {
-        
-    }
+    clean_id = "".join(filter(str.isdigit, target))
+    PHONE_MAP = {}
     if clean_id in PHONE_MAP:
         target = PHONE_MAP[clean_id]
     elif any(s in target_lower for s in ["the_partner", "the_partner_nickname"]):
         target = "the_partner"
     else:
         target = "the_creator"
-        
+
     chat_req = ChatRequest(
         message=user_msg,
         user_id=chat_id,
-        session_type="safe" # default
+        session_type="safe",  # default
     )
     result = await persona_chat(chat_req, target, None)
     return result.get("reply", "")
+
 
 async def on_batch_ready(chat_id: str, combined_message: str, metadata: dict):
     task = MessageTask(
@@ -645,10 +719,12 @@ async def on_batch_ready(chat_id: str, combined_message: str, metadata: dict):
     )
     await task_queue.enqueue(task)
 
+
 flood.set_callback(on_batch_ready)
 
 
 # --- Background Worker ---
+
 
 async def gentle_worker_loop():
     """Background maintenance loop."""
@@ -658,7 +734,7 @@ async def gentle_worker_loop():
             battery = psutil.sensors_battery()
             is_plugged = battery.power_plugged if battery else True
             cpu_load = psutil.cpu_percent(interval=None)
-            
+
             if is_plugged and cpu_load < 20.0:
                 brain.prune_graph()
                 conflicts.prune_conflicts()
@@ -674,6 +750,7 @@ async def gentle_worker_loop():
 
 # --- WhatsApp Bridge Store ---
 
+
 def normalize_phone(raw: Optional[str]) -> str:
     if not raw:
         return ""
@@ -686,6 +763,15 @@ def validate_bridge_token(request: Request) -> None:
         provided = request.headers.get("x-bridge-token")
         if provided != bridge_token:
             raise HTTPException(status_code=401, detail="Invalid bridge token")
+
+
+def validate_api_key(request: Request) -> None:
+    """Validates the API key for protected endpoints."""
+    api_key = os.environ.get("OPENCLAW_GATEWAY_TOKEN")
+    if api_key:
+        provided = request.headers.get("x-api-key")
+        if provided != api_key:
+            raise HTTPException(status_code=401, detail="Invalid API key")
 
 
 def ensure_bridge_db() -> None:
@@ -773,26 +859,27 @@ def update_inbound_message(
 
 # --- App Lifecycle ---
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     print("🧠 Booting Antigravity Gateway v2...")
     ensure_bridge_db()
     worker_task = asyncio.create_task(gentle_worker_loop())
-    
+
     app.state.worker = MessageWorker(
         queue=task_queue,
         sender=sender,
         process_fn=process_message_pipeline,
-        num_workers=2
+        num_workers=2,
     )
     await app.state.worker.start()
     print("🚀 Async Gateway Pipeline started.")
-    
+
     yield
     print("🛑 Shutting down...")
     brain.save_graph()
     worker_task.cancel()
-    if hasattr(app.state, 'worker'):
+    if hasattr(app.state, "worker"):
         await app.state.worker.stop()
     try:
         await worker_task
@@ -802,10 +889,22 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
+# --- CORS Configuration ---
+from fastapi.middleware.cors import CORSMiddleware
+
+CORS_ORIGINS = os.environ.get("CORS_ORIGINS", "http://localhost:3000").split(",")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=CORS_ORIGINS,
+    allow_methods=["GET", "POST"],
+    allow_headers=["*"],
+)
+
 
 # ═══════════════════════════════════════════
 #  ROUTES
 # ═══════════════════════════════════════════
+
 
 @app.get("/")
 def root():
@@ -819,18 +918,21 @@ def health():
         "graph_edges": brain.number_of_edges(),
         "toxic_model_loaded": toxic_scorer.is_loaded(),
         "memory_db": get_db_stats(),
-        "pending_conflicts": len([c for c in conflicts.pending_conflicts if c["status"] == "pending"]),
+        "pending_conflicts": len(
+            [c for c in conflicts.pending_conflicts if c["status"] == "pending"]
+        ),
         "model": MODEL_CASUAL,
         "architecture": {
             "casual": MODEL_CASUAL,
             "coding": MODEL_CODING,
             "analysis": MODEL_ANALYSIS,
-            "review": MODEL_REVIEW
-        }
+            "review": MODEL_REVIEW,
+        },
     }
 
 
 # --- WhatsApp Async Bridge ---
+
 
 @app.post("/whatsapp/enqueue")
 async def whatsapp_enqueue(payload: WhatsAppEnqueueRequest, request: Request):
@@ -973,6 +1075,7 @@ async def whatsapp_loop_test(payload: WhatsAppLoopTestRequest, request: Request)
 
 # --- OpenAI Compatibility Layer ---
 
+
 class OpenAIRequest(BaseModel):
     model: str = "default"
     messages: List[dict]
@@ -980,14 +1083,16 @@ class OpenAIRequest(BaseModel):
     max_tokens: Optional[int] = 500
     user: Optional[str] = "the_creator"
 
+
 @app.post("/chat")
 @app.post("/v1/chat/completions")
 async def chat_webhook(request: Request):
+    validate_api_key(request)
     try:
         body = await request.json()
     except Exception:
         return {"status": "error", "reason": "invalid_json"}
-    
+
     messages = body.get("messages", [])
     if not messages:
         if "message" in body:
@@ -1000,58 +1105,65 @@ async def chat_webhook(request: Request):
             if m.get("role") == "user":
                 user_msg = m.get("content", "")
                 break
-                
+
     if not user_msg:
         return {"status": "skipped", "reason": "no_user_message"}
-        
+
     chat_id = (
-        body.get("chat_id") or
-        body.get("from") or
-        body.get("user") or
-        request.headers.get("X-Chat-Id", "") or
-        body.get("user_id", "")
+        body.get("chat_id")
+        or body.get("from")
+        or body.get("user")
+        or request.headers.get("X-Chat-Id", "")
+        or body.get("user_id", "")
     )
     message_id = body.get("message_id", str(uuid.uuid4()))
     sender_name = body.get("sender_name", chat_id)
     is_from_me = body.get("fromMe", False)
-    
+
     if is_from_me:
         return {"status": "skipped", "reason": "own_message"}
-        
+
     if not str(user_msg).strip():
         return {"status": "skipped", "reason": "empty"}
-        
+
     if dedup.is_duplicate(message_id):
         # We pretend it queued but do not actually queue
         return {"status": "skipped", "reason": "duplicate", "accepted": True}
-        
+
     await flood.incoming(
         chat_id=chat_id,
         message=user_msg,
         metadata={
             "message_id": message_id,
             "sender_name": sender_name,
-        }
+        },
     )
-    
+
     return {
         "status": "queued",
         "accepted": True,
-        "task_queue_depth": task_queue.pending_count
+        "task_queue_depth": task_queue.pending_count,
     }
 
 
 # --- Persona Chat Endpoints ---
 
+
 @app.post("/chat/the_creator")
-async def chat_the_creator(request: ChatRequest, background_tasks: BackgroundTasks):
+async def chat_the_creator(
+    request: ChatRequest, background_tasks: BackgroundTasks, http_request: Request
+):
     """Chat as Jarvis → primary_user (Bro Mode 👊)"""
+    validate_api_key(http_request)
     return await persona_chat(request, "the_creator", background_tasks)
 
 
 @app.post("/chat/the_partner")
-async def chat_the_partner(request: ChatRequest, background_tasks: BackgroundTasks):
+async def chat_the_partner(
+    request: ChatRequest, background_tasks: BackgroundTasks, http_request: Request
+):
     """Chat as Jarvis → partner_user (Caring PA Mode 🌹)"""
+    validate_api_key(http_request)
     return await persona_chat(request, "the_partner", background_tasks)
 
 
@@ -1059,16 +1171,18 @@ async def chat_the_partner(request: ChatRequest, background_tasks: BackgroundTas
 async def gateway_status():
     return {
         "queue": task_queue.get_stats(),
-        "workers": app.state.worker.num_workers if hasattr(app.state, 'worker') else 0,
+        "workers": app.state.worker.num_workers if hasattr(app.state, "worker") else 0,
         "timestamp": __import__("datetime").datetime.now().isoformat(),
     }
 
 
 # --- Persona Management ---
 
+
 @app.post("/persona/rebuild")
-async def rebuild_personas():
+async def rebuild_personas(request: Request):
     """Rebuild persona using SBS (Phase 1)."""
+    validate_api_key(request)
     try:
         sbs_the_creator.force_batch(full_rebuild=True)
         sbs_the_partner.force_batch(full_rebuild=True)
@@ -1076,53 +1190,81 @@ async def rebuild_personas():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @app.get("/persona/status")
 def persona_status():
     """Show current persona profile stats from SBS."""
     stats = {
-        "the_creator": sbs_the_creator.get_profile_summary() if sbs_the_creator else None,
-        "the_partner": sbs_the_partner.get_profile_summary() if sbs_the_partner else None
+        "the_creator": sbs_the_creator.get_profile_summary()
+        if sbs_the_creator
+        else None,
+        "the_partner": sbs_the_partner.get_profile_summary()
+        if sbs_the_partner
+        else None,
     }
-    
+
     db = get_db_stats()
     return {"profiles": stats, "memory_db": db}
+
 
 @app.get("/sbs/status")
 def sbs_status():
     """Show live SBS stats for sci-fi dashboard."""
     stats = {
-        "the_creator": sbs_the_creator.get_profile_summary() if sbs_the_creator else None,
-        "the_partner": sbs_the_partner.get_profile_summary() if sbs_the_partner else None
+        "the_creator": sbs_the_creator.get_profile_summary()
+        if sbs_the_creator
+        else None,
+        "the_partner": sbs_the_partner.get_profile_summary()
+        if sbs_the_partner
+        else None,
     }
     return {"profiles": stats}
 
 
 # --- Memory Endpoints (preserved from v1) ---
 
+
 @app.post("/ingest")
-def ingest_fact(subject: str, relation: str, object_entity: str, background_tasks: BackgroundTasks):
+def ingest_fact(
+    subject: str,
+    relation: str,
+    object_entity: str,
+    background_tasks: BackgroundTasks,
+    request: Request,
+):
     """Ingest a structured fact into the knowledge graph."""
+    validate_api_key(request)
     brain.add_node(subject)
     brain.add_node(object_entity)
     brain.add_relation(subject, relation, object_entity)
     background_tasks.add_task(brain.save_graph)
-    return {"status": "received", "fact": f"{subject} --[{relation}]--> {object_entity}"}
+    return {
+        "status": "received",
+        "fact": f"{subject} --[{relation}]--> {object_entity}",
+    }
 
 
 @app.post("/add")
-async def add_memory(item: MemoryItem, background_tasks: BackgroundTasks):
+async def add_memory(
+    item: MemoryItem, background_tasks: BackgroundTasks, request: Request
+):
     """Unstructured memory → LLM → triple extraction → graph."""
+    validate_api_key(request)
     print(f"📥 Ingesting: {item.content[:60]}...")
-    
+
     try:
         messages = [
-            {"role": "system", "content": 'Extract the core fact as a triple. JSON format: {"s": "Subject", "r": "Relation", "o": "Object"}. No other text.'},
-            {"role": "user", "content": item.content}
+            {
+                "role": "system",
+                "content": 'Extract the core fact as a triple. JSON format: {"s": "Subject", "r": "Relation", "o": "Object"}. No other text.',
+            },
+            {"role": "user", "content": item.content},
         ]
         extraction = await call_gemini_flash(messages, temperature=0.1, max_tokens=1000)
         extraction = extraction.strip()
-        
+
         import ast
+
         data = None
         if "{" in extraction and "}" in extraction:
             start = extraction.find("{")
@@ -1135,27 +1277,28 @@ async def add_memory(item: MemoryItem, background_tasks: BackgroundTasks):
                     data = ast.literal_eval(json_str)
                 except Exception:
                     pass
-        
+
         if data:
-            s, r, o = data.get('s'), data.get('r'), data.get('o')
+            s, r, o = data.get("s"), data.get("r"), data.get("o")
             if s and r and o:
                 brain.add_node(s)
                 brain.add_node(o)
                 brain.add_relation(s, r, o)
                 background_tasks.add_task(brain.save_graph)
                 return {"status": "memorized", "triple": f"{s} -[{r}]-> {o}"}
-    
+
     except Exception as e:
         print(f"⚠️ Extraction Error: {e}")
-    
+
     return {"status": "failed_extraction", "content": item.content}
 
 
 @app.post("/query")
-async def query_memory(item: QueryItem):
+async def query_memory(item: QueryItem, request: Request):
     """Query knowledge graph + vector memory."""
+    validate_api_key(request)
     print(f"🔎 Query: {item.text}")
-    
+
     # Graph search
     graph_results = []
     try:
@@ -1167,14 +1310,14 @@ async def query_memory(item: QueryItem):
                     graph_results.append(f"{token} -> {n}")
     except Exception:
         pass
-    
+
     # Vector search
     memory_results = {}
     try:
         memory_results = query_memories(item.text, limit=3)
     except Exception:
         pass
-    
+
     return {
         "graph": graph_results,
         "memory": memory_results,
@@ -1184,4 +1327,6 @@ async def query_memory(item: QueryItem):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+
+    BIND_HOST = os.environ.get("API_BIND_HOST", "127.0.0.1")
+    uvicorn.run(app, host=BIND_HOST, port=8000)
