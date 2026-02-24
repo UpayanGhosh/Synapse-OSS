@@ -90,22 +90,20 @@ Messages from WhatsApp enter an asynchronous multi-stage pipeline **before** hit
 
 ```mermaid
 sequenceDiagram
-    participant WA as WhatsApp Node
-    participant FG as FloodGate (3s batch)
-    participant DD as Deduplicator (5m)
-    participant Q  as TaskQueue (100)
-    participant W  as MessageWorker (×2)
-    participant G  as API Gateway
+    participant WA as WhatsApp
+    participant FG as FloodGate
+    participant DD as Deduplicator
+    participant Q as TaskQueue
+    participant W as Worker
+    participant G as API Gateway
 
-    WA->>FG: POST /whatsapp/enqueue
-    FG->>FG: Batch rapid-fire messages
+    WA->>FG: POST /webhook
     FG->>DD: Flush batch
-    DD->>DD: Check 5-min seen-set
-    DD->>Q: Enqueue MessageTask
-    Q->>W: Dequeue (FIFO)
-    W->>G: process_message_pipeline()
-    G-->>W: reply string
-    W->>WA: send_via_cli()
+    DD->>Q: Enqueue
+    Q->>W: Dequeue
+    W->>G: process()
+    G-->>W: reply
+    W->>WA: send
 ```
 
 | File                  | Role                                                                 |
@@ -196,13 +194,13 @@ The SBS system is responsible for making JARVIS feel like a person, not a chatbo
 
 ```mermaid
 graph TD
-    MSG[Inbound Message] --> RT[Realtime Processor]
-    RT --> LOG[Conversation Logger\nSQLite]
-    LOG --> CNT{50 msgs\nor 6h elapsed?}
-    CNT -->|Yes| BATCH[Batch Processor\nProfile Rebuild]
-    BATCH --> PM[(Profile Manager\nJSON Layers)]
-    PM --> PC[Prompt Compiler\nSystem Prompt Assembly]
-    PC --> SYS[Assembled System Prompt\nto LLM]
+    MSG --> RT[Realtime Processor]
+    RT --> LOG[Conversation Logger]
+    LOG --> CNT{50 msgs or 6h?}
+    CNT -->|Yes| BATCH[Batch Processor]
+    BATCH --> PM[(Profile Manager)]
+    PM --> PC[Prompt Compiler]
+    PC --> SYS[Assembled System Prompt]
 ```
 
 **Profile Layers tracked per target:**
@@ -227,11 +225,11 @@ Before generating a reply, JARVIS thinks. The `DualCognitionEngine` generates an
 
 ```mermaid
 graph LR
-    UM[User Message] --> DC[DualCognitionEngine.think]
-    DC --> IM[Inner Monologue\nvia Gemini Flash]
-    DC --> TL[Tension Level\n0.0 to 1.0]
-    DC --> TT[Tension Type\nAMBIVALENT · CERTAIN · etc.]
-    IM & TL & TT --> CC[Cognitive Context Block\ninjected into System Prompt]
+    UM --> DC[DualCognitionEngine]
+    DC --> IM[Inner Monologue]
+    DC --> TL[Tension Level]
+    DC --> TT[Tension Type]
+    IM & TL & TT --> CC[Cognitive Context]
 ```
 
 The `LazyToxicScorer` is loaded alongside DualCognition. It auto-unloads after **30 seconds of idle** to save RAM — critical for a Mac Air host.
@@ -244,11 +242,11 @@ The **Traffic Cop** classifies every user message before routing it to the appro
 
 ```mermaid
 graph TD
-    TC{Traffic Cop\nGemini Flash Classifier} -->|CASUAL|        A[AG_CASUAL\nGemini 3 Flash]
-    TC -->|CODING|   B[The Hacker\nClaude Sonnet 4.5]
-    TC -->|ANALYSIS| C[The Architect\nGemini 3 Pro]
-    TC -->|REVIEW|   D[The Philosopher\nClaude Opus 4.6]
-    TC -->|SPICY| E[The Vault\nStheno v3.2 on Ollama]
+    TC{Traffic Cop} -->|CASUAL| A[AG_CASUAL]
+    TC -->|CODING| B[The Hacker]
+    TC -->|ANALYSIS| C[The Architect]
+    TC -->|REVIEW| D[The Philosopher]
+    TC -->|SPICY| E[The Vault]
 ```
 
 All cloud models route through the **Antigravity Proxy** (`localhost:8080`) using an OAuth token. The vault (Stheno) connects directly to a Windows PC Ollama instance (`WINDOWS_PC_IP:11434`).
@@ -305,30 +303,30 @@ A background async loop that runs every **10 minutes** (when plugged in and CPU 
 
 ```mermaid
 sequenceDiagram
-    participant U  as User (WhatsApp)
+    participant U as User
     participant FG as FloodGate
-    participant Q  as TaskQueue
-    participant G  as API Gateway
-    participant SBS as SBS Orchestrator
-    participant ME as Memory Engine
-    participant DC as Dual Cognition
-    participant TC as Traffic Cop
-    participant LLM as Selected LLM
+    participant Q as TaskQueue
+    participant G as API Gateway
+    participant SBS as SBS
+    participant ME as Memory
+    participant DC as DualCog
+    participant TC as TrafficCop
+    participant LLM as LLM
 
-    U->>FG: "hey write me a python script"
-    FG->>Q: batch + dedup → enqueue
-    Q->>G: process_message_pipeline()
-    G->>SBS: on_message(user, ...) → get_system_prompt()
-    G->>ME: query("write python script", limit=5)
-    ME-->>G: retrieved memories + graph context
-    G->>DC: think(user_message, history)
-    DC-->>G: inner_monologue + tension_level
-    G->>TC: "CODING or CASUAL?"
-    TC-->>G: "CODING"
-    G->>LLM: call_ag_code(assembled_messages)
-    LLM-->>G: code response
-    G->>SBS: on_message(assistant, reply)
-    G-->>U: reply + footer stats\n(tokens, model, context%)
+    U->>FG: "hey write python"
+    FG->>Q: batch + dedup
+    Q->>G: process()
+    G->>SBS: get_prompt()
+    G->>ME: query()
+    ME-->>G: memories
+    G->>DC: think()
+    DC-->>G: context
+    G->>TC: classify()
+    TC-->>G: CODING
+    G->>LLM: call()
+    LLM-->>G: response
+    G->>SBS: log()
+    G-->>U: reply
 ```
 
 ---
