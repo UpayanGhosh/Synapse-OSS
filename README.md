@@ -16,6 +16,11 @@
 ![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
 ![Status](https://img.shields.io/badge/Status-Active-brightgreen?style=for-the-badge)
 
+> **⚠️ CRITICAL: WhatsApp-Only Platform**
+> This system is designed exclusively for **WhatsApp** messaging. All features — async message pipeline, persona routing, hybrid memory, The Vault privacy routing, and multi-model MoA — operate through WhatsApp webhooks and the WhatsApp API. Voice notes, media handling, and outbound messaging are all WhatsApp-specific.
+> 
+> **Coming Soon:** Support for Telegram, Discord, Slack, and other platforms is under active development and will be available in a future release. The architecture is designed to be platform-agnostic, so additional messaging channels will be added seamlessly once implemented.
+
 ---
 
 ## 💡 What Makes This Different
