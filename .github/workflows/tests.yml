@@ -1,0 +1,56 @@
+name: Test Suite
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: macos-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        python -m venv venv
+        source venv/bin/activate
+        pip install pytest pytest-asyncio pytest-cov pytest-timeout
+    
+    - name: Run tests
+      working-directory: workspace/tests
+      run: |
+        source ../venv/bin/activate
+        pytest -v --tb=short --cov=sci_fi_dashboard --cov-report=xml
+    
+    - name: Upload coverage
+      if: always()
+      uses: codecov/codecov-action@v4
+      with:
+        files: ./workspace/tests/coverage.xml
+        flags: unittests
+
+  smoke-test:
+    runs-on: macos-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    
+    - name: Run smoke tests
+      run: |
+        python -m venv venv
+        source venv/bin/activate
+        pip install pytest pytest-asyncio
+        cd workspace/tests
+        pytest -v -m smoke --tb=short
