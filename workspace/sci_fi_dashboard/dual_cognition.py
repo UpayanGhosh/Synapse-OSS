@@ -14,6 +14,7 @@ from typing import Optional, List
 @dataclass
 class PresentStream:
     """What the user is saying right now."""
+
     raw_message: str
     sentiment: str = "neutral"
     intent: str = "statement"
@@ -25,6 +26,7 @@ class PresentStream:
 @dataclass
 class MemoryStream:
     """What I know from history."""
+
     relevant_facts: list = field(default_factory=list)
     relationship_context: str = ""
     graph_connections: str = ""
@@ -34,6 +36,7 @@ class MemoryStream:
 @dataclass
 class CognitiveMerge:
     """The result of merging both streams."""
+
     tension_level: float = 0.0
     tension_type: str = "none"
     response_strategy: str = "acknowledge"
@@ -58,15 +61,23 @@ class DualCognitionEngine:
         llm_fn=None,
     ) -> CognitiveMerge:
         """Main entry: runs both streams, merges them."""
-        
-        # Run in parallel
-        present, memory = await asyncio.gather(
-            self._analyze_present(user_message, conversation_history, llm_fn),
-            self._recall_memory(user_message, chat_id, target),
-        )
 
-        merge = await self._merge_streams(present, memory, target, llm_fn)
-        return merge
+        try:
+            present, memory = await asyncio.gather(
+                self._analyze_present(user_message, conversation_history, llm_fn),
+                self._recall_memory(user_message, chat_id, target),
+            )
+
+            merge = await self._merge_streams(present, memory, target, llm_fn)
+            return merge
+        except Exception as e:
+            print(f"⚠️ Dual cognition failed: {e}")
+            return CognitiveMerge(
+                inner_monologue="I'm having trouble thinking through this right now.",
+                tension_level=0.0,
+                response_strategy="acknowledge",
+                suggested_tone="warm",
+            )
 
     async def _analyze_present(
         self, message: str, history: list = None, llm_fn=None
@@ -100,11 +111,11 @@ JSON only:"""
             )
             # Parse JSON - strip thinking blocks if present
             text = result.strip()
-            
+
             # Remove thinking blocks if prepended
             if "[THINKING]" in text:
                 text = text.split("[/THINKING]")[-1].strip()
-            
+
             if "```" in text:
                 text = text.split("```")[1].replace("json", "").strip()
             start = text.find("{")
@@ -121,9 +132,7 @@ JSON only:"""
 
         return present
 
-    async def _recall_memory(
-        self, message: str, chat_id: str, target: str
-    ) -> MemoryStream:
+    async def _recall_memory(self, message: str, chat_id: str, target: str) -> MemoryStream:
         """Stream 2: Query memory."""
         memory = MemoryStream()
 
@@ -218,10 +227,10 @@ JSON only:"""
 **Suggested Tone:** {merge.suggested_tone}
 
 **Memory Insights:**
-{chr(10).join(f'- {m[:120]}' for m in merge.memory_insights[:3]) if merge.memory_insights else '- None'}
+{chr(10).join(f"- {m[:120]}" for m in merge.memory_insights[:3]) if merge.memory_insights else "- None"}
 
 **Contradictions Detected:**
-{chr(10).join(f'- {c}' for c in merge.contradictions) if merge.contradictions else '- None'}
+{chr(10).join(f"- {c}" for c in merge.contradictions) if merge.contradictions else "- None"}
 
 **BEHAVIORAL RULES:**
 - If tension > 0.5: Don't just agree. Challenge gently with memory evidence.

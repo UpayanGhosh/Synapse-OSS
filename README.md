@@ -41,22 +41,15 @@ most chatbots ignore:
 
 ---
 
-## 🎬 Demo
+## 📸 Demo
 
 ### WhatsApp Conversation
-> *JARVIS responding to a real message with memory context, 
-> persona adaptation, and model routing visible in the footer stats.*
-
-![WhatsApp Demo](./docs/demo_whatsapp.png)
+> *JARVIS responding to a real message with memory context, persona adaptation, and model routing visible in the footer stats.*
+> 
+> *(Screenshots available in docs/ folder)*
 
 ### Architecture Overview
 ![Architecture Diagram](./architecture_diagram.svg)
-
-### Memory Retrieval in Action
-> *Query triggers hybrid retrieval: knowledge graph triples + 
-> vector search results + reranker scores visible in logs.*
-
-![Memory Demo](./docs/demo_memory.png)
 
 ---
 
@@ -135,6 +128,46 @@ python3 api_gateway.py
 
 # 5. Verify
 curl http://localhost:8000/health
+```
+
+---
+
+## 💻 Usage Examples
+
+### Chat with JARVIS
+
+```bash
+curl -X POST http://localhost:8000/chat/the_creator \
+  -H "Content-Type: application/json" \
+  -d '{"message": "What do you remember about our last conversation?"}'
+```
+
+### Query Memory
+
+```bash
+curl -X POST http://localhost:8000/query \
+  -H "Content-Type: application/json" \
+  -d '{"text": "What is the user\'s favorite programming language?"}'
+```
+
+### Add Memory
+
+```bash
+curl -X POST http://localhost:8000/add \
+  -H "Content-Type: application/json" \
+  -d '{"content": "The user prefers Python over JavaScript", "category": "tech_preferences"}'
+```
+
+### Check System Health
+
+```bash
+curl http://localhost:8000/health
+```
+
+### Rebuild Persona Profile
+
+```bash
+curl -X POST http://localhost:8000/persona/rebuild
 ```
 
 > **Full setup guide** (Qdrant, Ollama, WhatsApp bridge, persona config): [HOW_TO_RUN.md](HOW_TO_RUN.md)

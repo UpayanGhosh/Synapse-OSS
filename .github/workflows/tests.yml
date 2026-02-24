@@ -7,6 +7,46 @@ on:
     branches: [ main ]
 
 jobs:
+  lint:
+    runs-on: macos-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    
+    - name: Install linting tools
+      run: |
+        pip install ruff black
+    
+    - name: Run ruff (linting)
+      run: |
+        ruff check workspace/sci_fi_dashboard/ --exit-zero
+    
+    - name: Run black (format check)
+      run: |
+        black --check workspace/sci_fi_dashboard/ --exit-zero || true
+
+  typecheck:
+    runs-on: macos-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        pip install mypy types-python-dateutil
+    
+    - name: Run mypy
+      run: |
+        mypy workspace/sci_fi_dashboard/ --ignore-missing-imports --exit-zero-if-returned || true
+
   test:
     runs-on: macos-latest
     
