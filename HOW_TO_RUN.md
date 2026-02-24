@@ -63,6 +63,261 @@ pip install -r requirements.txt
 # Make sure to install FastAPI, uvicorn, httpx, and any other dependencies listed in the main scripts.
 ```
 
+## 2A. Getting Free API Keys
+
+This section provides step-by-step instructions for obtaining free API keys from various AI providers. Each platform has different registration processes, rate limits, and capabilities.
+
+---
+
+### Google Gemini (AI Studio) — Recommended Starting Point
+
+**Best for:** General chat, quick responses, multimodal tasks
+
+1. **Navigate to Google AI Studio:**
+   Go to [https://aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey)
+
+2. **Sign in with your Google account** (Gmail or any Google account)
+
+3. **Click "Get API Key"** — you may need to create a new project first
+
+4. **Select "Create API key in new project"** (recommended) or select an existing project
+
+5. **Copy your API key** — it will start with `AIza...`
+
+6. **Add to your `.env` file:**
+   ```
+   GEMINI_API_KEY=AIza...
+   ```
+
+**Free Tier Limits:**
+- 15 RPM (requests per minute)
+- 1,500 TPM (tokens per minute)
+- No credit card required
+- Models available: Gemini 2.0 Flash, Gemini 1.5 Flash, Gemini 1.5 Pro
+
+**Note:** Google provides generous free limits that reset continuously. This is the easiest free key to obtain and works well for casual chat routing.
+
+---
+
+### Groq — Fastest Free Inference
+
+**Best for:** High-speed inference, Llama/Mixtral models
+
+1. **Navigate to Groq Console:**
+   Go to [https://console.groq.com](https://console.groq.com)
+
+2. **Sign up** using one of these methods:
+   - Email + password
+   - GitHub account
+   - Google account
+
+3. **Verify your email** if signing up with email
+
+4. **Navigate to API Keys** section in the left sidebar
+
+5. **Click "Create API Key"**
+
+6. **Name your key** (e.g., "Jarvis-OSS")
+
+7. **Copy your API key** — it will start with `gsk_...`
+
+8. **Add to your `.env` file:**
+   ```
+   GROQ_API_KEY=gsk_...
+   ```
+
+**Free Tier Limits:**
+- Thousands of tokens per minute, refreshed daily
+- No credit card required
+- Models available: Llama 3.3 70B, Mixtral 8x7B, Gemma 2 9B, and more
+- Extremely fast inference (Groq's specialty)
+
+**Note:** Groq is known for industry-leading inference speed. Excellent for the "casual chat" routing in the MoA architecture.
+
+---
+
+### Hugging Face — Open Source Models
+
+**Best for:** Open-source models, embeddings, no-cost experimentation
+
+1. **Navigate to Hugging Face:**
+   Go to [https://huggingface.co](https://huggingface.co)
+
+2. **Sign up** (free account)
+
+3. **Navigate to Settings → Access Tokens**
+
+4. **Click "Create new token"**
+
+5. **Select permissions:** "Read" is sufficient for API access
+
+6. **Copy your token**
+
+7. **Add to your `.env` file:**
+   ```
+   HF_TOKEN=hf_...
+   ```
+
+**Free Tier Limits:**
+- Free Inference API: Limited daily usage
+- Spaces: 2vCPU hours/month
+- No credit card required
+- Models available: Llama variants, Mistral, Qwen, CodeLlama, and thousands of others
+
+**Note:** For production API usage beyond free limits, consider upgrading to Pro ($9/month). The free tier is excellent for testing.
+
+---
+
+### DeepSeek — Advanced Reasoning
+
+**Best for:** Complex reasoning tasks, coding, math
+
+1. **Navigate to DeepSeek Platform:**
+   Go to [https://platform.deepseek.com](https://platform.deepseek.com)
+
+2. **Sign up** with email or OAuth (GitHub/Google)
+
+3. **Verify your email** if applicable
+
+4. **Go to API Keys** section
+
+5. **Create a new API key**
+
+6. **Copy your key**
+
+7. **Add to your `.env` file:**
+   ```
+   DEEPSEEK_API_KEY=sk-...
+   ```
+
+**Free Tier Limits:**
+- Offers free credits for new accounts (amount varies)
+- Competitive pricing after credits
+- Models available: DeepSeek V3, DeepSeek R1
+
+**Note:** DeepSeek R1 is particularly notable for reasoning capabilities comparable to OpenAI o1, at much lower cost.
+
+---
+
+### OpenAI — Limited Free Access
+
+**Best for:** GPT-3.5 access, legacy support
+
+1. **Navigate to OpenAI Platform:**
+   Go to [https://platform.openai.com](https://platform.openai.com)
+
+2. **Sign up** with email, or use GitHub/Google/Microsoft account
+
+3. **Complete account verification**
+
+4. **Navigate to API Keys** section
+
+5. **Click "Create new secret key"**
+
+6. **Copy your key** — it will start with `sk-...`
+
+7. **Add to your `.env` file:**
+   ```
+   OPENAI_API_KEY=sk-...
+   ```
+
+**Free Tier Limits (2026):**
+- Extremely limited: 3 requests per minute
+- Restricted to GPT-3.5 Turbo only
+- **Note:** Free trial credits were discontinued in mid-2025. New accounts receive no automatic free credits.
+- To unlock full API access, you must add a payment method (minimum $5 credit purchase)
+
+**Recommendation:** If you need OpenAI access, the $5 minimum credit is the most cost-effective entry point. Otherwise, use Google Gemini or Groq for free access.
+
+---
+
+### Anthropic (Claude) — No Free Tier
+
+**Best for:** High-quality coding, complex reasoning
+
+1. **Navigate to Anthropic Console:**
+   Go to [https://console.anthropic.com](https://console.anthropic.com)
+
+2. **Sign up** with email
+
+3. **Wait for account approval** (may be required depending on region)
+
+4. **Add payment method** — Anthropic does not offer a free tier as of 2026
+
+5. **Create API key** once account is active
+
+6. **Add to your `.env` file:**
+   ```
+   ANTHROPIC_API_KEY=sk-ant-...
+   ```
+
+**Note:** Anthropic does not provide a free tier. You must add a credit card. However, new accounts often receive $5-10 in free credits to start.
+
+---
+
+### Ollama — 100% Local & Free
+
+**Best for:** Complete privacy, offline use, no API costs
+
+Ollama runs models entirely on your local machine — no API keys or internet required.
+
+1. **Download Ollama:**
+   Go to [https://ollama.com](https://ollama.com) and install for your OS
+
+2. **Run a model:**
+   ```bash
+   ollama run llama3
+   # or
+   ollama run mistral
+   # or
+   ollama run codellama
+   ```
+
+3. **Configure in `.env`:**
+   ```
+   OLLAMA_BASE_URL=http://localhost:11434
+   WINDOWS_PC_IP=127.0.0.1
+   ```
+
+**Models Available:**
+- Llama 3, 3.1, 3.2
+- Mistral
+- CodeLlama
+- Phi3
+- Gemma 2
+- And many others
+
+**Note:** No API costs, complete privacy. However, requires local GPU/CPU resources.
+
+---
+
+### Summary: Recommended Free Setup
+
+For a complete free MoA setup without spending any money:
+
+| Task Type | Provider | Model | Env Variable |
+|-----------|----------|-------|--------------|
+| Casual Chat | Groq | Llama 3.3 70B | `GROQ_API_KEY` |
+| Coding | Groq | Llama 3.3 70B | `GROQ_API_KEY` |
+| Analysis | Google Gemini | Gemini 2.0 Flash | `GEMINI_API_KEY` |
+| Privacy/Offline | Ollama | Llama3/Mistral | `OLLAMA_BASE_URL` |
+
+Set all three keys in your `.env` file for full MoA functionality at zero cost.
+
+---
+
+### Troubleshooting API Key Issues
+
+- **"401 Unauthorized"**: Double-check your API key is correct and properly set in `.env`. Restart the gateway after modifying `.env`.
+- **"429 Too Many Requests"**: You've hit rate limits. Wait a minute or switch to a different provider.
+- **"Quota Exceeded"**: You've used your free allocation. Wait for reset or switch providers.
+- **Key not loading**: Ensure no spaces around `=` in your `.env` file. Use quotes if values contain special characters.
+
+---
+
+*Last updated: February 2026. API limits and offerings change frequently. Verify current limits on each provider's documentation.*
+---
+
 ## 2. API Keys & The "Budget" MoA
 
 Copy the environment template:
