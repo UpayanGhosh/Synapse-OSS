@@ -1,6 +1,14 @@
----
-# 🧬 JARVIS — Self-Hosted AI Assistant
----
+# 🧬 JARVIS — Multi-Agent AI Assistant with Hybrid Memory, Evolving Personality, and Privacy-First Routing
+
+> A self-hosted AI system that remembers everything, develops its own personality 
+> from conversation patterns, thinks before replying, and routes private conversations 
+> to local models with zero cloud exposure. Built on top of 
+> [OpenClaw](https://github.com/openclaw/openclaw). Running 24/7 on a MacBook Air.
+
+> **New here?** Jump to [Quick Start](#-quick-start) or read [HOW_TO_RUN.md](HOW_TO_RUN.md) for full setup instructions.
+>
+> **Want the story behind the engineering?** Read [MANIFESTO.md](MANIFESTO.md) — the opinionated, in-character deep-dive.
+
 ![Python](https://img.shields.io/badge/Python-3.11-3776AB?style=for-the-badge&logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white)
 ![SQLite](https://img.shields.io/badge/SQLite-003B57?style=for-the-badge&logo=sqlite&logoColor=white)
@@ -8,17 +16,48 @@
 ![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
 ![Status](https://img.shields.io/badge/Status-Active-brightgreen?style=for-the-badge)
 
-A self-hosted, model-agnostic AI assistant with hybrid memory retrieval, multi-model routing, and an autonomous persona-evolution pipeline — running 24/7 on consumer hardware as a single-user system.
+---
 
-> **New here?** Jump to [Quick Start](#-quick-start) or read [HOW_TO_RUN.md](HOW_TO_RUN.md) for full setup instructions.
->
-> **Want the story behind the engineering?** Read [MANIFESTO.md](MANIFESTO.md) — the opinionated, in-character deep-dive.
+## 💡 What Makes This Different
+
+Most AI chatbot projects are thin wrappers around an API call. 
+JARVIS is an **11-subsystem architecture** that solves problems 
+most chatbots ignore:
+
+| Problem | How Most Bots Handle It | How JARVIS Handles It |
+|---|---|---|
+| **Memory** | Stuff messages into context window until it overflows | Hybrid RAG — SQLite knowledge graph + Qdrant vector search + FlashRank reranking. Remembers everything, retrieves what's relevant in <350ms. |
+| **Personality** | Static system prompt, same tone forever | Soul-Brain Sync — continuously tracks mood, sentiment, language patterns. Rebuilds a behavioral profile every 50 messages. Personality evolves. |
+| **Model selection** | One model for everything (expensive or dumb) | Mixture of Agents — Traffic Cop classifies intent, routes to 5 specialist models. Casual chat doesn't burn expensive API credits. |
+| **Privacy** | Everything goes to cloud APIs | The Vault — sensitive conversations route to a local Ollama model on LAN. Zero cloud leakage. Zero external logging. |
+| **Thinking** | Generate first token immediately | Dual Cognition — generates inner monologue, calculates tension between memory and current message, then responds. |
+| **WhatsApp reliability** | Webhook timeout, lost messages, duplicates | Async pipeline — FloodGate batching, deduplication, bounded queue, concurrent workers. Zero dropped messages. |
+| **RAM on consumer hardware** | "Just buy a bigger server" | Lazy-loading (ToxicScorer unloads after 30s idle), SQLite instead of NetworkX (99.2% memory reduction), thermal-aware workers. Runs on 8GB MacBook Air. |
+
+---
+
+## 🎬 Demo
+
+### WhatsApp Conversation
+> *JARVIS responding to a real message with memory context, 
+> persona adaptation, and model routing visible in the footer stats.*
+
+![WhatsApp Demo](./docs/demo_whatsapp.png)
+
+### Architecture Overview
+![Architecture Diagram](./architecture_diagram.svg)
+
+### Memory Retrieval in Action
+> *Query triggers hybrid retrieval: knowledge graph triples + 
+> vector search results + reranker scores visible in logs.*
+
+![Memory Demo](./docs/demo_memory.png)
 
 ---
 
 ## 📊 By The Numbers
 
-> `15,000+ lines` · `99.2% memory reduction` · `<350ms P95 retrieval` · `6 models orchestrated` · `Zero dropped messages` · `24/7 uptime on $999 hardware` · `92 Python modules`
+> `99.2% memory reduction` · `<350ms P95 retrieval` · `6 models orchestrated` · `Zero dropped messages` · `24/7 uptime on $999 hardware` · `92 Python modules`
 
 | Metric | Before (v1.0) | After (Phoenix v3) | Why it changed |
 |---|---|:---:|---|
@@ -33,130 +72,39 @@ A self-hosted, model-agnostic AI assistant with hybrid memory retrieval, multi-m
 
 ## 🏗️ System Architecture
 
-![JARVIS — Project Phoenix Architecture](./architecture_diagram.png)
-
 > *For the full interactive diagram with Mermaid breakdowns of each subsystem, see [ARCHITECTURE.md](ARCHITECTURE.md).*
 
-```mermaid
-flowchart LR
-    subgraph Inputs["① User Inputs"]
-        CLI["💻 OpenClaw CLI\n─────────────\nDeveloper proxy\ndirect to gateway"]
-        WA["📱 WhatsApp Webhook\n─────────────\nNode gateway\nPOST /webhook"]
-    end
-    subgraph Async["② Async Gateway Pipeline (WhatsApp only)"]
-        direction TB
-        FG["🛡️ FloodGate\nBatches messages\nover a 3 s window"]
-        DD["🔁 Deduplicator\nDrops duplicates\nwithin 5 min"]
-        Q["📦 Task Queue\nHolds up to\n100 tasks"]
-        W["⚙️ Worker\n2 concurrent\ntasks"]
-    end
-    subgraph SBS["🎭 Persona Engine — Soul-Brain Sync"]
-        direction LR
-        SBS_O["Orchestrator"]
-        SBS_P["Profile\nManager"]
-        SBS_RT["Realtime\nProcessor"]
-        SBS_B["Batch\nProcessor"]
-        SBS_C["Prompt\nCompiler"]
-        SBS_L["Conversation\nLogger"]
-    end
-    subgraph Mem["💾 Cognitive Memory"]
-        direction LR
-        ME["🧠 Memory Engine\nHybrid Retrieval v3"]
-        M1["🗃️ SQLite\nGraph DB"]
-        M2["🔷 Qdrant\nVector DB"]
-        RE["🏅 FlashRank\nReranker"]
-    end
-    subgraph DC["🧩 Dual Cognition"]
-        direction LR
-        DCE["DualCognitionEngine"]
-        TS["☣️ LazyToxicScorer\ndeferred tension check"]
-    end
-    subgraph Brain["③ Context Engine (bidirectional with Gateway)"]
-        direction TB
-        SBS
-        Mem
-        DC
-    end
-    subgraph MoA["④ Mixture of Agents"]
-        direction TB
-        TC{"🚦 Traffic Cop\nIntent Classifier"}
-        LLM1["🟢 Gemini 3 Flash\nCASUAL — everyday chat"]
-        LLM2["💻 The Hacker\nCODING — code and debug"]
-        LLM3["🏛️ The Architect\nANALYSIS — deep planning"]
-        LLM4["🧐 The Philosopher\nREVIEW — critical review"]
-        LLM5["🌶️ The Vault\nSPICY — local model"]
-    end
-    subgraph Out["⑤ Output"]
-        direction TB
-        AC["✂️ Auto-Continue\nDetects cut-off responses\nand re-requests completion"]
-        FO["📨 Final Output\nBack to WhatsApp\nor CLI caller"]
-    end
-    G(["🚀 Core API Gateway\nFastAPI / Uvicorn / :8000"])
-    FG --> DD --> Q --> W
-    SBS_O --- SBS_P & SBS_RT & SBS_C
-    SBS_RT --- SBS_B
-    SBS_P --- SBS_L
-    ME <--> M1 & M2
-    ME --> RE
-    DCE --- TS
-    TC -- casual --> LLM1
-    TC -- coding --> LLM2
-    TC -- analysis --> LLM3
-    TC -- review --> LLM4
-    TC -- spicy --> LLM5
-    WA -- HTTP POST /webhook --> FG
-    CLI -- CLI proxy --> G
-    W --> G
-    G <-- inject persona context --> SBS_O
-    G <-- semantic + graph query --> ME
-    G -- tension check --> DCE
-    G -- classify intent --> TC
-    LLM1 -- response + stats --> G
-    LLM2 -- response + stats --> G
-    LLM3 -- response + stats --> G
-    LLM4 -- response + stats --> G
-    LLM5 -- response + stats --> G
-    G --> AC & FO
-    AC -. re-requests if cut off .-> G
+The system consists of 11 interconnected subsystems:
+
 ```
-
----
-
-## 🎯 Engineering Competencies Demonstrated
-
-| **Competency**                   | **Evidence in This Repo**                                                                                                                                                                                      |
-| :------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **System Design & Architecture** | Consolidated a 4-process architecture into a single FastAPI process, reducing memory from 155MB to <1.2MB (**99.2% reduction**). Motivated by 81% RAM pressure on an 8GB host — NetworkX loaded the full graph into RAM. |
-| **Async Systems**                | Built an async queue-push message gateway with deduplication, flood batching, and concurrent workers — achieving **zero dropped messages** under single-user load (~50-100 msgs/day)                            |
-| **Database Engineering**         | Designing a migration path from Qdrant to a native `sqlite-vec` implementation to eliminate container dependencies and further reduce RAM footprint (Currently supporting parallel retrieval paths).                 |
-| **ML Pipeline Orchestration**    | Implemented a multi-model intent router (Mixture of Agents pattern) that classifies messages and dispatches to 6 models (Gemini, Claude, Ollama) through a unified OpenAI-compatible proxy                       |
-| **Performance Optimization**     | Engineered lazy-loading patterns (Toxic-BERT loads on demand, unloads after 30s idle), `keep_alive: 0` model eviction, and thermal-aware background workers — all to run on a MacBook Air with 8GB RAM              |
-| **Privacy Engineering**          | Designed air-gapped local inference routing with hemisphere-enforced memory separation, verified by automated integrity tests                                                                                        |
-| **DevOps & Reliability**         | Built a `launchd`-managed boot sequence with idempotent service control, auto-restart, 12-hour backup rotation, and a real-time observability dashboard                                                            |
-| **Continuous Batch Profiling**   | Built "Soul-Brain Sync" (SBS) — an autonomous ingestion → parsing → distillation pipeline that converts raw conversation logs into a 2KB behavioral profile, injected into the system prompt at inference time    |
-
----
-
-## 🛠️ Technical Stack
-
-| **Category** | **Technologies**                                                                                               |
-| :----------------- | :------------------------------------------------------------------------------------------------------------------- |
-| Languages          | Python 3.11, JavaScript (Node.js), Bash                                                                              |
-| Frameworks         | FastAPI, Uvicorn, OpenAI SDK                                                                                         |
-| Databases          | SQLite (WAL Mode), `sqlite-vec`, Qdrant (Active)                                                                     |
-| AI/ML              | Ollama, Google Gemini, Anthropic Claude, OpenRouter, Toxic-BERT, FlashRank, sentence-transformers, Whisper           |
-| Infrastructure     | macOS `launchd`, OrbStack/Docker, distributed compute (remote GPU node)                                              |
-| Practices          | Async programming, queue-based architectures, model-agnostic routing, automated testing, auto-commit version control |
-
----
-
-## 🏢 Functional Scope
-
-> *This is a single-user, single-node system — not a distributed platform. But it covers a broad surface area of concerns typically split across multiple tools and teams:*
->
-> **Async message processing** · **Multi-model intent routing** · **Hybrid knowledge retrieval** (vector + graph) · **Real-time log monitoring** · **Continuous behavioral profiling** · **Service lifecycle management**
->
-> *Built and maintained by a single engineer on consumer hardware.*
+┌─────────────────────────────────────────────────────────────────┐
+│                        WhatsApp Webhook                         │
+└──────────────────────────┬──────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                      Async Gateway Pipeline                     │
+│  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌──────────────┐    │
+│  │FloodGate│→│ Dedup   │→│  Queue   │→│ MessageWorker │    │
+│  └─────────┘  └─────────┘  └─────────┘  └──────────────┘    │
+└──────────────────────────┬──────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                      Cognitive Pipeline                          │
+│  ┌──────────┐  ┌──────────┐  ┌───────────┐  ┌───────────┐   │
+│  │ Memory   │→│   SBS    │→│DualCognition│→│ TrafficCop│   │
+│  └──────────┘  └──────────┘  └───────────┘  └───────────┘   │
+└──────────────────────────┬──────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    Multi-Model Router                            │
+│  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌──────────┐   │
+│  │ Gemini │ │ Claude │ │ Ollama │ │  Vault │ │ Fallback │   │
+│  └────────┘ └────────┘ └────────┘ └────────┘ └──────────┘   │
+└─────────────────────────────────────────────────────────────────┘
+```
 
 ---
 
@@ -209,6 +157,44 @@ Before generating a reply, a `DualCognitionEngine` produces an inner monologue (
 
 ### Air-Gapped Local Inference ("The Vault")
 Sensitive conversations route to a local Ollama instance on a dedicated compute node (RTX 3060Ti). Zero cloud API calls, zero external logging. Hemisphere integrity (the separation between cloud-routed and local-only memories) is verified by automated tests (`verify` CLI command).
+
+---
+
+## 🎯 Engineering Competencies Demonstrated
+
+| **Competency**                   | **Evidence in This Repo**                                                                                                                                                                                      |
+| :------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **System Design & Architecture** | Consolidated a 4-process architecture into a single FastAPI process, reducing memory from 155MB to <1.2MB (**99.2% reduction**). Motivated by 81% RAM pressure on an 8GB host — NetworkX loaded the full graph into RAM. |
+| **Async Systems**                | Built an async queue-push message gateway with deduplication, flood batching, and concurrent workers — achieving **zero dropped messages** under single-user load (~50-100 msgs/day)                            |
+| **Database Engineering**         | Designing a migration path from Qdrant to a native `sqlite-vec` implementation to eliminate container dependencies and further reduce RAM footprint (Currently supporting parallel retrieval paths).                 |
+| **ML Pipeline Orchestration**    | Implemented a multi-model intent router (Mixture of Agents pattern) that classifies messages and dispatches to 6 models (Gemini, Claude, Ollama) through a unified OpenAI-compatible proxy                       |
+| **Performance Optimization**     | Engineered lazy-loading patterns (Toxic-BERT loads on demand, unloads after 30s idle), `keep_alive: 0` model eviction, and thermal-aware background workers — all to run on a MacBook Air with 8GB RAM              |
+| **Privacy Engineering**          | Designed air-gapped local inference routing with hemisphere-enforced memory separation, verified by automated integrity tests                                                                                        |
+| **DevOps & Reliability**         | Built a `launchd`-managed boot sequence with idempotent service control, auto-restart, 12-hour backup rotation, and a real-time observability dashboard                                                            |
+| **Continuous Batch Profiling**   | Built "Soul-Brain Sync" (SBS) — an autonomous ingestion → parsing → distillation pipeline that converts raw conversation logs into a 2KB behavioral profile, injected into the system prompt at inference time    |
+
+---
+
+## 🛠️ Technical Stack
+
+| **Category** | **Technologies**                                                                                               |
+| :----------------- | :------------------------------------------------------------------------------------------------------------------- |
+| Languages          | Python 3.11, JavaScript (Node.js), Bash                                                                              |
+| Frameworks         | FastAPI, Uvicorn, OpenAI SDK                                                                                         |
+| Databases          | SQLite (WAL Mode), `sqlite-vec`, Qdrant (Active)                                                                     |
+| AI/ML              | Ollama, Google Gemini, Anthropic Claude, OpenRouter, Toxic-BERT, FlashRank, sentence-transformers, Whisper           |
+| Infrastructure     | macOS `launchd`, OrbStack/Docker, distributed compute (remote GPU node)                                              |
+| Practices          | Async programming, queue-based architectures, model-agnostic routing, automated testing, auto-commit version control |
+
+---
+
+## 🏢 Functional Scope
+
+> *This is a single-user, single-node system — not a distributed platform. But it covers a broad surface area of concerns typically split across multiple tools and teams:*
+>
+> **Async message processing** · **Multi-model intent routing** · **Hybrid knowledge retrieval** (vector + graph) · **Real-time log monitoring** · **Continuous behavioral profiling** · **Service lifecycle management**
+>
+> *Built and maintained by a single engineer on consumer hardware.*
 
 ---
 
@@ -274,12 +260,30 @@ workspace/
 
 ---
 
-## 📐 What This Demonstrates Beyond Code
+## 📐 Engineering Philosophy
 
 - **Architectural Decision-Making:** Every major subsystem was redesigned at least once based on production feedback — not theoretical planning.
 - **Constraint-Driven Engineering:** The entire system was optimized to run on a $999 laptop with 8GB RAM. Every design choice was made under real resource pressure.
 - **Production Mindset:** This isn't a demo. It processes real messages, from real users, every day. Uptime, latency, and reliability are measured, not aspirational.
 - **End-to-End Ownership:** One engineer. Full stack. From SQLite schema design to async Python workers to shell-script orchestration to real-time monitoring dashboards.
+
+---
+
+## 👨‍💻 Built By
+
+**Upayan Ghosh** — Fresher software engineer building AI systems on evenings and weekends.
+
+This project was built using AI coding tools (Claude, ChatGPT,Gemini etc) 
+for implementation, with architecture design, system integration, 
+and debugging done by hand. I believe in using every tool available 
+to build things that work.
+
+- GitHub: [@UpayanGhosh](https://github.com/UpayanGhosh)
+- LinkedIn: [https://linkedin.com/in/upayan](https://linkedin.com/in/upayan)
+- Email: [upayan1231@gmail.com](mailto:upayan1231@gmail.com)
+
+**Currently open to:** Freelance AI/chatbot projects, 
+interesting collaborations, and conversations about RAG systems.
 
 ---
 
