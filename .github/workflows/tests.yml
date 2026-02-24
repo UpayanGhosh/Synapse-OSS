@@ -7,8 +7,9 @@ on:
     branches: [ main ]
 
 jobs:
-  smoke-test:
+  test:
     runs-on: macos-latest
+    
     steps:
     - uses: actions/checkout@v4
     
@@ -17,10 +18,14 @@ jobs:
       with:
         python-version: '3.11'
     
-    - name: Install and run smoke tests
+    - name: Install dependencies
       run: |
         python -m venv venv
         source venv/bin/activate
         pip install pytest pytest-asyncio pytest-timeout
+    
+    - name: Run all tests
+      run: |
+        source venv/bin/activate
         cd workspace/tests
-        PYTHONPATH=../../.. pytest -v -m smoke --timeout=60 --tb=short
+        PYTHONPATH=../../.. pytest -v --timeout=120 --tb=short
