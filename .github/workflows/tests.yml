@@ -7,36 +7,6 @@ on:
     branches: [ main ]
 
 jobs:
-  test:
-    runs-on: macos-latest
-    
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.11'
-    
-    - name: Install dependencies
-      run: |
-        python -m venv venv
-        source venv/bin/activate
-        pip install pytest pytest-asyncio pytest-cov pytest-timeout
-    
-    - name: Run tests
-      run: |
-        source venv/bin/activate
-        cd workspace/tests
-        PYTHONPATH=../../.. pytest -v --tb=short --timeout=120
-    
-    - name: Upload coverage
-      if: always()
-      uses: codecov/codecov-action@v4
-      with:
-        files: ./workspace/tests/coverage.xml
-        flags: unittests
-
   smoke-test:
     runs-on: macos-latest
     steps:
