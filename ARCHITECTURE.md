@@ -159,15 +159,15 @@ Three-tier retrieval engine that provides grounded memory context before any LLM
 
 ```mermaid
 graph LR
-    Q[User Query] --> EE[Entity Extraction\nFlashText]
-    EE --> GQ[Graph Query\nSQLite Triples]
-    EE --> VQ[Vector Search\nQdrant]
-    GQ --> MERGE[Score Merge\nsemantic + temporal]
+    Q[User Query] --> EE[Entity Extraction]
+    EE --> GQ[Graph Query]
+    EE --> VQ[Vector Search]
+    GQ --> MERGE[Score Merge]
     VQ --> MERGE
-    MERGE --> FG2{High Confidence\ngt 0.80?}
-    FG2 -->|Yes| FAST[Fast Gate\nReturn top-k]
-    FG2 -->|No|  RR[FlashRank Reranker\nms-marco-TinyBERT]
-    RR --> OUT[Ranked Context\nfor Prompt]
+    MERGE --> FG2{High Confidence > 0.80?}
+    FG2 -->|Yes| FAST[Fast Gate]
+    FG2 -->|No| RR[FlashRank Reranker]
+    RR --> OUT[Ranked Context]
     FAST --> OUT
 ```
 
