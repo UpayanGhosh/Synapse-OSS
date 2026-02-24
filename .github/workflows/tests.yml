@@ -47,8 +47,9 @@ jobs:
       with:
         python-version: '3.11'
     
-    - name: Run smoke tests
+    - name: Install and run smoke tests
       run: |
+        python -m venv venv
         source venv/bin/activate
         pip install pytest pytest-asyncio pytest-timeout
         cd workspace/tests
