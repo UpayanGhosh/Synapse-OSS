@@ -4,107 +4,73 @@
 
 GitHub automatically renders the Mermaid diagrams below. If you are viewing this locally, use a Markdown viewer that supports Mermaid.js, or view it on GitHub.
 
----
-
-## Architecture Diagram
-
-![JARVIS — Project Phoenix Architecture](./architecture_diagram.png)
-
-> *Full interactive diagram with annotations is available in the [Figma file](https://www.figma.com/@upayan). The sections below break down each subsystem in detail.*
-
----
-
 ## High-Level System Map
 
 This diagram illustrates the full end-to-end flow: from user input, through the Async Gateway Pipeline, across the Cognitive Engine (MoA + Dual Cognition), and back out as a response.
 
 ```mermaid
 flowchart LR
-    %% ── INPUTS ──────────────────────────────────────────────
-    subgraph Inputs["① User Inputs"]
-        WA["📱 WhatsApp Webhook\n─────────────\nNode gateway\nPOST /webhook"]
-        CLI["💻 OpenClaw CLI\n─────────────\nDeveloper proxy\ndirect to gateway"]
+    subgraph Inputs[User Inputs]
+        WA[WhatsApp Webhook]
+        CLI[OpenClaw CLI]
     end
 
-    %% ── ASYNC PIPELINE ───────────────────────────────────────
-    subgraph Async["② Async Gateway Pipeline  (WhatsApp only)"]
+    subgraph Async[Async Gateway Pipeline]
         direction TB
-        FG["🛡️ FloodGate\nBatches messages\nover a 3 s window"]
-        DD["🔁 Deduplicator\nDrops duplicates\nwithin 5 min"]
-        Q["📦 Task Queue\nHolds up to\n100 tasks"]
-        W["⚙️ Worker\n2 concurrent\ntasks"]
+        FG[FloodGate]
+        DD[Deduplicator]
+        Q[Task Queue]
+        W[Worker]
         FG --> DD --> Q --> W
     end
 
-    %% ── CORE GATEWAY ─────────────────────────────────────────
-    G(["🚀 Core API Gateway\n──────────────────\nFastAPI / Uvicorn\n:8000"])
+    G[Core API Gateway]
 
-    %% ── CONTEXT ENGINE ───────────────────────────────────────
-    subgraph Brain["③ Context Engine  (bidirectional with Gateway)"]
+    subgraph Brain[Context Engine]
         direction TB
-
-        subgraph SBS["🎭 Persona Engine — Soul-Brain Sync"]
+        subgraph SBS[Soul-Brain Sync]
             direction LR
-            SBS_O["Orchestrator"] --- SBS_P["Profile\nManager"]
-            SBS_O --- SBS_RT["Realtime\nProcessor"] --- SBS_B["Batch\nProcessor"]
-            SBS_O --- SBS_C["Prompt\nCompiler"]
-            SBS_P --- SBS_L["Conversation\nLogger"]
+            SBS_O[Orchestrator] --- SBS_P[Profile Manager]
         end
-
-        subgraph Mem["💾 Cognitive Memory"]
-            direction LR
-            ME["🧠 Memory Engine\nHybrid Retrieval v3"]
-            ME <--> M1["🗃️ SQLite\nGraph DB"]
-            ME <--> M2["🔷 Qdrant\nVector DB"]
-            ME --> RE["🏅 FlashRank\nReranker"]
+        subgraph Mem[Cognitive Memory]
+            ME[Memory Engine]
+            ME <--> M1[SQLite Graph]
+            ME <--> M2[Qdrant Vector]
         end
-
-        subgraph DC["🧩 Dual Cognition"]
-            direction LR
-            DCE["DualCognitionEngine"] --- TS["☣️ LazyToxicScorer\n(deferred tension check)"]
+        subgraph DC[Dual Cognition]
+            DCE[DualCognitionEngine]
         end
     end
 
-    %% ── MIXTURE OF AGENTS ────────────────────────────────────
-    subgraph MoA["④ Mixture of Agents"]
-        direction TB
-        TC{"🚦 Traffic Cop\nIntent Classifier"}
-        LLM1["🟢 Gemini 3 Flash\nCASUAL — everyday chat"]
-        LLM2["💻 The Hacker\nCODING — code & debug"]
-        LLM3["🏛️ The Architect\nANALYSIS — deep planning"]
-        LLM4["🧐 The Philosopher\nREVIEW — critical review"]
-        LLM5["🌶️ The Vault\nSPICY — local model"]
-
-        TC -->|casual| LLM1
-        TC -->|coding| LLM2
-        TC -->|analysis| LLM3
-        TC -->|review| LLM4
-        TC -->|spicy| LLM5
+    subgraph MoA[Mixture of Agents]
+        TC{Traffic Cop}
+        LLM1[Gemini 3 Flash]
+        LLM2[The Hacker]
+        LLM3[The Architect]
+        LLM4[The Philosopher]
+        LLM5[The Vault]
+        TC --> LLM1
+        TC --> LLM2
+        TC --> LLM3
+        TC --> LLM4
+        TC --> LLM5
     end
 
-    %% ── OUTPUT ───────────────────────────────────────────────
-    subgraph Out["⑤ Output"]
-        direction TB
-        AC["✂️ Auto-Continue\nDetects cut-off responses\nand re-requests completion"]
-        FO["📨 Final Output\nBack to WhatsApp\nor CLI caller"]
+    subgraph Out[Output]
+        AC[Auto-Continue]
+        FO[Final Output]
     end
 
-    %% ── CONNECTIONS ──────────────────────────────────────────
-    WA -->|HTTP POST /webhook| FG
-    CLI -->|CLI proxy| G
+    WA --> FG
+    CLI --> G
     W --> G
-
-    G <-->|inject persona context| SBS_O
-    G <-->|semantic + graph query| ME
-    G -->|tension check| DCE
-
-    G -->|classify intent| TC
-
-    LLM1 & LLM2 & LLM3 & LLM4 & LLM5 -->|response + stats| G
-
+    G <--> SBS
+    G <--> ME
+    G --> DCE
+    G --> TC
+    LLM1 & LLM2 & LLM3 & LLM4 & LLM5 --> G
     G --> AC
     G --> FO
-    AC -.->|"re-requests if cut off"| G
 ```
 
 ---
@@ -195,12 +161,12 @@ Three-tier retrieval engine that provides grounded memory context before any LLM
 graph LR
     Q[User Query] --> EE[Entity Extraction\nFlashText]
     EE --> GQ[Graph Query\nSQLite Triples]
-    EE --> VQ[Vector Search\nQdrant + nomic-embed-text]
-    GQ --> MERGE[Score Merge\na=0.7 semantic + b=0.1 temporal]
+    EE --> VQ[Vector Search\nQdrant]
+    GQ --> MERGE[Score Merge\nsemantic + temporal]
     VQ --> MERGE
     MERGE --> FG2{High Confidence\ngt 0.80?}
-    FG2 -->|Yes| FAST[⚡ Fast Gate\nReturn top-k directly]
-    FG2 -->|No|  RR[(🏅 FlashRank Reranker\nms-marco-TinyBERT)]
+    FG2 -->|Yes| FAST[Fast Gate\nReturn top-k]
+    FG2 -->|No|  RR[FlashRank Reranker\nms-marco-TinyBERT]
     RR --> OUT[Ranked Context\nfor Prompt]
     FAST --> OUT
 ```
@@ -230,7 +196,7 @@ The SBS system is responsible for making JARVIS feel like a person, not a chatbo
 
 ```mermaid
 graph TD
-    MSG[Inbound Message] --> RT[Realtime Processor\nSentiment · Language · Mood]
+    MSG[Inbound Message] --> RT[Realtime Processor]
     RT --> LOG[Conversation Logger\nSQLite]
     LOG --> CNT{50 msgs\nor 6h elapsed?}
     CNT -->|Yes| BATCH[Batch Processor\nProfile Rebuild]
@@ -278,11 +244,11 @@ The **Traffic Cop** classifies every user message before routing it to the appro
 
 ```mermaid
 graph TD
-    TC{Traffic Cop\nGemini Flash Classifier} -->|CASUAL|        A[🟢 AG_CASUAL\nGemini 3 Flash\nHigh throughput / free tier]
-    TC -->|CODING|   B[💻 The Hacker\nClaude Sonnet 4.5\nMax logic depth]
-    TC -->|ANALYSIS| C[🏛️ The Architect\nGemini 3 Pro\nLong-context synthesis]
-    TC -->|REVIEW|   D[🧐 The Philosopher\nClaude Opus 4.6\nNuanced critique]
-    TC -->|SPICY session| E[🌶️ The Vault\nStheno v3.2 on Ollama\nZero cloud footprint]
+    TC{Traffic Cop\nGemini Flash Classifier} -->|CASUAL|        A[AG_CASUAL\nGemini 3 Flash]
+    TC -->|CODING|   B[The Hacker\nClaude Sonnet 4.5]
+    TC -->|ANALYSIS| C[The Architect\nGemini 3 Pro]
+    TC -->|REVIEW|   D[The Philosopher\nClaude Opus 4.6]
+    TC -->|SPICY| E[The Vault\nStheno v3.2 on Ollama]
 ```
 
 All cloud models route through the **Antigravity Proxy** (`localhost:8080`) using an OAuth token. The vault (Stheno) connects directly to a Windows PC Ollama instance (`WINDOWS_PC_IP:11434`).
