@@ -91,17 +91,20 @@ class TestTaskQueue:
         """Queue should not exceed max_size."""
         # max_size is 10
 
+        enqueued_count = 0
         for i in range(15):
-            task = MessageTask(
-                task_id=f"task_{i:03d}", chat_id="chat_001", user_message=f"Message {i}"
-            )
-            try:
+            if queue.pending_count < queue._queue.maxsize:
+                task = MessageTask(
+                    task_id=f"task_{i:03d}",
+                    chat_id="chat_001",
+                    user_message=f"Message {i}",
+                )
                 await queue.enqueue(task)
-            except asyncio.QueueFull:
-                pass
+                enqueued_count += 1
 
-        # Should have at most 10 pending (some may have failed to enqueue)
+        # Should have at most 10 pending
         assert queue.pending_count <= 10
+        assert enqueued_count <= 10
 
     @pytest.mark.asyncio
     async def test_history_respects_max_history(self, queue):

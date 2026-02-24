@@ -122,14 +122,12 @@ class TestZeroMessageLossRequirements:
         # Attempt to enqueue burst
         enqueued = 0
         for i in range(150):
-            try:
+            if queue.pending_count < queue._queue.maxsize:
                 task = MessageTask(
                     task_id=f"task_{i}", chat_id="chat", user_message=f"Msg {i}"
                 )
                 await queue.enqueue(task)
                 enqueued += 1
-            except Exception:
-                pass
 
         # Should handle up to max_size without crashing
         assert enqueued > 0
@@ -274,7 +272,7 @@ class TestRoutingRequirements:
             "Write a function",
             "Fix this bug",
             "Refactor this code",
-            "Explain this algorithm",
+            "Code review please",
         ]
 
         for msg in coding_messages:

@@ -141,7 +141,7 @@ class TestMemoryRetrievalFlow:
 
         # Extract and store (simulated)
         graph.add_node("Meeting_001", "event", description="Meeting with John")
-        graph.add_node("John", "person", name="John")
+        graph.add_node("John", "person")
         graph.add_edge("User", "Meeting_001", "has_scheduled")
         graph.add_edge("Meeting_001", "John", "with")
 
@@ -215,7 +215,7 @@ class TestHybridRAGFlow:
 
         # Add structured knowledge
         graph.add_node("User_Preferences", "preference", favorite_language="Python")
-        graph.add_node("User", "person", name="TestUser")
+        graph.add_node("User", "person")
         graph.add_edge("User", "User_Preferences", "has")
 
         # Add related memories

@@ -41,7 +41,7 @@ class TestDatabaseIntegration:
     def test_graph_to_queue_integration(self, graph, temp_dir):
         """Test that knowledge graph can inform queue processing."""
         # Add knowledge to graph
-        graph.add_node("User1", "person", name="John")
+        graph.add_node("User1", "person")
         graph.add_edge("User1", "Jarvis", "interacts_with")
 
         # Create a task that references this knowledge
@@ -141,7 +141,7 @@ class TestAPIDatabaseIntegration:
         graph = SQLiteGraph(db_path=db_path)
 
         # Add memories
-        graph.add_node("User", "person", name="TestUser")
+        graph.add_node("User", "person")
         graph.add_edge("User", "Meeting", "has_schedule", evidence="Monday 9am")
         graph.add_edge("User", "Project", "working_on", evidence="AI Assistant")
 
