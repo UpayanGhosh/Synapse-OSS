@@ -1,20 +1,18 @@
-# 🚀 How to Run Jarvis-OSS
+# 🚀 How to Run Jarvis-OSS (WhatsApp Connected)
 
-This is a beginner-friendly guide to get Jarvis-OSS running on your machine.
+This guide gets you running Jarvis-OSS connected to WhatsApp — chat with your AI assistant from your phone!
 
-> **Running on Windows?** This guide has Windows-specific instructions marked with 🪟.
+> **Running on Windows?** Instructions marked with 🪟
 
 ---
 
 ## 📦 Step 1: Install Required Software
 
 ### 1. Git
-- **What:** Downloads and updates the Jarvis code
 - **Download:** [git-scm.com/downloads](https://git-scm.com/downloads)
-- 🪟 Just click "Next" through the installer — defaults are fine
+- 🪟 Click "Next" through the installer — defaults are fine
 
 ### 2. Python
-- **What:** Runs all the Jarvis logic
 - **Download:** [python.org/downloads](https://www.python.org/downloads/) (version 3.11+)
 - 🪟 **CRITICAL:** Check "Add Python to PATH" on the first screen!
 
@@ -24,30 +22,29 @@ python --version
 ```
 
 ### 3. Docker Desktop
-- **What:** Runs Qdrant (vector memory database)
 - **Download:** [docker.com/products/docker-desktop](https://www.docker.com/products/docker-desktop/)
 - 🪟 Enable WSL 2 or Hyper-V if prompted, restart if needed
 
 ---
 
-## 📂 Step 2: Download & Set Up the Project
+## 📂 Step 2: Set Up the Project
 
 ### 2a. Open a Terminal
 
 | OS | How to open |
 |---|---|
-| 🪟 Windows | Press `Win + X` → **Windows PowerShell** or **Terminal** |
-| 🍎 macOS | Press `Cmd + Space` → type **Terminal** → Enter |
+| 🪟 Windows | Press `Win + X` → **Windows PowerShell** |
+| 🍎 macOS | Press `Cmd + Space` → **Terminal** |
 | 🐧 Linux | Press `Ctrl + Alt + T` |
 
-### 2b. Clone and Enter the Project
+### 2b. Clone the Project
 
 ```bash
 git clone https://github.com/UpayanGhosh/Jarvis-OSS.git
 cd Jarvis-OSS
 ```
 
-### 2c. Create a Virtual Environment
+### 2c. Create Virtual Environment
 
 **macOS / Linux:**
 ```bash
@@ -61,12 +58,12 @@ python -m venv .venv
 . .venv\Scripts\Activate.ps1
 ```
 
-🪟 **Windows Error: "Script execution is disabled"?**
+🪟 **Error: "Script execution is disabled"?**
 ```powershell
 Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 ```
 
-**Success looks like:** Your prompt starts with `(.venv)`
+**Success:** Your prompt shows `(.venv)`
 
 ### 2d. Install Dependencies
 
@@ -76,41 +73,17 @@ pip install -r requirements.txt
 
 ---
 
-## 🐚 Step 3: Install OpenClaw Base
+## 🔑 Step 3: Get Your API Key
 
-Jarvis-OSS is built on OpenClaw. Install it via npm:
-
-```bash
-npm install -g npm@latest
-npm i -g openclaw
-```
-
-Verify:
-```bash
-openclaw --version
-```
+1. Go to [Google AI Studio](https://aistudio.google.com/app/apikey)
+2. Click **"Create API Key"**
+3. Copy the key
 
 ---
 
-## 🚀 Step 4: Start the Memory Database
+## 📱 Step 4: Connect WhatsApp
 
-1. **Open Docker Desktop** and wait for it to fully load (whale icon stops animating)
-2. Run:
-```bash
-docker run -d --name qdrant -p 6333:6333 -p 6334:6334 qdrant/qdrant
-```
-3. Verify:
-```bash
-docker ps
-```
-
-> **Note:** Only run step 2 once. After that, Qdrant starts automatically with Docker.
-
----
-
-## 🔑 Step 5: Set Up Your API Key
-
-### 5a. Create the `.env` File
+### 4a. Create the `.env` File
 
 🪟 **Windows:**
 ```powershell
@@ -122,50 +95,52 @@ Copy-Item .env.example .env
 cp .env.example .env
 ```
 
-### 5b. Get Your Free API Key
+### 4b. Add Your API Key
 
-1. Go to [Google AI Studio](https://aistudio.google.com/app/apikey)
-2. Click **"Create API Key"**
-3. Copy the key
-
-### 5c. Edit the `.env` File
-
-Open in your preferred editor:
 ```bash
-code .env          # VS Code (recommended)
-notepad .env      # Windows Notepad
-nano .env         # Linux terminal
+code .env          # Open in VS Code
 ```
 
-**Add your key:**
-```dotenv
-GEMINI_API_KEY=AIzaSy...your_actual_key_here
+Change this line:
+```
+GEMINI_API_KEY=your_gemini_api_key_here
 ```
 
-**Leave everything else as-is or commented out** — only `GEMINI_API_KEY` is required.
+To:
+```
+GEMINI_API_KEY=AIzaSy...paste_your_key_here
+```
 
-### 5d. Important Rules
+Save and close.
 
-- ✅ No spaces around `=` → `KEY=value`
-- ✅ No `#` at the start of required lines
-- 🪟 **Windows:** Save as `.env`, NOT `.env.txt`
+### 4c. Connect WhatsApp
+
+Run this command and follow the prompts:
+
+```bash
+openclaw onboard
+```
+
+This will:
+1. Generate a QR code
+2. Open WhatsApp on your phone
+3. Scan the QR code with WhatsApp → Settings → Linked Devices
+
+> **No Meta Developer account needed!** Just scan and go.
 
 ---
 
-## 🖥️ Step 6: Run Jarvis
+## 🚀 Step 5: Start Jarvis
 
-### Option A: Interactive Chat (Easiest)
+Make sure **Docker Desktop is running**, then:
 
 ```bash
-cd workspace
-python main.py chat
+openclaw start --workspace /path/to/Jarvis-OSS/workspace
 ```
 
-### Option B: Run Gateway Directly
-
-```bash
-cd workspace
-python -m uvicorn sci_fi_dashboard.api_gateway:app --host 127.0.0.1 --port 8000
+🪟 **Windows example:**
+```powershell
+openclaw start --workspace C:\Users\YourName\Jarvis-OSS\workspace
 ```
 
 **Success looks like:**
@@ -178,54 +153,51 @@ INFO:     Uvicorn running on http://127.0.0.1:8000
 
 ---
 
-## 📱 Step 7: WhatsApp (Optional)
+## 💬 Step 6: Chat on WhatsApp
 
-Want to chat with Jarvis on WhatsApp?
+That's it! Open WhatsApp and message your Jarvis:
 
-```bash
-openclaw onboard
-```
-
-This will walk you through connecting WhatsApp — no Meta Developer account needed on your end.
-
-Then start Jarvis with:
-```bash
-openclaw start --workspace /path/to/Jarvis-OSS/workspace
-```
-
----
-
-## ✅ Final Checklist
-
-Before running, confirm:
-
-- [ ] Docker Desktop is open and running
-- [ ] `.env` file exists in project root
-- [ ] `GEMINI_API_KEY` is set in `.env`
-- [ ] Virtual environment is activated (`(.venv)` in prompt)
-- [ ] Dependencies installed (`pip install -r requirements.txt`)
+1. Open WhatsApp on your phone
+2. Find the "Jarvis" device in **Linked Devices**
+3. Start typing — Jarvis will respond!
 
 ---
 
 ## 🛑 Troubleshooting
-
-### `python is not recognized`
-🪟 Reinstall Python and check "Add to PATH"
-
-### `ModuleNotFoundError`
-Activate venv and reinstall:
-```bash
-pip install -r requirements.txt
-```
 
 ### Docker/Qdrant won't start
 ```bash
 docker start qdrant
 ```
 
-### `GEMINI_API_KEY` error
-Make sure you copied the full key from Google AI Studio — it starts with `AIza...`
+### "No module named 'xyz'"
+Activate venv and reinstall:
+```bash
+pip install -r requirements.txt
+```
+
+### Can't connect WhatsApp
+Run `openclaw onboard` again to regenerate the QR code.
+
+### Jarvis isn't responding
+Check that:
+- Docker Desktop is running
+- The terminal shows "Uvicorn running"
+- Your `GEMINI_API_KEY` is valid
 
 ---
 
-**Still stuck?** Open an issue at [github.com/UpayanGhosh/Jarvis-OSS/issues](https://github.com/UpayanGhosh/Jarvis-OSS/issues)
+## 🔧 Keeping Jarvis Updated
+
+From time to time, update to the latest version:
+
+```bash
+git pull origin main
+pip install -r requirements.txt
+```
+
+Then restart (Ctrl+C to stop, then `openclaw start` again).
+
+---
+
+**Need help?** Open an issue at [github.com/UpayanGhosh/Jarvis-OSS/issues](https://github.com/UpayanGhosh/Jarvis-OSS/issues)
