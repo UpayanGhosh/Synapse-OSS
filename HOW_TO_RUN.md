@@ -140,7 +140,7 @@ You should see a row with `qdrant/qdrant` in the output. If you don't, Docker ma
 
 The `.env` file tells Jarvis your API keys and security tokens. Without it, the gateway **will crash** with an error like:
 ```
-EnvironmentError: OPENCLAW_GATEWAY_TOKEN environment variable is required
+> **Note:** The `OPENCLAW_GATEWAY_TOKEN` is optional for local development. It's only required when exposing the API to external clients.
 ```
 
 ### 5a. Create the `.env` file
@@ -174,7 +174,7 @@ At minimum, you **must** set these two values. Everything else is optional.
 
 | Variable | Required? | What it is | Where to get it |
 |---|---|---|---|
-| `OPENCLAW_GATEWAY_TOKEN` | ✅ **Yes** | A password that protects the API. **You make this up yourself.** | Invent any string, e.g. `my-jarvis-secret-2024` |
+| `OPENCLAW_GATEWAY_TOKEN` | Optional | Only needed if exposing API to external clients | Leave blank or comment out if not needed |
 | `GEMINI_API_KEY` | ✅ **Yes** | The key that lets Jarvis talk to Google's AI models. | Free from [Google AI Studio](https://aistudio.google.com/app/apikey) — click "Create API Key" |
 
 **Here is what your `.env` file should look like after editing (minimum required):**
@@ -182,12 +182,10 @@ At minimum, you **must** set these two values. Everything else is optional.
 ```dotenv
 # --- Required ---
 GEMINI_API_KEY=AIzaSyD_YOUR_ACTUAL_KEY_FROM_GOOGLE
-OPENCLAW_GATEWAY_TOKEN=my-jarvis-secret-2024
 
-# --- Optional (leave as-is if unsure) ---
-OPENROUTER_API_KEY="your_openrouter_api_key_here"
-OPENAI_API_KEY="your_openai_api_key_here"
-GROQ_API_KEY="your_groq_api_key_here"
+# --- Optional ---
+# OPENCLAW_GATEWAY_TOKEN=my-jarvis-secret-2024  # Only for production/external access
+# OPENROUTER_API_KEY="your_openrouter_api_key_here"
 WINDOWS_PC_IP="192.168.1.xxx"
 WHATSAPP_BRIDGE_TOKEN="your_whatsapp_bridge_secret"
 WHATSAPP_CHAT_URL="http://127.0.0.1:8000/chat"
@@ -284,67 +282,7 @@ INFO:     Uvicorn running on http://127.0.0.1:8000
 
 ### ❌ Error: `OPENCLAW_GATEWAY_TOKEN environment variable is required`
 
-This is the most common error. It means the gateway cannot find or read your token. Here's how to fix it step by step:
-
-**1. Check that `.env` exists in the right place:**
-
-🪟 Windows PowerShell:
-```powershell
-# From the Jarvis-OSS root folder:
-Test-Path .env
-```
-
-macOS / Linux:
-```bash
-# From the Jarvis-OSS root folder:
-ls -la .env
-```
-
-If the file doesn't exist, go back to **Step 5a**.
-
-**2. Check that the token is actually set inside the file:**
-
-🪟 Windows PowerShell:
-```powershell
-Select-String "OPENCLAW_GATEWAY_TOKEN" .env
-```
-
-macOS / Linux:
-```bash
-grep "OPENCLAW_GATEWAY_TOKEN" .env
-```
-
-You should see a line like `OPENCLAW_GATEWAY_TOKEN=my-jarvis-secret-2024`. If the line starts with `#`, it's commented out — remove the `#`.
-
-**3. Check that the file isn't secretly named `.env.txt`:**
-
-🪟 Windows PowerShell:
-```powershell
-Get-ChildItem -Force | Where-Object { $_.Name -like ".env*" }
-```
-
-If you see `.env.txt`, rename it:
-```powershell
-Rename-Item .env.txt .env
-```
-
-**4. Last resort — set the variable manually in your terminal session:**
-
-This bypasses the `.env` file entirely. Useful for quick testing.
-
-🪟 Windows PowerShell:
-```powershell
-$env:OPENCLAW_GATEWAY_TOKEN = "my-jarvis-secret-2024"
-$env:GEMINI_API_KEY = "AIzaSy_YOUR_KEY"
-```
-
-macOS / Linux:
-```bash
-export OPENCLAW_GATEWAY_TOKEN="my-jarvis-secret-2024"
-export GEMINI_API_KEY="AIzaSy_YOUR_KEY"
-```
-
-Then re-run the gateway command from Step 6.
+**This error no longer occurs** — the token is now optional for local development. Just make sure `GEMINI_API_KEY` is set in your `.env` file.
 
 ---
 
@@ -402,7 +340,6 @@ Before running the gateway, confirm all of these:
 
 - [ ] **Docker Desktop** is open and running (whale icon is stable).
 - [ ] Your **`.env`** file exists in the root `Jarvis-OSS/` folder.
-- [ ] **`OPENCLAW_GATEWAY_TOKEN`** is set inside `.env` (not commented out with `#`).
 - [ ] **`GEMINI_API_KEY`** is set inside `.env` with a valid key from Google AI Studio.
 - [ ] Your **virtual environment** is activated (you see `(.venv)` in your terminal prompt).
 - [ ] You ran **`pip install -r requirements.txt`** successfully.

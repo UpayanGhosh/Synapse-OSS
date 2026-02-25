@@ -58,10 +58,7 @@ def _extract_cli_send_route(raw_stdout: str) -> str:
     if not isinstance(payload, dict):
         return ""
     return (
-        payload.get("via")
-        or payload.get("delivery")
-        or payload.get("payload", {}).get("via")
-        or ""
+        payload.get("via") or payload.get("delivery") or payload.get("payload", {}).get("via") or ""
     )
 
 
@@ -126,9 +123,7 @@ async def continue_conversation(target: str, messages: List[dict], last_reply: s
     # 2. Call Model (Gemini Flash for speed/cost)
     # We use a larger token limit here since it's async push
     try:
-        continuation = await call_gemini_flash(
-            new_history, temperature=0.7, max_tokens=2000
-        )
+        continuation = await call_gemini_flash(new_history, temperature=0.7, max_tokens=2000)
 
         # 3. Check emptiness
         if not continuation.strip():
@@ -216,9 +211,7 @@ load_env_file(anchor=Path(__file__))
 # We route via localhost:8080 (Antigravity Proxy)
 OPENCLAW_GATEWAY_URL = "http://localhost:8080/v1/messages"
 # Ideally read from openclaw.json, but for now using the known token or env
-OPENCLAW_GATEWAY_TOKEN = os.environ.get("OPENCLAW_GATEWAY_TOKEN")
-if not OPENCLAW_GATEWAY_TOKEN:
-    raise EnvironmentError("OPENCLAW_GATEWAY_TOKEN environment variable is required")
+OPENCLAW_GATEWAY_TOKEN = os.environ.get("OPENCLAW_GATEWAY_TOKEN", "dev-token-local")
 
 # REDIS_URL removed — no Redis dependency
 BRIDGE_DB_PATH = Path(__file__).resolve().with_name("whatsapp_bridge.db")
@@ -388,9 +381,7 @@ async def call_gemini_flash(input_messages, temperature=0.7, max_tokens=500) -> 
     Used for routing and casual chat.
     """
     # Direct pass-through; call_gateway_model handles system prompt extraction
-    return await call_gateway_model(
-        MODEL_CASUAL, input_messages, temperature, max_tokens
-    )
+    return await call_gateway_model(MODEL_CASUAL, input_messages, temperature, max_tokens)
 
 
 async def call_ag_code(messages: list) -> str:
@@ -415,9 +406,7 @@ async def call_ag_oracle(messages: list) -> str:
     print("🏛️ Calling The Architect (Gemini 3 Pro via OAuth)...")
     # But usually better to format cleanly.
     # Re-using logic:
-    return await call_gateway_model(
-        MODEL_ANALYSIS, messages, temperature=0.7, max_tokens=1500
-    )
+    return await call_gateway_model(MODEL_ANALYSIS, messages, temperature=0.7, max_tokens=1500)
 
 
 async def call_ag_review(messages: list) -> str:
@@ -563,9 +552,7 @@ async def persona_chat(
     sbs_orchestrator = get_sbs_for_target(target)
 
     # Log user message here via orchestrator
-    user_log = sbs_orchestrator.on_message(
-        "user", user_msg, request.user_id or "default"
-    )
+    user_log = sbs_orchestrator.on_message("user", user_msg, request.user_id or "default")
     user_msg_id = user_log.get("msg_id")
 
     base_instructions = "You are Jarvis. Follow the persona profile below precisely."
@@ -663,9 +650,7 @@ async def persona_chat(
         print("✂️ DETECTED CUT-OFF! Triggering Auto-Continue...")
         if background_tasks:
             # We must pass the RAW messages (without the user's last msg? No, messages already has it)
-            background_tasks.add_task(
-                continue_conversation, request.user_id, messages, reply
-            )
+            background_tasks.add_task(continue_conversation, request.user_id, messages, reply)
         else:
             print("⚠️ No BackgroundTasks object available. Using asyncio.create_task.")
             asyncio.create_task(continue_conversation(request.user_id, messages, reply))
@@ -1188,12 +1173,8 @@ async def rebuild_personas(request: Request):
 def persona_status():
     """Show current persona profile stats from SBS."""
     stats = {
-        "the_creator": sbs_the_creator.get_profile_summary()
-        if sbs_the_creator
-        else None,
-        "the_partner": sbs_the_partner.get_profile_summary()
-        if sbs_the_partner
-        else None,
+        "the_creator": sbs_the_creator.get_profile_summary() if sbs_the_creator else None,
+        "the_partner": sbs_the_partner.get_profile_summary() if sbs_the_partner else None,
     }
 
     db = get_db_stats()
@@ -1204,12 +1185,8 @@ def persona_status():
 def sbs_status():
     """Show live SBS stats for sci-fi dashboard."""
     stats = {
-        "the_creator": sbs_the_creator.get_profile_summary()
-        if sbs_the_creator
-        else None,
-        "the_partner": sbs_the_partner.get_profile_summary()
-        if sbs_the_partner
-        else None,
+        "the_creator": sbs_the_creator.get_profile_summary() if sbs_the_creator else None,
+        "the_partner": sbs_the_partner.get_profile_summary() if sbs_the_partner else None,
     }
     return {"profiles": stats}
 
@@ -1238,9 +1215,7 @@ def ingest_fact(
 
 
 @app.post("/add")
-async def add_memory(
-    item: MemoryItem, background_tasks: BackgroundTasks, request: Request
-):
+async def add_memory(item: MemoryItem, background_tasks: BackgroundTasks, request: Request):
     """Unstructured memory → LLM → triple extraction → graph."""
     validate_api_key(request)
     print(f"📥 Ingesting: {item.content[:60]}...")
