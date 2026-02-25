@@ -52,7 +52,7 @@ pip install -r requirements.txt
 git clone https://github.com/UpayanGhosh/Jarvis-OSS.git
 cd Jarvis-OSS
 python -m venv .venv
-.venv\Scripts\Activate.ps1
+.venv\Scripts\Activate.bat
 pip install -r requirements.txt
 ```
 
