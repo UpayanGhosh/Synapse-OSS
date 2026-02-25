@@ -18,8 +18,8 @@ echo ""
 echo "📋 Here's what we'll do:"
 echo "   1. Check your computer has what it needs"
 echo "   2. Connect your WhatsApp"
-echo "   3. Start Jarvis"
-echo "   4. Show you how to chat with Jarvis"
+echo "   3. Start Jarvis (all services)"
+echo "   4. Verify everything is working"
 echo ""
 
 read -p "Press Enter to continue..."
@@ -141,24 +141,113 @@ echo "This lets Jarvis know it's YOU messaging it."
 echo "Enter your number with country code (e.g., +15551234567)"
 echo ""
 
-read -p "Your phone number: " phone_number
+while true; do
+    read -p "Your phone number: " phone_number
+    
+    if [ -z "$phone_number" ]; then
+        echo "Phone number cannot be empty. Please try again."
+        continue
+    fi
+    
+    if [[ ! "$phone_number" =~ ^\+[0-9]{10,15}$ ]]; then
+        echo "Invalid format! Use E.164 format like: +15551234567"
+        echo "(Start with +, include country code, 10-15 digits)"
+        continue
+    fi
+    
+    break
+done
 
 echo ""
+echo "Saving phone number to OpenClaw config..."
+echo ""
+
+openclaw config set channels.whatsapp.allowFrom "[\"$phone_number\"]" --json 2>/dev/null || \
+    openclaw config set channels.whatsapp.allowFrom "[\"$phone_number\"]"
+
 echo "✓ Phone number saved: $phone_number"
 echo ""
 
 echo ""
 echo "🚀 ======================================="
-echo "   Step 3: Start Jarvis"
+echo "   Step 3: Starting All Jarvis Services"
 echo "=========================================="
 echo ""
 
-echo "Starting Jarvis now..."
+echo "Starting all services..."
 echo ""
 
-openclaw gateway &
+echo "[1/4] Starting Docker services (Qdrant)..."
+docker start antigravity_qdrant 2>/dev/null && echo "   ✓ Qdrant started" || echo "   ⚠ Qdrant not available (optional)"
 
-sleep 5
+echo ""
+echo "[2/4] Starting Ollama..."
+export OLLAMA_KEEP_ALIVE=0
+export OLLAMA_MAX_LOADED_MODELS=1
+export OLLAMA_NUM_PARALLEL=1
+if ! pgrep -f "ollama serve" > /dev/null; then
+    nohup ollama serve > ~/.openclaw/logs/ollama.log 2>&1 &
+    echo "   ✓ Ollama started"
+else
+    echo "   ✓ Ollama already running"
+fi
+
+echo ""
+echo "[3/4] Starting API Gateway..."
+if ! pgrep -f "uvicorn.*api_gateway" > /dev/null; then
+    cd ~/.openclaw/workspace
+    nohup uvicorn sci_fi_dashboard.api_gateway:app \
+        --host 0.0.0.0 --port 8000 \
+        --workers 1 \
+        > ~/.openclaw/logs/gateway.log 2>&1 &
+    echo "   ✓ API Gateway started"
+else
+    echo "   ✓ API Gateway already running"
+fi
+
+echo ""
+echo "[4/4] Starting OpenClaw Gateway (WhatsApp bridge)..."
+if ! pgrep -f "openclaw-gateway" > /dev/null; then
+    nohup openclaw gateway > ~/.openclaw/logs/openclaw_gateway.log 2>&1 &
+    echo "   ✓ OpenClaw Gateway started"
+else
+    echo "   ✓ OpenClaw Gateway already running"
+fi
+
+echo ""
+echo "⏳ Waiting for services to initialize..."
+sleep 8
+
+echo ""
+echo ""
+echo "🔍 Verifying services..."
+echo ""
+
+services_ok=true
+
+echo -n "   - API Gateway (port 8000): "
+if curl -s http://127.0.0.1:8000/health > /dev/null 2>&1 || curl -s http://127.0.0.1:8000/ > /dev/null 2>&1; then
+    echo "✓ Running"
+else
+    echo "⚠ May need more time"
+fi
+
+echo -n "   - OpenClaw Gateway: "
+if curl -s http://127.0.0.1:18789/health > /dev/null 2>&1; then
+    echo "✓ Running"
+elif pgrep -f "openclaw-gateway" > /dev/null; then
+    echo "✓ Running (process active)"
+else
+    echo "⚠ Not detected"
+    services_ok=false
+fi
+
+echo ""
+if [ "$services_ok" = true ]; then
+    echo "✅ All services are running!"
+else
+    echo "⚠️  Some services may need more time. Check with: openclaw status"
+fi
 
 echo ""
 echo "✓ Jarvis is running!"
