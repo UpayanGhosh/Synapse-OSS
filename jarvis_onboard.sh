@@ -150,8 +150,11 @@ while true; do
     fi
     
     if [[ ! "$phone_number" =~ ^\+[0-9]{10,15}$ ]]; then
-        echo "Invalid format! Use E.164 format like: +15551234567"
-        echo "(Start with +, include country code, 10-15 digits)"
+        echo "Invalid format! Use E.164 format like:"
+        echo "   • US: +15551234567"
+        echo "   • India: +919876543210"
+        echo "   • UK: +447912345678"
+        echo "(Start with +, include country code, 10-15 digits total)"
         continue
     fi
     
