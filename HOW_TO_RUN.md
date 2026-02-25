@@ -67,10 +67,10 @@ pip install -r requirements.txt
 
 Jarvis-OSS extends OpenClaw. You need the base installation:
 
-### Option A: Using pip (Easiest)
+### Option A: Using npm (Easiest)
 
 ```bash
-pip install openclaw
+npm i -g openclaw
 ```
 
 ### Option B: From Source
