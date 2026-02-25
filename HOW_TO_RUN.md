@@ -70,6 +70,7 @@ Jarvis-OSS extends OpenClaw. You need the base installation:
 ### Option A: Using npm (Easiest)
 
 ```bash
+npm install -g npm@latest
 npm i -g openclaw
 ```
 
