@@ -1,0 +1,63 @@
+#!/usr/bin/env pwsh
+#
+# Jarvis Start Script for Windows (PowerShell)
+#
+# This script starts all the necessary background services for Jarvis to run.
+# It assumes you have already run the 'jarvis_onboard.ps1' script at least once.
+
+Write-Host "🚀 Starting Jarvis services..."
+Write-Host ""
+
+$projectRoot = $PSScriptRoot
+$venvPython = Join-Path $projectRoot ".venv\Scripts\python.exe"
+$workspaceDir = Join-Path $projectRoot "workspace"
+
+# 1. Start Docker Container
+Write-Host -n "[1/4] Starting Qdrant..."
+docker start antigravity_qdrant 2>&1 | Out-Null
+if ($LASTEXITCODE -eq 0) {
+    Write-Host "✓ Started."
+} else {
+    Write-Host "✓ Already running or not found."
+}
+
+# 2. Start Ollama
+Write-Host -n "[2/4] Starting Ollama..."
+$ollama_process = Get-Process -Name "ollama" -ErrorAction SilentlyContinue
+if (-not $ollama_process) {
+    Start-Process -FilePath "ollama" -ArgumentList "serve" -WindowStyle Hidden
+    Write-Host "✓ Started."
+} else {
+    Write-Host "✓ Already running."
+}
+
+# 3. Start API Gateway
+Write-Host -n "[3/4] Starting API Gateway..."
+$gateway_running = (Get-NetTCPConnection -LocalPort 8000 -State Listen -ErrorAction SilentlyContinue)
+if (-not $gateway_running) {
+    if (-not (Test-Path $venvPython)) {
+         Write-Host "✗ ERROR: Could not find Python virtual environment. Cannot start gateway." -ForegroundColor Red
+    } else {
+        $uvicornArgs = "-m uvicorn sci_fi_dashboard.api_gateway:app --host 0.0.0.0 --port 8000 --workers 1"
+        Push-Location -Path $workspaceDir
+        Start-Process -FilePath $venvPython -ArgumentList $uvicornArgs -WindowStyle Hidden
+        Pop-Location
+        Write-Host "✓ Started."
+    }
+} else {
+    Write-Host "✓ Already running."
+}
+
+# 4. Start OpenClaw Gateway
+Write-Host -n "[4/4] Starting OpenClaw Gateway..."
+$oc_gateway_running = (Get-NetTCPConnection -LocalPort 18789 -State Listen -ErrorAction SilentlyContinue)
+if (-not $oc_gateway_running) {
+    Start-Process -FilePath "openclaw" -ArgumentList "gateway" -WindowStyle Hidden
+    Write-Host "✓ Started."
+} else {
+    Write-Host "✓ Already running."
+}
+
+Write-Host ""
+Write-Host "✅ Jarvis is starting up. It may take a moment."
+Write-Host "You can now message Jarvis on WhatsApp."

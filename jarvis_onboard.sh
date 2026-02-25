@@ -233,6 +233,7 @@ if curl -s http://127.0.0.1:8000/health > /dev/null 2>&1 || curl -s http://127.0
     echo "✓ Running"
 else
     echo "⚠ May need more time"
+    services_ok=false
 fi
 
 echo -n "   - OpenClaw Gateway: "
