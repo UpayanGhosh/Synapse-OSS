@@ -1,0 +1,40 @@
+# ============================================================
+# Jarvis-OSS — Core Dependencies
+# Install with: pip install -r requirements.txt
+# ============================================================
+
+# --- Web Framework & Server ---
+fastapi>=0.104.0
+uvicorn>=0.24.0
+httpx>=0.25.0
+pydantic>=2.5.0
+
+# --- System Monitoring ---
+psutil>=5.9.0
+
+# --- Terminal UI ---
+rich>=13.0.0
+
+# --- Database & Vector Search ---
+sqlite-vec>=0.1.1
+
+# --- Embeddings & NLP ---
+ollama>=0.1.0                    # Local LLM & embeddings (Ollama Python client)
+sentence-transformers>=2.2.0     # Fallback embedding model (all-MiniLM-L6-v2)
+flashtext>=2.7                   # Fast keyword extraction (EntityGate)
+flashrank>=0.2.0                 # Reranking retrieved memories
+
+# --- ML / Toxicity Scoring ---
+torch>=2.0.0                     # PyTorch (Toxic-BERT inference)
+transformers>=4.35.0             # Hugging Face Transformers (Toxic-BERT)
+
+# --- Vector Database (Qdrant) ---
+qdrant-client>=1.6.0
+
+# --- Web Scraping (Optional) ---
+# crawl4ai>=0.2.0               # Uncomment if using /browse endpoint
+
+# --- Google APIs (Optional — Gmail/Calendar integration) ---
+# google-auth>=2.23.0
+# google-auth-oauthlib>=1.1.0
+# google-api-python-client>=2.100.0

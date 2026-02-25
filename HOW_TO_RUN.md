@@ -60,7 +60,6 @@ source .venv/bin/activate
 3. Install dependencies:
 ```bash
 pip install -r requirements.txt
-# Make sure to install FastAPI, uvicorn, httpx, and any other dependencies listed in the main scripts.
 ```
 
 ## 2A. Getting Free API Keys

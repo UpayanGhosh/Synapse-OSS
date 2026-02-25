@@ -30,6 +30,7 @@ db/*.gz
 
 # Large Data Files
 *.txt
+!requirements.txt
 *.json
 *.bak
 *.gz
