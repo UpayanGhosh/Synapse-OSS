@@ -1,348 +1,435 @@
 # 🚀 How to Run Jarvis-OSS
 
-This repository is a deeply customized, modular RAG system built on top of the **OpenClaw** platform. For a high-level overview, see [README.md](README.md).
+This repository is a deeply customized, modular RAG system built on top of the **OpenClaw** platform. This guide is designed to be beginner-friendly, even if you've never used a terminal before.
+
+> **Running on Windows?** This guide has Windows-specific instructions at every step. Look for the 🪟 icon.
 
 ---
 
 ## 📦 Step 1: Install Required Software
 
-Don't worry if you're new to this! Here's what you need.
+You need **three** programs installed before anything else.
 
-### System Requirements
+### 1. Git (Code Downloader)
+*   **What it does:** Downloads and updates the Jarvis-OSS code.
+*   **Get it:** [Download for Windows/Mac/Linux](https://git-scm.com/downloads)
+*   🪟 **Windows Tip:** During installation, just keep clicking "Next" — the default settings are fine.
 
-| Requirement | Minimum | Recommended |
-|------------|---------|-------------|
-| **RAM** | 8 GB | 16 GB |
-| **Storage** | 10 GB free | 20 GB free |
-| **OS** | macOS 10.15+, Windows 10+, Ubuntu 18.04+ | macOS 12+, Windows 11, Ubuntu 22.04+ |
+### 2. Python (The Engine)
+*   **What it does:** Runs all the Jarvis logic.
+*   **Get it:** [Download Python 3.11+](https://www.python.org/downloads/)
+*   🪟 **⚠️ CRITICAL WINDOWS STEP:** During installation, you **MUST** check the box that says **"Add Python to PATH"** on the very first screen. If you miss this, nothing else in this guide will work.
+    
+    ![Python PATH checkbox](https://docs.python.org/3/_images/win_installer.png)
 
-### What You'll Need
+*   **Verify installation:** After installation, open a new terminal and type:
+    ```bash
+    python --version
+    ```
+    You should see something like `Python 3.11.x` or higher. If you see an error, Python was not added to PATH — uninstall and reinstall with the checkbox checked.
 
-| Tool | What It Does | How to Get It |
-|------|-------------|---------------|
-| **Git** | Downloads the project code | [Download](https://git-scm.com/downloads) |
-| **Python** | Runs the program | [Download](https://www.python.org/downloads/) |
-| **Docker** | Runs Qdrant (memory) | [Download](https://www.docker.com/products/docker-desktop/) |
-
-> **💡 Windows Tip:** During Python installation, **check "Add Python to PATH"**!
-
-### Verify Installation
-
-```bash
-# macOS/Linux
-git --version && python3 --version && docker --version
-
-# Windows PowerShell
-git --version; python --version; docker --version
-```
+### 3. Docker (Memory Storage)
+*   **What it does:** Runs Qdrant, which is Jarvis's "long-term memory" database.
+*   **Get it:** [Download Docker Desktop](https://www.docker.com/products/docker-desktop/)
+*   Once installed, **open Docker Desktop** and wait for it to fully start (the whale icon in your taskbar will stop animating when ready).
+*   🪟 **Windows Note:** Docker Desktop may ask you to enable WSL 2 or Hyper-V. Follow the prompts and restart your computer if asked.
 
 ---
 
-## 📂 Step 2: Clone & Set Up Jarvis-OSS
+## 📂 Step 2: Download & Set Up the Project
+
+### 2a. Open a Terminal
+
+| OS | How to open |
+|---|---|
+| 🪟 **Windows** | Press `Win + X`, then click **"Windows PowerShell"** or **"Terminal"** |
+| 🍎 **macOS** | Press `Cmd + Space`, type **Terminal**, press Enter |
+| 🐧 **Linux** | Press `Ctrl + Alt + T` |
+
+### 2b. Clone the Code
+
+Type these commands one at a time, pressing **Enter** after each:
 
 ```bash
-# macOS/Linux
 git clone https://github.com/UpayanGhosh/Jarvis-OSS.git
 cd Jarvis-OSS
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-
-# Windows PowerShell
-git clone https://github.com/UpayanGhosh/Jarvis-OSS.git
-cd Jarvis-OSS
-python -m venv .venv
-.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
 ```
 
-> **⚠️ Windows:** If you get a script error on `Activate.ps1`, run this first:
+### 2c. Create a Virtual Environment
+
+A virtual environment is like a clean sandbox so Jarvis's libraries don't conflict with anything else on your computer.
+
+**macOS / Linux:**
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+```
+
+🪟 **Windows PowerShell:**
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+```
+
+> 🪟 **Windows Error: "Script execution is disabled"?**  
+> This is a common Windows security setting. Run this command **once** to fix it, then try the activate command again:
 > ```powershell
 > Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 > ```
+> Alternatively, use the `.bat` version instead:
+> ```cmd
+> .\.venv\Scripts\activate.bat
+> ```
+
+**How to know it worked:** Your terminal prompt will now start with `(.venv)` — for example:
+```
+(.venv) C:\Users\YourName\Jarvis-OSS>
+```
+
+### 2d. Install Dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+This may take 2–5 minutes. Wait for it to finish completely.
 
 ---
 
-## 🐚 Step 3: Install OpenClaw
+## 🐚 Step 3: Install OpenClaw Base
 
-Jarvis-OSS extends OpenClaw. You need the base installation:
-
-### Option A: Using pip (Easiest)
+Jarvis-OSS is a "supercharged" version of OpenClaw, so you need the base tool first:
 
 ```bash
 pip install openclaw
 ```
 
-### Option B: From Source
-
-```bash
-# macOS/Linux
-git clone https://github.com/openclaw/openclaw.git ~/openclaw
-cd ~/openclaw
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e .
-
-# Windows PowerShell
-git clone https://github.com/openclaw/openclaw.git $env:USERPROFILE\openclaw
-cd $env:USERPROFILE\openclaw
-python -m venv .venv
-.venv\Scripts\Activate.ps1
-pip install -e .
-```
-
-### Verify
-
+Verify it works:
 ```bash
 openclaw --version
 ```
 
+You should see a version number. If you see an error, make sure your virtual environment is activated (see Step 2c).
+
 ---
 
-## 🚀 Step 4: Set Up Qdrant (Vector Database)
+## 🚀 Step 4: Start the Memory Database (Qdrant)
 
-Qdrant stores the "long-term memory" for your Jarvis.
-
-### Option A: Docker (Recommended)
+1.  Make sure **Docker Desktop** is open and running.
+2.  In your terminal, run:
 
 ```bash
-# macOS/Linux & Windows
 docker run -d --name qdrant -p 6333:6333 -p 6334:6334 qdrant/qdrant
 ```
 
-Verify: `docker ps` should show qdrant running.
-
-### Option B: Native (Linux/macOS)
-
+3.  Verify it's running:
 ```bash
-# macOS (Apple Silicon - M1/M2/M3/M4)
-curl -LO https://github.com/qdrant/qdrant/releases/latest/download/qdrant-aarch64-apple-darwin.tar.gz
-tar -xzf qdrant-aarch64-apple-darwin.tar.gz
-./qdrant
-
-# macOS (Intel)
-curl -LO https://github.com/qdrant/qdrant/releases/latest/download/qdrant-x86_64-apple-darwin.tar.gz
-tar -xzf qdrant-x86_64-apple-darwin.tar.gz
-./qdrant
-
-# Linux
-curl -LO https://github.com/qdrant/qdrant/releases/latest/download/qdrant-x86_64-unknown-linux-gnu.tar.gz
-tar -xzf qdrant-x86_64-unknown-linux-gnu.tar.gz
-./qdrant
+docker ps
 ```
+You should see a row with `qdrant/qdrant` in the output. If you don't, Docker may not be fully started — wait a moment and try again.
 
-> **Note:** If Qdrant isn't running, you'll see a warning but the system will still work (with limited features).
+> **Note:** You only need to run the `docker run` command once. After that, Qdrant will start automatically when Docker Desktop opens. If it doesn't, run: `docker start qdrant`
 
 ---
 
-## 🔑 Step 5: Get API Keys & Configure
+## 🔑 Step 5: Set Up the `.env` File (Secret Keys)
 
-You need at least one AI API key. Here are free options:
+> **⚠️ This is the #1 place where people get stuck.** Read every line carefully.
 
-### Google Gemini (Recommended - Easiest Free Key)
+The `.env` file tells Jarvis your API keys and security tokens. Without it, the gateway **will crash** with an error like:
+```
+EnvironmentError: OPENCLAW_GATEWAY_TOKEN environment variable is required
+```
 
-1. Go to [https://aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey)
-2. Click "Get API Key" → Create new project
-3. Copy the key (starts with `AIza...`)
-4. Free: 15 requests/min, 1,500 tokens/min
+### 5a. Create the `.env` file
 
-### Groq (Fastest Free)
+You need to copy the example template to create your actual `.env` file.
 
-1. Go to [https://console.groq.com](https://console.groq.com)
-2. Sign up → API Keys → Create Key
-3. Copy the key (starts with `gsk_...`)
-4. Free: Very high limits, extremely fast
+🪟 **Windows PowerShell:**
+```powershell
+Copy-Item .env.example .env
+```
 
-### Configure Your .env File
-
-Make sure you're inside the Jarvis-OSS folder, then:
-
+**macOS / Linux:**
 ```bash
-# macOS/Linux
 cp .env.example .env
-
-# Windows PowerShell
-copy .env.example .env
 ```
 
-Edit `.env` and add your key:
+### 5b. Open and edit the `.env` file
 
+Open the `.env` file in any text editor:
+
+| Editor | How to open |
+|---|---|
+| **VS Code** (recommended) | Type `code .env` in the terminal |
+| 🪟 **Notepad** (Windows) | Type `notepad .env` in PowerShell |
+| 🍎 **TextEdit** (macOS) | Type `open -a TextEdit .env` in terminal |
+| **nano** (Linux/macOS) | Type `nano .env` in terminal |
+
+### 5c. Fill in the **required** values
+
+At minimum, you **must** set these two values. Everything else is optional.
+
+| Variable | Required? | What it is | Where to get it |
+|---|---|---|---|
+| `OPENCLAW_GATEWAY_TOKEN` | ✅ **Yes** | A password that protects the API. **You make this up yourself.** | Invent any string, e.g. `my-jarvis-secret-2024` |
+| `GEMINI_API_KEY` | ✅ **Yes** | The key that lets Jarvis talk to Google's AI models. | Free from [Google AI Studio](https://aistudio.google.com/app/apikey) — click "Create API Key" |
+
+**Here is what your `.env` file should look like after editing (minimum required):**
+
+```dotenv
+# --- Required ---
+GEMINI_API_KEY=AIzaSyD_YOUR_ACTUAL_KEY_FROM_GOOGLE
+OPENCLAW_GATEWAY_TOKEN=my-jarvis-secret-2024
+
+# --- Optional (leave as-is if unsure) ---
+OPENROUTER_API_KEY="your_openrouter_api_key_here"
+OPENAI_API_KEY="your_openai_api_key_here"
+GROQ_API_KEY="your_groq_api_key_here"
+WINDOWS_PC_IP="192.168.1.xxx"
+WHATSAPP_BRIDGE_TOKEN="your_whatsapp_bridge_secret"
+WHATSAPP_CHAT_URL="http://127.0.0.1:8000/chat"
+MAC_APP_SESSION_TYPE="safe"
+```
+
+### 5d. Important rules for the `.env` file
+
+1.  **No spaces around the `=` sign.**  
+    ✅ `OPENCLAW_GATEWAY_TOKEN=my-secret`  
+    ❌ `OPENCLAW_GATEWAY_TOKEN = my-secret`
+
+2.  **No `#` at the start of the line** — that makes it a comment (ignored).  
+    ✅ `OPENCLAW_GATEWAY_TOKEN=my-secret`  
+    ❌ `# OPENCLAW_GATEWAY_TOKEN=my-secret`
+
+3.  **Quotes are optional.** Both of these work:  
+    ✅ `OPENCLAW_GATEWAY_TOKEN=my-secret`  
+    ✅ `OPENCLAW_GATEWAY_TOKEN="my-secret"`
+
+4.  🪟 **Windows Notepad warning:** Make sure the file is saved as `.env` and NOT `.env.txt`. Notepad sometimes adds `.txt` automatically. To avoid this:
+    - In the "Save As" dialog, change "Save as type" to **"All Files (\*.\*)"**
+    - Or use VS Code instead (recommended)
+
+### 5e. Where should `.env` live?
+
+The `.env` file should be placed in the **root of the project** (the `Jarvis-OSS` folder):
+
+```
+Jarvis-OSS/               ← .env goes HERE
+├── .env                   ← ✅ This file
+├── .env.example
+├── workspace/
+│   ├── main.py
+│   └── sci_fi_dashboard/
+│       └── api_gateway.py
+└── ...
+```
+
+The system automatically searches for it in the project root first, then in the `workspace/` folder. You do **not** need to be in any specific directory for it to be found.
+
+---
+
+## 🖥️ Step 6: Start the Jarvis Gateway
+
+The Gateway is the "Brain" server that processes all messages.
+
+### Option A: Run via the CLI (Recommended)
+
+From the **project root** (`Jarvis-OSS/` folder):
+
+**macOS / Linux:**
 ```bash
-GEMINI_API_KEY=AIza...   # Your Google key
-# OR
-GROQ_API_KEY=gsk_...    # Your Groq key
-
-# Required: Set any random string for authentication
-OPENCLAW_GATEWAY_TOKEN=my-secret-token-12345
+cd workspace
+python3 -m uvicorn sci_fi_dashboard.api_gateway:app --host 127.0.0.1 --port 8000
 ```
 
-> **💡 Important:** After editing `.env`, you must restart the gateway for changes to take effect.
+🪟 **Windows PowerShell:**
+```powershell
+cd workspace
+python -m uvicorn sci_fi_dashboard.api_gateway:app --host 127.0.0.1 --port 8000
+```
 
----
+### Option B: Run the interactive chat directly
 
-## 🖥️ Step 6: Start Jarvis Gateway
-
+**macOS / Linux:**
 ```bash
-# macOS/Linux
-cd Jarvis-OSS
-source .venv/bin/activate
-cd workspace/sci_fi_dashboard
-python3 api_gateway.py
-
-# Windows PowerShell
-cd Jarvis-OSS
-.venv\Scripts\Activate.ps1
-cd workspace\sci_fi_dashboard
-python api_gateway.py
+cd workspace
+python3 main.py chat
 ```
 
-If successful, you'll see:
+🪟 **Windows PowerShell:**
+```powershell
+cd workspace
+python main.py chat
 ```
-✅ MemoryEngine initialized
-✅ Gateway running on http://localhost:8000
+
+This will start the gateway server in the background and open an interactive chat prompt.
+
+### What "success" looks like
+
+When the server starts correctly, you'll see output like:
+```
+🌍 Loading .env from /path/to/Jarvis-OSS/.env
+🤖 LLM Architecture (OAuth): 
+   Casual: gemini-3-flash
+   ...
+INFO:     Uvicorn running on http://127.0.0.1:8000
 ```
 
 ---
 
-## 📱 Step 7: WhatsApp Setup
+## 🛑 Troubleshooting
 
-To chat with Jarvis via WhatsApp, you need to configure it.
+### ❌ Error: `OPENCLAW_GATEWAY_TOKEN environment variable is required`
 
-### 1. Run the Onboard Wizard (FIRST!)
+This is the most common error. It means the gateway cannot find or read your token. Here's how to fix it step by step:
 
+**1. Check that `.env` exists in the right place:**
+
+🪟 Windows PowerShell:
+```powershell
+# From the Jarvis-OSS root folder:
+Test-Path .env
+```
+
+macOS / Linux:
 ```bash
-openclaw onboard
+# From the Jarvis-OSS root folder:
+ls -la .env
 ```
 
-This will guide you through:
-- Setting up your OpenClaw account
-- Configuring WhatsApp (you'll need Meta Developer credentials)
-- Setting up channels
+If the file doesn't exist, go back to **Step 5a**.
 
-### 2. What You'll Need from Meta
+**2. Check that the token is actually set inside the file:**
 
-During onboard, you'll be asked for WhatsApp credentials. Get them here:
+🪟 Windows PowerShell:
+```powershell
+Select-String "OPENCLAW_GATEWAY_TOKEN" .env
+```
 
-1. Go to https://developers.facebook.com/
-2. Create an app → select "WhatsApp"
-3. Get from the dashboard:
-   - Phone Number ID
-   - WhatsApp Business Account ID
-   - App Secret
-   - Access Token
-
-### 3. Important: Skip the Gateway!
-
-When running `openclaw onboard`:
-- When asked about starting gateway: **Choose NO** ⭐
-- When asked about daemon: **Choose NO**
-
-Why? Because your Jarvis gateway already runs on port 8000!
-
-### 4. Start OpenClaw (AFTER onboard)
-
+macOS / Linux:
 ```bash
-# macOS/Linux
-openclaw start --workspace ~/Jarvis-OSS/workspace
-
-# Windows PowerShell
-openclaw start --workspace C:\Users\YourName\Jarvis-OSS\workspace
+grep "OPENCLAW_GATEWAY_TOKEN" .env
 ```
 
-### 5. Connect Your Phone
+You should see a line like `OPENCLAW_GATEWAY_TOKEN=my-jarvis-secret-2024`. If the line starts with `#`, it's commented out — remove the `#`.
 
-1. Add a test phone number in Meta Developer Portal
-2. You'll get a message on WhatsApp - reply "join" to authorize
-3. Start chatting!
+**3. Check that the file isn't secretly named `.env.txt`:**
 
----
+🪟 Windows PowerShell:
+```powershell
+Get-ChildItem -Force | Where-Object { $_.Name -like ".env*" }
+```
 
-## ⚠️ Port Conflict Warning
+If you see `.env.txt`, rename it:
+```powershell
+Rename-Item .env.txt .env
+```
 
-| Port | What Uses It |
-|------|-------------|
-| 8000 | Jarvis-OSS api_gateway.py (YOUR gateway) |
-| 8000 | OpenClaw default gateway |
+**4. Last resort — set the variable manually in your terminal session:**
 
-**Never run both on the same port!**
+This bypasses the `.env` file entirely. Useful for quick testing.
 
----
+🪟 Windows PowerShell:
+```powershell
+$env:OPENCLAW_GATEWAY_TOKEN = "my-jarvis-secret-2024"
+$env:GEMINI_API_KEY = "AIzaSy_YOUR_KEY"
+```
 
-## 📖 Glossary
+macOS / Linux:
+```bash
+export OPENCLAW_GATEWAY_TOKEN="my-jarvis-secret-2024"
+export GEMINI_API_KEY="AIzaSy_YOUR_KEY"
+```
 
-| Term | Meaning |
-|------|---------|
-| **Terminal** | Text-based way to talk to your computer |
-| **.venv** | Isolated space for this project (won't mess up other Python projects) |
-| **Qdrant** | Database for long-term memory (vector embeddings) |
-| **memory.db** | Auto-created database file - you don't need to create it! |
-| **API Key** | Secret password to talk to AI services (Gemini, Claude, etc.) |
-
----
-
-## 💻 Windows-Specific Notes
-
-### Common Issues
-
-| Error | Solution |
-|-------|----------|
-| `python not recognized` | Add Python to PATH or use `py` |
-| `docker not found` | Install Docker Desktop |
-| `Permission denied` | Run PowerShell as Administrator |
-
-### Command Reference
-
-| macOS/Linux | Windows |
-|-------------|---------|
-| `python3` | `python` |
-| `source .venv/bin/activate` | `.venv\Scripts\Activate.ps1` |
-| `cp a b` | `copy a b` |
-| `curl` | `curl.exe` |
+Then re-run the gateway command from Step 6.
 
 ---
 
-## ✅ Quick Checklist
+### ❌ Error: `ModuleNotFoundError: No module named 'xyz'`
 
-**In order:**
+You forgot to activate the virtual environment or install dependencies. Run:
+```bash
+# Activate venv first (see Step 2c), then:
+pip install -r requirements.txt
+```
 
-1. [ ] Git, Python, Docker installed
-2. [ ] Jarvis-OSS cloned
-3. [ ] Virtual environment created and dependencies installed
-4. [ ] OpenClaw installed (`pip install openclaw`)
-5. [ ] `.env` file created with API key
-6. [ ] `OPENCLAW_GATEWAY_TOKEN` set in `.env`
-7. [ ] Qdrant running (`docker ps` shows qdrant)
-8. [ ] Jarvis gateway started (`python3 api_gateway.py`)
-9. [ ] `openclaw onboard` completed (configures WhatsApp)
-10. [ ] `openclaw start --workspace ...` started
+### ❌ Error: `python is not recognized`
 
----
+🪟 **Windows:** You forgot to check "Add Python to PATH" during installation. Uninstall Python and reinstall with that checkbox checked. See Step 1.
 
-## ❓ FAQ
+### ❌ Error: `Script execution is disabled`
 
-**Q: Do I need to know programming?**
-> A: No! Just follow the steps. Programming knowledge not required.
+🪟 **Windows PowerShell only.** Run this once:
+```powershell
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+```
 
-**Q: How much does it cost?**
-> A: Software is free. API keys may cost money, but this guide shows free options.
+### ❌ Docker/Qdrant won't start
 
-**Q: How long to set up?**
-> A: About 30-60 minutes first time.
-
-**Q: What if something goes wrong?**
-> 1. Check Docker is running (green icon in taskbar)
-> 2. Check Qdrant: `docker ps`
-> 3. Check .env has correct API keys
-> 4. Check error messages in terminal
+1.  Make sure **Docker Desktop** is open and fully loaded (whale icon is stable).
+2.  If you've run `docker run` before and get a "name already in use" error:
+    ```bash
+    docker start qdrant
+    ```
 
 ---
 
-## Need Help?
+## 📱 Step 7: WhatsApp Setup (Optional)
 
-- **GitHub Issues:** https://github.com/UpayanGhosh/Jarvis-OSS/issues
-- **Check logs:** Look at terminal output for error messages
-- **Restart:** Often fixes issues: restart Docker, restart gateway
+To talk to Jarvis on WhatsApp:
+
+1.  **Configure WhatsApp:** Run `openclaw onboard` and follow the prompts. You'll need a [Meta Developer](https://developers.facebook.com/) account.
+2.  **Start the link:**
+    
+    macOS / Linux:
+    ```bash
+    openclaw start --workspace /path/to/your/Jarvis-OSS/workspace
+    ```
+    
+    🪟 Windows PowerShell:
+    ```powershell
+    openclaw start --workspace C:\Users\YourName\Jarvis-OSS\workspace
+    ```
 
 ---
 
-**Happy chatting! 🤖**
+## ✅ Final Checklist
+
+Before running the gateway, confirm all of these:
+
+- [ ] **Docker Desktop** is open and running (whale icon is stable).
+- [ ] Your **`.env`** file exists in the root `Jarvis-OSS/` folder.
+- [ ] **`OPENCLAW_GATEWAY_TOKEN`** is set inside `.env` (not commented out with `#`).
+- [ ] **`GEMINI_API_KEY`** is set inside `.env` with a valid key from Google AI Studio.
+- [ ] Your **virtual environment** is activated (you see `(.venv)` in your terminal prompt).
+- [ ] You ran **`pip install -r requirements.txt`** successfully.
+
+---
+
+## 📊 Project Folder Structure (Quick Reference)
+
+```
+Jarvis-OSS/
+├── .env                   ← Your secret keys (Step 5)
+├── .env.example           ← Template for .env
+├── requirements.txt       ← Python dependencies
+├── HOW_TO_RUN.md          ← You are here!
+├── README.md              ← Project overview
+├── workspace/
+│   ├── main.py            ← CLI entry point (python main.py chat)
+│   ├── utils/
+│   │   └── env_loader.py  ← Shared .env file loader
+│   └── sci_fi_dashboard/
+│       ├── api_gateway.py ← The main Gateway server
+│       ├── memory_engine.py
+│       └── ...
+└── ...
+```
+
+---
+
+**Still stuck?** Open an issue on [GitHub](https://github.com/UpayanGhosh/Jarvis-OSS/issues) with:
+1. The **full error message** (copy-paste from terminal)
+2. Your **OS** (Windows 10/11, macOS, Linux)
+3. Your **Python version** (`python --version`)

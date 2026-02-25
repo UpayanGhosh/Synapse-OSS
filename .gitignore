@@ -51,3 +51,4 @@ workspace/*.gz
 
 # Learning / Teaching documents (local only)
 LEARN_SYSTEM_DESIGN*.md
+GEMINI.md

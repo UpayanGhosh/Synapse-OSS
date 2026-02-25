@@ -3,7 +3,10 @@ import sys
 import os
 import time
 import subprocess
+from pathlib import Path
 from sci_fi_dashboard.db import get_db_connection
+from utils.env_loader import load_env_file
+
 
 def verify_system():
     """
@@ -60,6 +63,7 @@ async def interactive_chat_loop():
     Async CLI Client for the Dual-Hemisphere Gateway.
     Handles dynamic session switching via slash commands.
     """
+
     # Start Gateway in background
     print("🚀 Launching Gateway Process...")
     # We use a separate process for the server so we can keep the CLI responsive
@@ -106,7 +110,12 @@ async def interactive_chat_loop():
                     "user_id": "the_creator" # Default user
                 }
                 
-                async with session.post("http://127.0.0.1:8000/chat", json=payload) as resp:
+                headers = {}
+                token = os.environ.get("OPENCLAW_GATEWAY_TOKEN")
+                if token:
+                    headers["x-api-key"] = token
+                
+                async with session.post("http://127.0.0.1:8000/chat", json=payload, headers=headers) as resp:
                     if resp.status == 200:
                         data = await resp.json()
                         reply = data.get("reply", "...")
@@ -151,6 +160,8 @@ def optimized_vacuum():
         conn.close()
 
 def main():
+    load_env_file(anchor=Path(__file__))
+
     parser = argparse.ArgumentParser(description="OpenClaw Centralized CLI")
     subparsers = parser.add_subparsers(dest="command", required=True)
     

@@ -208,16 +208,9 @@ def get_sbs_for_target(target: str) -> SBSOrchestrator:
 
 
 # --- Environment ---
-env_path = os.environ.get(
-    "OPENCLAW_ENV_PATH", str(Path(__file__).resolve().parent.parent / ".env")
-)
-if os.path.exists(env_path):
-    print(f"🌍 Loading .env from {env_path}")
-    with open(env_path, "r") as f:
-        for line in f:
-            if "=" in line and not line.strip().startswith("#"):
-                key, value = line.strip().split("=", 1)
-                os.environ[key] = value
+from utils.env_loader import load_env_file
+
+load_env_file(anchor=Path(__file__))
 
 # --- LLM Client (OpenClaw Gateway OAuth) ---
 # We route via localhost:8080 (Antigravity Proxy)
