@@ -98,10 +98,12 @@ This may take 2–5 minutes. Wait for it to finish completely.
 
 ## 🐚 Step 3: Install OpenClaw Base
 
-Jarvis-OSS is a "supercharged" version of OpenClaw, so you need the base tool first:
+Jarvis-OSS extends OpenClaw and is a "supercharged" version, so you need the base tool first:
 
+### Option A: Using npm (Easiest)
 ```bash
-pip install openclaw
+npm install -g npm@latest
+npm i -g openclaw
 ```
 
 Verify it works:
