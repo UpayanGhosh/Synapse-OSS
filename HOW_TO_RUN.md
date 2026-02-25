@@ -9,7 +9,8 @@ Get Jarvis running in minutes with the automatic setup!
 Run this in your terminal:
 
 ```bash
-./jarvis_onboard.sh
+./jarvis_onboard.sh   # Mac/Linux
+.\jarvis_onboard.ps1  # Windows
 ```
 
 That's it! The script will guide you through everything.
@@ -24,12 +25,8 @@ Open **Terminal** and run:
 
 ```bash
 cd /path/to/Jarvis-OSS
+chmod +x jarvis_onboard.sh  # Make executable (if needed)
 ./jarvis_onboard.sh
-```
-
-To make executable if needed:
-```bash
-chmod +x jarvis_onboard.sh
 ```
 
 ### Windows
@@ -38,12 +35,7 @@ Open **PowerShell** and run:
 
 ```powershell
 cd C:\path\to\Jarvis-OSS
-.\jarvis_onboard.sh
-```
-
-Or use **Git Bash** or **WSL** for a smoother experience:
-```bash
-./jarvis_onboard.sh
+.\jarvis_onboard.ps1
 ```
 
 ---
@@ -56,23 +48,24 @@ Make sure you have these installed on your computer:
 |------|--------------|-----------------|
 | **Git** | `git --version` | [git-scm.com](https://git-scm.com) |
 | **Python** | `python3 --version` | [python.org](https://www.python.org) |
-| **Docker** | `docker --version` | [docker.com](https://www.docker.com) |
+| **Docker** | `docker --version` | [docker.com](https://docker.com) |
 | **OpenClaw** | `openclaw --version` | [openclaw.ai](https://openclaw.ai) |
 
 ---
 
 ## What the Setup Script Does
 
-When you run `./jarvis_onboard.sh`, it will:
+When you run the onboarding script, it will:
 
 1. ✅ Check that all tools are installed
 2. ✅ Ask if you want a **dedicated number** or **personal number** for WhatsApp
    - **Dedicated number** (recommended): Use a separate phone just for Jarvis
    - **Personal number**: Use your own WhatsApp — chat via "Message yourself"
 3. ✅ Show a QR code to link your WhatsApp
-4. ✅ Collect your phone number (for permissions)
-5. ✅ Start Jarvis
-6. ✅ Tell you how to start chatting
+4. ✅ Collect your phone number (for permissions) - validates E.164 format
+5. ✅ Start all Jarvis services (Qdrant, Ollama, API Gateway, WhatsApp bridge)
+6. ✅ Verify services are running
+7. ✅ Tell you how to start chatting
 
 ---
 
@@ -99,20 +92,10 @@ Every time you want to use Jarvis:
 ./jarvis_start.sh
 ```
 
-Or manually:
-```bash
-openclaw gateway
-```
-
 ### Windows (PowerShell)
 
 ```powershell
-.\jarvis_start.sh
-```
-
-Or manually:
-```powershell
-openclaw gateway
+.\jarvis_start.ps1
 ```
 
 Then message Jarvis on WhatsApp!
