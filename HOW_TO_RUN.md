@@ -38,24 +38,42 @@ git --version; python --version; docker --version
 
 ---
 
-## 📖 Glossary
+## 📂 Step 2: Clone & Set Up Jarvis-OSS
 
-| Term | Meaning |
-|------|---------|
-| **Terminal** | Text-based way to talk to your computer |
-| **.venv** | Isolated space for this project (won't mess up other Python projects) |
-| **Qdrant** | Database for long-term memory (vector embeddings) |
-| **memory.db** | Auto-created database file - you don't need to create it! |
-| **API Key** | Secret password to talk to AI services (Gemini, Claude, etc.) |
-| **ngrok** | Creates a public URL for local testing |
+```bash
+# macOS/Linux
+git clone https://github.com/UpayanGhosh/Jarvis-OSS.git
+cd Jarvis-OSS
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+
+# Windows PowerShell
+git clone https://github.com/UpayanGhosh/Jarvis-OSS.git
+cd Jarvis-OSS
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+```
+
+> **⚠️ Windows:** If you get a script error on `Activate.ps1`, run this first:
+> ```powershell
+> Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+> ```
 
 ---
 
-## 🐚 Step 2: Install OpenClaw
+## 🐚 Step 3: Install OpenClaw
 
- Jarvis-OSS extends OpenClaw. You need the base installation:
+Jarvis-OSS extends OpenClaw. You need the base installation:
 
-### Option A: From Source
+### Option A: Using pip (Easiest)
+
+```bash
+pip install openclaw
+```
+
+### Option B: From Source
 
 ```bash
 # macOS/Linux
@@ -73,12 +91,6 @@ python -m venv .venv
 pip install -e .
 ```
 
-### Option B: Using pip
-
-```bash
-pip install openclaw
-```
-
 ### Verify
 
 ```bash
@@ -87,7 +99,7 @@ openclaw --version
 
 ---
 
-## 🚀 Step 3: Set Up Qdrant (Vector Database)
+## 🚀 Step 4: Set Up Qdrant (Vector Database)
 
 Qdrant stores the "long-term memory" for your Jarvis.
 
@@ -103,7 +115,12 @@ Verify: `docker ps` should show qdrant running.
 ### Option B: Native (Linux/macOS)
 
 ```bash
-# macOS
+# macOS (Apple Silicon - M1/M2/M3/M4)
+curl -LO https://github.com/qdrant/qdrant/releases/latest/download/qdrant-aarch64-apple-darwin.tar.gz
+tar -xzf qdrant-aarch64-apple-darwin.tar.gz
+./qdrant
+
+# macOS (Intel)
 curl -LO https://github.com/qdrant/qdrant/releases/latest/download/qdrant-x86_64-apple-darwin.tar.gz
 tar -xzf qdrant-x86_64-apple-darwin.tar.gz
 ./qdrant
@@ -118,7 +135,7 @@ tar -xzf qdrant-x86_64-unknown-linux-gnu.tar.gz
 
 ---
 
-## 🔑 Step 4: Get API Keys
+## 🔑 Step 5: Get API Keys & Configure
 
 You need at least one AI API key. Here are free options:
 
@@ -136,13 +153,16 @@ You need at least one AI API key. Here are free options:
 3. Copy the key (starts with `gsk_...`)
 4. Free: Very high limits, extremely fast
 
-### Add to .env File
+### Configure Your .env File
+
+Make sure you're inside the Jarvis-OSS folder, then:
 
 ```bash
-# Copy the example file
+# macOS/Linux
 cp .env.example .env
 
-# Windows: copy .env.example .env
+# Windows PowerShell
+copy .env.example .env
 ```
 
 Edit `.env` and add your key:
@@ -156,11 +176,11 @@ GROQ_API_KEY=gsk_...    # Your Groq key
 OPENCLAW_GATEWAY_TOKEN=my-secret-token-12345
 ```
 
+> **💡 Important:** After editing `.env`, you must restart the gateway for changes to take effect.
+
 ---
 
-## 🖥️ Step 5: Run Jarvis
-
-### Terminal 1: Start the Gateway
+## 🖥️ Step 6: Start Jarvis Gateway
 
 ```bash
 # macOS/Linux
@@ -182,21 +202,13 @@ If successful, you'll see:
 ✅ Gateway running on http://localhost:8000
 ```
 
-### Terminal 2: Start OpenClaw (Optional - For WhatsApp)
-
-```bash
-openclaw start --workspace /path/to/Jarvis-OSS/workspace
-
-# Windows: openclaw start --workspace C:\path\to\Jarvis-OSS\workspace
-```
-
 ---
 
-## 📱 Step 6: WhatsApp Setup
+## 📱 Step 7: WhatsApp Setup
 
-To chat with Jarvis via WhatsApp, you need to configure it. Here's the easy way:
+To chat with Jarvis via WhatsApp, you need to configure it.
 
-### 1. Run the Onboard Wizard
+### 1. Run the Onboard Wizard (FIRST!)
 
 ```bash
 openclaw onboard
@@ -227,17 +239,14 @@ When running `openclaw onboard`:
 
 Why? Because your Jarvis gateway already runs on port 8000!
 
-### 4. Start Everything
+### 4. Start OpenClaw (AFTER onboard)
 
-**Terminal 1: Jarvis Gateway**
 ```bash
-cd Jarvis-OSS/workspace/sci_fi_dashboard
-python3 api_gateway.py  # Your custom gateway on port 8000
-```
+# macOS/Linux
+openclaw start --workspace ~/Jarvis-OSS/workspace
 
-**Terminal 2: OpenClaw**
-```bash
-openclaw start --workspace /path/to/Jarvis-OSS/workspace
+# Windows PowerShell
+openclaw start --workspace C:\Users\YourName\Jarvis-OSS\workspace
 ```
 
 ### 5. Connect Your Phone
@@ -259,13 +268,19 @@ openclaw start --workspace /path/to/Jarvis-OSS/workspace
 
 ---
 
-## 💻 Windows-Specific Notes
+## 📖 Glossary
 
-### PowerShell Execution Policy
-If you get script errors, run:
-```powershell
-Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
-```
+| Term | Meaning |
+|------|---------|
+| **Terminal** | Text-based way to talk to your computer |
+| **.venv** | Isolated space for this project (won't mess up other Python projects) |
+| **Qdrant** | Database for long-term memory (vector embeddings) |
+| **memory.db** | Auto-created database file - you don't need to create it! |
+| **API Key** | Secret password to talk to AI services (Gemini, Claude, etc.) |
+
+---
+
+## 💻 Windows-Specific Notes
 
 ### Common Issues
 
@@ -288,15 +303,18 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 
 ## ✅ Quick Checklist
 
-Before running, make sure:
+**In order:**
 
-- [ ] Git, Python, Docker installed
-- [ ] Jarvis-OSS cloned
-- [ ] `.env` file created with API key
-- [ ] `OPENCLAW_GATEWAY_TOKEN` set in `.env`
-- [ ] Dependencies installed (`pip install -r requirements.txt`)
-- [ ] Qdrant running (`docker ps` shows qdrant)
-- [ ] `openclaw onboard` completed for WhatsApp
+1. [ ] Git, Python, Docker installed
+2. [ ] Jarvis-OSS cloned
+3. [ ] Virtual environment created and dependencies installed
+4. [ ] OpenClaw installed (`pip install openclaw`)
+5. [ ] `.env` file created with API key
+6. [ ] `OPENCLAW_GATEWAY_TOKEN` set in `.env`
+7. [ ] Qdrant running (`docker ps` shows qdrant)
+8. [ ] Jarvis gateway started (`python3 api_gateway.py`)
+9. [ ] `openclaw onboard` completed (configures WhatsApp)
+10. [ ] `openclaw start --workspace ...` started
 
 ---
 
