@@ -119,20 +119,43 @@ git clone https://github.com/UpayanGhosh/Jarvis-OSS.git
 cd Jarvis-OSS
 
 # 2. Environment
+# macOS/Linux:
 python3 -m venv .venv && source .venv/bin/activate
+
+# Windows PowerShell (run as Administrator first time):
+# Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+
 pip install -r requirements.txt
 
 # 3. Configure
+# macOS/Linux:
 cp .env.example .env
+
+# Windows PowerShell:
+copy .env.example .env
+
 # Edit .env — add at minimum one LLM API key (GEMINI_API_KEY recommended)
 
 # 4. Boot the Gateway
+# macOS/Linux:
 cd workspace/sci_fi_dashboard
+
+# Windows PowerShell:
+cd workspace\sci_fi_dashboard
+
+# macOS/Linux:
 python3 api_gateway.py
+
+# Windows PowerShell:
+python api_gateway.py
+
 # Gateway starts on http://localhost:8000
 
 # 5. Verify
 curl http://localhost:8000/health
+# Windows: curl.exe http://localhost:8000/health
 ```
 
 ---
@@ -142,37 +165,54 @@ curl http://localhost:8000/health
 ### Chat with JARVIS
 
 ```bash
+# macOS/Linux
 curl -X POST http://localhost:8000/chat/the_creator \
   -H "Content-Type: application/json" \
   -d '{"message": "What do you remember about our last conversation?"}'
+
+# Windows PowerShell
+curl.exe -X POST http://localhost:8000/chat/the_creator -H "Content-Type: application/json" -d "{\"message\": \"What do you remember about our last conversation?\"}"
 ```
 
 ### Query Memory
 
 ```bash
+# macOS/Linux
 curl -X POST http://localhost:8000/query \
   -H "Content-Type: application/json" \
-  -d '{"text": "What is the user\'s favorite programming language?"}'
+  -d '{"text": "What is the user'\''s favorite programming language?"}'
+
+# Windows PowerShell
+curl.exe -X POST http://localhost:8000/query -H "Content-Type: application/json" -d "{\"text\": \"What is the user's favorite programming language?\"}"
 ```
 
 ### Add Memory
 
 ```bash
+# macOS/Linux
 curl -X POST http://localhost:8000/add \
   -H "Content-Type: application/json" \
   -d '{"content": "The user prefers Python over JavaScript", "category": "tech_preferences"}'
+
+# Windows PowerShell
+curl.exe -X POST http://localhost:8000/add -H "Content-Type: application/json" -d "{\"content\": \"The user prefers Python over JavaScript\", \"category\": \"tech_preferences\"}"
 ```
 
 ### Check System Health
 
 ```bash
 curl http://localhost:8000/health
+# Windows: curl.exe http://localhost:8000/health
 ```
 
 ### Rebuild Persona Profile
 
 ```bash
+# macOS/Linux
 curl -X POST http://localhost:8000/persona/rebuild
+
+# Windows PowerShell
+curl.exe -X POST http://localhost:8000/persona/rebuild
 ```
 
 > **Full setup guide** (Qdrant, Ollama, WhatsApp bridge, persona config): [HOW_TO_RUN.md](HOW_TO_RUN.md)

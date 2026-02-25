@@ -34,11 +34,339 @@ Instead of static System Prompts, this uses dynamic JSON injected "Relationship 
 ## 🛠️ Prerequisites
 
 *   **Python 3.10+**
-*   **Vanilla OpenClaw:** You must have the [vanilla OpenClaw project](https://github.com/openclaw/openclaw) installed on your machine.
-*   **Qdrant Vector Database:** Native installation or docker container running on port `6333`.
+*   **Vanilla OpenClaw:** You must have the [vanilla OpenClaw project](https://github.com/openclaw/openclaw) installed on your machine. (See section below)
+*   **Qdrant Vector Database:** Native installation or docker container running on port `6333`. (See section below)
 *   *(Highly Optional)* A local machine running **Ollama** for "The Vault" (Zero-cloud local inference). **If you do not have Ollama, the system will seamlessly run entirely on the cloud models.**
 
 *Note: This architecture is cross-platform! Because it is built on Python and OpenClaw, it runs on macOS, Linux, and Windows (preferably via WSL).*
+
+---
+
+## 📦 Installing Required Software (Step-by-Step)
+
+Don't worry if you're new to this! Here's what each tool does and how to install it.
+
+### Minimum System Requirements
+
+| Requirement | Minimum | Recommended |
+|------------|---------|-------------|
+| **RAM** | 8 GB | 16 GB |
+| **Storage** | 10 GB free | 20 GB free |
+| **OS** | macOS 10.15+, Windows 10+, Ubuntu 18.04+ | macOS 12+, Windows 11, Ubuntu 22.04+ |
+| **Internet** | Required for API keys | Required for API keys |
+
+> **Note:** The system was designed to run on an 8GB MacBook Air. If you have less than 8GB RAM, you may experience slowdowns.
+
+### What You'll Need
+
+| Tool | What It Does | How to Get It |
+|------|-------------|---------------|
+| **Git** | Downloads the project code from the internet | [Download Git](https://git-scm.com/downloads) |
+| **Python** | Runs the program (the brain) | [Download Python](https://www.python.org/downloads/) |
+| **Docker** | Runs Qdrant (the memory system) in a container | [Download Docker Desktop](https://www.docker.com/products/docker-desktop/) |
+
+> **💡 Tip:** During Python installation on Windows, **check the box "Add Python to PATH"** - this is crucial!
+
+### Quick Checklist
+
+- [ ] Download and install **Git**
+- [ ] Download and install **Python 3.10+** (check "Add to PATH" on Windows)
+- [ ] Download and install **Docker Desktop**
+- [ ] Create a free **GitHub account** (to clone the project)
+- [ ] Get at least one **API key** (see Section 2A for free options)
+
+---
+
+### Verify Your Installation
+
+After installing, open a terminal and type:
+
+```bash
+# macOS/Linux
+git --version
+python3 --version
+docker --version
+
+# Windows PowerShell
+git --version
+python --version
+docker --version
+```
+
+If each command shows a version number (like `git version 2.40.0`), you're good to go!
+
+---
+
+## 📖 Glossary (In Plain English)
+
+Don't understand a term? Here's what they mean:
+
+| Term | Plain English Explanation |
+|------|--------------------------|
+| **Terminal/Command Line** | A text-based way to talk to your computer. Instead of clicking icons, you type commands. |
+| **Python** | The programming language the system is written in. Think of it as the "brain." |
+| **Virtual Environment (.venv)** | A separate space for this project so it doesn't mess up other Python projects on your computer. |
+| **Qdrant** | A database that stores "embeddings" (numerical representations of text). Helps the bot remember things semantically. Think of it as "long-term memory." |
+| **Docker** | A way to run software in an isolated container. Makes it easy to run Qdrant without installation headaches. |
+| **API Key** | A secret password that lets your program talk to AI services (like Google Gemini, Claude, etc.). |
+| **Vector Embeddings** | A way to convert text into numbers so computers can find "similar" things (like finding all messages about "food" even without the word "food"). |
+| **OpenClaw** | The base platform this project builds on top of. Provides WhatsApp integration and tool-use capabilities. |
+| **RAG** | Retrieval-Augmented Generation - a technique where the AI looks up relevant information before answering. |
+| **MoA** | Mixture of Agents - routing messages to different AI models based on what they're best at. |
+
+---
+
+## ❓ Frequently Asked Questions
+
+**Q: Do I need to know programming?**
+> A: No! You just need to know how to use a terminal/command line and follow the steps. Programming knowledge is not required to run the system.
+
+**Q: How much does this cost?**
+> A: The software is free. You'll need to pay for API keys if you use cloud AI models, but this guide shows how to get free keys to start.
+
+**Q: Can I run this on a regular laptop?**
+> A: Yes! The project was designed to run on an 8GB RAM MacBook Air. Any modern computer with 8GB+ RAM should work.
+
+**Q: How long does setup take?**
+> A: About 30-60 minutes for first-time setup, including installing software and getting API keys.
+
+**Q: What if something goes wrong?**
+> A: Check the Troubleshooting sections in this guide. Most common issues have solutions listed.
+
+---
+
+## 💻 Windows Setup Guide
+
+This project runs best on Windows via **WSL2 (Windows Subsystem for Linux)**. Native Windows support is experimental.
+
+### Option A: WSL2 (Recommended)
+
+1. **Install WSL2:**
+   ```powershell
+   # Run PowerShell as Administrator
+   wsl --install
+   ```
+   - Restart your computer when prompted
+   - Create a Ubuntu user account when prompted
+
+2. **Install Docker Desktop:**
+   - Download from https://www.docker.com/products/docker-desktop/
+   - Enable WSL2 backend in Docker Desktop Settings → General
+
+3. **Open Ubuntu terminal** and run the macOS/Linux commands from this guide:
+   ```bash
+   # Clone and setup
+   git clone https://github.com/UpayanGhosh/Jarvis-OSS.git
+   cd Jarvis-OSS
+   python3 -m venv .venv
+   source .venv/bin/activate
+   pip install -r requirements.txt
+   ```
+
+4. **Start Qdrant (in Ubuntu terminal):**
+   ```bash
+   docker run -d --name qdrant -p 6333:6333 -p 6334:6334 qdrant/qdrant
+   ```
+
+5. **Run the gateway:**
+   ```bash
+   cd workspace/sci_fi_dashboard
+   python3 api_gateway.py
+   ```
+
+### Option B: Native Windows (Experimental)
+
+If you prefer not to use WSL2:
+
+1. **Install Python 3.10+** from https://www.python.org/downloads/
+   - **Important:** Check "Add Python to PATH" during installation
+
+2. **Install Docker Desktop** from https://www.docker.com/products/docker-desktop/
+
+3. **Open PowerShell** (not Command Prompt) and run:
+   > **Note:** If you get an error about running scripts, run this command first:
+   > ```powershell
+   > Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+   > ```
+   
+   ```powershell
+   # Clone the repo
+   git clone https://github.com/UpayanGhosh/Jarvis-OSS.git
+   cd Jarvis-OSS
+
+   # Create virtual environment
+   python -m venv .venv
+   .venv\Scripts\Activate.ps1
+
+   # Install dependencies
+   pip install -r requirements.txt
+
+   # Start Qdrant (in separate terminal or background)
+   docker run -d --name qdrant -p 6333:6333 -p 6334:6334 qdrant/qdrant
+
+   # Run the gateway
+   cd workspace\sci_fi_dashboard
+   python api_gateway.py
+   ```
+
+### Common Windows Issues
+
+| Error | Solution |
+| ----- | ---------- |
+| `python is not recognized` | Add Python to PATH, or use `py` instead of `python` |
+| `pip is not recognized` | Reinstall Python with "Add to PATH" checked |
+| `docker: command not found` | Install Docker Desktop and restart terminal |
+| `Permission denied` | Run PowerShell as Administrator |
+| `Port 6333 in use` | Stop other Qdrant instances or change port |
+
+### Quick Reference: Windows ↔ Unix Commands
+
+| macOS/Linux | Windows PowerShell |
+| ------------ | ------------------- |
+| `python3` | `python` |
+| `pip install` | `pip install` |
+| `source .venv/bin/activate` | `.venv\Scripts\Activate.ps1` |
+| `cp file1 file2` | `copy file1 file2` |
+| `/path/to/file` | `C:\path\to\file` |
+| `curl http://localhost:8000` | `curl.exe http://localhost:8000` |
+| `ls -la` | `dir` |
+
+---
+
+## 🚀 Setting Up Qdrant (Vector Database)
+
+Qdrant is required for the vector embeddings memory. Choose one method below:
+
+### Option A: Docker (Recommended)
+
+1. **Install Docker** from https://www.docker.com/products/docker-desktop/
+
+2. **Run Qdrant container:**
+   ```bash
+   # macOS/Linux terminal:
+   docker run -d --name qdrant -p 6333:6333 -p 6334:6334 qdrant/qdrant
+   
+   # Windows PowerShell:
+   docker run -d --name qdrant -p 6333:6333 -p 6334:6334 qdrant/qdrant
+   ```
+
+3. **Verify it's running:**
+   ```bash
+   docker ps
+   # macOS/Linux:
+   curl http://localhost:6333
+   # Windows (may need curl.exe):
+   curl.exe http://localhost:6333
+   ```
+
+4. **To stop/start later:**
+   ```bash
+   docker stop qdrant
+   docker start qdrant
+   ```
+
+### Option B: Native Installation (Linux/macOS)
+
+1. **Download Qdrant:**
+   ```bash
+   # macOS (download binary from GitHub)
+   curl -LO https://github.com/qdrant/qdrant/releases/latest/download/qdrant-x86_64-apple-darwin.tar.gz
+   tar -xzf qdrant-x86_64-apple-darwin.tar.gz
+   
+   # Linux
+   curl -LO https://github.com/qdrant/qdrant/releases/latest/download/qdrant-x86_64-unknown-linux-gnu.tar.gz
+   tar -xzf qdrant-x86_64-unknown-linux-gnu.tar.gz
+   ```
+
+2. **Run Qdrant:**
+   ```bash
+   ./qdrant
+   ```
+
+3. Qdrant will start on `http://localhost:6333`
+
+### Option C: Windows (Without Docker)
+
+**Option 1: Use WSL2**
+Install Windows Subsystem for Linux, then follow Linux instructions above.
+
+**Option 2: Use Docker Desktop**
+Enable WSL2 backend in Docker Desktop settings, then follow Docker instructions.
+
+---
+
+### Troubleshooting Qdrant
+
+- **"Connection refused"**: Ensure Qdrant is running (`docker ps` or check process manager)
+- **Port 6333 in use**: Stop other Qdrant instances or change port with `-p 6335:6333`
+- **Memory issues**: Ensure your system has at least 4GB RAM available
+
+If Qdrant is unavailable, the system will show a warning but may continue with limited functionality (the `MemoryEngine` will initialize with "no duplication" mode).
+
+### About entities.json
+
+The warning "Entities file not found" is **optional** and can be safely ignored. This file only enhances entity extraction (e.g., mapping slang to formal names). The system will work without it.
+
+---
+
+## 🐚 Setting Up OpenClaw (Required)
+
+This project extends OpenClaw. You need the base installation:
+
+### Option A: From Source
+
+1. **Clone OpenClaw:**
+   ```bash
+   # macOS/Linux
+   git clone https://github.com/openclaw/openclaw.git ~/openclaw
+   cd ~/openclaw
+
+   # Windows (in WSL2 or PowerShell with Git)
+   git clone https://github.com/openclaw/openclaw.git $env:USERPROFILE\openclaw
+   cd $env:USERPROFILE\openclaw
+   ```
+
+2. **Create environment and install:**
+   ```bash
+   # macOS/Linux
+   python3 -m venv .venv
+   source .venv/bin/activate
+   pip install -e .
+
+   # Windows PowerShell
+   python -m venv .venv
+   .venv\Scripts\Activate.ps1
+   pip install -e .
+   ```
+
+3. **Verify installation:**
+   ```bash
+   openclaw --version
+   ```
+
+### Option B: Using pip
+
+```bash
+pip install openclaw
+```
+
+### Configure OpenClaw to Use This Workspace
+
+After installing OpenClaw, point it to this Jarvis-OSS workspace:
+
+```bash
+# The gateway runs on localhost:8000
+# Point OpenClaw to use our custom gateway
+# (See OpenClaw docs for workspace configuration)
+
+# Quick start - tell OpenClaw to use this workspace:
+openclaw start --workspace /path/to/Jarvis-OSS/workspace
+
+# Windows (PowerShell):
+openclaw start --workspace C:\path\to\Jarvis-OSS\workspace
+```
+
+---
 
 ## 1. Installation: The Clean Integration
 
@@ -51,11 +379,13 @@ cd Jarvis-OSS
 ```
 2. Create and activate the Python environment:
 ```bash
+# macOS/Linux:
 python3 -m venv .venv
-# Mac/Linux:
 source .venv/bin/activate
-# Windows (PowerShell):
-# .venv\Scripts\Activate
+
+# Windows PowerShell:
+python -m venv .venv
+.venv\Scripts\Activate.ps1
 ```
 3. Install dependencies:
 ```bash
@@ -321,8 +651,33 @@ Set all three keys in your `.env` file for full MoA functionality at zero cost.
 
 Copy the environment template:
 ```bash
+# macOS/Linux:
 cp .env.example .env
+
+# Windows PowerShell:
+copy .env.example .env
 ```
+
+### Understanding Your .env File
+
+The `.env` file contains all the settings for your Jarvis. Here's what you need to know:
+
+**Required:**
+```bash
+# Get a free key from https://aistudio.google.com/app/apikey
+GEMINI_API_KEY=AIza...  
+
+# Any random string (e.g., "my-secret-token-12345")
+OPENCLAW_GATEWAY_TOKEN=your-random-string
+```
+
+**Optional (but recommended):**
+```bash
+# Get a free key from https://console.groq.com
+GROQ_API_KEY=gsk_...
+```
+
+> **💡 Important:** After editing `.env`, you must restart the gateway for changes to take effect.
 
 **Required Environment Variables:**
 - `OPENCLAW_GATEWAY_TOKEN` — **Required.** Set a strong random string for API authentication.
@@ -362,14 +717,33 @@ This project intercepts and routes OpenClaw traffic through a custom FastAPI gat
 **Terminal 1: The Core API Gateway (FastAPI)**
 Start the custom gateway/router:
 ```bash
+# macOS/Linux:
 source .venv/bin/activate
 cd workspace/sci_fi_dashboard
 python3 api_gateway.py
+
+# Windows PowerShell:
+.venv\Scripts\Activate.ps1
+cd workspace\sci_fi_dashboard
+python api_gateway.py
 ```
 *(The gateway runs on localhost:8000 by default. If OPENCLAW_GATEWAY_TOKEN is not set, the server will fail to start.)*
 
 **API Authentication:**
 All sensitive endpoints (`/chat`, `/chat/the_creator`, `/chat/the_partner`, `/persona/rebuild`, `/ingest`, `/add`, `/query`) require authentication. Include the header `x-api-key: YOUR_OPENCLAW_GATEWAY_TOKEN` in requests.
+
+**Example with authentication (macOS/Linux):**
+```bash
+curl -X POST http://localhost:8000/chat/the_creator \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: YOUR_OPENCLAW_GATEWAY_TOKEN" \
+  -d '{"message": "Hello!"}'
+```
+
+**Example with authentication (Windows PowerShell):**
+```powershell
+curl.exe -X POST http://localhost:8000/chat/the_creator -H "Content-Type: application/json" -H "x-api-key: YOUR_OPENCLAW_GATEWAY_TOKEN" -d "{\"message\": \"Hello!\"}"
+```
 
 **Terminal 2: Pointing OpenClaw to Your Workspace**
 Now, run your vanilla OpenClaw CLI, but tell it to use this custom downloaded folder as its workspace, and point it to the proxy gateway!
@@ -378,6 +752,78 @@ Now, run your vanilla OpenClaw CLI, but tell it to use this custom downloaded fo
 openclaw start --workspace /path/to/where/you/cloned/Jarvis-OSS/workspace 
 ```
 *(Alternatively, configure OpenClaw globally to hit your `localhost:8000` custom endpoint proxy instead of the default gateway).*
+---
+
+## ✅ First Run Checklist
+
+Before starting, make sure you've completed these steps:
+
+- [ ] **Git** installed and working
+- [ ] **Python** installed (version 3.10+)  
+- [ ] **Docker Desktop** installed and running (the Docker icon in your taskbar should be green)
+- [ ] **Cloned** the Jarvis-OSS repository
+- [ ] **Created** the `.env` file from `.env.example`
+- [ ] **Added** at least one API key to `.env`
+- [ ] **Set** `OPENCLAW_GATEWAY_TOKEN` in `.env`
+- [ ] **Installed** Python dependencies (`pip install -r requirements.txt`)
+- [ ] **Started** Qdrant (`docker run -d --name qdrant -p 6333:6333 qdrant/qdrant`)
+
+### Starting the System
+
+**Terminal 1 - Start the Gateway:**
+```bash
+cd Jarvis-OSS
+source .venv/bin/activate  # macOS/Linux
+# or: .venv\Scripts\Activate.ps1  # Windows PowerShell
+cd workspace/sci_fi_dashboard
+python3 api_gateway.py  # or: python api_gateway.py (Windows)
+```
+
+If successful, you should see:
+```
+✅ MemoryEngine initialized
+✅ Gateway running on http://localhost:8000
+```
+
+**Terminal 2 - Start OpenClaw:**
+```bash
+openclaw start --workspace /path/to/Jarvis-OSS/workspace
+```
+
+### How to Test It
+
+Once everything is running, test the system:
+
+```bash
+# Test health endpoint
+curl http://localhost:8000/health
+
+# Send a test message (macOS/Linux)
+curl -X POST http://localhost:8000/chat/the_creator \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Hello! This is a test."}'
+
+# Send a test message (Windows PowerShell - single line)
+curl.exe -X POST http://localhost:8000/chat/the_creator -H "Content-Type: application/json" -d "{\"message\": \"Hello! This is a test.\"}"
+```
+
+### What If It Doesn't Work?
+
+1. **Check Docker is running** - Look for the Docker icon in your taskbar/menubar
+2. **Check Qdrant** - Run `docker ps` and make sure qdrant is listed
+3. **Check your .env file** - Make sure API keys are correct and saved
+4. **Check the error messages** - Read what's printed in the terminal
 
 ---
+
+### Need Help?
+
+- **GitHub Issues:** https://github.com/UpayanGhosh/Jarvis-OSS/issues
+- **Check logs:** Look at what the terminal outputs for error messages
+- **Common fixes:** Restart Docker, restart the gateway, check your .env file
+
+---
+
 You now have a multi-model, RAG-enabled Digital Organism running locally. 
+
+**Happy chatting! 🤖**
