@@ -113,18 +113,18 @@ GEMINI_API_KEY=AIzaSy...paste_your_key_here
 
 Save and close.
 
-### 4c. Connect WhatsApp
+### 4c. Link WhatsApp
 
 Run this command and follow the prompts:
 
 ```bash
-openclaw onboard
+openclaw channels login
 ```
 
-This will:
-1. Generate a QR code
-2. Open WhatsApp on your phone
-3. Scan the QR code with WhatsApp → Settings → Linked Devices
+This will show a QR code — scan it with WhatsApp on your phone:
+
+1. Open **WhatsApp** → **Settings** → **Linked Devices**
+2. Scan the QR code
 
 > **No Meta Developer account needed!** Just scan and go.
 
@@ -135,12 +135,7 @@ This will:
 Make sure **Docker Desktop is running**, then:
 
 ```bash
-openclaw start --workspace /path/to/Jarvis-OSS/workspace
-```
-
-🪟 **Windows example:**
-```powershell
-openclaw start --workspace C:\Users\YourName\Jarvis-OSS\workspace
+openclaw gateway
 ```
 
 **Success looks like:**
@@ -177,7 +172,7 @@ pip install -r requirements.txt
 ```
 
 ### Can't connect WhatsApp
-Run `openclaw onboard` again to regenerate the QR code.
+Run `openclaw channels login` again to regenerate the QR code.
 
 ### Jarvis isn't responding
 Check that:
@@ -196,7 +191,7 @@ git pull origin main
 pip install -r requirements.txt
 ```
 
-Then restart (Ctrl+C to stop, then `openclaw start` again).
+Then restart (Ctrl+C to stop, then `openclaw gateway` again).
 
 ---
 
