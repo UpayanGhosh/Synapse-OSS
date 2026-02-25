@@ -16,6 +16,38 @@ That's it! The script will guide you through everything.
 
 ---
 
+## 🖥️ Running Scripts on Different Operating Systems
+
+### Mac / Linux
+
+Open **Terminal** and run:
+
+```bash
+cd /path/to/Jarvis-OSS
+./jarvis_onboard.sh
+```
+
+To make executable if needed:
+```bash
+chmod +x jarvis_onboard.sh
+```
+
+### Windows
+
+Open **PowerShell** and run:
+
+```powershell
+cd C:\path\to\Jarvis-OSS
+.\jarvis_onboard.sh
+```
+
+Or use **Git Bash** or **WSL** for a smoother experience:
+```bash
+./jarvis_onboard.sh
+```
+
+---
+
 ## What You'll Need First
 
 Make sure you have these installed on your computer:
@@ -61,12 +93,25 @@ Try sending: "Hello", "What's the weather?", or "Tell me a joke"
 
 Every time you want to use Jarvis:
 
+### Mac / Linux
+
 ```bash
 ./jarvis_start.sh
 ```
 
 Or manually:
 ```bash
+openclaw gateway
+```
+
+### Windows (PowerShell)
+
+```powershell
+.\jarvis_start.sh
+```
+
+Or manually:
+```powershell
 openclaw gateway
 ```
 
