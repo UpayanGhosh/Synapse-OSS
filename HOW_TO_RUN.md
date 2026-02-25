@@ -107,12 +107,14 @@ Don't understand a term? Here's what they mean:
 | **Python** | The programming language the system is written in. Think of it as the "brain." |
 | **Virtual Environment (.venv)** | A separate space for this project so it doesn't mess up other Python projects on your computer. |
 | **Qdrant** | A database that stores "embeddings" (numerical representations of text). Helps the bot remember things semantically. Think of it as "long-term memory." |
+| **memory.db** | A SQLite database file that stores facts and conversations. Auto-created on first run - you don't need to create it! |
 | **Docker** | A way to run software in an isolated container. Makes it easy to run Qdrant without installation headaches. |
 | **API Key** | A secret password that lets your program talk to AI services (like Google Gemini, Claude, etc.). |
 | **Vector Embeddings** | A way to convert text into numbers so computers can find "similar" things (like finding all messages about "food" even without the word "food"). |
 | **OpenClaw** | The base platform this project builds on top of. Provides WhatsApp integration and tool-use capabilities. |
-| **RAG** | Retrieval-Augmented Generation - a technique where the AI looks up relevant information before answering. |
+| **RAG** | Retrieval-Augmented Generation - looking up info before answering. |
 | **MoA** | Mixture of Agents - routing messages to different AI models based on what they're best at. |
+| **ngrok** | A tool that creates a public URL for your local computer (useful for testing webhooks locally). |
 
 ---
 
@@ -368,31 +370,65 @@ openclaw start --workspace C:\path\to\Jarvis-OSS\workspace
 
 ---
 
+## 📱 Setting Up WhatsApp (Optional)
+
+To chat with Jarvis via WhatsApp, you have two options:
+
+### Option A: Use OpenClaw + Custom Gateway (Recommended)
+
+This requires careful setup to avoid port conflicts:
+
+1. **First, start your Jarvis gateway (Terminal 1):**
+   ```bash
+   cd Jarvis-OSS/workspace/sci_fi_dashboard
+   python3 api_gateway.py  # Runs on port 8000
+   ```
+
+2. **Run onboard BUT skip the gateway (Terminal 2):**
+   ```bash
+   openclaw onboard
+   ```
+   - When asked about starting gateway: **Choose NO**
+   - When asked about daemon: **Choose NO**
+   - Just configure the WhatsApp channel credentials
+
+3. **Start OpenClaw pointing to YOUR gateway:**
+   ```bash
+   openclaw start --workspace /path/to/Jarvis-OSS/workspace
+   ```
+   This tells OpenClaw to forward messages to your custom gateway instead of starting its own.
+
+### Option B: Test Without WhatsApp First (Easier!)
+
+Start with just curl commands to test everything works:
+
+```bash
+# Terminal 1: Start Jarvis
+cd Jarvis-OSS/workspace/sci_fi_dashboard
+python3 api_gateway.py
+
+# Terminal 2: Test with curl
+curl -X POST http://localhost:8000/chat/the_creator \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Hello!"}'
+```
+
+Once confirmed working, then add WhatsApp later with `openclaw onboard`.
+
+---
+
+### ⚠️ Port Conflict Warning
+
+| Port | What Uses It |
+|------|-------------|
+| 8000 | Jarvis-OSS api_gateway.py (YOUR custom gateway) |
+| 8000 | OpenClaw default gateway |
+
+**Never run both gateways on the same port!** Always make sure only ONE is running on 8000.
+
+---
+
 ## 1. Installation: The Clean Integration
-
-You do **not** need to blindly replace your existing `.openclaw` folder. The safest and recommended way to integrate this project is by configuring your vanilla OpenClaw to point to this repository as its workspace.
-
-1. Clone this repository anywhere on your machine:
-```bash
-git clone https://github.com/UpayanGhosh/Jarvis-OSS.git
-cd Jarvis-OSS
-```
-2. Create and activate the Python environment:
-```bash
-# macOS/Linux:
-python3 -m venv .venv
-source .venv/bin/activate
-
-# Windows PowerShell:
-python -m venv .venv
-.venv\Scripts\Activate.ps1
-```
-3. Install dependencies:
-```bash
-pip install -r requirements.txt
-```
-
-## 2A. Getting Free API Keys
 
 This section provides step-by-step instructions for obtaining free API keys from various AI providers. Each platform has different registration processes, rate limits, and capabilities.
 
@@ -767,6 +803,9 @@ Before starting, make sure you've completed these steps:
 - [ ] **Set** `OPENCLAW_GATEWAY_TOKEN` in `.env`
 - [ ] **Installed** Python dependencies (`pip install -r requirements.txt`)
 - [ ] **Started** Qdrant (`docker run -d --name qdrant -p 6333:6333 qdrant/qdrant`)
+- [ ] **Optional:** Ran `openclaw onboard` for WhatsApp/advanced features
+
+> **Note:** The `memory.db` database file will be created automatically when you first run the gateway. You don't need to create it manually!
 
 ### Starting the System
 
