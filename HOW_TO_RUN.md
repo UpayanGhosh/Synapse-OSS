@@ -1,35 +1,35 @@
-# 🤖 Jarvis AI Assistant - Setup Guide
+# Jarvis AI Assistant - Setup Guide
 
 Get Jarvis running in minutes with the automatic setup!
 
 ---
 
-## ⚡ Quick Setup (One Command)
+## Step 1: Install Required Tools
 
-Run this in your terminal:
+Make sure you have these installed on your computer before proceeding:
 
-```bash
-./jarvis_onboard.sh   # Mac/Linux
-.\jarvis_onboard.ps1  # Windows
-```
-
-That's it! The script will guide you through everything.
+| Tool | How to Check | Where to Get It |
+|------|--------------|--------------------|
+| **Git** | `git --version` | [git-scm.com](https://git-scm.com) |
+| **Python** | `python3 --version` (Mac/Linux) · `python --version` (Windows) | [python.org](https://www.python.org) |
+| **Docker** | `docker --version` | [docker.com](https://docker.com) |
+| **OpenClaw** | `openclaw --version` | [openclaw.ai](https://openclaw.ai) |
 
 ---
 
-## 🖥️ Running Scripts on Different Operating Systems
+## Step 2: Set Up Python Environment and Config
 
 ### Mac / Linux
 
-Open **Terminal** and run:
-
 ```bash
 cd /path/to/Jarvis-OSS
-chmod +x jarvis_onboard.sh  # Make executable (if needed)
-./jarvis_onboard.sh
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env
+# Edit .env — add at minimum: GEMINI_API_KEY=your_key_here
 ```
 
-### Windows
+### Windows (PowerShell)
 
 Open **PowerShell as Administrator** the first time and allow scripts to run:
 
@@ -37,36 +37,10 @@ Open **PowerShell as Administrator** the first time and allow scripts to run:
 Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 ```
 
-Then run:
+Then:
 
 ```powershell
 cd C:\path\to\Jarvis-OSS
-.\jarvis_onboard.ps1
-```
-
----
-
-## What You'll Need First
-
-Make sure you have these installed on your computer:
-
-| Tool | How to Check | Where to Get It |
-|------|--------------|-----------------|
-| **Git** | `git --version` | [git-scm.com](https://git-scm.com) |
-| **Python** | `python3 --version` (Mac/Linux) · `python --version` (Windows) | [python.org](https://www.python.org) |
-| **Docker** | `docker --version` | [docker.com](https://docker.com) |
-| **OpenClaw** | `openclaw --version` | [openclaw.ai](https://openclaw.ai) |
-
-Before running the onboard script, also set up your Python environment and config:
-
-```bash
-# macOS/Linux
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env
-# Edit .env — add at minimum: GEMINI_API_KEY=your_key_here
-
-# Windows PowerShell
 python -m venv .venv
 .venv\Scripts\Activate.ps1
 pip install -r requirements.txt
@@ -74,27 +48,46 @@ copy .env.example .env
 # Edit .env — add at minimum: GEMINI_API_KEY=your_key_here
 ```
 
-The onboard script will also pull the required Ollama embedding model (`nomic-embed-text`) and create the Qdrant Docker container automatically.
+---
+
+## Step 3: Run the Onboarding Script
+
+### Mac / Linux
+
+```bash
+chmod +x jarvis_onboard.sh  # Make executable (if needed)
+./jarvis_onboard.sh
+```
+
+### Windows (PowerShell)
+
+```powershell
+.\jarvis_onboard.ps1
+```
+
+That's it! The script will guide you through everything.
 
 ---
 
-## What the Setup Script Does
+## What the Onboarding Script Does
 
-When you run the onboarding script, it will:
+When you run it, the script will:
 
-1. ✅ Check that all tools are installed
-2. ✅ Ask if you want a **dedicated number** or **personal number** for WhatsApp
+1. Check that all required tools are installed
+2. Ask if you want a **dedicated number** or **personal number** for WhatsApp
    - **Dedicated number** (recommended): Use a separate phone just for Jarvis
    - **Personal number**: Use your own WhatsApp — chat via "Message yourself"
-3. ✅ Show a QR code to link your WhatsApp
-4. ✅ Collect your phone number (for permissions) - validates E.164 format
-5. ✅ Start all Jarvis services (Qdrant, Ollama, API Gateway, WhatsApp bridge)
-6. ✅ Verify services are running
-7. ✅ Tell you how to start chatting
+3. Show a QR code to link your WhatsApp
+4. Collect your phone number (for permissions) — validates E.164 format
+5. Start all Jarvis services (Qdrant, Ollama, API Gateway, WhatsApp bridge)
+6. Verify services are running
+7. Tell you how to start chatting
+
+The script also pulls the required Ollama embedding model (`nomic-embed-text`) and creates the Qdrant Docker container automatically.
 
 ---
 
-## How to Chat with Jarvis
+## Step 4: Chat with Jarvis
 
 After setup, message Jarvis on WhatsApp:
 
@@ -109,7 +102,7 @@ Try sending: "Hello", "What's the weather?", or "Tell me a joke"
 
 ## Running Jarvis Later
 
-Every time you want to use Jarvis:
+Every time you want to use Jarvis after the first setup:
 
 ### Mac / Linux
 
