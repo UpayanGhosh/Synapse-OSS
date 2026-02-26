@@ -1,4 +1,4 @@
-name: Test Suite
+name: CI
 
 on:
   push:
@@ -8,64 +8,37 @@ on:
 
 jobs:
   lint:
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
-    
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.11'
-    
-    - name: Install linting tools
-      run: |
-        pip install ruff black
-    
-    - name: Run ruff (linting)
-      run: |
-        ruff check workspace/sci_fi_dashboard/ --exit-zero
-    
-    - name: Run black (format check)
-      run: |
-        black --check workspace/sci_fi_dashboard/ --exit-zero || true
 
-  typecheck:
-    runs-on: macos-latest
-    steps:
-    - uses: actions/checkout@v4
-    
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.11'
-    
-    - name: Install dependencies
-      run: |
-        pip install mypy types-python-dateutil
-    
-    - name: Run mypy
-      run: |
-        mypy workspace/sci_fi_dashboard/ --ignore-missing-imports --exit-zero-if-returned || true
+
+    - name: Install linting tools
+      run: pip install ruff black
+
+    - name: Run ruff (linting)
+      run: ruff check workspace/sci_fi_dashboard/
+
+    - name: Run black (format check)
+      run: black --check workspace/sci_fi_dashboard/
 
   test:
-    runs-on: macos-latest
-    
+    runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.11'
-    
-    - name: Install dependencies
-      run: |
-        python -m venv venv
-        source venv/bin/activate
-        pip install pytest pytest-asyncio pytest-timeout
-    
-    - name: Run all tests
-      run: |
-        source venv/bin/activate
-        cd workspace/tests
-        PYTHONPATH=../../.. pytest -v --timeout=120 --tb=short
+
+    - name: Install test dependencies
+      run: pip install pytest pytest-asyncio pytest-timeout
+
+    - name: Run tests
+      working-directory: workspace
+      run: pytest tests/ -v --timeout=120 --tb=short
