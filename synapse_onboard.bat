@@ -133,6 +133,16 @@ echo.
 echo Step 4: Linking WhatsApp...
 echo.
 
+REM Add WhatsApp channel first
+echo Adding WhatsApp channel...
+openclaw channels add --channel whatsapp --name "Synapse WhatsApp" >nul 2>&1
+if %ERRORLEVEL% NEQ 0 (
+    echo [OK] Channel already exists or added.
+) else (
+    echo [OK] WhatsApp channel added.
+)
+
+echo.
 echo A QR code will appear on your screen!
 echo.
 echo    1. Open WhatsApp on your phone
