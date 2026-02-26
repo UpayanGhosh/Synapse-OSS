@@ -82,6 +82,48 @@ That's it! The script will guide you through everything.
 
 ---
 
+## Custom Workspace Configuration
+
+This repository uses a custom workspace folder located at `workspace/` in the repository root. The onboarding script automatically configures this for you, but here are the commands for reference:
+
+### Set Custom Workspace Path
+
+```bash
+# Windows
+openclaw config set agents.defaults.workspace "D:\Shreya\Jarvis-OSS\workspace"
+
+# Mac/Linux (use absolute path)
+openclaw config set agents.defaults.workspace "/absolute/path/to/Jarvis-OSS/workspace"
+```
+
+### Verify Workspace Configuration
+
+```bash
+openclaw config get agents.defaults.workspace
+```
+
+### Restart Gateway After Changing Workspace
+
+```bash
+# Restart the gateway to apply changes
+openclaw gateway restart
+
+# Or stop and start manually
+openclaw gateway stop
+openclaw gateway
+```
+
+### What Happens During Onboarding
+
+The `synapse_onboard.bat` script automatically:
+1. Detects the project root (where the script is located)
+2. Sets `SYNAPSE_WORKSPACE=%PROJECT_ROOT%\workspace`
+3. Runs: `openclaw config set agents.defaults.workspace "%SYNAPSE_WORKSPACE%"`
+
+This points OpenClaw to use `D:\Shreya\Jarvis-OSS\workspace` instead of the default `~/.openclaw/workspace`.
+
+---
+
 ## What the Onboarding Script Does
 
 When you run it, the script will:
