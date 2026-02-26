@@ -128,43 +128,9 @@ if %ERRORLEVEL% NEQ 0 (
     echo [OK] Started Qdrant container.
 )
 
-REM Step 4: Set up OpenClaw if needed
+REM Step 4: Link WhatsApp
 echo.
-echo Step 4: Setting up OpenClaw...
-echo.
-
-REM Check if WhatsApp channel is configured
-openclaw channels list >nul 2>&1
-if %ERRORLEVEL% NEQ 0 (
-    echo ERROR: OpenClaw is not configured.
-    echo.
-    echo Please run this command first to set up OpenClaw:
-    echo    openclaw setup --wizard
-    echo.
-    echo During setup, select WhatsApp as your channel.
-    echo.
-    pause
-    exit /b 1
-)
-
-REM Check if WhatsApp is in the list
-openclaw channels list | findstr /C:"whatsapp" >nul
-if %ERRORLEVEL% NEQ 0 (
-    echo WhatsApp channel not configured.
-    echo.
-    echo Please run this command to add WhatsApp:
-    echo    openclaw channels add --channel whatsapp
-    echo    openclaw channels login --channel whatsapp
-    echo.
-    pause
-    exit /b 1
-)
-
-echo WhatsApp channel found.
-
-REM Step 5: Link WhatsApp (refresh session)
-echo.
-echo Step 5: Linking WhatsApp...
+echo Step 4: Linking WhatsApp...
 echo.
 echo    1. Open WhatsApp on your phone
 echo    2. Go to Settings - Linked Devices
@@ -179,8 +145,12 @@ echo.
 openclaw channels login --channel whatsapp --verbose
 if %ERRORLEVEL% NEQ 0 (
     echo.
-    echo ERROR: WhatsApp login failed or was cancelled.
-    echo Please re-run this script and scan the QR code when prompted.
+    echo ERROR: WhatsApp login failed.
+    echo.
+    echo If you have not set up OpenClaw before, run this first:
+    echo    openclaw setup --wizard
+    echo Then select WhatsApp when prompted.
+    echo.
     pause
     exit /b 1
 )
@@ -189,9 +159,9 @@ echo.
 echo [OK] WhatsApp linked!
 echo.
 
-REM Step 6: Get phone number
+REM Step 5: Get phone number
 echo.
-echo Step 6: Enter your phone number...
+echo Step 5: Enter your phone number...
 echo.
 
 echo This lets Synapse know it is YOU messaging it.
@@ -216,9 +186,9 @@ if %ERRORLEVEL% NEQ 0 (
 )
 echo [OK] Phone number saved: %PHONE_NUMBER%
 
-REM Step 7: Start services
+REM Step 6: Start services
 echo.
-echo Step 7: Starting All Synapse Services...
+echo Step 6: Starting All Synapse Services...
 echo.
 
 call synapse_start.bat
