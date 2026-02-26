@@ -90,16 +90,13 @@ class ExemplarSelector:
         """Build user→assistant conversation pairs from the database."""
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
-            messages = [
-                dict(r)
-                for r in conn.execute("""
+            messages = [dict(r) for r in conn.execute("""
                 SELECT msg_id, timestamp, role, content, session_id,
                        response_to, word_count, rt_sentiment, rt_language,
                        rt_mood_signal
                 FROM messages
                 ORDER BY timestamp ASC
-            """).fetchall()
-            ]
+            """).fetchall()]
 
         pairs = []
         # Match assistant responses to user messages
