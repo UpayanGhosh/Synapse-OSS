@@ -1,5 +1,13 @@
 # 🧬 SYNAPSE — Multi-Agent AI Assistant with Hybrid Memory, Evolving Personality, and Privacy-First Routing
 
+> ## ⚠️ MAINTENANCE WARNING ⚠️
+> 
+> **This repository is currently under active maintenance and is NOT recommended for use or cloning at this time.**
+> 
+> Breaking changes may be introduced without notice. Please wait for a stable release before setting this up.
+>
+> ---
+
 > **📢 Renamed from Jarvis-OSS to Synapse-OSS (Feb 2026)** — Same codebase, new name!
 
 ![Python](https://img.shields.io/badge/Python-3.11-3776AB?style=for-the-badge&logo=python&logoColor=white)
