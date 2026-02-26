@@ -31,7 +31,13 @@ chmod +x jarvis_onboard.sh  # Make executable (if needed)
 
 ### Windows
 
-Open **PowerShell** and run:
+Open **PowerShell as Administrator** the first time and allow scripts to run:
+
+```powershell
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+```
+
+Then run:
 
 ```powershell
 cd C:\path\to\Jarvis-OSS
@@ -47,9 +53,28 @@ Make sure you have these installed on your computer:
 | Tool | How to Check | Where to Get It |
 |------|--------------|-----------------|
 | **Git** | `git --version` | [git-scm.com](https://git-scm.com) |
-| **Python** | `python3 --version` | [python.org](https://www.python.org) |
+| **Python** | `python3 --version` (Mac/Linux) · `python --version` (Windows) | [python.org](https://www.python.org) |
 | **Docker** | `docker --version` | [docker.com](https://docker.com) |
 | **OpenClaw** | `openclaw --version` | [openclaw.ai](https://openclaw.ai) |
+
+Before running the onboard script, also set up your Python environment and config:
+
+```bash
+# macOS/Linux
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env
+# Edit .env — add at minimum: GEMINI_API_KEY=your_key_here
+
+# Windows PowerShell
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+copy .env.example .env
+# Edit .env — add at minimum: GEMINI_API_KEY=your_key_here
+```
+
+The onboard script will also pull the required Ollama embedding model (`nomic-embed-text`) and create the Qdrant Docker container automatically.
 
 ---
 

@@ -260,6 +260,8 @@ All cloud models route through the **Antigravity Proxy** (`localhost:8080`) usin
 | `MODEL_ANALYSIS` | `gemini-3-pro-high`                                             |
 | `MODEL_REVIEW`   | `gemini-3-pro-high` *(placeholder — Opus on credit restore)* |
 
+> **Note:** These model identifiers are resolved by the Antigravity Proxy (`localhost:8080`). The proxy maps them to actual provider model IDs (e.g. `gemini-2.0-flash-exp`). If you swap or update models, change both the constant in `api_gateway.py` **and** the corresponding alias in your OpenClaw proxy config.
+
 ---
 
 ### 8. ✂️ Auto-Continue System
@@ -293,6 +295,7 @@ A background async loop that runs every **10 minutes** (when plugged in and CPU 
 | ---------------------------- | --------- | --------------------------- |
 | Core API Gateway             | `8000`  | FastAPI / Uvicorn           |
 | Antigravity Proxy (OAuth)    | `8080`  | OpenClaw built-in           |
+| OpenClaw Gateway (WhatsApp)  | `18789` | OpenClaw built-in           |
 | Qdrant Vector DB             | `6333`  | Qdrant (OrbStack container) |
 | Ollama (Mac — embeddings)   | `11434` | Ollama                      |
 | Ollama (Windows PC — Vault) | `11434` | Ollama (remote)             |
@@ -355,10 +358,9 @@ workspace/
 │       ├── profile/            # ProfileManager (JSON layer store)
 │       ├── injection/          # PromptCompiler
 │       └── sentinel/           # File governance
-└── db/
-    ├── model_orchestrator.py   # Standalone model routing helper
-    ├── async_worker.py         # DB-layer async worker
-    └── ingest.py               # Fact ingestion pipeline
+├── scripts/                    # Maintenance & utility scripts
+├── monitor.py                  # Real-time observability dashboard
+└── main.py                     # CLI interface (chat, verify, ingest, vacuum)
 ```
 
 ---
