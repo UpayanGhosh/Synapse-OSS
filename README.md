@@ -6,6 +6,8 @@
 ![Lines of Code](https://img.shields.io/badge/Lines_of_Code-15,000+-blueviolet?style=for-the-badge)
 ![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
 ![Status](https://img.shields.io/badge/Status-Active-brightgreen?style=for-the-badge)
+![CI](https://img.shields.io/github/actions/workflow/status/UpayanGhosh/Jarvis-OSS/tests.yml?branch=main&style=for-the-badge&logo=github&label=CI)
+![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?style=for-the-badge&logo=docker&logoColor=white)
 
 > A self-hosted AI system that remembers everything, develops its own personality
 > from conversation patterns, thinks before replying, and routes private conversations
@@ -49,8 +51,6 @@ most chatbots ignore:
 ### WhatsApp Conversation
 
 > *JARVIS responding to a real message with memory context, persona adaptation, and model routing visible in the footer stats.*
->
-> *(Screenshots available in docs/ folder)*
 
 ### Architecture Overview
 
@@ -152,6 +152,17 @@ python -m uvicorn sci_fi_dashboard.api_gateway:app --host 0.0.0.0 --port 8000
 # 5. Verify
 curl http://localhost:8000/health
 # Windows: curl.exe http://localhost:8000/health
+```
+
+### Docker Quick Start
+
+```bash
+git clone https://github.com/UpayanGhosh/Jarvis-OSS.git
+cd Jarvis-OSS
+cp .env.example .env    # Edit .env with your API keys
+
+docker compose up --build
+# Gateway: http://localhost:8000  |  Qdrant: http://localhost:6333
 ```
 
 ---
