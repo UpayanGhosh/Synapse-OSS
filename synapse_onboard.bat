@@ -128,22 +128,66 @@ if %ERRORLEVEL% NEQ 0 (
     echo [OK] Started Qdrant container.
 )
 
-REM Step 4: Link WhatsApp
+REM Step 4: Link WhatsApp via OpenClaw
 echo.
 echo Step 4: Linking WhatsApp...
 echo.
 
-echo Opening WhatsApp Web...
-start https://web.whatsapp.com
-
+echo A QR code will appear on your screen!
 echo.
-echo Please scan the QR code with your phone to link WhatsApp.
+echo    1. Open WhatsApp on your phone
+echo    2. Go to Settings - Linked Devices
+echo    3. Tap 'Link a Device'
+echo    4. Scan the QR code below
 echo.
 pause
 
-REM Step 5: Start services
 echo.
-echo Step 5: Starting All Synapse Services...
+echo Scanning QR code now...
+echo.
+openclaw channels login
+if %ERRORLEVEL% NEQ 0 (
+    echo.
+    echo ERROR: WhatsApp login failed or was cancelled.
+    echo Please re-run this script and scan the QR code when prompted.
+    pause
+    exit /b 1
+)
+
+echo.
+echo [OK] WhatsApp linked!
+echo.
+
+REM Step 5: Get phone number
+echo.
+echo Step 5: Enter your phone number...
+echo.
+
+echo This lets Synapse know it is YOU messaging it.
+echo Enter your number with country code (e.g., +15551234567)
+echo.
+
+set /p PHONE_NUMBER="Your phone number: "
+
+REM Validate phone number format
+echo %PHONE_NUMBER% | findstr /R "^+[0-9][0-9]*$" >nul
+if %ERRORLEVEL% NEQ 0 (
+    echo ERROR: Invalid format! Use E.164 format like: +15551234567
+    pause
+    exit /b 1
+)
+
+echo.
+echo Saving phone number to OpenClaw config...
+openclaw config set channels.whatsapp.allowFrom "[\"%PHONE_NUMBER%\"]" --json >nul 2>&1
+if %ERRORLEVEL% NEQ 0 (
+    openclaw config set channels.whatsapp.allowFrom "[\"%PHONE_NUMBER%\"]" >nul 2>&1
+)
+echo [OK] Phone number saved: %PHONE_NUMBER%
+
+REM Step 6: Start services
+echo.
+echo Step 6: Starting All Synapse Services...
 echo.
 
 call synapse_start.bat
@@ -159,7 +203,7 @@ echo    1. Open WhatsApp on your phone
 echo    2. Find 'Message yourself' at the top of your chat list
 echo    3. Send a message to start the conversation!
 echo.
-echo Try sending: "Hello" or "What's up?"
+echo Try sending: Hello or What is up?
 echo.
 echo Synapse will reply. Have fun!
 echo.
