@@ -14,21 +14,22 @@ Routes:
 """
 
 import asyncio
-import psutil
-import httpx
-import os
-import sys
 import json
-import time
-import sqlite3
-import uvicorn
+import os
 import shutil
+import sqlite3
 import subprocess
-from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request, BackgroundTasks, HTTPException
-from pydantic import BaseModel
-from typing import Optional, List, Dict, Any
+import sys
+import time
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
+from typing import Any
+
+import httpx
+import psutil
+import uvicorn
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
+from pydantic import BaseModel
 
 # from celery import Celery  # REMOVED — using async workers
 from rich import print
@@ -103,7 +104,7 @@ def send_via_cli(target: str, message: str):
         print(f"❌ [CLI] Exception: {e}")
 
 
-async def continue_conversation(target: str, messages: List[dict], last_reply: str):
+async def continue_conversation(target: str, messages: list[dict], last_reply: str):
     """
     Background task to generate and send the rest of the message.
     """
@@ -143,18 +144,17 @@ async def continue_conversation(target: str, messages: List[dict], last_reply: s
         print(f"❌ [AUTO-CONTINUE] Failed: {e}")
 
 
-from sci_fi_dashboard.sqlite_graph import SQLiteGraph
-from sci_fi_dashboard.toxic_scorer_lazy import LazyToxicScorer
-from sci_fi_dashboard.memory_engine import MemoryEngine
-from sci_fi_dashboard.dual_cognition import DualCognitionEngine
-from sci_fi_dashboard.smart_entity import EntityGate
-from sci_fi_dashboard.conflict_resolver import ConflictManager
-from sci_fi_dashboard.retriever import (
-    query_memories,
-    format_context_for_prompt,
+from sci_fi_dashboard.conflict_resolver import ConflictManager  # noqa: E402
+from sci_fi_dashboard.dual_cognition import DualCognitionEngine  # noqa: E402
+from sci_fi_dashboard.memory_engine import MemoryEngine  # noqa: E402
+from sci_fi_dashboard.retriever import (  # noqa: E402
     get_db_stats,
+    query_memories,
 )
-from sci_fi_dashboard.sbs.orchestrator import SBSOrchestrator
+from sci_fi_dashboard.sbs.orchestrator import SBSOrchestrator  # noqa: E402
+from sci_fi_dashboard.smart_entity import EntityGate  # noqa: E402
+from sci_fi_dashboard.sqlite_graph import SQLiteGraph  # noqa: E402
+from sci_fi_dashboard.toxic_scorer_lazy import LazyToxicScorer  # noqa: E402
 
 # --- Singletons (Optimized v3) ---
 brain = SQLiteGraph()
@@ -167,12 +167,13 @@ dual_cognition = DualCognitionEngine(
 )
 
 # --- Async Gateway Components ---
-from gateway.queue import TaskQueue, MessageTask
-from gateway.sender import WhatsAppSender
-from gateway.worker import MessageWorker
-from gateway.dedup import MessageDeduplicator
-from gateway.flood import FloodGate
-import uuid
+import uuid  # noqa: E402
+
+from gateway.dedup import MessageDeduplicator  # noqa: E402
+from gateway.flood import FloodGate  # noqa: E402
+from gateway.queue import MessageTask, TaskQueue  # noqa: E402
+from gateway.sender import WhatsAppSender  # noqa: E402
+from gateway.worker import MessageWorker  # noqa: E402
 
 task_queue = TaskQueue(max_size=100)
 sender = WhatsAppSender(cli_command="openclaw")
@@ -180,9 +181,9 @@ dedup = MessageDeduplicator(window_seconds=300)
 flood = FloodGate(batch_window_seconds=3.0)
 
 # --- Sentinel (File Governance) ---
-from sbs.sentinel.tools import init_sentinel
+from sbs.sentinel.tools import init_sentinel  # noqa: E402
 
-init_sentinel(project_root=Path(__file__).parent)
+init_sentinel(project_root=Path(__file__).parent)  # noqa: E402
 
 # --- SBS Orchestrator (Phase 1) ---
 SBS_DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "jarvis_data")
@@ -203,9 +204,9 @@ def get_sbs_for_target(target: str) -> SBSOrchestrator:
 
 
 # --- Environment ---
-from utils.env_loader import load_env_file
+from utils.env_loader import load_env_file  # noqa: E402
 
-load_env_file(anchor=Path(__file__))
+load_env_file(anchor=Path(__file__))  # noqa: E402
 
 # --- LLM Client (OpenClaw Gateway OAuth) ---
 # We route via localhost:8080 (Antigravity Proxy)
@@ -290,8 +291,8 @@ print(
 class ChatRequest(BaseModel):
     message: str
     history: list = []
-    user_id: Optional[str] = None
-    session_type: Optional[str] = None  # safe or spicy override
+    user_id: str | None = None
+    session_type: str | None = None  # safe or spicy override
 
 
 class MemoryItem(BaseModel):
@@ -306,10 +307,10 @@ class QueryItem(BaseModel):
 class WhatsAppEnqueueRequest(BaseModel):
     message_id: str
     from_phone: str
-    to_phone: Optional[str] = None
-    conversation_id: Optional[str] = None
+    to_phone: str | None = None
+    conversation_id: str | None = None
     text: str
-    timestamp: Optional[str] = None
+    timestamp: str | None = None
     channel: str = "whatsapp"
 
 
@@ -484,7 +485,7 @@ async def route_traffic_cop(user_message: str) -> str:
 async def persona_chat(
     request: ChatRequest,
     target: str,
-    background_tasks: Optional[BackgroundTasks] = None,
+    background_tasks: BackgroundTasks | None = None,
 ):
     user_msg = request.message
     print(f"📩 [{target.upper()}] Inbound: {user_msg[:80]}...")
@@ -571,7 +572,7 @@ async def persona_chat(
 
     if session_mode == "spicy":
         # === THE VAULT (Local Stheno) ===
-        print(f"🌶️ Routing to THE VAULT (Local Stheno)")
+        print("🌶️ Routing to THE VAULT (Local Stheno)")
         # Translate first? Stheno understands Banglish moderately well, but translation helps RAG.
         # But for "Authentic" spicy chat, we might want raw Banglish.
         # Let's keep raw for Stheno to maintain flavor, unless requested otherwise.
@@ -670,9 +671,9 @@ async def process_message_pipeline(user_msg: str, chat_id: str) -> str:
     target = chat_id
     target_lower = target.lower()
     clean_id = "".join(filter(str.isdigit, target))
-    PHONE_MAP = {}
-    if clean_id in PHONE_MAP:
-        target = PHONE_MAP[clean_id]
+    phone_map = {}
+    if clean_id in phone_map:
+        target = phone_map[clean_id]
     elif any(s in target_lower for s in ["the_partner", "the_partner_nickname"]):
         target = "the_partner"
     else:
@@ -729,7 +730,7 @@ async def gentle_worker_loop():
 # --- WhatsApp Bridge Store ---
 
 
-def normalize_phone(raw: Optional[str]) -> str:
+def normalize_phone(raw: str | None) -> str:
     if not raw:
         return ""
     return "".join(ch for ch in str(raw) if ch.isdigit())
@@ -755,8 +756,7 @@ def validate_api_key(request: Request) -> None:
 def ensure_bridge_db() -> None:
     BRIDGE_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(BRIDGE_DB_PATH) as conn:
-        conn.execute(
-            """
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS inbound_messages (
                 message_id TEXT PRIMARY KEY,
                 channel TEXT NOT NULL,
@@ -771,12 +771,11 @@ def ensure_bridge_db() -> None:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
-            """
-        )
+            """)
         conn.commit()
 
 
-def get_inbound_message(message_id: str) -> Optional[Dict[str, Any]]:
+def get_inbound_message(message_id: str) -> dict[str, Any] | None:
     ensure_bridge_db()
     with sqlite3.connect(BRIDGE_DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
@@ -792,8 +791,8 @@ def insert_inbound_message(
     message_id: str,
     channel: str,
     from_phone: str,
-    to_phone: Optional[str],
-    conversation_id: Optional[str],
+    to_phone: str | None,
+    conversation_id: str | None,
     text: str,
     status: str,
 ) -> None:
@@ -813,10 +812,10 @@ def insert_inbound_message(
 def update_inbound_message(
     message_id: str,
     *,
-    status: Optional[str] = None,
-    task_id: Optional[str] = None,
-    reply: Optional[str] = None,
-    error: Optional[str] = None,
+    status: str | None = None,
+    task_id: str | None = None,
+    reply: str | None = None,
+    error: str | None = None,
 ) -> None:
     ensure_bridge_db()
     with sqlite3.connect(BRIDGE_DB_PATH) as conn:
@@ -859,16 +858,14 @@ async def lifespan(app: FastAPI):
     worker_task.cancel()
     if hasattr(app.state, "worker"):
         await app.state.worker.stop()
-    try:
+    with suppress(asyncio.CancelledError):
         await worker_task
-    except asyncio.CancelledError:
-        pass
 
 
 app = FastAPI(lifespan=lifespan)
 
 # --- CORS Configuration ---
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 
 CORS_ORIGINS = os.environ.get("CORS_ORIGINS", "http://localhost:3000").split(",")
 app.add_middleware(
@@ -910,70 +907,8 @@ def health():
 
 
 # --- WhatsApp Async Bridge ---
-
-
-@app.post("/whatsapp/enqueue")
-async def whatsapp_enqueue(payload: WhatsAppEnqueueRequest, request: Request):
-    validate_bridge_token(request)
-
-    text = (payload.text or "").strip()
-    if not text:
-        raise HTTPException(status_code=400, detail="text is required")
-
-    from_phone = normalize_phone(payload.from_phone)
-    if not from_phone:
-        raise HTTPException(status_code=400, detail="from_phone is required")
-
-    message_id = (payload.message_id or "").strip()
-    if not message_id:
-        message_id = f"{from_phone}:{int(time.time() * 1000)}"
-
-    existing = get_inbound_message(message_id)
-    if existing:
-        return {
-            "accepted": True,
-            "duplicate": True,
-            "message_id": message_id,
-            "job_id": existing.get("task_id"),
-            "status": existing.get("status", "queued"),
-        }
-
-    insert_inbound_message(
-        message_id=message_id,
-        channel=payload.channel or "whatsapp",
-        from_phone=from_phone,
-        to_phone=normalize_phone(payload.to_phone),
-        conversation_id=payload.conversation_id,
-        text=text,
-        status="queued",
-    )
-
-    try:
-        task = bridge_queue.send_task(
-            "process_whatsapp_message_task",
-            kwargs={
-                "message_id": message_id,
-                "from_phone": from_phone,
-                "to_phone": normalize_phone(payload.to_phone),
-                "conversation_id": payload.conversation_id,
-                "text": text,
-                "timestamp": payload.timestamp,
-                "channel": payload.channel or "whatsapp",
-                "db_path": str(BRIDGE_DB_PATH),
-            },
-        )
-    except Exception as e:
-        update_inbound_message(message_id, status="failed", error=f"enqueue_error: {e}")
-        raise HTTPException(status_code=503, detail="Queue unavailable")
-
-    update_inbound_message(message_id, status="queued", task_id=task.id, error=None)
-    return {
-        "accepted": True,
-        "duplicate": False,
-        "message_id": message_id,
-        "job_id": task.id,
-        "status": "queued",
-    }
+# NOTE: /whatsapp/enqueue endpoint disabled - bridge_queue (Celery) removed
+# Messages now handled by FloodGate + TaskQueue in gateway/
 
 
 @app.get("/whatsapp/jobs/{message_id}")
@@ -1026,7 +961,7 @@ async def whatsapp_loop_test(payload: WhatsAppLoopTestRequest, request: Request)
             timeout=timeout_sec,
         )
     except subprocess.TimeoutExpired:
-        raise HTTPException(status_code=504, detail=f"loop_test_timeout:{timeout_sec}s")
+        raise HTTPException(status_code=504, detail=f"loop_test_timeout:{timeout_sec}s") from None
 
     duration_ms = int((time.time() - started_at) * 1000)
     route = _extract_cli_send_route(result.stdout)
@@ -1056,10 +991,10 @@ async def whatsapp_loop_test(payload: WhatsAppLoopTestRequest, request: Request)
 
 class OpenAIRequest(BaseModel):
     model: str = "default"
-    messages: List[dict]
-    temperature: Optional[float] = 0.7
-    max_tokens: Optional[int] = 500
-    user: Optional[str] = "the_creator"
+    messages: list[dict]
+    temperature: float | None = 0.7
+    max_tokens: int | None = 500
+    user: str | None = "the_creator"
 
 
 @app.post("/chat")
@@ -1166,7 +1101,7 @@ async def rebuild_personas(request: Request):
         sbs_the_partner.force_batch(full_rebuild=True)
         return {"status": "rebuilt"}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from None
 
 
 @app.get("/persona/status")
@@ -1241,10 +1176,8 @@ async def add_memory(item: MemoryItem, background_tasks: BackgroundTasks, reques
             try:
                 data = json.loads(json_str)
             except json.JSONDecodeError:
-                try:
+                with suppress(Exception):
                     data = ast.literal_eval(json_str)
-                except Exception:
-                    pass
 
         if data:
             s, r, o = data.get("s"), data.get("r"), data.get("o")
@@ -1281,10 +1214,8 @@ async def query_memory(item: QueryItem, request: Request):
 
     # Vector search
     memory_results = {}
-    try:
+    with suppress(Exception):
         memory_results = query_memories(item.text, limit=3)
-    except Exception:
-        pass
 
     return {
         "graph": graph_results,

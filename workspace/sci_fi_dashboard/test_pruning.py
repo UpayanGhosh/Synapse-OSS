@@ -1,9 +1,9 @@
-import sys
 import os
-import time
+import sys
 import tempfile
+import time
 
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
 from sci_fi_dashboard.conflict_resolver import ConflictManager
 
@@ -55,9 +55,7 @@ def test_pruning_keeps_newest():
             )
             time.sleep(0.01)
 
-        pending_subjects = [
-            c["subject"] for c in cm.pending_conflicts if c["status"] == "pending"
-        ]
+        pending_subjects = [c["subject"] for c in cm.pending_conflicts if c["status"] == "pending"]
 
         # Oldest should have been pruned, newest should remain
         assert "Topic 0" not in pending_subjects
@@ -69,4 +67,5 @@ def test_pruning_keeps_newest():
 
 if __name__ == "__main__":
     import pytest
+
     pytest.main([__file__, "-v"])

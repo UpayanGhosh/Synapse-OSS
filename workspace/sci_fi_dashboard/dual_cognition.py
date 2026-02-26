@@ -8,7 +8,6 @@ Merge:              Detect tension, alignment, or contradiction.
 import asyncio
 import json
 from dataclasses import dataclass, field
-from typing import Optional, List
 
 
 @dataclass

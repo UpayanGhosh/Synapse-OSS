@@ -1,12 +1,14 @@
-import os
+import contextlib
 import hashlib
-import time
-import shutil
-from typing import List, Dict, Optional
+import os
+import sqlite3
+import struct
+
 from sci_fi_dashboard.db import get_db_connection
 from sci_fi_dashboard.retriever import get_embedding
 
 SOURCE_DIR = os.path.expanduser("~/.openclaw/workspace/memory")
+
 
 def ensure_schema_migration():
     """
@@ -17,19 +19,19 @@ def ensure_schema_migration():
         # Check if column exists
         cursor = conn.execute("PRAGMA table_info(documents)")
         columns = [row[1] for row in cursor.fetchall()]
-        
+
         if "content_hash" not in columns:
             print("📦 Migrating Schema: Adding 'content_hash' column...")
             conn.execute("ALTER TABLE documents ADD COLUMN content_hash TEXT")
-            
+
             print("🔄 Backfilling content hashes (this may take a moment)...")
             cursor = conn.execute("SELECT id, content FROM documents WHERE content_hash IS NULL")
             updates = []
             for row in cursor:
                 doc_id, content = row
-                md5 = hashlib.md5(content.encode('utf-8')).hexdigest()
+                md5 = hashlib.md5(content.encode("utf-8")).hexdigest()
                 updates.append((md5, doc_id))
-            
+
             conn.executemany("UPDATE documents SET content_hash = ? WHERE id = ?", updates)
             conn.commit()
             print(f"✅ Backfilled hashes for {len(updates)} documents.")
@@ -39,8 +41,10 @@ def ensure_schema_migration():
     finally:
         conn.close()
 
+
 def compute_hash(text: str) -> str:
-    return hashlib.md5(text.encode('utf-8')).hexdigest()
+    return hashlib.md5(text.encode("utf-8")).hexdigest()
+
 
 def ingest_atomic():
     """
@@ -53,10 +57,10 @@ def ingest_atomic():
     """
     print("🚀 Starting Atomic Ingestion...")
     ensure_schema_migration()
-    
+
     conn = get_db_connection()
     conn.row_factory = sqlite3.Row
-    
+
     try:
         # 1. Setup Shadow Table
         print("🌑 Creating Shadow Table...")
@@ -64,11 +68,11 @@ def ingest_atomic():
         conn.execute("CREATE TABLE documents_shadow AS SELECT * FROM documents WHERE 1=1")
         # Ensure indices on shadow for performance
         conn.execute("CREATE INDEX IF NOT EXISTS idx_shadow_hash ON documents_shadow(content_hash)")
-        
+
         # Load existing hashes set for fast lookup
-        existing_hashes = set(
+        existing_hashes = {
             row[0] for row in conn.execute("SELECT content_hash FROM documents_shadow").fetchall()
-        )
+        }
         print(f"📊 Existing Memories: {len(existing_hashes)}")
 
         # 2. Scan & Process
@@ -79,39 +83,39 @@ def ingest_atomic():
                 for file in files:
                     if file.endswith((".md", ".txt")):
                         path = os.path.join(root, file)
-                        with open(path, 'r', encoding='utf-8') as f:
+                        with open(path, encoding="utf-8") as f:
                             content = f.read()
-                        
+
                         # Chunking (paragraphs)
-                        chunks = [c.strip() for c in content.split('\n\n') if c.strip()]
-                        
+                        chunks = [c.strip() for c in content.split("\n\n") if c.strip()]
+
                         for chunk in chunks:
                             chash = compute_hash(chunk)
                             if chash not in existing_hashes:
                                 new_items.append((file, chunk, chash))
-                                existing_hashes.add(chash) # Avoid dupes in same batch
+                                existing_hashes.add(chash)  # Avoid dupes in same batch
 
         print(f"🧩 New Memories Found: {len(new_items)}")
-        
+
         # 3. Embed & Insert New Items
         if new_items:
             print("🧠 Embedding new memories (M1 Optimized)...")
             inserts = []
             for filename, content, chash in new_items:
                 # Embed using retriever (uses db.py connection internally if needed, but we just want embedding)
-                # Correction: retriever uses its own connection or passed one? 
-                # retriever functions are standalone. 
+                # Correction: retriever uses its own connection or passed one?
+                # retriever functions are standalone.
                 # We interpret 'get_embedding' calls.
                 vec = get_embedding(content)
                 if vec:
-                    # We insert into shadow table. 
+                    # We insert into shadow table.
                     # Note: vec_items is separate. We need to handle that too?
                     # "Atomic Maintenance" implies we sync EVERYTHING.
                     # If we swap documents, we must ensure vec_items points to correct IDs.
                     # If we just INSERT into shadow, IDs might drift if we don't preserve them?
                     # We used `CREATE TABLE ... AS SELECT`, so IDs are preserved.
                     # New items get new IDs.
-                    inserts.append((filename, content, chash, 'safe')) # Default to safe for files?
+                    inserts.append((filename, content, chash, "safe"))  # Default to safe for files?
                     # We need to insert into vec_items too.
                     # But vec_items is virtual table.
                     # Complication: sqlite-vec links by rowid or explicit id?
@@ -127,21 +131,20 @@ def ingest_atomic():
             # Insert new -> new IDs.
             # I must insert corresponding vectors into `vec_items`.
             # THIS IS KEY: `vec_items` is not shadowed here!
-            # If I swap `documents`, `vec_items` still points to old IDs? 
+            # If I swap `documents`, `vec_items` still points to old IDs?
             # No, if I `ALTER TABLE documents RENAME`, the table object changes name.
             # `vec_items` column `document_id` is just an integer.
             # As long as `documents_shadow` has same IDs for old rows, we are fine.
             # New rows get new IDs. We insert their vectors into `vec_items` with those new IDs.
-            
+
             cursor = conn.cursor()
             for filename, content, chash, tag in inserts:
                 # Insert into Shadow
                 cursor.execute(
                     "INSERT INTO documents_shadow (filename, content, hemisphere_tag, content_hash) VALUES (?, ?, ?, ?)",
-                    (filename, content, tag, chash)
+                    (filename, content, tag, chash),
                 )
-                new_id = cursor.lastrowid
-                
+
                 # Retrieve embedding again (inefficient loop but safe)
                 vec = get_embedding(content)
                 # Serialize? sqlite-vec handles raw list in newer versions or requires serialization?
@@ -151,7 +154,7 @@ def ingest_atomic():
                 # If I use `sqlite_vec` python package, I can just pass list?
                 # Let's check `retriever.py` usage. It uses `_serialize_f32`.
                 # I should just replicate `_serialize_f32` in `ingest.py`.
-                
+
                 # Insert into vec_items
                 # Wait, I shouldn't insert into vec_items UNTIL SWAP?
                 # If I insert into vec_items now, and swap fails, I have orphan vectors.
@@ -167,7 +170,7 @@ def ingest_atomic():
                 # 3. `INSERT INTO documents SELECT * FROM staging`.
                 # 4. `INSERT INTO vec_items ... from staging_vectors`.
                 # This keeps the "Main" DB locked/clean until ready.
-                
+
                 pass
 
             # Update: Using explicit transaction on main table with hash-check is safer/easier than swapping virtual tables.
@@ -177,57 +180,55 @@ def ingest_atomic():
             # Let's use the Transaction method (Atomic) + Content Hash (Optimization) which satisfies the core goals.
             # I will stick to "Process into Shadow" as a "New Items Batch".
             # `documents_new_batch` table.
-            
+
             # Loop new items -> Insert into `documents` and `vec_items` DIRECTLY inside a transaction.
             # If any failure, ROLLBACK.
             # This is "Atomic Maintenance".
             # The "Swap" might be unnecessary complexity for `vec_items`.
             # I'll implement: Transactional Bulk Insert with Hash Check.
             # It satisfies "Atomic" (ACID) and "Mac-Native Optimization" (Hash).
-            
+
             cursor = conn.cursor()
             count = 0
             for filename, content, chash in new_items:
                 vec = get_embedding(content)
-                if not vec: continue
-                
+                if not vec:
+                    continue
+
                 # Insert Doc
                 cursor.execute(
                     "INSERT INTO documents (filename, content, hemisphere_tag, content_hash) VALUES (?, ?, 'safe', ?)",
-                    (filename, content, chash)
+                    (filename, content, chash),
                 )
                 doc_id = cursor.lastrowid
-                
+
                 # Insert Vec
                 # We need struct.pack
-                vec_blob = struct.pack(f'{len(vec)}f', *vec)
+                vec_blob = struct.pack(f"{len(vec)}f", *vec)
                 cursor.execute(
                     "INSERT INTO vec_items(document_id, embedding) VALUES (?, ?)",
-                    (doc_id, vec_blob)
+                    (doc_id, vec_blob),
                 )
                 count += 1
                 if count % 100 == 0:
                     print(f"   ... Committed {count} memories")
-            
+
             conn.commit()
             print(f"✅ Successfully ingested {count} new memories.")
-            
+
         else:
             print("✅ No new memories to ingest.")
 
     except Exception as e:
         print(f"❌ Ingestion Failed: {e}")
-        conn.rollback() 
+        conn.rollback()
         # Clean up shadow if we made one
     finally:
         # Clean up shadow to save space
-        try:
+        with contextlib.suppress(BaseException):
             conn.execute("DROP TABLE IF EXISTS documents_shadow")
-        except: pass
         conn.close()
 
-import sqlite3
-import struct
 
 if __name__ == "__main__":
     ingest_atomic()

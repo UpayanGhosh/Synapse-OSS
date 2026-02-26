@@ -1,11 +1,13 @@
-import sys
 import os
+import sys
 import time
-# Add current directory to path so we can import modules
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
-from sci_fi_dashboard.smart_entity import EntityGate
+# Add current directory to path so we can import modules
+sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
+
 from sci_fi_dashboard.knowledge_graph import TransparentBrain
+from sci_fi_dashboard.smart_entity import EntityGate
+
 
 def run_soul_test():
     print("🔮 Initiating Soul Verification Protocol...\n")
@@ -22,7 +24,7 @@ def run_soul_test():
     brain.add_node("Freezing Pot", "Item")
     brain.add_relation(subject, "is weak to", "Freezing Pot")
     brain.save_graph()
-    time.sleep(1) # Dramatic pause
+    time.sleep(1)  # Dramatic pause
     print("✅ Indexing Complete.\n")
 
     # 3. User Query with Slang
@@ -38,18 +40,18 @@ def run_soul_test():
         return
 
     # 5. Connect to Transparent Brain
-    focus_entity = entities[0] # Should be "Malenia"
+    focus_entity = entities[0]  # Should be "Malenia"
     print(f"🧠 Transparent Brain: Recalling knowledge for '{focus_entity}'...")
-    
+
     context = brain.get_context(focus_entity)
     connections = []
-    
+
     if brain.graph.has_node(focus_entity):
         for neighbor in context:
             edge_data = brain.graph.get_edge_data(focus_entity, neighbor)
-            relation = edge_data['relation']
+            relation = edge_data["relation"]
             connections.append(f"{focus_entity} --[{relation}]--> {neighbor}")
-    
+
     if connections:
         print("\n✨ SOUL RESURRECTED ✨")
         print("The system successfully connected the slang term to the graph data.")
@@ -58,6 +60,7 @@ def run_soul_test():
             print(f"  > {c}")
     else:
         print("❌ FAILED: Entity found but no knowledge retrieved.")
+
 
 if __name__ == "__main__":
     run_soul_test()

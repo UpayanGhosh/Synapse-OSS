@@ -1,11 +1,10 @@
-import asyncio
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 
 from .ingestion.logger import ConversationLogger
 from .ingestion.schema import RawMessage
-from .profile.manager import ProfileManager
 from .injection.compiler import PromptCompiler
+from .profile.manager import ProfileManager
 
 
 class SBSOrchestrator:
@@ -42,12 +41,12 @@ class SBSOrchestrator:
         if not last_run_str:
             return
 
-        from datetime import datetime, timedelta
+        from datetime import timedelta
 
         try:
             last_run = datetime.fromisoformat(last_run_str)
             if datetime.now() - last_run > timedelta(hours=6):
-                print(f"[SBS] Startup trigger: >6 hrs since last batch. Running now.")
+                print("[SBS] Startup trigger: >6 hrs since last batch. Running now.")
                 import threading
 
                 threading.Thread(target=self.batch.run).start()

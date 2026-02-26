@@ -9,14 +9,17 @@ functions as tools, NOT raw file operations.
 """
 
 from pathlib import Path
+
 from .gateway import Sentinel, SentinelError
 
 # Global sentinel instance (initialized once at app startup)
 _sentinel: Sentinel = None
 
+
 def init_sentinel(project_root: Path):
     global _sentinel
     _sentinel = Sentinel(project_root)
+
 
 def agent_read_file(path: str, reason: str = "agent requested") -> str:
     """
@@ -29,6 +32,7 @@ def agent_read_file(path: str, reason: str = "agent requested") -> str:
         return _sentinel.safe_read(path, reason)
     except SentinelError as e:
         return f"[SENTINEL DENIED]: {str(e)}"
+
 
 def agent_write_file(path: str, content: str, reason: str = "") -> str:
     """
@@ -43,6 +47,7 @@ def agent_write_file(path: str, content: str, reason: str = "") -> str:
     except SentinelError as e:
         return f"[SENTINEL DENIED]: {str(e)}"
 
+
 def agent_delete_file(path: str, reason: str = "") -> str:
     """
     Tool: Delete a file.
@@ -54,6 +59,7 @@ def agent_delete_file(path: str, reason: str = "") -> str:
         return f"[SUCCESS]: Deleted {path}"
     except SentinelError as e:
         return f"[SENTINEL DENIED]: {str(e)}"
+
 
 def agent_list_directory(path: str, reason: str = "") -> str:
     """

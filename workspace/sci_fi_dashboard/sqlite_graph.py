@@ -3,13 +3,11 @@ SQLite-backed Knowledge Graph — replaces NetworkX.
 Memory: ~150MB → ~1MB (only query results in RAM).
 """
 
-import sqlite3
+import gzip
 import json
 import os
-import gzip
+import sqlite3
 import time
-from typing import Optional, List, Dict
-
 
 DB_PATH = os.path.expanduser("~/.openclaw/workspace/db/knowledge_graph.db")
 
@@ -67,15 +65,15 @@ class SQLiteGraph:
                    VALUES (?, ?, ?, ?, ?)
                    ON CONFLICT(name) DO UPDATE SET
                        properties = ?, updated_at = ?""",
-                (name, node_type, json.dumps(properties), now, now,
-                 json.dumps(properties), now),
+                (name, node_type, json.dumps(properties), now, now, json.dumps(properties), now),
             )
             conn.commit()
         finally:
             conn.close()
 
-    def add_edge(self, source: str, target: str, relation: str,
-                 weight: float = 1.0, evidence: str = ""):
+    def add_edge(
+        self, source: str, target: str, relation: str, weight: float = 1.0, evidence: str = ""
+    ):
         now = time.time()
         conn = self._conn()
         try:
@@ -112,7 +110,9 @@ class SQLiteGraph:
             return ""
         lines = []
         for r in rows:
-            lines.append(f"  {r['source']} --[{r['relation']}]--> {r['target']} (w={r['weight']:.2f})")
+            lines.append(
+                f"  {r['source']} --[{r['relation']}]--> {r['target']} (w={r['weight']:.2f})"
+            )
         return f"Knowledge about {entity}:\n" + "\n".join(lines)
 
     def find_connection_path(self, start: str, end: str, max_depth: int = 4) -> list:
@@ -124,7 +124,8 @@ class SQLiteGraph:
                 next_queue = []
                 for current, path in queue:
                     rows = conn.execute(
-                        "SELECT target FROM edges WHERE source = ?", (current,),
+                        "SELECT target FROM edges WHERE source = ?",
+                        (current,),
                     ).fetchall()
                     for row in rows:
                         neighbor = row["target"]
@@ -140,7 +141,7 @@ class SQLiteGraph:
             conn.close()
         return []
 
-    def get_all_node_names(self) -> List[str]:
+    def get_all_node_names(self) -> list[str]:
         conn = self._conn()
         try:
             rows = conn.execute("SELECT name FROM nodes").fetchall()
@@ -162,12 +163,12 @@ class SQLiteGraph:
         finally:
             conn.close()
 
-
     # ── NetworkX Compatibility Layer ──
     # These methods allow drop-in replacement in api_gateway.py
 
-    def add_relation(self, source: str, relation: str, target: str, 
-                     weight: float = 1.0, evidence: str = ""):
+    def add_relation(
+        self, source: str, relation: str, target: str, weight: float = 1.0, evidence: str = ""
+    ):
         """Alias for add_edge — matches TransparentBrain API."""
         self.add_edge(source, target, relation=relation, weight=weight, evidence=evidence)
 
@@ -175,14 +176,12 @@ class SQLiteGraph:
         """Check if a node exists."""
         conn = self._conn()
         try:
-            row = conn.execute(
-                "SELECT 1 FROM nodes WHERE name = ? LIMIT 1", (name,)
-            ).fetchone()
+            row = conn.execute("SELECT 1 FROM nodes WHERE name = ? LIMIT 1", (name,)).fetchone()
             return row is not None
         finally:
             conn.close()
 
-    def neighbors(self, node: str) -> List[str]:
+    def neighbors(self, node: str) -> list[str]:
         """Get all nodes connected to this node (outgoing edges)."""
         conn = self._conn()
         try:
@@ -201,9 +200,7 @@ class SQLiteGraph:
     def prune_weak_edges(self, min_weight: float = 0.1):
         conn = self._conn()
         try:
-            deleted = conn.execute(
-                "DELETE FROM edges WHERE weight < ?", (min_weight,)
-            ).rowcount
+            deleted = conn.execute("DELETE FROM edges WHERE weight < ?", (min_weight,)).rowcount
             conn.commit()
             if deleted:
                 print(f"✂️ Pruned {deleted} weak edges")
@@ -232,18 +229,19 @@ class SQLiteGraph:
             with open(graph_file) as f:
                 data = json.load(f)
 
-        G = nx.node_link_graph(data)
+        g = nx.node_link_graph(data)
         db = cls(db_path)
 
         node_count = 0
-        for node, attrs in G.nodes(data=True):
+        for node, attrs in g.nodes(data=True):
             db.add_node(str(node), node_type=attrs.get("type", "entity"))
             node_count += 1
 
         edge_count = 0
-        for src, tgt, attrs in G.edges(data=True):
+        for src, tgt, attrs in g.edges(data=True):
             db.add_edge(
-                str(src), str(tgt),
+                str(src),
+                str(tgt),
                 relation=attrs.get("relation", attrs.get("label", "related_to")),
                 weight=attrs.get("weight", 1.0),
             )
