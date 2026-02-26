@@ -49,14 +49,17 @@ REM Edit .env — add at minimum: GEMINI_API_KEY=your_key_here
 Before running the onboarding script, set up OpenClaw with WhatsApp:
 
 ```bash
-# Mac/Linux
-openclaw setup --wizard
-
-# Windows
+# Mac/Linux or Windows
 openclaw setup --wizard
 ```
 
-Select **WhatsApp** when prompted and scan the QR code to link your WhatsApp account.
+**Inside the wizard:**
+
+1. Select your mode (recommended: `local`)
+2. When asked about **channels**, select **WhatsApp**
+3. A QR code will appear — scan it with your phone (WhatsApp → Settings → Linked Devices → Link a Device)
+4. Continue through the wizard with default options
+5. Done! WhatsApp is now linked.
 
 ---
 
