@@ -1,10 +1,10 @@
 import os
-import sys
 import shutil
+import sys
 import tempfile
 from pathlib import Path
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from sbs.orchestrator import SBSOrchestrator
 
@@ -28,11 +28,14 @@ def test_sbs_conversation_ingestion():
         ]
 
         for role, content in messages:
-            res = orchestrator.on_message(role, content)
+            orchestrator.on_message(role, content)
 
         current_mood = orchestrator.get_profile_summary()["current_mood"]
-        assert current_mood in ["stressed", "playful", "neutral"], \
-            f"Unexpected mood: {current_mood}"
+        assert current_mood in [
+            "stressed",
+            "playful",
+            "neutral",
+        ], f"Unexpected mood: {current_mood}"
     finally:
         if test_dir.exists():
             shutil.rmtree(test_dir)
@@ -86,4 +89,5 @@ def test_sbs_prompt_compilation():
 
 if __name__ == "__main__":
     import pytest
+
     pytest.main([__file__, "-v"])

@@ -14,11 +14,11 @@ class ConflictManager:
     def load_conflicts(self):
         if os.path.exists(self.conflicts_file):
             try:
-                with open(self.conflicts_file, "r") as f:
+                with open(self.conflicts_file) as f:
                     content = f.read().strip()
                     if content:
                         return json.loads(content)
-            except (json.JSONDecodeError, IOError):
+            except (OSError, json.JSONDecodeError):
                 pass
         return []
 
@@ -127,15 +127,11 @@ if __name__ == "__main__":
     print(f"Test 1 (New): {result}")
 
     # 2. High Confidence Overwrite
-    result = cm.check_conflict(
-        "Coffee", "I LOVE matcha", 0.95, "Chat", "I like matcha", 0.2
-    )
+    result = cm.check_conflict("Coffee", "I LOVE matcha", 0.95, "Chat", "I like matcha", 0.2)
     print(f"Test 2 (Overwrite): {result}")
 
     # 3. Real Conflict
-    result = cm.check_conflict(
-        "Coffee", "I hate coffee", 0.8, "Chat", "I love coffee", 0.8
-    )
+    result = cm.check_conflict("Coffee", "I hate coffee", 0.8, "Chat", "I love coffee", 0.8)
     print(f"Test 3 (Conflict): {result}")
 
     # 4. Briefing

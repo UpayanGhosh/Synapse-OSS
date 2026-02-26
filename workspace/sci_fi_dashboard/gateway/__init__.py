@@ -1,6 +1,6 @@
-from .queue import TaskQueue, MessageTask
 from .dedup import MessageDeduplicator
 from .flood import FloodGate
+from .queue import MessageTask, TaskQueue
 from .sender import WhatsAppSender
 from .worker import MessageWorker
 
@@ -10,5 +10,5 @@ __all__ = [
     "MessageDeduplicator",
     "FloodGate",
     "WhatsAppSender",
-    "MessageWorker"
+    "MessageWorker",
 ]

@@ -1,8 +1,8 @@
+import gc
+import threading
+import time
 
 import torch
-import gc
-import time
-import threading
 
 
 class LazyToxicScorer:
@@ -29,9 +29,7 @@ class LazyToxicScorer:
         from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
         self._tokenizer = AutoTokenizer.from_pretrained(self.model_name)
-        self._model = AutoModelForSequenceClassification.from_pretrained(
-            self.model_name
-        )
+        self._model = AutoModelForSequenceClassification.from_pretrained(self.model_name)
 
         # Use MPS if available (Apple Silicon GPU)
         if torch.backends.mps.is_available():
@@ -56,9 +54,7 @@ class LazyToxicScorer:
     def _schedule_cleanup(self):
         if self._cleanup_timer:
             self._cleanup_timer.cancel()
-        self._cleanup_timer = threading.Timer(
-            self.idle_timeout, self._unload
-        )
+        self._cleanup_timer = threading.Timer(self.idle_timeout, self._unload)
         self._cleanup_timer.daemon = True
         self._cleanup_timer.start()
 

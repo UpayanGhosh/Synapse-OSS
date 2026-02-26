@@ -1,13 +1,14 @@
 import json
-import random
 import os
+import random
+
 
 class PersonaManager:
     def __init__(self, workspace_root="/path/to/openclaw"):
         self.root = workspace_root
         self.workspace = os.path.join(self.root, "workspace")
         self.dict_path = os.path.join(self.workspace, "skills/language/banglish_dict.json")
-        
+
         # Identity Files Configuration (Order matters for context layering)
         self.files = {
             "instructions": os.path.join(self.workspace, "INSTRUCTIONS.MD"),
@@ -15,17 +16,17 @@ class PersonaManager:
             "core": os.path.join(self.workspace, "CORE.md"),
             "agents": os.path.join(self.workspace, "AGENTS.md"),
             "identity": os.path.join(self.workspace, "IDENTITY.md"),
-            "user": os.path.join(self.workspace, "USER.md")
+            "user": os.path.join(self.workspace, "USER.md"),
         }
-        
+
         self.banglish_data = self.load_dictionary()
 
     def load_dictionary(self):
         try:
             if os.path.exists(self.dict_path):
-                with open(self.dict_path, "r") as f:
+                with open(self.dict_path) as f:
                     return json.load(f)
-        except Exception as e:
+        except Exception:
             # print(f"⚠️ Persona Error: Could not load Banglish dict: {e}")
             pass
         return {}
@@ -34,7 +35,7 @@ class PersonaManager:
         path = self.files.get(key)
         if path and os.path.exists(path):
             try:
-                with open(path, "r") as f:
+                with open(path) as f:
                     return f.read()
             except Exception as e:
                 return f"<!-- Error reading {key}: {e} -->"
@@ -60,7 +61,7 @@ class PersonaManager:
         # 2. Dynamic Flavor (Banglish)
         flavor_words = self.get_random_words(8)
         flavor_text = ", ".join(flavor_words)
-        
+
         # 3. Assemble Prompt
         # Concatenating in logical override order
         prompt = f"""

@@ -1,13 +1,12 @@
-import os
-import sys
-import time
-import math
 import json
-import gzip
+import math
+import os
 import sqlite3
+import sys
 import threading
-from typing import Optional, List, Dict, Any
+import time
 from functools import lru_cache, wraps
+
 from flashrank import Ranker, RerankRequest
 
 # Import centralized DB module
@@ -18,8 +17,8 @@ except ImportError:
         from db import get_db_connection
     except ImportError:
         # Final fallback if working in workspace/sci_fi_dashboard
-        import sys
         import os
+        import sys
 
         sys.path.append(os.path.dirname(__file__))
         from db import get_db_connection
@@ -60,9 +59,9 @@ try:
 except ImportError:
     # Fallback to absolute import if package structure is tricky
     sys.path.append(os.path.join(WORKSPACE_ROOT, "sci_fi_dashboard"))
-    from retriever import QdrantVectorStore
+    from retriever import QdrantVectorStore  # noqa: E402
 
-import ollama
+import ollama  # noqa: E402
 
 # Configuration
 EMBEDDING_MODEL = "nomic-embed-text"
@@ -95,7 +94,7 @@ class MemoryEngine:
 
         print("✅ MemoryEngine initialized (shared graph, no duplication)")
 
-    @lru_cache(maxsize=500)
+    @lru_cache(maxsize=500)  # noqa: B019
     def get_embedding(self, text: str) -> list:
         try:
             response = ollama.embeddings(

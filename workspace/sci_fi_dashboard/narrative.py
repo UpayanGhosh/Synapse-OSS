@@ -40,14 +40,15 @@ NARRATIVE_MAP = {
     "growth_log": [
         ("🌱 Distilling new insights...", "Internalizing human behavior..."),
         ("📈 Self-optimization sequence...", "Behavioral patterns updated..."),
-    ]
+    ],
 }
+
 
 def translate_log_to_narrative(technical_log: str):
     for key, options in NARRATIVE_MAP.items():
         if key in technical_log:
             narrative, sub = random.choice(options)
             return narrative, sub
-    
+
     # Default fallbacks
     return f"⚙️ Executing: {technical_log}", "Monitoring system impact..."
