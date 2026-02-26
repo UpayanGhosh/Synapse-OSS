@@ -14,7 +14,7 @@ class ExemplarSelector:
     2. RECENCY    — Recent interactions are preferred (but not exclusively)
     3. QUALITY    — Only "good" interactions (no errors, corrections, confusion)
     4. RICHNESS   — Longer, more substantive exchanges over one-word replies
-    5. IDENTITY   — Pairs that best showcase the desired Jarvis personality
+    5. IDENTITY   — Pairs that best showcase the desired Synapse personality
 
     Selection Strategy:
     ┌──────────────────────────────────────────────────┐
@@ -90,13 +90,16 @@ class ExemplarSelector:
         """Build user→assistant conversation pairs from the database."""
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
-            messages = [dict(r) for r in conn.execute("""
+            messages = [
+                dict(r)
+                for r in conn.execute("""
                 SELECT msg_id, timestamp, role, content, session_id,
                        response_to, word_count, rt_sentiment, rt_language,
                        rt_mood_signal
                 FROM messages
                 ORDER BY timestamp ASC
-            """).fetchall()]
+            """).fetchall()
+            ]
 
         pairs = []
         # Match assistant responses to user messages
@@ -231,7 +234,7 @@ class ExemplarSelector:
         return candidates[:count]
 
     def _select_personality_highlights(self, pairs, used_ids, count) -> list[dict]:
-        """Pairs where Jarvis showed strong personality (humor, care, expertise)."""
+        """Pairs where Synapse showed strong personality (humor, care, expertise)."""
         # Heuristic: assistant responses with emojis, exclamations,
         # or specific personality markers
         personality_markers = ["the_brother", "arey", "!", "😎", "🔥", "chal", "dekh"]

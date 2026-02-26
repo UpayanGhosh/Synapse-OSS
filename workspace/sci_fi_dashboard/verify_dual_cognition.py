@@ -25,7 +25,7 @@ class MockMemory:
 
 class MockGraph:
     def get_entity_neighborhood(self, entity):
-        return f"Connections for {entity}: Friend of partner_user, Creator of Jarvis."
+        return f"Connections for {entity}: Friend of partner_user, Creator of Synapse."
 
 
 async def mock_llm(messages, temperature=0.7, max_tokens=500):

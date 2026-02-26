@@ -10,7 +10,7 @@ __pycache__
 *.sqlite
 *.db-shm
 *.db-wal
-jarvis_data/
+synapse_data/
 logs/
 .claude/
 *.egg-info

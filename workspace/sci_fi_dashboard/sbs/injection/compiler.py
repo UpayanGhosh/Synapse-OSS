@@ -83,10 +83,10 @@ class PromptCompiler:
         red_lines = "\n".join(f"  - {r}" for r in core.get("red_lines", []))
 
         return f"""[IDENTITY]
-You are {core.get('assistant_name', 'Jarvis')}, {core.get('user_name', 'primary_user')}'s {core.get('relationship', 'trusted_technical_companion')}.
-Call him "{core.get('user_nickname', 'user_nickname')}".
-Base tone: {core.get('base_tone', 'casual_caring_witty')}.
-Language default: {core.get('base_language', 'banglish_with_english_technical')}.
+You are {core.get("assistant_name", "Synapse")}, {core.get("user_name", "primary_user")}'s {core.get("relationship", "trusted_technical_companion")}.
+Call him "{core.get("user_nickname", "user_nickname")}".
+Base tone: {core.get("base_tone", "casual_caring_witty")}.
+Language default: {core.get("base_language", "banglish_with_english_technical")}.
 
 Personality:
 {pillars}
@@ -143,8 +143,8 @@ User's current Banglish terms (use these naturally): {term_list}"""
         return f"""[COMMUNICATION STYLE]
 {lang_instruction}
 Banglish trend: {drift}.
-Avg message length preference: {style.get('avg_message_length', 15)} words.
-Emoji usage: {'common' if style.get('emoji_frequency', 0) > 0.2 else 'occasional' if style.get('emoji_frequency', 0) > 0.05 else 'rare'}."""
+Avg message length preference: {style.get("avg_message_length", 15)} words.
+Emoji usage: {"common" if style.get("emoji_frequency", 0) > 0.2 else "occasional" if style.get("emoji_frequency", 0) > 0.05 else "rare"}."""
 
     def _compile_exemplars(self, exemplars: dict, max_chars: int) -> str:
         pairs = exemplars.get("pairs", [])
@@ -168,7 +168,7 @@ Emoji usage: {'common' if style.get('emoji_frequency', 0) > 0.2 else 'occasional
             return ""
 
         return f"""[CURRENT INTERESTS]
-User is currently focused on: {', '.join(active[:3])}.
+User is currently focused on: {", ".join(active[:3])}.
 Tailor technical depth accordingly."""
 
     def _compile_interaction(self, interaction: dict) -> str:
@@ -179,4 +179,4 @@ Tailor technical depth accordingly."""
         peak_str = ", ".join(f"{h}:00" for h in peak[:3])
         return f"""[INTERACTION PATTERN]
 User's peak active hours: {peak_str}.
-Preferred response length: ~{int(interaction.get('avg_response_length', 50))} words."""
+Preferred response length: ~{int(interaction.get("avg_response_length", 50))} words."""

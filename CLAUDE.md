@@ -7,12 +7,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### Start / Stop
 ```bash
 # First-time setup
-./jarvis_onboard.sh        # Mac/Linux
-.\jarvis_onboard.ps1       # Windows
+./synapse_onboard.sh        # Mac/Linux
+.\synapse_onboard.ps1       # Windows
 
 # Start all services (Qdrant, Ollama, API Gateway, OpenClaw)
-./jarvis_start.sh          # Mac/Linux
-.\jarvis_start.ps1         # Windows
+./synapse_start.sh          # Mac/Linux
+.\synapse_start.ps1         # Windows
 ```
 
 ### Run the API server directly
@@ -112,7 +112,7 @@ Retrieval pipeline (`retriever.py`):
 Located in `workspace/sci_fi_dashboard/sbs/`. Continuously evolves behavioral profiles:
 
 - **Real-time** (`processing/realtime.py`): sentiment + language detection on every message
-- **Batch** (`processing/batch.py`): triggers every 50 messages OR 6 hours, distills into 8 profile layers stored as JSON in `jarvis_data/`
+- **Batch** (`processing/batch.py`): triggers every 50 messages OR 6 hours, distills into 8 profile layers stored as JSON in `synapse_data/`
 - **Injection** (`injection/compiler.py`): compiles profile layers into the system prompt before each LLM call
 
 Profile layers: `core_identity`, `linguistic`, `emotional_state`, `domain`, `interaction`, `vocabulary`, `exemplars`, `meta`.

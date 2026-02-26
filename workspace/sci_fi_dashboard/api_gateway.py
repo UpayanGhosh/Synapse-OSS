@@ -2,8 +2,8 @@
 Antigravity Gateway v2 — The Soul + Brain Assembly Line
 
 Routes:
-  POST /chat/the_creator   — Chat as Jarvis talking to user_nickname (brother mode)
-  POST /chat/the_partner   — Chat as Jarvis talking to the_partner_name (caring PA mode)
+  POST /chat/the_creator   — Chat as Synapse talking to user_nickname (brother mode)
+  POST /chat/the_partner   — Chat as Synapse talking to the_partner_name (caring PA mode)
   POST /chat          — Generic fallback (original Banglish persona)
   POST /persona/rebuild — Re-parse chat logs and rebuild persona profiles
   GET  /persona/status  — Profile stats and embedding mode
@@ -186,7 +186,7 @@ from sbs.sentinel.tools import init_sentinel  # noqa: E402
 init_sentinel(project_root=Path(__file__).parent)  # noqa: E402
 
 # --- SBS Orchestrator (Phase 1) ---
-SBS_DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "jarvis_data")
+SBS_DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "synapse_data")
 sbs_the_creator = (
     SBSOrchestrator(os.path.join(SBS_DATA_DIR, "the_creator"))
     if os.path.exists(os.path.dirname(os.path.abspath(__file__)))
@@ -556,7 +556,7 @@ async def persona_chat(
     user_log = sbs_orchestrator.on_message("user", user_msg, request.user_id or "default")
     user_msg_id = user_log.get("msg_id")
 
-    base_instructions = "You are Jarvis. Follow the persona profile below precisely."
+    base_instructions = "You are Synapse. Follow the persona profile below precisely."
     system_prompt = sbs_orchestrator.get_system_prompt(base_instructions)
     messages = [
         {"role": "system", "content": system_prompt},
@@ -577,7 +577,7 @@ async def persona_chat(
         # But for "Authentic" spicy chat, we might want raw Banglish.
         # Let's keep raw for Stheno to maintain flavor, unless requested otherwise.
 
-        full_prompt = f"{system_prompt}\n\nUser: {user_msg}\n\nJarvis:"
+        full_prompt = f"{system_prompt}\n\nUser: {user_msg}\n\nSynapse:"
         try:
             reply = await call_local_spicy(full_prompt)
             model_used = "The Vault (Stheno)"
@@ -658,7 +658,7 @@ async def persona_chat(
 
     return {
         "reply": final_reply,
-        "persona": f"jarvis_{target}",
+        "persona": f"synapse_{target}",
         "memory_method": retrieval_method,
         "model": model_used,
     }
@@ -1066,7 +1066,7 @@ async def chat_webhook(request: Request):
 async def chat_the_creator(
     request: ChatRequest, background_tasks: BackgroundTasks, http_request: Request
 ):
-    """Chat as Jarvis → primary_user (Bro Mode 👊)"""
+    """Chat as Synapse → primary_user (Bro Mode 👊)"""
     validate_api_key(http_request)
     return await persona_chat(request, "the_creator", background_tasks)
 
@@ -1075,7 +1075,7 @@ async def chat_the_creator(
 async def chat_the_partner(
     request: ChatRequest, background_tasks: BackgroundTasks, http_request: Request
 ):
-    """Chat as Jarvis → partner_user (Caring PA Mode 🌹)"""
+    """Chat as Synapse → partner_user (Caring PA Mode 🌹)"""
     validate_api_key(http_request)
     return await persona_chat(request, "the_partner", background_tasks)
 

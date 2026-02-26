@@ -1,11 +1,11 @@
 #!/usr/bin/env pwsh
 #
-# Jarvis Start Script for Windows (PowerShell)
-#
-# This script starts all the necessary background services for Jarvis to run.
-# It assumes you have already run the 'jarvis_onboard.ps1' script at least once.
+# Synapse Start Script for Windows (PowerShell)
 
-Write-Host "🚀 Starting Jarvis services..."
+# This script starts all the necessary background services for Synapse to run.
+# It assumes you have already run the 'synapse_onboard.ps1' script at least once.
+
+Write-Host "🚀 Starting Synapse services..."
 Write-Host ""
 
 $projectRoot = $PSScriptRoot
@@ -59,5 +59,5 @@ if (-not $oc_gateway_running) {
 }
 
 Write-Host ""
-Write-Host "✅ Jarvis is starting up. It may take a moment."
-Write-Host "You can now message Jarvis on WhatsApp."
+Write-Host "✅ Synapse is starting up. It may take a moment."
+Write-Host "You can now message Synapse on WhatsApp."

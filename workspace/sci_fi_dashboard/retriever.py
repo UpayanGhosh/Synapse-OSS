@@ -279,7 +279,7 @@ def query_memories(
                 "the_partner",
                 "the_partner_nickname",
                 "yourworkplace",
-                "jarvis",
+                "synapse",
                 "friend_name",
                 "sikkim",
                 "kolkata",

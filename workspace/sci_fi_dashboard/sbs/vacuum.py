@@ -56,7 +56,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--data-dir",
         type=str,
-        default="./jarvis_data/the_creator",
+        default="./synapse_data/the_creator",
         help="Path to SBS data directory",
     )
     parser.add_argument(

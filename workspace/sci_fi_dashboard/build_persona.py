@@ -39,11 +39,11 @@ def find_chat_file(directory: str, filename: str) -> str:
 
 def print_profile_summary(profile: PersonaProfile):
     """Print a human-readable summary of a generated profile."""
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"  📋 Profile: {profile.target_user} ({profile.relationship_mode})")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     print(
-        f"  📈 Messages analyzed: {profile.total_jarvis_messages} Jarvis, "
+        f"  📈 Messages analyzed: {profile.total_synapse_messages} Synapse, "
         f"{profile.total_user_messages} {profile.target_user}"
     )
     print(f"  💬 Conversation pairs: {profile.total_exchanges}")
@@ -56,11 +56,11 @@ def print_profile_summary(profile: PersonaProfile):
     print(f"  📂 Topics: {json.dumps(profile.topic_categories, indent=4)}")
     print(f"  🎓 Few-shot examples: {len(profile.few_shot_examples)}")
     print(f"  📜 Rules: {len(profile.rules)}")
-    print(f"{'='*60}\n")
+    print(f"{'=' * 60}\n")
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Build Jarvis persona profiles from chat logs")
+    parser = argparse.ArgumentParser(description="Build Synapse persona profiles from chat logs")
     parser.add_argument(
         "--chat-dir", default=DEFAULT_CHAT_DIR, help="Directory containing chat .md files"
     )
@@ -75,7 +75,7 @@ def main():
 
     os.makedirs(args.output_dir, exist_ok=True)
 
-    print("🧠 Jarvis Persona Builder v1.0")
+    print("🧠 Synapse Persona Builder v1.0")
     print(f"📂 Looking for chat files in: {args.chat_dir}")
     print(f"📂 Output directory: {args.output_dir}\n")
 

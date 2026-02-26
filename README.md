@@ -1,4 +1,6 @@
-# 🧬 JARVIS — Multi-Agent AI Assistant with Hybrid Memory, Evolving Personality, and Privacy-First Routing
+# 🧬 SYNAPSE — Multi-Agent AI Assistant with Hybrid Memory, Evolving Personality, and Privacy-First Routing
+
+> **📢 Renamed from Jarvis-OSS to Synapse-OSS (Feb 2026)** — Same codebase, new name!
 
 ![Python](https://img.shields.io/badge/Python-3.11-3776AB?style=for-the-badge&logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white)

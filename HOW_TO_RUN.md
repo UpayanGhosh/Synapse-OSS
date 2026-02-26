@@ -1,6 +1,6 @@
-# Jarvis AI Assistant - Setup Guide
+# Synapse AI Assistant - Setup Guide
 
-Get Jarvis running in minutes with the automatic setup!
+Get Synapse running in minutes with the automatic setup!
 
 ---
 
@@ -22,7 +22,7 @@ Make sure you have these installed on your computer before proceeding:
 ### Mac / Linux
 
 ```bash
-cd /path/to/Jarvis-OSS
+cd /path/to/Synapse-OSS
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
@@ -40,7 +40,7 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 Then:
 
 ```powershell
-cd C:\path\to\Jarvis-OSS
+cd C:\path\to\Synapse-OSS
 python -m venv .venv
 .venv\Scripts\Activate.ps1
 pip install -r requirements.txt
@@ -55,14 +55,14 @@ copy .env.example .env
 ### Mac / Linux
 
 ```bash
-chmod +x jarvis_onboard.sh  # Make executable (if needed)
-./jarvis_onboard.sh
+chmod +x synapse_onboard.sh  # Make executable (if needed)
+./synapse_onboard.sh
 ```
 
 ### Windows (PowerShell)
 
 ```powershell
-.\jarvis_onboard.ps1
+.\synapse_onboard.ps1
 ```
 
 That's it! The script will guide you through everything.
@@ -75,11 +75,11 @@ When you run it, the script will:
 
 1. Check that all required tools are installed
 2. Ask if you want a **dedicated number** or **personal number** for WhatsApp
-   - **Dedicated number** (recommended): Use a separate phone just for Jarvis
+   - **Dedicated number** (recommended): Use a separate phone just for Synapse
    - **Personal number**: Use your own WhatsApp — chat via "Message yourself"
 3. Show a QR code to link your WhatsApp
 4. Collect your phone number (for permissions) — validates E.164 format
-5. Start all Jarvis services (Qdrant, Ollama, API Gateway, WhatsApp bridge)
+5. Start all Synapse services (Qdrant, Ollama, API Gateway, WhatsApp bridge)
 6. Verify services are running
 7. Tell you how to start chatting
 
@@ -87,39 +87,39 @@ The script also pulls the required Ollama embedding model (`nomic-embed-text`) a
 
 ---
 
-## Step 4: Chat with Jarvis
+## Step 4: Chat with Synapse
 
-After setup, message Jarvis on WhatsApp:
+After setup, message Synapse on WhatsApp:
 
-| If You Used... | Where to Find Jarvis |
+| If You Used... | Where to Find Synapse |
 |-----------------|---------------------|
-| **Dedicated number** | Find "Jarvis" or "WhatsApp Web" in your contacts |
+| **Dedicated number** | Find "Synapse" or "WhatsApp Web" in your contacts |
 | **Personal number** | Tap **"Message yourself"** at the top of your chat list |
 
 Try sending: "Hello", "What's the weather?", or "Tell me a joke"
 
 ---
 
-## Running Jarvis Later
+## Running Synapse Later
 
-Every time you want to use Jarvis after the first setup:
+Every time you want to use Synapse after the first setup:
 
 ### Mac / Linux
 
 ```bash
-./jarvis_start.sh
+./synapse_start.sh
 ```
 
 ### Windows (PowerShell)
 
 ```powershell
-.\jarvis_start.ps1
+.\synapse_start.ps1
 ```
 
-Then message Jarvis on WhatsApp!
+Then message Synapse on WhatsApp!
 
 ---
 
 ## Need Help?
 
-- Open an issue: [github.com/UpayanGhosh/Jarvis-OSS/issues](https://github.com/UpayanGhosh/Jarvis-OSS/issues)
+- Open an issue: [github.com/UpayanGhosh/Synapse-OSS/issues](https://github.com/UpayanGhosh/Synapse-OSS/issues)

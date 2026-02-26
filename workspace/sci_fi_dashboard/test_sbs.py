@@ -17,7 +17,7 @@ def test_sbs_conversation_ingestion():
         orchestrator = SBSOrchestrator(data_dir=str(test_dir))
 
         messages = [
-            ("user", "hey jarvis, what's up?"),
+            ("user", "hey synapse, what's up?"),
             ("assistant", "Not much, just waiting for commands."),
             ("user", "khub pressure jacche ajke"),
             ("assistant", "I understand. Let's take it easy. What can I help with?"),
@@ -49,7 +49,7 @@ def test_sbs_batch_processing():
         orchestrator = SBSOrchestrator(data_dir=str(test_dir))
 
         messages = [
-            ("user", "hey jarvis, what's up?"),
+            ("user", "hey synapse, what's up?"),
             ("assistant", "Not much, just waiting for commands."),
             ("user", "khub pressure jacche ajke"),
             ("assistant", "I understand. Let's take it easy."),

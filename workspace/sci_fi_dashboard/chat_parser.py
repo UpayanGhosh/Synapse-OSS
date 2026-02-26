@@ -2,7 +2,7 @@
 Chat Parser Module — Extracts personality data from WhatsApp chat markdown logs.
 
 Parses [YYYY-MM-DD HH:MM] Name: format into structured message objects,
-groups turns, filters noise, and extracts Jarvis's speaking patterns.
+groups turns, filters noise, and extracts Synapse's speaking patterns.
 """
 
 import json
@@ -36,10 +36,10 @@ class Turn:
 
 @dataclass
 class ConversationPair:
-    """A user → jarvis exchange."""
+    """A user → synapse exchange."""
 
     user_turn: str
-    jarvis_turn: str
+    synapse_turn: str
 
 
 @dataclass
@@ -64,7 +64,7 @@ class PersonaProfile:
     # Few-shot
     few_shot_examples: list[dict[str, str]] = field(default_factory=list)
 
-    # Rules (things Jarvis should NOT do)
+    # Rules (things Synapse should NOT do)
     rules: list[str] = field(default_factory=list)
 
     # Relationship context
@@ -74,7 +74,7 @@ class PersonaProfile:
     topic_categories: dict[str, int] = field(default_factory=dict)
 
     # Stats
-    total_jarvis_messages: int = 0
+    total_synapse_messages: int = 0
     total_user_messages: int = 0
     total_exchanges: int = 0
 
@@ -345,51 +345,51 @@ def group_into_turns(messages: list[Message]) -> list[Turn]:
 
 
 def extract_conversation_pairs(turns: list[Turn], user_name: str) -> list[ConversationPair]:
-    """Extract user→Jarvis conversation pairs for few-shot examples."""
+    """Extract user→Synapse conversation pairs for few-shot examples."""
     pairs = []
     for i in range(len(turns) - 1):
-        if turns[i].speaker == user_name and turns[i + 1].speaker == "Jarvis":
+        if turns[i].speaker == user_name and turns[i + 1].speaker == "Synapse":
             user_text = turns[i].full_text
-            jarvis_text = turns[i + 1].full_text
+            synapse_text = turns[i + 1].full_text
 
             # Skip very short exchanges (single word) or very long ones
-            if len(user_text) < 5 or len(jarvis_text) < 20:
+            if len(user_text) < 5 or len(synapse_text) < 20:
                 continue
-            if len(jarvis_text) > 2000:
+            if len(synapse_text) > 2000:
                 continue
 
-            pairs.append(ConversationPair(user_turn=user_text, jarvis_turn=jarvis_text))
+            pairs.append(ConversationPair(user_turn=user_text, synapse_turn=synapse_text))
 
     return pairs
 
 
-def extract_jarvis_messages(turns: list[Turn]) -> list[str]:
-    """Get all Jarvis messages (cleaned)."""
-    jarvis_msgs = []
+def extract_synapse_messages(turns: list[Turn]) -> list[str]:
+    """Get all Synapse messages (cleaned)."""
+    synapse_msgs = []
     for turn in turns:
-        if turn.speaker == "Jarvis":
+        if turn.speaker == "Synapse":
             text = turn.full_text
             if not is_noise(text) and len(text) > 10:
-                jarvis_msgs.append(text)
-    return jarvis_msgs
+                synapse_msgs.append(text)
+    return synapse_msgs
 
 
-def analyze_style(jarvis_messages: list[str]) -> dict:
-    """Analyze Jarvis's writing style from his messages."""
-    if not jarvis_messages:
+def analyze_style(synapse_messages: list[str]) -> dict:
+    """Analyze Synapse's writing style from his messages."""
+    if not synapse_messages:
         return {}
 
     # Message length stats
-    lengths = [len(m) for m in jarvis_messages]
+    lengths = [len(m) for m in synapse_messages]
     avg_length = sum(lengths) / len(lengths)
 
     # Emoji usage
     all_emojis = []
-    for msg in jarvis_messages:
+    for msg in synapse_messages:
         found = EMOJI_RE.findall(msg)
         all_emojis.extend(found)
     emoji_count = len(all_emojis)
-    emoji_density = emoji_count / len(jarvis_messages) if jarvis_messages else 0
+    emoji_density = emoji_count / len(synapse_messages) if synapse_messages else 0
     top_emojis = [e for e, _ in Counter(all_emojis).most_common(15)]
 
     # Word frequency (for vocabulary)
@@ -397,7 +397,7 @@ def analyze_style(jarvis_messages: list[str]) -> dict:
     banglish_found = set()
     tech_found = set()
 
-    for msg in jarvis_messages:
+    for msg in synapse_messages:
         words = re.findall(r"[a-zA-Z\']+", msg.lower())
         word_counter.update(words)
         for w in words:
@@ -507,7 +507,7 @@ def analyze_style(jarvis_messages: list[str]) -> dict:
     # Greeting patterns — first line of messages
     greetings = []
     closings = []
-    for msg in jarvis_messages:
+    for msg in synapse_messages:
         lines = msg.strip().split("\n")
         first_line = lines[0].strip()[:80]
         last_line = lines[-1].strip()[:80]
@@ -549,7 +549,7 @@ def analyze_style(jarvis_messages: list[str]) -> dict:
 
     # Catchphrases — repeated exact phrases
     phrase_counter = Counter()
-    for msg in jarvis_messages:
+    for msg in synapse_messages:
         # Look for recurring short phrases
         if "👊" in msg:
             phrase_counter["👊"] += 1
@@ -655,17 +655,17 @@ def select_best_examples(pairs: list[ConversationPair], n: int = 12) -> list[dic
     for pair in pairs:
         # Prefer medium-length exchanges
         user_len = len(pair.user_turn)
-        jarvis_len = len(pair.jarvis_turn)
+        synapse_len = len(pair.synapse_turn)
 
-        # Sweet spot: user 20-200 chars, jarvis 100-800 chars
+        # Sweet spot: user 20-200 chars, synapse 100-800 chars
         length_score = 0
         if 20 <= user_len <= 200:
             length_score += 1
-        if 100 <= jarvis_len <= 800:
+        if 100 <= synapse_len <= 800:
             length_score += 1
 
         # Topic diversity score
-        topic = detect_topic(pair.jarvis_turn)
+        topic = detect_topic(pair.synapse_turn)
 
         scored.append((pair, length_score, topic))
 
@@ -685,7 +685,7 @@ def select_best_examples(pairs: list[ConversationPair], n: int = 12) -> list[dic
         selected.append(
             {
                 "user": pair.user_turn,
-                "jarvis": pair.jarvis_turn,
+                "synapse": pair.synapse_turn,
                 "topic": topic,
             }
         )
@@ -706,17 +706,17 @@ def build_persona_profile(
     turns = group_into_turns(messages)
     print(f"   Grouped into {len(turns)} turns")
 
-    # Separate Jarvis messages
-    jarvis_msgs = extract_jarvis_messages(turns)
+    # Separate Synapse messages
+    synapse_msgs = extract_synapse_messages(turns)
     user_msgs = [t.full_text for t in turns if t.speaker == user_name]
-    print(f"   Jarvis: {len(jarvis_msgs)} messages, {user_name}: {len(user_msgs)} messages")
+    print(f"   Synapse: {len(synapse_msgs)} messages, {user_name}: {len(user_msgs)} messages")
 
     # Extract conversation pairs
     pairs = extract_conversation_pairs(turns, user_name)
     print(f"   Extracted {len(pairs)} conversation pairs")
 
     # Analyze style
-    style = analyze_style(jarvis_msgs)
+    style = analyze_style(synapse_msgs)
     print(
         f"   Style: avg_len={style.get('avg_message_length', 0)}, "
         f"emoji_density={style.get('emoji_density', 0)}, "
@@ -725,7 +725,7 @@ def build_persona_profile(
 
     # Topic breakdown
     topic_counts = Counter()
-    for msg in jarvis_msgs:
+    for msg in synapse_msgs:
         topic_counts[detect_topic(msg)] += 1
 
     # Select best few-shot examples
@@ -806,7 +806,7 @@ def build_persona_profile(
         rules=rules,
         relationship_context=context,
         topic_categories=dict(topic_counts),
-        total_jarvis_messages=len(jarvis_msgs),
+        total_synapse_messages=len(synapse_msgs),
         total_user_messages=len(user_msgs),
         total_exchanges=len(pairs),
     )
@@ -832,7 +832,7 @@ if __name__ == "__main__":
         user = sys.argv[2] if len(sys.argv) > 2 else "primary_user"
         profile = build_persona_profile(filepath, user)
         print("\n--- Profile Summary ---")
-        print(f"Messages analyzed: {profile.total_jarvis_messages}")
+        print(f"Messages analyzed: {profile.total_synapse_messages}")
         print(f"Catchphrases: {profile.catchphrases}")
         print(f"Banglish words: {profile.banglish_words[:10]}")
         print(f"Topics: {profile.topic_categories}")

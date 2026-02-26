@@ -6,7 +6,7 @@ services:
     volumes:
       - qdrant_data:/qdrant/storage
 
-  jarvis:
+  synapse:
     build: .
     ports:
       - "8000:8000"

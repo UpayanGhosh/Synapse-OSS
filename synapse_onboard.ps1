@@ -1,17 +1,15 @@
-#!/usr/bin/env pwsh
-#
-# Jarvis Onboard Script for Windows (PowerShell)
-#
-# This script guides a user through the initial setup and launch of Jarvis.
+# Synapse Onboard Script for Windows (PowerShell)
+
+# This script guides a user through the initial setup and launch of Synapse.
 # It is designed to be run in a PowerShell terminal on Windows.
 
 Write-Host ""
 Write-Host "🤖 ======================================="
-Write-Host "   Jarvis Onboard - Let's Get Started!"
+Write-Host "   Synapse Onboard - Let's Get Started!"
 Write-Host "=========================================="
 Write-Host ""
 
-Write-Host "Hi there! I'm going to guide you through setting up Jarvis on Windows."
+Write-Host "Hi there! I'm going to guide you through setting up Synapse on Windows."
 Write-Host "This will only take a few minutes."
 Write-Host ""
 
@@ -95,7 +93,7 @@ $envContent = Get-Content $envFile -Raw -ErrorAction SilentlyContinue
 if ($envContent -notmatch 'GEMINI_API_KEY=\S{20,}') {
     Write-Host ""
     Write-Host "⚠️  Warning: GEMINI_API_KEY does not appear to be set in your .env file." -ForegroundColor Yellow
-    Write-Host "   Jarvis will start but LLM calls will fail until you add an API key."
+    Write-Host "   Synapse will start but LLM calls will fail until you add an API key."
     Write-Host ""
 }
 
@@ -135,12 +133,12 @@ while ($true) {
     Write-Host "Do you want to use:"
     Write-Host ""
     Write-Host "   [1] Dedicated Number (recommended)"
-    Write-Host "       Use a separate phone number just for Jarvis"
+    Write-Host "       Use a separate phone number just for Synapse"
     Write-Host "       (like an old Android phone or spare SIM)"
     Write-Host ""
     Write-Host "   [2] Personal Number"
     Write-Host "       Use your own WhatsApp number"
-    Write-Host "       You'll chat with Jarvis by 'messaging yourself'"
+    Write-Host "       You'll chat with Synapse by 'messaging yourself'"
     Write-Host ""
     $choice = Read-Host -Prompt "Enter 1 or 2"
 
@@ -158,7 +156,7 @@ while ($true) {
         Write-Host ""
         Write-Host "✓ No problem!"
         Write-Host ""
-        Write-Host "You'll find Jarvis in your 'Message yourself' chat."
+        Write-Host "You'll find Synapse in your 'Message yourself' chat."
         Write-Host "It's like texting yourself!"
         break
     }
@@ -201,7 +199,7 @@ Read-Host -Prompt "Press Enter to continue..."
 Write-Host ""
 Write-Host "📞 Enter your phone number..."
 Write-Host ""
-Write-Host "This lets Jarvis know it's YOU messaging it."
+Write-Host "This lets Synapse know it's YOU messaging it."
 Write-Host "Enter your number with country code (e.g., +15551234567)"
 Write-Host ""
 
@@ -240,7 +238,7 @@ Write-Host ""
 #--------------------------------------------------------------------------
 Write-Host ""
 Write-Host "🚀 ======================================="
-Write-Host "   Step 3: Starting All Jarvis Services"
+Write-Host "   Step 3: Starting All Synapse Services"
 Write-Host "=========================================="
 Write-Host ""
 Write-Host "Starting all services in the background..."
@@ -367,32 +365,32 @@ if ($services_ok) {
     Write-Host ""
     Write-Host "⚠️  Some services may not have started correctly." -ForegroundColor Yellow
     Write-Host "   Logs are in: $logDir"
-    Write-Host "   You can also try running 'jarvis_start.ps1'."
+    Write-Host "   You can also try running 'synapse_start.ps1'."
 }
 
 Write-Host ""
-Write-Host "✓ Jarvis is running!"
+Write-Host "✓ Synapse is running!"
 Write-Host ""
 
 # Final instructions
 #--------------------------------------------------------------------------
 Write-Host ""
 Write-Host "💬 ======================================="
-Write-Host "   Step 4: How to Chat with Jarvis"
+Write-Host "   Step 4: How to Chat with Synapse"
 Write-Host "=========================================="
 Write-Host ""
 
 if ($phone_type -eq "dedicated") {
     Write-Host "🎉 You're all set!"
     Write-Host ""
-    Write-Host "To chat with Jarvis:"
+    Write-Host "To chat with Synapse:"
     Write-Host "   1. Open WhatsApp on your phone"
-    Write-Host "   2. Find 'Jarvis' or 'WhatsApp Web' in your contacts"
+    Write-Host "   2. Find 'Synapse' or 'WhatsApp Web' in your contacts"
     Write-Host "   3. Send a message!"
 } else {
     Write-Host "🎉 You're all set!"
     Write-Host ""
-    Write-Host "To chat with Jarvis:"
+    Write-Host "To chat with Synapse:"
     Write-Host "   1. Open WhatsApp on your phone"
     Write-Host "   2. Go to your chat list"
     Write-Host "   3. Tap on 'Message yourself' (your name at the top)"
@@ -413,5 +411,5 @@ Write-Host "   • 'Hello'"
 Write-Host "   • 'What's the weather?'"
 Write-Host "   • 'Tell me a joke'"
 Write-Host ""
-Write-Host "Jarvis will reply! Have fun! 🤖"
+Write-Host "Synapse will reply! Have fun! 🤖"
 Write-Host ""

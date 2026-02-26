@@ -1,5 +1,5 @@
 [project]
-name = "jarvis-oss"
+name = "synapse-oss"
 version = "3.0.0"
 description = "Multi-agent AI assistant with hybrid memory, evolving personality, and privacy-first routing"
 readme = "README.md"
@@ -18,9 +18,9 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/UpayanGhosh/Jarvis-OSS"
-Repository = "https://github.com/UpayanGhosh/Jarvis-OSS"
-Issues = "https://github.com/UpayanGhosh/Jarvis-OSS/issues"
+Homepage = "https://github.com/UpayanGhosh/Synapse-OSS"
+Repository = "https://github.com/UpayanGhosh/Synapse-OSS"
+Issues = "https://github.com/UpayanGhosh/Synapse-OSS/issues"
 
 [build-system]
 requires = ["setuptools>=68.0", "wheel"]

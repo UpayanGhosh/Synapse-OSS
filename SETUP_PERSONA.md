@@ -8,7 +8,7 @@ Because you are going to use this, you need to change the system from answering 
 
 ## 📝 How to Edit Files (For Beginners)
 
-To customize your Jarvis, you'll need to edit text files. Here's how:
+To customize your Synapse, you'll need to edit text files. Here's how:
 
 ### Option 1: Notepad (Windows - Built-in)
 1. Right-click any `.json` or `.py` file in File Explorer
@@ -17,7 +17,7 @@ To customize your Jarvis, you'll need to edit text files. Here's how:
 
 ### Option 2: VS Code (Recommended - Better Experience)
 1. Download free from https://code.visualstudio.com/
-2. Install and open the Jarvis-OSS folder
+  2. Install and open the Synapse-OSS folder
 3. Click any file to edit - it has syntax highlighting and makes editing easier!
 4. Save changes with Ctrl+S
 
@@ -42,11 +42,11 @@ In `workspace/sci_fi_dashboard/api_gateway.py`, search for the `PHONE_MAP` and t
 
 ## 2. Define Your Personas (SBS Architecture)
 
-The system automatically generates its "soul" data when you first start the API Gateway (via `jarvis_start.sh` / `jarvis_start.ps1`). Instead of single files, it uses a layered architecture located in:
+The system automatically generates its "soul" data when you first start the API Gateway (via `synapse_start.sh` / `synapse_start.ps1`). Instead of single files, it uses a layered architecture located in:
 
 **File Location:**
-- **macOS/Linux:** `workspace/sci_fi_dashboard/jarvis_data/the_creator/profiles/current/`
-- **Windows:** `workspace\sci_fi_dashboard\jarvis_data\the_creator\profiles\current\`
+- **macOS/Linux:** `workspace/sci_fi_dashboard/synapse_data/the_creator/profiles/current/`
+- **Windows:** `workspace\sci_fi_dashboard\synapse_data\the_creator\profiles\current\`
 
 ### Key Files to Edit:
 *   **core_identity.json**: Define your name, the bot's name, and personality "pillars".
@@ -57,7 +57,7 @@ For example, to change who the bot thinks you are, edit `core_identity.json`:
 
 ```json
 {
-  "assistant_name": "Jarvis",
+  "assistant_name": "Synapse",
   "user_name": "Your Name",
   "user_nickname": "Buddy",
   "relationship": "trusted_technical_companion",
@@ -135,7 +135,7 @@ By default, the "soul" of this bot is programmed to speak in **Benglish** (a mix
 2.  **Open `workspace/sci_fi_dashboard/api_gateway.py`**: Search for the function `route_traffic_cop` (the Traffic Cop intent classifier) and `translate_banglish` (the language post-processor). Update the `system` prompt strings inside those two functions to instruct the model to use English only. Tip: use Ctrl+F and search for `def route_traffic_cop` and `def translate_banglish` to jump directly to the right locations — there are many occurrences of the word "Banglish" in the file across unrelated sections.
 
 ### To Use Your Own Local Language:
-If you want a "Spanglish" bot or a French-speaking Jarvis:
+If you want a "Spanglish" bot or a French-speaking Synapse:
 1.  **Modify `CORE.md`**: Update the instructions to say: *"Speak in [Your Language] for casual conversation and English for technical explanations."*
 2.  **Teach it Slang**: In your `core_identity.json` or `exemplars.json` (see Section 2), add several `few_shot_examples` using your local slang. The LLM will instantly pick up the cadence and dialect from those examples.
 3.  **Update Transcription (Optional)**: If you use audio messages, check `workspace/scripts/transcribe_v2.py` and update the `language` code (e.g., `es` for Spanish, `fr` for French) to improve Whisper/Groq accuracy for your dialect.

@@ -3,12 +3,12 @@
 Change Tracker v2.0 — Hardened Git Auto-Commit Daemon
 
 Watches the OpenClaw workspace for file changes and auto-commits them
-to the `jarvis-auto-updates` branch with descriptive messages.
+to the `synapse-auto-updates` branch with descriptive messages.
 
 Safety features:
   1. RegexMatchingEventHandler — .git/, .db, .log, __pycache__ excluded at OS level
   2. 30-second sliding debounce — handles LLM streaming / chunk writes
-  3. Branch isolation — commits to jarvis-auto-updates, never touches main
+  3. Branch isolation — commits to synapse-auto-updates, never touches main
   4. Binary exclusion — skips .db, .sqlite, .gz, images, etc.
   5. Git lock detection — waits if another git process is running
   6. Kill-switch (.pause_tracking) — prevents commits during merges/manual edits
@@ -39,7 +39,7 @@ from watchdog.events import RegexMatchingEventHandler
 # ═══════════════════════════════════════════
 
 WORKSPACE = "/path/to/openclaw"
-BRANCH = "jarvis-auto-updates"
+BRANCH = "synapse-auto-updates"
 DEFAULT_DEBOUNCE = 30.0  # seconds of silence before commit
 PAUSE_FILE = os.path.join(WORKSPACE, ".pause_tracking")
 LOG_FILE = os.path.join(WORKSPACE, "logs", "change_tracker.log")
@@ -51,8 +51,8 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
     datefmt="%H:%M:%S",
     handlers=[
-        logging.StreamHandler(),           # stdout (visible in foreground)
-        logging.FileHandler(LOG_FILE),     # file (visible via launchd)
+        logging.StreamHandler(),  # stdout (visible in foreground)
+        logging.FileHandler(LOG_FILE),  # file (visible via launchd)
     ],
 )
 log = logging.getLogger("tracker")
@@ -60,77 +60,83 @@ log = logging.getLogger("tracker")
 # Patterns to IGNORE (regex, applied to full path)
 IGNORE_REGEXES = [
     # ── Git internals ──
-    r".*[/\\]\.git[/\\].*",        # .git/ internals — prevents infinite loop
-    r".*[/\\]\.git$",              # .git directory itself
-
+    r".*[/\\]\.git[/\\].*",  # .git/ internals — prevents infinite loop
+    r".*[/\\]\.git$",  # .git directory itself
     # ── Binary / large files ──
-    r".*\.db$",                    # SQLite databases (memory.db = 214MB)
-    r".*\.db-shm$",                # SQLite shared memory
-    r".*\.db-wal$",                # SQLite write-ahead log
-    r".*\.sqlite$",                # Alternative SQLite extension
-    r".*\.gz$",                    # Compressed files
-    r".*\.jsonl$",                 # Session JSONL (large, rotates)
-
+    r".*\.db$",  # SQLite databases (memory.db = 214MB)
+    r".*\.db-shm$",  # SQLite shared memory
+    r".*\.db-wal$",  # SQLite write-ahead log
+    r".*\.sqlite$",  # Alternative SQLite extension
+    r".*\.gz$",  # Compressed files
+    r".*\.jsonl$",  # Session JSONL (large, rotates)
     # ── Logs ──
-    r".*\.log$",                   # All log files
-    r".*[/\\]logs[/\\].*",         # logs/ directories
-
+    r".*\.log$",  # All log files
+    r".*[/\\]logs[/\\].*",  # logs/ directories
     # ── Backups ──
-    r".*\.bak$",                   # Backup files
-    r".*\.bak\.\d+$",             # Numbered backups (.bak.1, .bak.2, etc.)
-
+    r".*\.bak$",  # Backup files
+    r".*\.bak\.\d+$",  # Numbered backups (.bak.1, .bak.2, etc.)
     # ── Python ──
     r".*[/\\]__pycache__[/\\].*",  # Python cache
-    r".*\.pyc$",                   # Compiled Python
-    r".*[/\\]\.venv[/\\].*",       # Virtual environment
-
+    r".*\.pyc$",  # Compiled Python
+    r".*[/\\]\.venv[/\\].*",  # Virtual environment
     # ── macOS ──
-    r".*[/\\]\.DS_Store$",         # macOS metadata
-
+    r".*[/\\]\.DS_Store$",  # macOS metadata
     # ── OpenClaw internals (not workspace content) ──
     r".*[/\\]agents[/\\].*[/\\]sessions[/\\].*",  # Agent session files
-    r".*[/\\]browser[/\\].*",      # Browser automation data
-    r".*[/\\]media[/\\].*",        # Media files
-    r".*[/\\]subagents[/\\].*",    # Subagent data
-    r".*[/\\]backups[/\\].*",      # Backup directory
+    r".*[/\\]browser[/\\].*",  # Browser automation data
+    r".*[/\\]media[/\\].*",  # Media files
+    r".*[/\\]subagents[/\\].*",  # Subagent data
+    r".*[/\\]backups[/\\].*",  # Backup directory
     r".*[/\\]credentials[/\\].*",  # Credentials (sensitive!)
-    r".*[/\\]devices[/\\].*",      # Device state
+    r".*[/\\]devices[/\\].*",  # Device state
     r".*[/\\]completions[/\\].*",  # Completion cache
-    r".*[/\\]canvas[/\\].*",       # Canvas data
-    r".*[/\\]\.clawhub[/\\].*",    # ClawHub internals
-    r".*[/\\]\.vscode[/\\].*",     # VS Code settings
-    r".*[/\\]models[/\\].*",       # Model data
-
+    r".*[/\\]canvas[/\\].*",  # Canvas data
+    r".*[/\\]\.clawhub[/\\].*",  # ClawHub internals
+    r".*[/\\]\.vscode[/\\].*",  # VS Code settings
+    r".*[/\\]models[/\\].*",  # Model data
     # ── Workspace exclusions ──
     r".*[/\\]qdrant[/\\]storage[/\\].*",  # Qdrant vector storage
     r".*[/\\]_archived_memories[/\\].*",  # Archived memories
-    r".*[/\\]node_modules[/\\].*", # Node modules
-
+    r".*[/\\]node_modules[/\\].*",  # Node modules
     # ── Editor / misc ──
-    r".*\.swp$",                   # Vim swap files
-    r".*~$",                       # Editor backup files
-    r".*\.pause_tracking$",        # Kill-switch file itself
-    r".*sentinel_state\.json$",    # Sentinel state
-    r".*update-check\.json$",      # Update check
+    r".*\.swp$",  # Vim swap files
+    r".*~$",  # Editor backup files
+    r".*\.pause_tracking$",  # Kill-switch file itself
+    r".*sentinel_state\.json$",  # Sentinel state
+    r".*update-check\.json$",  # Update check
 ]
 
 # File categories for descriptive commit messages
 CATEGORY_MAP = {
-    "identity":  ["SOUL.md", "CORE.md", "IDENTITY.md", "USER.md", "AGENTS.md",
-                  "INSTRUCTIONS.MD", "MEMORY.md", "HEARTBEAT.md"],
-    "persona":   ["the_creator_profile.json", "the_partner_profile.json", "persona.py",
-                  "chat_parser.py", "build_persona.py"],
-    "gateway":   ["api_gateway.py", "retriever.py", "server.py"],
-    "config":    ["openclaw.json", "config.py", ".gitignore", ".openclawignore"],
-    "monitor":   ["monitor.py", "change_tracker.py", "change_viewer.py"],
-    "skills":    [],  # Anything under skills/
-    "memory":    [],  # Anything under memory/
+    "identity": [
+        "SOUL.md",
+        "CORE.md",
+        "IDENTITY.md",
+        "USER.md",
+        "AGENTS.md",
+        "INSTRUCTIONS.MD",
+        "MEMORY.md",
+        "HEARTBEAT.md",
+    ],
+    "persona": [
+        "the_creator_profile.json",
+        "the_partner_profile.json",
+        "persona.py",
+        "chat_parser.py",
+        "build_persona.py",
+    ],
+    "gateway": ["api_gateway.py", "retriever.py", "server.py"],
+    "config": ["openclaw.json", "config.py", ".gitignore", ".openclawignore"],
+    "monitor": ["monitor.py", "change_tracker.py", "change_viewer.py"],
+    "skills": [],  # Anything under skills/
+    "memory": [],  # Anything under memory/
 }
 
 
 # ═══════════════════════════════════════════
 #  UTILITIES
 # ═══════════════════════════════════════════
+
 
 def git(*args, cwd=WORKSPACE) -> tuple[int, str]:
     """Run a git command, return (returncode, output)."""
@@ -244,10 +250,11 @@ def build_commit_message(changes: dict[str, set[str]]) -> str:
 #  WATCHDOG HANDLER
 # ═══════════════════════════════════════════
 
+
 class BotChangeHandler(RegexMatchingEventHandler):
     """
     Watches for file changes with a sliding debounce window.
-    
+
     Safety:
     - .git/, .db, .log etc. excluded via IGNORE_REGEXES
     - 30s sliding debounce handles LLM streaming
@@ -392,8 +399,9 @@ class BotChangeHandler(RegexMatchingEventHandler):
 #  MAIN
 # ═══════════════════════════════════════════
 
+
 def ensure_branch():
-    """Ensure we're on the jarvis-auto-updates branch."""
+    """Ensure we're on the synapse-auto-updates branch."""
     # Check current branch
     rc, current = git("branch", "--show-current")
     if current.strip() == BRANCH:
@@ -450,12 +458,18 @@ def cmd_resume():
 def main():
     parser = argparse.ArgumentParser(description="Hardened Git Auto-Commit Daemon v2.0")
     parser.add_argument("--push", action="store_true", help="Auto-push after each commit")
-    parser.add_argument("--debounce", type=float, default=DEFAULT_DEBOUNCE,
-                        help=f"Debounce seconds (default: {DEFAULT_DEBOUNCE})")
-    parser.add_argument("--pause", action="store_true",
-                        help="Create .pause_tracking kill-switch and exit")
-    parser.add_argument("--resume", action="store_true",
-                        help="Remove .pause_tracking kill-switch and exit")
+    parser.add_argument(
+        "--debounce",
+        type=float,
+        default=DEFAULT_DEBOUNCE,
+        help=f"Debounce seconds (default: {DEFAULT_DEBOUNCE})",
+    )
+    parser.add_argument(
+        "--pause", action="store_true", help="Create .pause_tracking kill-switch and exit"
+    )
+    parser.add_argument(
+        "--resume", action="store_true", help="Remove .pause_tracking kill-switch and exit"
+    )
     args = parser.parse_args()
 
     # Handle pause/resume subcommands
@@ -520,8 +534,8 @@ def main():
         # NOTE: Do NOT switch back to main here.
         # Under launchd, the daemon auto-restarts — switching branches
         # would cause the next start to be on 'main', and auto-commits
-        # would go to the wrong branch. Stay on jarvis-auto-updates.
-        log.info("👋 Tracker stopped (staying on jarvis-auto-updates).")
+        # would go to the wrong branch. Stay on synapse-auto-updates.
+    log.info("👋 Tracker stopped (staying on synapse-auto-updates).")
         sys.exit(0)
 
     signal.signal(signal.SIGINT, shutdown)

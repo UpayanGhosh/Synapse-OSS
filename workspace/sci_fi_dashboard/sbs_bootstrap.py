@@ -16,7 +16,7 @@ def bootstrap_sbs():
     print("🚀 Starting SBS Bootstrap (Past-to-Brain Ingestion)...")
 
     # 1. Setup Orchestrators
-    sbs_data_dir = CURRENT_DIR / "jarvis_data"
+    sbs_data_dir = CURRENT_DIR / "synapse_data"
     sbs_the_creator = SBSOrchestrator(str(sbs_data_dir / "the_creator"))
     sbs_the_partner = SBSOrchestrator(str(sbs_data_dir / "the_partner"))
 
@@ -76,7 +76,7 @@ def bootstrap_sbs():
         print(f"✅ Ingested {count} turns for {user_name}. Triggering Full Rebuild...")
         orchestrator.force_batch(full_rebuild=True)
 
-    print("\n🏁 SBS Bootstrap Complete. Jarvis is now fully 'Soul-Synced'.")
+    print("\n🏁 SBS Bootstrap Complete. Synapse is now fully 'Soul-Synced'.")
 
 
 if __name__ == "__main__":

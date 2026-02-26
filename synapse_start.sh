@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo "🚀 Starting Jarvis services..."
+echo "🚀 Starting Synapse services..."
 echo ""
 
 project_root="$(cd "$(dirname "$0")" && pwd)"
@@ -43,5 +43,5 @@ else
 fi
 
 echo ""
-echo "✅ Jarvis is starting up. It may take a moment."
-echo "You can now message Jarvis on WhatsApp."
+echo "✅ Synapse is starting up. It may take a moment."
+echo "You can now message Synapse on WhatsApp."

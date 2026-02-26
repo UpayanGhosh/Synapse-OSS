@@ -5,11 +5,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 echo ""
 echo "🤖 ======================================="
-echo "   Jarvis Onboard - Let's Get Started!"
+echo "   Synapse Onboard - Let's Get Started!"
 echo "=========================================="
 echo ""
 
-echo "Hi there! I'm going to guide you through setting up Jarvis."
+echo "Hi there! I'm going to guide you through setting up Synapse."
 echo "This will only take a few minutes."
 echo ""
 
@@ -19,7 +19,7 @@ echo ""
 echo "📋 Here's what we'll do:"
 echo "   1. Check your computer has what it needs"
 echo "   2. Connect your WhatsApp"
-echo "   3. Start Jarvis (all services)"
+echo "   3. Start Synapse (all services)"
 echo "   4. Verify everything is working"
 echo ""
 
@@ -71,7 +71,7 @@ fi
 if ! grep -qE "GEMINI_API_KEY=.{20,}" "$SCRIPT_DIR/.env" 2>/dev/null; then
     echo ""
     echo "⚠️  Warning: GEMINI_API_KEY does not appear to be set in your .env file."
-    echo "   Jarvis will start but LLM calls will fail until you add an API key."
+    echo "   Synapse will start but LLM calls will fail until you add an API key."
     echo ""
 fi
 
@@ -109,12 +109,12 @@ while true; do
     echo "Do you want to use:"
     echo ""
     echo "   [1] Dedicated Number (recommended)"
-    echo "       Use a separate phone number just for Jarvis"
+    echo "       Use a separate phone number just for Synapse"
     echo "       (like an old Android phone or spare SIM)"
     echo ""
     echo "   [2] Personal Number"
     echo "       Use your own WhatsApp number"
-    echo "       You'll chat with Jarvis by 'messaging yourself'"
+    echo "       You'll chat with Synapse by 'messaging yourself'"
     echo ""
     read -p "Enter 1 or 2: " choice
 
@@ -133,7 +133,7 @@ while true; do
             echo ""
             echo "✓ No problem!"
             echo ""
-            echo "You'll find Jarvis in your 'Message yourself' chat."
+            echo "You'll find Synapse in your 'Message yourself' chat."
             echo "It's like texting yourself!"
             break
             ;;
@@ -177,7 +177,7 @@ read -p "Press Enter to continue..."
 echo ""
 echo "📞 Enter your phone number..."
 echo ""
-echo "This lets Jarvis know it's YOU messaging it."
+echo "This lets Synapse know it's YOU messaging it."
 echo "Enter your number with country code (e.g., +15551234567)"
 echo ""
 
@@ -213,7 +213,7 @@ echo ""
 
 echo ""
 echo "🚀 ======================================="
-echo "   Step 3: Starting All Jarvis Services"
+echo "   Step 3: Starting All Synapse Services"
 echo "=========================================="
 echo ""
 
@@ -226,7 +226,7 @@ mkdir -p ~/.openclaw/logs
 echo "[1/4] Starting Docker services (Qdrant)..."
 if ! docker info > /dev/null 2>&1; then
     echo "   ⚠ Docker daemon is not running. Skipping Qdrant."
-    echo "   Start Docker Desktop and re-run, or use jarvis_start.sh later."
+    echo "   Start Docker Desktop and re-run, or use synapse_start.sh later."
 elif docker start antigravity_qdrant 2>/dev/null; then
     echo "   ✓ Qdrant started"
 else
@@ -333,26 +333,26 @@ else
 fi
 
 echo ""
-echo "✓ Jarvis is running!"
+echo "✓ Synapse is running!"
 echo ""
 
 echo ""
 echo "💬 ======================================="
-echo "   Step 4: How to Chat with Jarvis"
+echo "   Step 4: How to Chat with Synapse"
 echo "=========================================="
 echo ""
 
 if [ "$phone_type" = "dedicated" ]; then
     echo "🎉 You're all set!"
     echo ""
-    echo "To chat with Jarvis:"
+    echo "To chat with Synapse:"
     echo "   1. Open WhatsApp on your phone"
-    echo "   2. Find 'Jarvis' or 'WhatsApp Web' in your contacts"
+    echo "   2. Find 'Synapse' or 'WhatsApp Web' in your contacts"
     echo "   3. Send a message!"
 else
     echo "🎉 You're all set!"
     echo ""
-    echo "To chat with Jarvis:"
+    echo "To chat with Synapse:"
     echo "   1. Open WhatsApp on your phone"
     echo "   2. Go to your chat list"
     echo "   3. Tap on 'Message yourself' (your name at the top)"
@@ -373,5 +373,5 @@ echo "   • 'Hello'"
 echo "   • 'What's the weather?'"
 echo "   • 'Tell me a joke'"
 echo ""
-echo "Jarvis will reply! Have fun! 🤖"
+echo "Synapse will reply! Have fun! 🤖"
 echo ""
