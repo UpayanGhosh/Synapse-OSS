@@ -8,11 +8,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 # First-time setup
 ./synapse_onboard.sh        # Mac/Linux
-.\synapse_onboard.ps1       # Windows
+.\synapse_onboard.bat       # Windows
 
 # Start all services (Qdrant, Ollama, API Gateway, OpenClaw)
 ./synapse_start.sh          # Mac/Linux
-.\synapse_start.ps1         # Windows
+.\synapse_start.bat         # Windows
 ```
 
 ### Run the API server directly

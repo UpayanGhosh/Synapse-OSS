@@ -59,10 +59,10 @@ chmod +x synapse_onboard.sh  # Make executable (if needed)
 ./synapse_onboard.sh
 ```
 
-### Windows (PowerShell)
+### Windows (Batch)
 
-```powershell
-.\synapse_onboard.ps1
+```batch
+synapse_onboard.bat
 ```
 
 That's it! The script will guide you through everything.
@@ -110,10 +110,10 @@ Every time you want to use Synapse after the first setup:
 ./synapse_start.sh
 ```
 
-### Windows (PowerShell)
+### Windows (Batch)
 
-```powershell
-.\synapse_start.ps1
+```batch
+synapse_start.bat
 ```
 
 Then message Synapse on WhatsApp!
