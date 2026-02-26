@@ -186,9 +186,21 @@ if %ERRORLEVEL% NEQ 0 (
 )
 echo [OK] Phone number saved: %PHONE_NUMBER%
 
-REM Step 6: Start services
+REM Step 6: Configure OpenClaw to use Synapse workspace
 echo.
-echo Step 6: Starting All Synapse Services...
+echo Step 6: Configuring OpenClaw workspace...
+echo.
+
+set "PROJECT_ROOT=%~dp0"
+set "PROJECT_ROOT=%PROJECT_ROOT:~0,-1%"
+set "SYNAPSE_WORKSPACE=%PROJECT_ROOT%\workspace"
+
+openclaw config set agents.defaults.workspace "%SYNAPSE_WORKSPACE%" >nul 2>&1
+echo [OK] Workspace set to: %SYNAPSE_WORKSPACE%
+
+REM Step 7: Start services
+echo.
+echo Step 7: Starting All Synapse Services...
 echo.
 
 call synapse_start.bat

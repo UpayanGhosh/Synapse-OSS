@@ -211,9 +211,21 @@ openclaw config set channels.whatsapp.allowFrom "[\"$phone_number\"]" --json 2>/
 echo "✓ Phone number saved: $phone_number"
 echo ""
 
+# Configure OpenClaw to use Synapse workspace
+echo ""
+echo "🚀 Step 4: Configuring OpenClaw workspace..."
+echo ""
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SYNAPSE_WORKSPACE="$SCRIPT_DIR/workspace"
+
+openclaw config set agents.defaults.workspace "$SYNAPSE_WORKSPACE" 2>/dev/null
+echo "✓ Workspace set to: $SYNAPSE_WORKSPACE"
+echo ""
+
 echo ""
 echo "🚀 ======================================="
-echo "   Step 3: Starting All Synapse Services"
+echo "   Step 5: Starting All Synapse Services"
 echo "=========================================="
 echo ""
 
