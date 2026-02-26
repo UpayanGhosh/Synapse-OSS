@@ -29,28 +29,38 @@ cp .env.example .env
 # Edit .env — add at minimum: GEMINI_API_KEY=your_key_here
 ```
 
-### Windows (PowerShell)
+### Windows (Command Prompt)
 
-Open **PowerShell as Administrator** the first time and allow scripts to run:
+Open **Command Prompt as Administrator**:
 
-```powershell
-Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
-```
-
-Then:
-
-```powershell
+```batch
 cd C:\path\to\Synapse-OSS
 python -m venv .venv
-.venv\Scripts\Activate.ps1
+.venv\Scripts\activate.bat
 pip install -r requirements.txt
 copy .env.example .env
-# Edit .env — add at minimum: GEMINI_API_KEY=your_key_here
+REM Edit .env — add at minimum: GEMINI_API_KEY=your_key_here
 ```
 
 ---
 
-## Step 3: Run the Onboarding Script
+## Step 3: Set Up OpenClaw (First Time Only)
+
+Before running the onboarding script, set up OpenClaw with WhatsApp:
+
+```bash
+# Mac/Linux
+openclaw setup --wizard
+
+# Windows
+openclaw setup --wizard
+```
+
+Select **WhatsApp** when prompted and scan the QR code to link your WhatsApp account.
+
+---
+
+## Step 4: Run the Onboarding Script
 
 ### Mac / Linux
 
@@ -87,7 +97,7 @@ The script also pulls the required Ollama embedding model (`nomic-embed-text`) a
 
 ---
 
-## Step 4: Chat with Synapse
+## Step 5: Chat with Synapse
 
 After setup, message Synapse on WhatsApp:
 
@@ -100,7 +110,7 @@ Try sending: "Hello", "What's the weather?", or "Tell me a joke"
 
 ---
 
-## Running Synapse Later
+## Step 6: Running Synapse Later
 
 Every time you want to use Synapse after the first setup:
 
