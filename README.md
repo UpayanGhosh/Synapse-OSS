@@ -140,16 +140,12 @@ copy .env.example .env
 
 # 4. Boot the Gateway
 # macOS/Linux:
-cd workspace/sci_fi_dashboard
+cd workspace
+uvicorn sci_fi_dashboard.api_gateway:app --host 0.0.0.0 --port 8000
 
 # Windows PowerShell:
-cd workspace\sci_fi_dashboard
-
-# macOS/Linux:
-python3 api_gateway.py
-
-# Windows PowerShell:
-python api_gateway.py
+cd workspace
+python -m uvicorn sci_fi_dashboard.api_gateway:app --host 0.0.0.0 --port 8000
 
 # Gateway starts on http://localhost:8000
 
@@ -313,7 +309,6 @@ workspace/
 │       ├── processing/            #     Realtime + batch analysis
 │       ├── injection/             #     Profile → system prompt
 │       ├── profile/               #     Behavioral profile store
-│       ├── feedback/              #     Implicit feedback detection
 │       └── sentinel/              #     File governance guardrails
 ├── scripts/                       # Maintenance & utilities
 │   ├── revive_jarvis.sh           #   Full system resurrection

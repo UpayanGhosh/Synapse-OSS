@@ -42,7 +42,7 @@ In `workspace/sci_fi_dashboard/api_gateway.py`, search for the `PHONE_MAP` and t
 
 ## 2. Define Your Personas (SBS Architecture)
 
-The system automatically generates its "soul" data when you first run the `api_gateway.py`. Instead of single files, it uses a layered architecture located in:
+The system automatically generates its "soul" data when you first start the API Gateway (via `jarvis_start.sh` / `jarvis_start.ps1`). Instead of single files, it uses a layered architecture located in:
 
 **File Location:**
 - **macOS/Linux:** `workspace/sci_fi_dashboard/jarvis_data/the_creator/profiles/current/`
@@ -114,12 +114,14 @@ Just start talking to it! Every time you chat, the `/add` endpoint uses LLMs to 
 
 ### Option C: The "Memory Dump" (Instant Hyper-Personalization)
 
+> **Prerequisite:** The bot must already be fully running and connected to WhatsApp (complete the onboarding script first). Option C works by sending instructions to the live bot — it won't work before setup is complete.
+
 If you want the bot to instantly understand your coding style, your humor, or your dynamic with a partner, **you do not need to manually ingest facts.**
 
 Instead:
 
 1. Export your data from another platform (e.g., export your ChatGPT data archive, export a WhatsApp chat history, or download a Discord log).
-2. Simply upload the `.json` or `.txt` file directly to the bot via the OpenClaw interface or your configured Telegram/WhatsApp channel.
+2. Simply upload the `.json` or `.txt` file directly to the bot via the OpenClaw interface or your configured WhatsApp channel.
 3. Tell the bot: _"Read this entire chat log file. Extract every relevant personal fact, preference, relationship dynamic, and recurring joke you can find, and ingest them into your Knowledge Graph."_
 
 Because the bot has native file-reading tool capabilities (inherited from OpenClaw) and access to the `/add` memory ingestion logic, it will autonomously read your history, extract the triples, build the SQLite graph, and instantly become a hyper-personalized version of you without you writing a single line of code.
@@ -130,7 +132,7 @@ By default, the "soul" of this bot is programmed to speak in **Benglish** (a mix
 
 ### To Switch to Plain English:
 1.  **Open `workspace/CORE.md`**: Locate the language instructions and change to "Plain English".
-2.  **Open `workspace/sci_fi_dashboard/api_gateway.py`**: Search for the word `Banglish` and update the `system` prompts inside functions like `route_traffic_cop` or `translate_banglish` to instruct the model to use English only.
+2.  **Open `workspace/sci_fi_dashboard/api_gateway.py`**: Search for the function `route_traffic_cop` (the Traffic Cop intent classifier) and `translate_banglish` (the language post-processor). Update the `system` prompt strings inside those two functions to instruct the model to use English only. Tip: use Ctrl+F and search for `def route_traffic_cop` and `def translate_banglish` to jump directly to the right locations — there are many occurrences of the word "Banglish" in the file across unrelated sections.
 
 ### To Use Your Own Local Language:
 If you want a "Spanglish" bot or a French-speaking Jarvis:
@@ -153,4 +155,4 @@ The bot is model-agnostic, meaning as long as you update the **Instructions** an
 | **Subject-Relation-Object** | The way facts are stored: "User works_as Backend Engineer". |
 | **banglish_ratio** | A setting controlling how much Bengali mix to use (0.0 = pure English). |
 
-> **Tip:** For more technical terms, see the Glossary in [HOW_TO_RUN.md](HOW_TO_RUN.md).
+> **Tip:** For setup instructions and prerequisites, see [HOW_TO_RUN.md](HOW_TO_RUN.md).

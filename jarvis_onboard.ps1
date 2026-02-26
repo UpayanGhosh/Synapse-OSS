@@ -58,16 +58,57 @@ if (-not $all_good) {
 }
 
 # Explicitly check if Docker Desktop is running, a common issue on Windows.
-Write-Host -n "   - Docker Desktop Status: "
-try {
-    docker info > $null
+Write-Host -NoNewline "   - Docker Desktop Status: "
+docker info > $null 2>&1
+if ($LASTEXITCODE -eq 0) {
     Write-Host "✓ Running"
-}
-catch {
+} else {
     Write-Host "✗ Not responding" -ForegroundColor Red
     Write-Host ""
     Write-Host "Error: The Docker daemon isn't running. Please start Docker Desktop and wait for it"
     Write-Host "to be fully initialized, then run this script again."
+    Write-Host ""
+    Read-Host -Prompt "Press Enter to exit"
+    exit 1
+}
+
+# Resolve project root ($PSScriptRoot is empty when dot-sourced, so guard it)
+$projectRoot = if ($PSScriptRoot) { $PSScriptRoot } else { (Get-Location).Path }
+$workspaceDir = Join-Path $projectRoot "workspace"
+$venvPython   = Join-Path $projectRoot ".venv\Scripts\python.exe"
+$envFile      = Join-Path $projectRoot ".env"
+
+# Check .env file exists and has an API key set
+if (-not (Test-Path $envFile)) {
+    Write-Host ""
+    Write-Host "❌ No .env file found." -ForegroundColor Red
+    Write-Host ""
+    Write-Host "Run this first:"
+    Write-Host "   copy .env.example .env"
+    Write-Host "Then open .env and add your GEMINI_API_KEY (at minimum)."
+    Write-Host ""
+    Read-Host -Prompt "Press Enter to exit"
+    exit 1
+}
+
+$envContent = Get-Content $envFile -Raw -ErrorAction SilentlyContinue
+if ($envContent -notmatch 'GEMINI_API_KEY=\S{20,}') {
+    Write-Host ""
+    Write-Host "⚠️  Warning: GEMINI_API_KEY does not appear to be set in your .env file." -ForegroundColor Yellow
+    Write-Host "   Jarvis will start but LLM calls will fail until you add an API key."
+    Write-Host ""
+}
+
+# Check Python virtual environment
+if (-not (Test-Path $venvPython)) {
+    Write-Host ""
+    Write-Host "❌ Python virtual environment not found at:" -ForegroundColor Red
+    Write-Host "   $venvPython"
+    Write-Host ""
+    Write-Host "Run these commands first:"
+    Write-Host "   python -m venv .venv"
+    Write-Host "   .venv\Scripts\Activate.ps1"
+    Write-Host "   pip install -r requirements.txt"
     Write-Host ""
     Read-Host -Prompt "Press Enter to exit"
     exit 1
@@ -143,6 +184,13 @@ Write-Host "Scan the QR code now! I'll wait..."
 Write-Host ""
 
 openclaw channels login
+if ($LASTEXITCODE -ne 0) {
+    Write-Host ""
+    Write-Host "❌ WhatsApp login failed or was cancelled." -ForegroundColor Red
+    Write-Host "Please re-run this script and scan the QR code when prompted."
+    Read-Host -Prompt "Press Enter to exit"
+    exit 1
+}
 
 Write-Host ""
 Write-Host "✓ WhatsApp linked!"
@@ -178,9 +226,11 @@ Write-Host ""
 Write-Host "Saving phone number to OpenClaw config..."
 Write-Host ""
 
-openclaw config set channels.whatsapp.allowFrom "["$phone_number"]" --json 2>$null
+# Build a valid JSON array: ["<phone_number>"]
+$allowFrom = "[\`"$phone_number\`"]"
+openclaw config set channels.whatsapp.allowFrom $allowFrom --json 2>$null
 if ($LASTEXITCODE -ne 0) {
-    openclaw config set channels.whatsapp.allowFrom "["$phone_number"]"
+    openclaw config set channels.whatsapp.allowFrom $allowFrom
 }
 
 Write-Host "✓ Phone number saved: $phone_number"
@@ -208,7 +258,13 @@ docker start antigravity_qdrant 2>&1 | Out-Null
 if ($LASTEXITCODE -eq 0) {
     Write-Host "   ✓ Qdrant started"
 } else {
-    Write-Host "   ⚠ Qdrant not found or already running (optional)."
+    Write-Host "   Container not found. Creating Qdrant (may take a few minutes on first run)..."
+    docker run -d --name antigravity_qdrant -p 6333:6333 -p 6334:6334 qdrant/qdrant
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "   ✓ Qdrant created and started"
+    } else {
+        Write-Host "   ⚠ Could not start Qdrant. Vector search will fall back to SQLite." -ForegroundColor Yellow
+    }
 }
 
 # 2. Ollama
@@ -216,9 +272,12 @@ Write-Host ""
 Write-Host "[2/4] Starting Ollama..."
 $ollama_process = Get-Process -Name "ollama" -ErrorAction SilentlyContinue
 if (-not $ollama_process) {
-    # Start-Process is the PowerShell equivalent of nohup ... &
     Start-Process -FilePath "ollama" -ArgumentList "serve" -WindowStyle Hidden
     Write-Host "   ✓ Ollama started in background."
+    Start-Sleep -Seconds 3
+    Write-Host "   Pulling required embedding model (nomic-embed-text)..."
+    Start-Process -FilePath "ollama" -ArgumentList "pull nomic-embed-text" -WindowStyle Hidden
+    Write-Host "   ✓ nomic-embed-text pull started in background."
 } else {
     Write-Host "   ✓ Ollama already running."
 }
@@ -228,25 +287,10 @@ Write-Host ""
 Write-Host "[3/4] Starting API Gateway..."
 $gateway_running = (Get-NetTCPConnection -LocalPort 8000 -State Listen -ErrorAction SilentlyContinue)
 if (-not $gateway_running) {
-    # Run python from the virtual environment.
-    $projectRoot = $PSScriptRoot
-    $venvPython = Join-Path $projectRoot ".venv\Scripts\python.exe"
-
-    if (-not (Test-Path $venvPython)) {
-        Write-Host "   ✗ ERROR: Could not find Python in the virtual environment at:" -ForegroundColor Red
-        Write-Host "     $venvPython"
-        Write-Host "   Please ensure you have run 'python -m venv .venv' and 'pip install -r requirements.txt'"
-        Read-Host -Prompt "Press Enter to exit"
-        exit 1
-    }
-    
-    # Run uvicorn as a module from the workspace directory
+    # Run uvicorn as a module from the workspace directory, with correct working directory
     $uvicornArgs = "-m uvicorn sci_fi_dashboard.api_gateway:app --host 0.0.0.0 --port 8000 --workers 1"
-    $workspaceDir = Join-Path $projectRoot "workspace"
-
-    Push-Location -Path $workspaceDir
-    Start-Process -FilePath $venvPython -ArgumentList $uvicornArgs -WindowStyle Hidden
-    Pop-Location
+    Start-Process -FilePath $venvPython -ArgumentList $uvicornArgs `
+        -WorkingDirectory $workspaceDir -WindowStyle Hidden
 
     Write-Host "   ✓ API Gateway started in background."
 } else {
@@ -268,50 +312,62 @@ if (-not $oc_gateway_running) {
 #--------------------------------------------------------------------------
 Write-Host ""
 Write-Host "⏳ Waiting for services to initialize..."
-Start-Sleep -Seconds 10 # Give a bit more time for Windows systems
-
-Write-Host ""
-Write-Host "🔍 Verifying services..."
 Write-Host ""
 
 $services_ok = $true
 
-# Health check for API Gateway
-Write-Host -n "   - API Gateway (port 8000): "
-try {
-    $response = Invoke-WebRequest -Uri "http://127.0.0.1:8000/health" -UseBasicParsing -TimeoutSec 5 -ErrorAction Stop
-    Write-Host "✓ Running"
-}
-catch {
+# Health check for API Gateway — retry up to 5 times, 3 seconds apart (15s max)
+Write-Host -NoNewline "   - API Gateway (port 8000): "
+$gateway_up = $false
+for ($i = 1; $i -le 5; $i++) {
     try {
-        # Fallback for servers that don't have /health but are running
-        Invoke-WebRequest -Uri "http://127.0.0.1:8000/" -UseBasicParsing -TimeoutSec 5 -ErrorAction Stop
-        Write-Host "✓ Running (Responded from root)"
-    }
-    catch {
-        Write-Host "⚠ No response" -ForegroundColor Yellow
-        $services_ok = $false
+        Invoke-WebRequest -Uri "http://127.0.0.1:8000/health" -UseBasicParsing -TimeoutSec 3 -ErrorAction Stop | Out-Null
+        $gateway_up = $true
+        break
+    } catch {
+        try {
+            Invoke-WebRequest -Uri "http://127.0.0.1:8000/" -UseBasicParsing -TimeoutSec 3 -ErrorAction Stop | Out-Null
+            $gateway_up = $true
+            break
+        } catch {
+            Start-Sleep -Seconds 3
+        }
     }
 }
-
-# Health check for OpenClaw Gateway
-Write-Host -n "   - OpenClaw Gateway: "
-try {
-    $response = Invoke-WebRequest -Uri "http://127.0.0.1:18789/health" -UseBasicParsing -TimeoutSec 5 -ErrorAction Stop
+if ($gateway_up) {
     Write-Host "✓ Running"
-}
-catch {
-    Write-Host "⚠ No response" -ForegroundColor Yellow
+} else {
+    Write-Host "⚠ No response after 15s — check $logDir\gateway.log" -ForegroundColor Yellow
     $services_ok = $false
 }
 
+# Health check for OpenClaw Gateway — retry up to 5 times, 3 seconds apart
+Write-Host -NoNewline "   - OpenClaw Gateway: "
+$oc_up = $false
+for ($i = 1; $i -le 5; $i++) {
+    try {
+        Invoke-WebRequest -Uri "http://127.0.0.1:18789/health" -UseBasicParsing -TimeoutSec 3 -ErrorAction Stop | Out-Null
+        $oc_up = $true
+        break
+    } catch {
+        Start-Sleep -Seconds 3
+    }
+}
+if ($oc_up) {
+    Write-Host "✓ Running"
+} else {
+    Write-Host "⚠ No response after 15s — check $logDir\openclaw_gateway.log" -ForegroundColor Yellow
+    $services_ok = $false
+}
 
 if ($services_ok) {
     Write-Host ""
     Write-Host "✅ All essential services are running!" -ForegroundColor Green
 } else {
     Write-Host ""
-    Write-Host "⚠️  Some services may not have started correctly. Check logs or try running 'jarvis_start.ps1'." -ForegroundColor Yellow
+    Write-Host "⚠️  Some services may not have started correctly." -ForegroundColor Yellow
+    Write-Host "   Logs are in: $logDir"
+    Write-Host "   You can also try running 'jarvis_start.ps1'."
 }
 
 Write-Host ""
