@@ -31,7 +31,7 @@ def log_dsa_problem(name, logic, code, complexity):
     print(f"✅ Success: '{name}' logged to DSA Journal.")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Jarvis DSA Logger")
+    parser = argparse.ArgumentParser(description="Synapse DSA Logger")
     parser.add_argument("--name", required=True, help="Problem Name")
     parser.add_argument("--logic", required=True, help="Logical Description")
     parser.add_argument("--code", required=True, help="Solution Code Snippet")

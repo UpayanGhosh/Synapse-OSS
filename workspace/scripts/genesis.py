@@ -52,7 +52,7 @@ def main():
     print("✨ PROJECT SYNAPSE // GENESIS PROTOCOL")
     check_environment()
     run_onboarding()
-    print("\n🚀 Jarvis is now ready to breathe. Use 'openclaw start' to wake me.")
+    print("\n🚀 Synapse is now ready to breathe. Use 'openclaw start' to wake me.")
 
 
 if __name__ == "__main__":

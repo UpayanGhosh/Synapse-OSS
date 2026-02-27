@@ -42,7 +42,7 @@ class TestDatabaseIntegration:
         """Test that knowledge graph can inform queue processing."""
         # Add knowledge to graph
         graph.add_node("User1", "person")
-        graph.add_edge("User1", "Jarvis", "interacts_with")
+        graph.add_edge("User1", "Synapse", "interacts_with")
 
         # Create a task that references this knowledge
         task = MessageTask(

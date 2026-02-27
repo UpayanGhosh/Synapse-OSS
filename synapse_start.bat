@@ -37,12 +37,11 @@ echo [3/4] Starting API Gateway...
 netstat -ano | findstr ":8000" | find "LISTENING" >nul
 if %ERRORLEVEL% NEQ 0 (
     if exist "%PROJECT_ROOT%\.venv\Scripts\python.exe" (
-        cd /d "%PROJECT_ROOT%\workspace"
-        start /B cmd /c ".venv\Scripts\python.exe -m uvicorn sci_fi_dashboard.api_gateway:app --host 0.0.0.0 --port 8000 --workers 1" >nul 2>&1
-        cd /d "%PROJECT_ROOT%"
-        echo    [OK] Started.
+        mkdir "%USERPROFILE%\.openclaw\logs" >nul 2>&1
+        start /B cmd /c "set PYTHONUTF8=1 && "%PROJECT_ROOT%\.venv\Scripts\python.exe" -X utf8 -m uvicorn --app-dir "%PROJECT_ROOT%\workspace" sci_fi_dashboard.api_gateway:app --host 0.0.0.0 --port 8000 --workers 1 >> "%USERPROFILE%\.openclaw\logs\gateway.log" 2>&1"
+        echo    [OK] Started. (log: %USERPROFILE%\.openclaw\logs\gateway.log)
     ) else (
-        echo    [X] ERROR: Python virtual environment not found.
+        echo    [X] ERROR: Python virtual environment not found at %PROJECT_ROOT%\.venv
     )
 ) else (
     echo    [OK] Already running.

@@ -27,7 +27,7 @@ class Activity:
 
 class DashboardState:
     def __init__(self):
-        self.system_name = "JARVIS v2.4"
+        self.system_name = "Synapse v2.4"
         self.status = "OPERATIONAL"
         self.uptime_start = time.time()
         self.active_tasks_count = 0

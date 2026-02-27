@@ -119,7 +119,7 @@ async def interactive_chat_loop():
                     if resp.status == 200:
                         data = await resp.json()
                         reply = data.get("reply", "...")
-                        print(f"🤖 Jarvis: {reply}")
+                        print(f"[Synapse]: {reply}")
                     else:
                         print(f"❌ Error {resp.status}: {await resp.text()}")
                         

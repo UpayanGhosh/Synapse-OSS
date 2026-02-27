@@ -499,7 +499,7 @@ def generate_layout(m: BrainDashboard):
     layout["header"].update(
         Align.center(
             Text(
-                f"🧠 JARVIS CORTEX v4.0 │ {log_name} │ {now}",
+                f"SYNAPSE CORTEX v4.0 | {log_name} | {now}",
                 style="bold white on blue",
             )
         )
