@@ -50,11 +50,11 @@ class ConflictManager:
 
         # User Logic: High Confidence determines the winner
         if new_confidence > 0.9 and existing_confidence < 0.5:
-            # print(f"🚀 High confidence overwrite! ({new_confidence} vs {existing_confidence})")
+            # print(f"[INFO] High confidence overwrite! ({new_confidence} vs {existing_confidence})")
             return "OVERWRITE"
 
         if existing_confidence > 0.9 and new_confidence < 0.5:
-            # print(f"🛡️ Ignoring low confidence noise. ({new_confidence} vs {existing_confidence})")
+            # print(f"[GUARD] Ignoring low confidence noise. ({new_confidence} vs {existing_confidence})")
             return "IGNORE"
 
         # If we are here, it's a real conflict

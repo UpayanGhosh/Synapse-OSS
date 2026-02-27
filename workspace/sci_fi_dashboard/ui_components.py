@@ -57,7 +57,7 @@ class UIComponents:
                 Text(activity.narrative, style="cyan"),
             )
             if activity.sub_text:
-                table.add_row("", Text(f"└─ {activity.sub_text}", style="bright_black italic"))
+                table.add_row("", Text(f"└- {activity.sub_text}", style="bright_black italic"))
             table.add_row("", "")  # Spacer
 
         return Panel(
@@ -72,7 +72,7 @@ class UIComponents:
         content = []
 
         # Quota Watchdog
-        content.append(Text("┌─ QUOTA WATCHDOG ──────┐", style="bright_red"))
+        content.append(Text("┌- QUOTA WATCHDOG ------┐", style="bright_red"))
 
         # Token usage calculation
         total_tokens = state.total_tokens_in + state.total_tokens_out
@@ -97,13 +97,13 @@ class UIComponents:
         content.append(
             Text.assemble(("  Sessions: ", "white"), (f"{state.active_sessions}", "cyan"))
         )
-        content.append(Text("└───────────────────────┘", style="bright_red"))
+        content.append(Text("└-----------------------┘", style="bright_red"))
         content.append(Text(""))
 
-        content.append(Text("┌─ ACTIVE PROCESSES ────┐", style="bright_blue"))
+        content.append(Text("┌- ACTIVE PROCESSES ----┐", style="bright_blue"))
 
         for name, proc in state.processes.items():
-            icon = "▶" if proc.status == "ACTIVE" else "⏸"
+            icon = "[RESUME]" if proc.status == "ACTIVE" else "[PAUSED]"
             color = "cyan" if proc.status == "ACTIVE" else "bright_black"
             content.append(Text(f"{icon} {name}", style=color))
 
@@ -113,7 +113,7 @@ class UIComponents:
             content.append(Text(f"   {bar} {proc.progress:.0f}%", style=color))
             content.append(Text(""))
 
-        content.append(Text("└───────────────────────┘", style="bright_blue"))
+        content.append(Text("└-----------------------┘", style="bright_blue"))
         return Panel(
             Group(*content),
             title="[bold white]SYSTEM STATUS[/]",

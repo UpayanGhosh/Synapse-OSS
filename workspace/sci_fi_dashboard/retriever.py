@@ -1,5 +1,5 @@
 """
-Retriever Module — Queries memory.db using sentence-transformers for vector search.
+Retriever Module -- Queries memory.db using sentence-transformers for vector search.
 
 Uses all-MiniLM-L6-v2 for embedding (matching the PC build) and sqlite-vec
 for cosine distance search against both atomic_facts_vec and vec_items tables.
@@ -51,7 +51,7 @@ def _init_embedder():
         result = ollama.embeddings(model=EMBEDDING_MODEL_OLLAMA, prompt="test")
         if result and "embedding" in result:
             _embed_mode = "ollama"
-            print(f"✅ Retriever: Using Ollama ({EMBEDDING_MODEL_OLLAMA}) — exact DB match")
+            print(f"[OK] Retriever: Using Ollama ({EMBEDDING_MODEL_OLLAMA}) -- exact DB match")
             return
     except Exception:
         pass
@@ -62,14 +62,14 @@ def _init_embedder():
 
         _embedder = SentenceTransformer(EMBEDDING_MODEL_ST)
         _embed_mode = "sentence-transformers"
-        print(f"✅ Retriever: Using sentence-transformers ({EMBEDDING_MODEL_ST})")
+        print(f"[OK] Retriever: Using sentence-transformers ({EMBEDDING_MODEL_ST})")
         return
     except ImportError:
         pass
 
     # 3. FTS-only mode (no vector search)
     _embed_mode = "fts_only"
-    print("⚠️ Retriever: No embedding model available. Using FTS-only mode.")
+    print("[WARN] Retriever: No embedding model available. Using FTS-only mode.")
 
 
 def get_embedding(text: str) -> list | None:
@@ -162,7 +162,7 @@ def query_memories(
                                 }
                             )
                 except Exception as e:
-                    print(f"⚠️ atomic_facts_vec query failed: {e}")
+                    print(f"[WARN] atomic_facts_vec query failed: {e}")
 
             # 2. Search vec_items (documents) - WITH HIERARCHICAL ACCESS
             if use_docs:
@@ -209,7 +209,7 @@ def query_memories(
                         results["method"] = "sqlite-vec (safe-mode)"
 
                 except Exception as e:
-                    print(f"⚠️ vec_items query failed: {e}")
+                    print(f"[WARN] vec_items query failed: {e}")
 
         # --- FTS Fallback (always try as supplement) ---
         # Note: FTS filtering by tag would require FTS5 vocabulary update or join, keeping simple for now
@@ -249,7 +249,7 @@ def query_memories(
                         )
                     results["method"] = "fts_fallback"
             except Exception as e:
-                print(f"⚠️ FTS fallback failed: {e}")
+                print(f"[WARN] FTS fallback failed: {e}")
 
         # --- Always check relationship memories ---
         try:
@@ -323,17 +323,17 @@ def format_context_for_prompt(memory_results: dict) -> str:
 
     if memory_results.get("facts"):
         facts = memory_results["facts"]
-        fact_lines = [f"• {f['content']}" for f in facts[:5]]
+        fact_lines = [f"* {f['content']}" for f in facts[:5]]
         sections.append("**Known Facts:**\n" + "\n".join(fact_lines))
 
     if memory_results.get("documents"):
         docs = memory_results["documents"]
-        doc_lines = [f"• {d['content'][:200]}" for d in docs[:3]]
+        doc_lines = [f"* {d['content'][:200]}" for d in docs[:3]]
         sections.append("**Relevant Context:**\n" + "\n".join(doc_lines))
 
     if memory_results.get("relationships"):
         rels = memory_results["relationships"]
-        rel_lines = [f"• [{r['category']}] {r['content']}" for r in rels[:3]]
+        rel_lines = [f"* [{r['category']}] {r['content']}" for r in rels[:3]]
         sections.append("**Relationship Notes:**\n" + "\n".join(rel_lines))
 
     if not sections:
@@ -403,11 +403,11 @@ def get_db_stats() -> dict:
 
 
 if __name__ == "__main__":
-    print("🧠 Retriever Self-Test\n")
+    print("[MEM] Retriever Self-Test\n")
 
     # Test 1: DB Stats
     stats = get_db_stats()
-    print(f"📊 DB Stats: {json.dumps(stats, indent=2)}\n")
+    print(f"[STATS] DB Stats: {json.dumps(stats, indent=2)}\n")
 
     # Test 2: Query
     test_queries = [
@@ -417,7 +417,7 @@ if __name__ == "__main__":
     ]
 
     for q in test_queries:
-        print(f'🔍 Query: "{q}"')
+        print(f'[SEARCH] Query: "{q}"')
         results = query_memories(q, limit=3)
         print(f"   Method: {results['method']}")
         print(f"   Facts: {len(results['facts'])}, Docs: {len(results['documents'])}")

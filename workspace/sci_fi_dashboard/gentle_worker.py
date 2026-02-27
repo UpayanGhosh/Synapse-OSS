@@ -27,14 +27,14 @@ class GentleWorker:
             if battery is not None and not battery.power_plugged:
                 return False, f"🔋 On Battery ({battery.percent}%)"
         except Exception as e:
-            print(f"⚠️ Battery check error: {e}")
+            print(f"[WARN] Battery check error: {e}")
 
         # 2. Check CPU Load (Gentle Mode)
         cpu_load = psutil.cpu_percent(interval=1)
         if cpu_load > 20:
             return False, f"🔥 CPU Busy ({cpu_load}%)"
 
-        return True, "✅ System Idle & Plugged In"
+        return True, "[OK] System Idle & Plugged In"
 
     def heavy_task_graph_pruning(self):
         can_run, reason = self.check_conditions()
@@ -42,12 +42,12 @@ class GentleWorker:
             print(f"Skipping Graph Pruning: {reason}")
             return
 
-        print("🧠 Pruning Knowledge Graph (low-confidence triples)...")
+        print("[MEM] Pruning Knowledge Graph (low-confidence triples)...")
         try:
             pruned = self.graph.prune_graph()
-            print(f"✅ Graph Pruned ({pruned} triples removed)")
+            print(f"[OK] Graph Pruned ({pruned} triples removed)")
         except Exception as e:
-            print(f"⚠️ Graph pruning failed: {e}")
+            print(f"[WARN] Graph pruning failed: {e}")
 
     def heavy_task_db_optimize(self):
         can_run, reason = self.check_conditions()
@@ -60,9 +60,9 @@ class GentleWorker:
             conn = self.graph._conn()
             conn.execute("VACUUM")
             conn.close()
-            print("✅ Database optimized")
+            print("[OK] Database optimized")
         except Exception as e:
-            print(f"⚠️ DB optimization failed: {e}")
+            print(f"[WARN] DB optimization failed: {e}")
 
     def start(self):
         print(f"👷 Gentle Worker Started (PID: {psutil.Process().pid})")
@@ -76,7 +76,7 @@ class GentleWorker:
                 schedule.run_pending()
                 time.sleep(1)
         except KeyboardInterrupt:
-            print("🛑 Worker Stopped")
+            print("[STOP] Worker Stopped")
 
 
 if __name__ == "__main__":

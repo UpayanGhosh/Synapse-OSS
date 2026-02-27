@@ -21,42 +21,42 @@ from rich.columns import Columns
 
 console = Console()
 
-# Configuration — use system temp dir so this works on Windows and Mac/Linux
+# Configuration -- use system temp dir so this works on Windows and Mac/Linux
 LOG_DIR = os.path.join(tempfile.gettempdir(), "openclaw")
 OPENCLAW_HOME = os.path.expanduser("~/.openclaw")
 SESSIONS_FILE = os.path.join(OPENCLAW_HOME, "agents", "main", "sessions", "sessions.json")
 
-# ═══════════════════════════════════════════
-#  Tool Label Map — Technical → Human Readable
-# ═══════════════════════════════════════════
+# ===========================================
+#  Tool Label Map -- Technical -> Human Readable
+# ===========================================
 
 TOOL_LABELS = {
     # Core tools
-    "message": "✉️  SENDING MESSAGE",
-    "send": "✉️  SENDING MESSAGE",
-    "reply": "💬 COMPOSING REPLY",
+    "message": "[MSG]  SENDING MESSAGE",
+    "send": "[MSG]  SENDING MESSAGE",
+    "reply": "[REPLY] COMPOSING REPLY",
     # Memory & DB tools
-    "memory": "🧠 QUERYING MEMORY DB",
-    "query": "🔍 SEARCHING MEMORIES",
-    "add": "📥 STORING NEW MEMORY",
-    "read": "📖 READING FILE",
-    "write": "📝 WRITING FILE",
+    "memory": "[MEM] QUERYING MEMORY DB",
+    "query": "[SEARCH] SEARCHING MEMORIES",
+    "add": "[ADD] STORING NEW MEMORY",
+    "read": "[READ] READING FILE",
+    "write": "[LOG] WRITING FILE",
     # Web & external
-    "web_search": "🌍 SEARCHING THE WEB",
-    "browse": "🌐 BROWSING URL",
-    "fetch": "📡 FETCHING DATA",
+    "web_search": "[WEB] SEARCHING THE WEB",
+    "browse": "[WEB] BROWSING URL",
+    "fetch": "[FETCH] FETCHING DATA",
     # System tools
-    "exec": "💻 RUNNING COMMAND",
-    "bash": "💻 EXECUTING SHELL",
-    "command": "💻 EXECUTING COMMAND",
-    "eval": "⚙️  EVALUATING CODE",
+    "exec": "[CMD] RUNNING COMMAND",
+    "bash": "[CMD] EXECUTING SHELL",
+    "command": "[CMD] EXECUTING COMMAND",
+    "eval": "[EVAL]  EVALUATING CODE",
     # Communication tools
-    "himalaya": "📧 MANAGING EMAIL",
-    "gmail": "📧 CHECKING GMAIL",
-    "calendar": "📅 CHECKING CALENDAR",
-    "contacts": "👥 SEARCHING CONTACTS",
+    "himalaya": "[EMAIL] MANAGING EMAIL",
+    "gmail": "[EMAIL] CHECKING GMAIL",
+    "calendar": "[CAL] CHECKING CALENDAR",
+    "contacts": "[CONTACTS] SEARCHING CONTACTS",
     # Media & generation
-    "image": "🖼️  GENERATING IMAGE",
+    "image": "[IMG]  GENERATING IMAGE",
     "transcribe": "🎙️ TRANSCRIBING AUDIO",
     "whisper": "🎙️ TRANSCRIBING AUDIO",
     "summarize": "📋 SUMMARIZING CONTENT",
@@ -66,13 +66,13 @@ TOOL_LABELS = {
     # Skills
     "weather": "🌤️  CHECKING WEATHER",
     "github": "🐙 GITHUB OPERATION",
-    "things": "✅ MANAGING TASKS",
+    "things": "[OK] MANAGING TASKS",
     # WhatsApp
-    "send-v2": "✉️  SENDING WHATSAPP",
-    "contacts-list": "👥 LOOKING UP CONTACT",
+    "send-v2": "[MSG]  SENDING WHATSAPP",
+    "contacts-list": "[CONTACTS] LOOKING UP CONTACT",
 }
 
-# ═══════════════════════════════════════════
+# ===========================================
 
 
 class BrainDashboard:
@@ -97,7 +97,7 @@ class BrainDashboard:
         self.messages_processed = 0
         self.tools_called = 0
         self.errors_count = 0
-        self.last_response_time = "—"
+        self.last_response_time = "--"
 
         self.action_priority = 0
         self.action_expires = 0
@@ -171,18 +171,18 @@ class BrainDashboard:
             # Extract message text
             text_match = re.search(r'"([^"]+)"', msg)
             text = text_match.group(1)[:50] if text_match else msg[:50]
-            return f'📱 WhatsApp → "{text}"'
+            return f'📱 WhatsApp -> "{text}"'
 
         # --- FloodGate (Rate Limiting) ---
         if subsystem == "floodgate" or "flood" in msg_lower:
             if "batch" in msg_lower or "batched" in msg_lower:
                 match = re.search(r"(\d+)\s*msg.*?(\d+)s", msg_lower)
                 if match:
-                    return f"🛡️ FloodGate: batched ({match.group(1)} msg, {match.group(2)}s window)"
-                return "🛡️ FloodGate: batched"
+                    return f"[GUARD] FloodGate: batched ({match.group(1)} msg, {match.group(2)}s window)"
+                return "[GUARD] FloodGate: batched"
             if "passed" in msg_lower or "allowed" in msg_lower:
                 return "�️ FloodGate: passed through"
-            return "🛡️ FloodGate"
+            return "[GUARD] FloodGate"
 
         # --- Dedup (Deduplication) ---
         if subsystem == "dedup" or "dedup" in msg_lower:
@@ -210,7 +210,7 @@ class BrainDashboard:
         if subsystem == "memory" or "memory" in msg_lower:
             hits_match = re.search(r"(\d+)\s*relevant\s*hits?", msg_lower)
             score_match = re.search(r"top:\s*([0-9.]+)", msg_lower)
-            gate_match = re.search(r"fast-gate\s*([✅✔])", msg_lower)
+            gate_match = re.search(r"fast-gate\s*([[OK]✔])", msg_lower)
 
             parts = []
             if hits_match:
@@ -221,8 +221,8 @@ class BrainDashboard:
                 parts.append(f"fast-gate {gate_match.group(1)}")
 
             if parts:
-                return f"🧠 Memory: {', '.join(parts)}"
-            return "🧠 Memory: queried"
+                return f"[MEM] Memory: {', '.join(parts)}"
+            return "[MEM] Memory: queried"
 
         # --- SBS (Style/Sentiment) ---
         if subsystem == "sbs" or "sbs" in msg_lower or "mood" in msg_lower:
@@ -285,8 +285,8 @@ class BrainDashboard:
             if "start" in msg_lower:
                 model_match = re.search(r"\(([^)]+)\):\s*start", msg_lower)
                 if model_match:
-                    return f"💻 {model_match.group(1)}: starting..."
-                return "💻 Agent: starting..."
+                    return f"[CMD] {model_match.group(1)}: starting..."
+                return "[CMD] Agent: starting..."
             if "end" in msg_lower:
                 tokens_match = re.search(r"(\d+)\s*tokens?", msg_lower)
                 dur_match = re.search(r"(\d+\.?\d*)s", msg_lower)
@@ -298,9 +298,9 @@ class BrainDashboard:
                     parts.append(f"{dur_match.group(1)}s")
 
                 if parts:
-                    return f"💻 Agent: {', '.join(parts)}"
-                return "💻 Agent: done"
-            return "💻 Agent"
+                    return f"[CMD] Agent: {', '.join(parts)}"
+                return "[CMD] Agent: done"
+            return "[CMD] Agent"
 
         # --- Response Sent ---
         if (
@@ -312,7 +312,7 @@ class BrainDashboard:
             if "to" in msg and "+" in msg:
                 match = re.search(r"\+\d+", msg)
                 if match:
-                    to = f" → {match.group()}"
+                    to = f" -> {match.group()}"
             self.set_action("📤 Response sent", priority=2, duration=1.0)
             return f"📤 Response sent via WhatsApp{to}"
 
@@ -332,7 +332,7 @@ class BrainDashboard:
                     dur = f" ({dur_ms}ms)"
                 except Exception:
                     pass
-            self.set_action(f"✅ Tool done{dur}", priority=1, duration=0.5)
+            self.set_action(f"[OK] Tool done{dur}", priority=1, duration=0.5)
             return None
 
         # --- Agent Lifecycle ---
@@ -363,15 +363,15 @@ class BrainDashboard:
             if "new=idle" in msg:
                 self.set_action("IDLE", priority=0)
             elif "new=processing" in msg:
-                self.set_action("⏳ PROCESSING...", priority=1)
+                self.set_action("[WAIT] PROCESSING...", priority=1)
             return None
 
         # --- Errors ---
         if "error" in msg_lower or "failed" in msg_lower:
             self.errors_count += 1
             short = msg[:80]
-            self.set_action("⚠️ ERROR", priority=4, duration=3.0)
-            return f"⚠️ {short}"
+            self.set_action("[WARN] ERROR", priority=4, duration=3.0)
+            return f"[WARN] {short}"
 
         # --- Lane completion ---
         if "lane task done" in msg:
@@ -381,7 +381,7 @@ class BrainDashboard:
         thinking = self.extract_thinking(msg)
         if thinking:
             self.thinking_buffer = thinking
-            self.set_action("🧠 THINKING...", priority=2, duration=1.0)
+            self.set_action("[MEM] THINKING...", priority=2, duration=1.0)
             return None
 
         return None
@@ -416,7 +416,7 @@ class BrainDashboard:
                 try:
                     data = json.loads(line)
 
-                    # Handle message field — can be string or dict
+                    # Handle message field -- can be string or dict
                     msg_part = data.get("1", "")
                     if isinstance(msg_part, dict):
                         if msg_part.get("isBoom"):
@@ -547,7 +547,7 @@ def generate_layout(m: BrainDashboard):
     layout["top"]["api_usage"].update(
         Panel(
             usage_text,
-            title="📊 API USAGE",
+            title="[STATS] API USAGE",
             border_style=usage_color,
             padding=(0, 1),
         )
@@ -556,7 +556,7 @@ def generate_layout(m: BrainDashboard):
     # --- Current Action Panel ---
     action = m.current_action
     action_style = "bold green"
-    if "ERROR" in action or "⚠️" in action:
+    if "ERROR" in action or "[WARN]" in action:
         action_style = "bold red"
     elif "THINKING" in action or "PROCESSING" in action:
         action_style = "bold yellow"
@@ -596,13 +596,13 @@ def generate_layout(m: BrainDashboard):
         # Color by subsystem icon
         if "📱" in item:  # WhatsApp
             style = "bold cyan"
-        elif "🛡️" in item:  # FloodGate
+        elif "[GUARD]" in item:  # FloodGate
             style = "yellow"
         elif "🔁" in item:  # Dedup
             style = "magenta"
         elif "📦" in item:  # Queue
             style = "blue"
-        elif "🧠" in item:  # Memory
+        elif "[MEM]" in item:  # Memory
             style = "bold green"
         elif "🎭" in item:  # SBS
             style = "bright_magenta"
@@ -610,13 +610,13 @@ def generate_layout(m: BrainDashboard):
             style = "bright_yellow"
         elif "🚦" in item:  # TrafficCop
             style = "bold yellow"
-        elif "💻" in item:  # Agent
+        elif "[CMD]" in item:  # Agent
             style = "bold cyan"
         elif "📤" in item:  # Response sent
             style = "bold green"
         elif "🔧" in item:  # Tool
             style = "blue"
-        elif "⚠️" in item:  # Error
+        elif "[WARN]" in item:  # Error
             style = "bold red"
         elif "⚡" in item:  # Processing
             style = "bold yellow"
@@ -655,7 +655,7 @@ def generate_layout(m: BrainDashboard):
     layout["footer"].update(
         Panel(
             stats_table,
-            title="📈 SESSION STATS",
+            title="[CHART] SESSION STATS",
             border_style="blue",
             padding=(0, 0),
         )

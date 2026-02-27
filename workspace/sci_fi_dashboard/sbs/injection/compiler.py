@@ -8,13 +8,13 @@ class PromptCompiler:
     Token Budget: ~1500 tokens (approximately 6KB text)
 
     Priority order (if budget is tight, lower priority gets trimmed):
-    1. Core Identity          (~300 tokens) — NEVER trimmed
-    2. Current Emotional State (~100 tokens) — NEVER trimmed
-    3. Active Vocabulary       (~150 tokens) — trimmed to top 15 words
-    4. Communication Style     (~100 tokens) — trimmed to essentials
-    5. Few-Shot Exemplars      (~600 tokens) — trimmed from 14 to 6 pairs
-    6. Domain Context          (~100 tokens) — trimmed to top 3 domains
-    7. Interaction Notes       (~50 tokens)  — first to be trimmed
+    1. Core Identity          (~300 tokens) -- NEVER trimmed
+    2. Current Emotional State (~100 tokens) -- NEVER trimmed
+    3. Active Vocabulary       (~150 tokens) -- trimmed to top 15 words
+    4. Communication Style     (~100 tokens) -- trimmed to essentials
+    5. Few-Shot Exemplars      (~600 tokens) -- trimmed from 14 to 6 pairs
+    6. Domain Context          (~100 tokens) -- trimmed to top 3 domains
+    7. Interaction Notes       (~50 tokens)  -- first to be trimmed
     """
 
     MAX_TOKENS_ESTIMATE = 1500  # Conservative estimate (4 chars per token)
@@ -154,7 +154,7 @@ Emoji usage: {"common" if style.get("emoji_frequency", 0) > 0.2 else "occasional
         block = "[EXAMPLE INTERACTIONS]\nRespond in a style consistent with these examples:\n\n"
 
         for _i, pair in enumerate(pairs):
-            entry = f'User: "{pair.get("user", "")}"\n{pair.get("context", {}).get("mood", "")} → Assistant: "{pair.get("assistant", "")}"\n\n'
+            entry = f'User: "{pair.get("user", "")}"\n{pair.get("context", {}).get("mood", "")} -> Assistant: "{pair.get("assistant", "")}"\n\n'
 
             if len(block) + len(entry) > max_chars:
                 break

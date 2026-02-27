@@ -40,7 +40,7 @@ class DatabaseManager:
                 try:
                     conn.load_extension("vec0")
                 except Exception as e2:
-                    print(f"⚠️ sqlite-vec not available during DB init: {e2}")
+                    print(f"[WARN] sqlite-vec not available during DB init: {e2}")
                     print("   Vector search will not work until sqlite-vec is installed.")
             conn.enable_load_extension(False)
 
@@ -70,7 +70,7 @@ class DatabaseManager:
                     );
                 """)
             except Exception as e:
-                print(f"⚠️ Could not create vec_items table: {e}")
+                print(f"[WARN] Could not create vec_items table: {e}")
                 print("   Vector search disabled. Install sqlite-vec to enable.")
 
             # Create FTS5 virtual table for full-text search
@@ -80,11 +80,11 @@ class DatabaseManager:
                         USING fts5(content, content=documents, content_rowid=id);
                 """)
             except Exception as e:
-                print(f"⚠️ Could not create FTS5 table: {e}")
+                print(f"[WARN] Could not create FTS5 table: {e}")
 
             conn.commit()
             conn.close()
-            print("✅ Memory database initialized successfully.")
+            print("[OK] Memory database initialized successfully.")
 
         DatabaseManager._initialized = True
 
@@ -101,7 +101,7 @@ class DatabaseManager:
             size_mb = os.path.getsize(DB_PATH) / (1024 * 1024)
             if size_mb > MAX_DB_SIZE_MB:
                 print(
-                    f"⚠️ WARNING: Database size ({size_mb:.1f}MB) exceeds target ({MAX_DB_SIZE_MB}MB). Running VACUUM recommended."
+                    f"[WARN] WARNING: Database size ({size_mb:.1f}MB) exceeds target ({MAX_DB_SIZE_MB}MB). Running VACUUM recommended."
                 )
 
         conn = sqlite3.connect(DB_PATH)
@@ -120,7 +120,7 @@ class DatabaseManager:
             try:
                 conn.load_extension("vec0")
             except Exception as e2:
-                print(f"❌ CRITICAL: Failed to load sqlite-vec extension: {e} | {e2}")
+                print(f"[ERROR] CRITICAL: Failed to load sqlite-vec extension: {e} | {e2}")
                 raise
 
         conn.enable_load_extension(False)
@@ -142,7 +142,7 @@ class DatabaseManager:
             safe_count = counts.get("safe", 0)
             spicy_count = counts.get("spicy", 0)
 
-            print(f"🛡️ Air-Gap Status: Safe={safe_count} | Spicy={spicy_count}")
+            print(f"[GUARD] Air-Gap Status: Safe={safe_count} | Spicy={spicy_count}")
 
             return not (safe_count == 0 or spicy_count == 0)
         finally:
@@ -158,15 +158,15 @@ if __name__ == "__main__":
     print("🔬 db.py Self-Test...")
     try:
         conn = get_db_connection()
-        print("✅ Connection Successful")
+        print("[OK] Connection Successful")
 
         # Test 1: Extension Check
         vec_version = conn.execute("SELECT vec_version()").fetchone()[0]
-        print(f"✅ sqlite-vec loaded (version: {vec_version})")
+        print(f"[OK] sqlite-vec loaded (version: {vec_version})")
 
         # Test 2: Invariant Check
         DatabaseManager.verify_air_gap()
 
         conn.close()
     except Exception as e:
-        print(f"❌ Self-Test Failed: {e}")
+        print(f"[ERROR] Self-Test Failed: {e}")

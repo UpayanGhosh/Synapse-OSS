@@ -38,7 +38,7 @@ class TestWhatsAppMessageFlow:
 
     @pytest.mark.asyncio
     async def test_complete_inbound_message_flow(self, temp_dir):
-        """Test complete flow: webhook → dedup → queue → process → respond."""
+        """Test complete flow: webhook -> dedup -> queue -> process -> respond."""
         # Setup components
         dedup = MessageDeduplicator(window_seconds=300)
         queue = TaskQueue(max_size=100)
@@ -132,7 +132,7 @@ class TestMemoryRetrievalFlow:
     """End-to-end tests for memory retrieval."""
 
     def test_add_memory_retrieve_memory_flow(self, temp_dir):
-        """Test complete flow: add memory → retrieve later."""
+        """Test complete flow: add memory -> retrieve later."""
         db_path = os.path.join(temp_dir, "memory.db")
         graph = SQLiteGraph(db_path=db_path)
 

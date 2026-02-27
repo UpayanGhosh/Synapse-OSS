@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Change Viewer — Rich CLI for Git History
+Change Viewer -- Rich CLI for Git History
 
 Usage:
   python3 change_viewer.py              # Last 10 commits
@@ -59,7 +59,7 @@ def show_log(count: int = 10, branch: str = None, file_filter: str = None, today
         return
 
     table = Table(
-        title="📜 Change History",
+        title="[HISTORY] Change History",
         box=box.ROUNDED,
         show_lines=True,
         title_style="bold cyan",
@@ -116,7 +116,7 @@ def show_diff(ref: str = "HEAD~1"):
 
     console.print(Panel(
         Text(output),
-        title=f"📊 Changes since {ref}",
+        title=f"[STATS] Changes since {ref}",
         border_style="cyan",
     ))
 
@@ -133,7 +133,7 @@ def show_diff(ref: str = "HEAD~1"):
 
 def show_file_history(filepath: str, count: int = 10):
     """Show history for a specific file."""
-    console.print(f"\n  [bold cyan]📂 History for: {filepath}[/bold cyan]\n")
+    console.print(f"\n  [bold cyan][DIR] History for: {filepath}[/bold cyan]\n")
 
     output = git("log", f"-{count}", "--format=%h|%s|%ai", "--follow", "--", filepath)
     if not output:
@@ -153,7 +153,7 @@ def show_file_history(filepath: str, count: int = 10):
         except Exception:
             date_display = date[:16]
 
-        auto = "🤖" if "[auto]" in subject else "👤"
+        auto = "[BOT]" if "[auto]" in subject else "[USER]"
         console.print(f"  {auto} [yellow]{hash_short}[/yellow] {subject} [dim]({date_display})[/dim]")
 
 
@@ -175,13 +175,13 @@ def show_summary():
             f"  Current:       [bold yellow]{current}[/bold yellow]\n"
             f"  Last commit:   {last_commit}"
         ),
-        title="📈 Repository Summary",
+        title="[CHART] Repository Summary",
         border_style="blue",
     ))
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Git Change Viewer — Rich CLI")
+    parser = argparse.ArgumentParser(description="Git Change Viewer -- Rich CLI")
     parser.add_argument("-n", "--count", type=int, default=10, help="Number of commits")
     parser.add_argument("--today", action="store_true", help="Show only today's commits")
     parser.add_argument("--file", type=str, help="Show history for a specific file")
@@ -190,7 +190,7 @@ def main():
     parser.add_argument("--summary", action="store_true", help="Show repo summary")
     args = parser.parse_args()
 
-    console.print("\n[bold blue]═══ 🔍 CHANGE VIEWER ═══[/bold blue]\n")
+    console.print("\n[bold blue]=== [SEARCH] CHANGE VIEWER ===[/bold blue]\n")
 
     if args.summary:
         show_summary()

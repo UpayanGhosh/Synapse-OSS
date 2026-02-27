@@ -4,13 +4,13 @@
 SENTINEL PROTECTED MANIFEST
 ============================
 This file defines what the AI agent can and cannot touch.
-This file ITSELF is protected — the agent cannot modify it.
+This file ITSELF is protected -- the agent cannot modify it.
 
 Protection Levels:
-  CRITICAL  — Cannot read, write, delete, or list. Total blackout.
-  PROTECTED — Can read, cannot write or delete.
-  MONITORED — Can read and write, but all writes are logged and diffed.
-  OPEN      — No restrictions (default for writable zones).
+  CRITICAL  -- Cannot read, write, delete, or list. Total blackout.
+  PROTECTED -- Can read, cannot write or delete.
+  MONITORED -- Can read and write, but all writes are logged and diffed.
+  OPEN      -- No restrictions (default for writable zones).
 """
 
 from enum import Enum
@@ -24,7 +24,7 @@ class ProtectionLevel(Enum):
 
 
 # ============================================================
-# CRITICAL FILES — Touch these and the system dies
+# CRITICAL FILES -- Touch these and the system dies
 # The agent cannot read, write, or even list these paths
 # ============================================================
 CRITICAL_FILES: set[str] = {
@@ -33,11 +33,11 @@ CRITICAL_FILES: set[str] = {
     "main.py",
     "run.py",
     "app.py",
-    # SBS Core — the brain itself
+    # SBS Core -- the brain itself
     "sbs/orchestrator.py",
     "sbs/injection/compiler.py",
     "sbs/profile/manager.py",
-    # Sentinel — self-protection
+    # Sentinel -- self-protection
     "sbs/sentinel/__init__.py",
     "sbs/sentinel/manifest.py",
     "sbs/sentinel/gateway.py",
@@ -54,7 +54,7 @@ CRITICAL_FILES: set[str] = {
 }
 
 # ============================================================
-# CRITICAL DIRECTORIES — Everything inside is locked
+# CRITICAL DIRECTORIES -- Everything inside is locked
 # ============================================================
 CRITICAL_DIRECTORIES: set[str] = {
     "sbs/sentinel/",
@@ -66,7 +66,7 @@ CRITICAL_DIRECTORIES: set[str] = {
 }
 
 # ============================================================
-# PROTECTED FILES — Read-only access
+# PROTECTED FILES -- Read-only access
 # ============================================================
 PROTECTED_FILES: set[str] = {
     "sbs/ingestion/schema.py",
@@ -78,7 +78,7 @@ PROTECTED_FILES: set[str] = {
 }
 
 # ============================================================
-# WRITABLE ZONES — Agent CAN write here (monitored)
+# WRITABLE ZONES -- Agent CAN write here (monitored)
 # ============================================================
 WRITABLE_ZONES: set[str] = {
     "data/raw/",  # Chat logs
@@ -92,7 +92,7 @@ WRITABLE_ZONES: set[str] = {
 }
 
 # ============================================================
-# DANGEROUS OPERATIONS — Always denied regardless of path
+# DANGEROUS OPERATIONS -- Always denied regardless of path
 # ============================================================
 FORBIDDEN_OPERATIONS: set[str] = {
     "rmtree",  # Recursive delete

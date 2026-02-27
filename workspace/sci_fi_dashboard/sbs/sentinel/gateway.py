@@ -26,11 +26,11 @@ class Sentinel:
     File Access Governance Gateway.
 
     Every file operation by the AI agent MUST pass through this gateway.
-    Direct filesystem access should be impossible — all agent tools
+    Direct filesystem access should be impossible -- all agent tools
     must call Sentinel methods instead of raw open()/os.write()/etc.
 
     Design: FAIL-CLOSED
-    If anything is ambiguous, uncertain, or errors out — DENY.
+    If anything is ambiguous, uncertain, or errors out -- DENY.
     """
 
     def __init__(self, project_root: Path, audit_dir: Path = None):
@@ -113,14 +113,14 @@ class Sentinel:
         return True
 
     def safe_read(self, path: str, agent_context: str = "") -> str:
-        """Safe file read — checks access first, then reads."""
+        """Safe file read -- checks access first, then reads."""
         self.check_access(path, "read", agent_context)
         resolved = self._resolve_path(path)
         with open(resolved, encoding="utf-8") as f:
             return f.read()
 
     def safe_write(self, path: str, content: str, agent_context: str = "") -> bool:
-        """Safe file write — checks access, creates backup, then writes."""
+        """Safe file write -- checks access, creates backup, then writes."""
         self.check_access(path, "write", agent_context)
         resolved = self._resolve_path(path)
 
@@ -145,7 +145,7 @@ class Sentinel:
         return True
 
     def safe_delete(self, path: str, agent_context: str = "") -> bool:
-        """Safe file delete — checks access, logs, then deletes."""
+        """Safe file delete -- checks access, logs, then deletes."""
         self.check_access(path, "delete", agent_context)
         resolved = self._resolve_path(path)
 

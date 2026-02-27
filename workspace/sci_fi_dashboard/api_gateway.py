@@ -1,16 +1,16 @@
 """
-Antigravity Gateway v2 — The Soul + Brain Assembly Line
+Antigravity Gateway v2 -- The Soul + Brain Assembly Line
 
 Routes:
-  POST /chat/the_creator   — Chat as Synapse talking to user_nickname (brother mode)
-  POST /chat/the_partner   — Chat as Synapse talking to the_partner_name (caring PA mode)
-  POST /chat          — Generic fallback (original Banglish persona)
-  POST /persona/rebuild — Re-parse chat logs and rebuild persona profiles
-  GET  /persona/status  — Profile stats and embedding mode
-  POST /ingest         — Ingest a fact into the knowledge graph
-  POST /add            — Unstructured memory → LLM → triple extraction
-  POST /query          — Query the knowledge graph
-  GET  /health         — System health
+  POST /chat/the_creator   -- Chat as Synapse talking to user_nickname (brother mode)
+  POST /chat/the_partner   -- Chat as Synapse talking to the_partner_name (caring PA mode)
+  POST /chat          -- Generic fallback (original Banglish persona)
+  POST /persona/rebuild -- Re-parse chat logs and rebuild persona profiles
+  GET  /persona/status  -- Profile stats and embedding mode
+  POST /ingest         -- Ingest a fact into the knowledge graph
+  POST /add            -- Unstructured memory -> LLM -> triple extraction
+  POST /query          -- Query the knowledge graph
+  GET  /health         -- System health
 """
 
 import asyncio
@@ -31,7 +31,7 @@ import uvicorn
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from pydantic import BaseModel
 
-# from celery import Celery  # REMOVED — using async workers
+# from celery import Celery  # REMOVED -- using async workers
 from rich import print
 
 # Add current directory + workspace root to path
@@ -72,14 +72,14 @@ def send_via_cli(target: str, message: str):
         # Normalize target
         clean_target = "".join(filter(str.isdigit, target))
         if not clean_target:
-            print(f"⚠️ Invalid target for CLI send: {target}")
+            print(f"[WARN] Invalid target for CLI send: {target}")
             return
 
         # Ensure country code (prefix + if missing)
         if not target.startswith("+"):
             target = f"+{clean_target}"
 
-        print(f"🚀 [CLI] Sending async message to {target}...")
+        print(f"[INFO] [CLI] Sending async message to {target}...")
         cli_bin = _resolve_openclaw_cli_bin()
         cmd = [
             cli_bin,
@@ -96,12 +96,12 @@ def send_via_cli(target: str, message: str):
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
         if result.returncode == 0:
             route = _extract_cli_send_route(result.stdout) or "gateway"
-            print(f"✅ [CLI] Sent via {route}: {message[:50]}...")
+            print(f"[OK] [CLI] Sent via {route}: {message[:50]}...")
         else:
             err = (result.stderr or result.stdout or "").strip()
-            print(f"❌ [CLI] Failed: {err}")
+            print(f"[ERROR] [CLI] Failed: {err}")
     except Exception as e:
-        print(f"❌ [CLI] Exception: {e}")
+        print(f"[ERROR] [CLI] Exception: {e}")
 
 
 async def continue_conversation(target: str, messages: list[dict], last_reply: str):
@@ -128,7 +128,7 @@ async def continue_conversation(target: str, messages: list[dict], last_reply: s
 
         # 3. Check emptiness
         if not continuation.strip():
-            print("⚠️ Continuation was empty.")
+            print("[WARN] Continuation was empty.")
             return
 
         # 4. Clean up (sometimes models repeat the last sentence)
@@ -141,7 +141,7 @@ async def continue_conversation(target: str, messages: list[dict], last_reply: s
         # For now, let's limit to one continuation to avoid infinite loops.
 
     except Exception as e:
-        print(f"❌ [AUTO-CONTINUE] Failed: {e}")
+        print(f"[ERROR] [AUTO-CONTINUE] Failed: {e}")
 
 
 from sci_fi_dashboard.conflict_resolver import ConflictManager  # noqa: E402
@@ -227,9 +227,9 @@ GEMINI_MODEL_MAP = {
     "gemini-3-pro-high": "gemini-1.5-pro",
 }
 
-# REDIS_URL removed — no Redis dependency
+# REDIS_URL removed -- no Redis dependency
 BRIDGE_DB_PATH = Path(__file__).resolve().with_name("whatsapp_bridge.db")
-# bridge_queue REMOVED — Celery no longer needed
+# bridge_queue REMOVED -- Celery no longer needed
 # WhatsApp messages handled by gateway.worker.MessageWorker (async)
 
 
@@ -270,7 +270,7 @@ async def call_gemini_direct(
     async with httpx.AsyncClient(timeout=60.0) as client:
         resp = await client.post(url, json=payload)
         if resp.status_code != 200:
-            print(f"⚠️ Gemini Direct Error ({resp.status_code}): {resp.text[:200]}")
+            print(f"[WARN] Gemini Direct Error ({resp.status_code}): {resp.text[:200]}")
             return f"Error: Gemini API returned {resp.status_code}"
         data = resp.json()
         candidates = data.get("candidates", [])
@@ -314,7 +314,7 @@ async def call_gateway_model(
     async with httpx.AsyncClient(timeout=60.0) as client:
         resp = await client.post(OPENCLAW_GATEWAY_URL, json=payload, headers=headers)
         if resp.status_code != 200:
-            print(f"⚠️ Gateway Error ({resp.status_code}): {resp.text}")
+            print(f"[WARN] Gateway Error ({resp.status_code}): {resp.text}")
             return f"Error: {resp.text}"
 
         data = resp.json()
@@ -326,7 +326,7 @@ async def call_gateway_model(
             elif block.get("type") == "thinking":
                 thinking = block.get("thinking", "")
                 thinking_content += thinking + "\n"
-                print(f"🧠 [Thinking]: {thinking[:50]}...")
+                print(f"[MEM] [Thinking]: {thinking[:50]}...")
 
         # Prepend thinking to text output for context
         if thinking_content:
@@ -343,10 +343,10 @@ MODEL_REVIEW = "gemini-3-pro-high"  # Placeholder
 _llm_arch = (
     "OAuth (OpenClaw Proxy)"
     if OPENCLAW_GATEWAY_TOKEN
-    else f"Direct Gemini API ({'key set' if GEMINI_API_KEY else 'KEY MISSING — add GEMINI_API_KEY to .env'})"
+    else f"Direct Gemini API ({'key set' if GEMINI_API_KEY else 'KEY MISSING -- add GEMINI_API_KEY to .env'})"
 )
 print(
-    f"🤖 LLM Architecture ({_llm_arch}): \n"
+    f"[BOT] LLM Architecture ({_llm_arch}): \n"
     f"   Casual: {MODEL_CASUAL}\n   Coding: {MODEL_CODING}\n"
     f"   Analysis: {MODEL_ANALYSIS}\n   Review: {MODEL_REVIEW}"
 )
@@ -459,13 +459,13 @@ async def call_ag_code(messages: list) -> str:
     """
     AG_CODE (The Hacker): Claude Sonnet 4.5 Thinking (Placeholder: Gemini Flash)
     """
-    print("💻 Routing to THE HACKER (Claude Sonnet 4.5 via OAuth)...")
+    print("[CMD] Routing to THE HACKER (Claude Sonnet 4.5 via OAuth)...")
     # Placeholder: Routing to Gemini Flash but using Coding Model ID if credits allowed,
     # OR forcefully use Gemini Flash ID but *logically* treat as coding.
     # User said "All models should route through google-antigravity".
     # User said "I'll use Claude models once credits back".
     # So we use Gemini Flash ID for now to save credits, as requested.
-    print("⚠️ CREDIT_SAVER: Routing Coding Task to Gemini Flash (Placeholder)")
+    print("[WARN] CREDIT_SAVER: Routing Coding Task to Gemini Flash (Placeholder)")
     return await call_gemini_flash(messages, temperature=0.2, max_tokens=1000)
 
 
@@ -486,7 +486,7 @@ async def call_ag_review(messages: list) -> str:
     """
     print("🧐 Calling The Philosopher (Claude Opus 4.6)...")
     # Placeholder: Routing to Gemini Pro to save Claude credits
-    print("⚠️ CREDIT_SAVER: Routing Review Task to Gemini 3 Pro (Placeholder)")
+    print("[WARN] CREDIT_SAVER: Routing Review Task to Gemini 3 Pro (Placeholder)")
     return await call_ag_oracle(messages)
 
 
@@ -519,7 +519,7 @@ async def translate_banglish(text: str) -> str:
             resp.raise_for_status()
             return resp.json()["choices"][0]["message"]["content"].strip()
     except Exception as e:
-        print(f"⚠️ Translation failed: {e}")
+        print(f"[WARN] Translation failed: {e}")
         return text
 
 
@@ -573,14 +573,14 @@ async def persona_chat(
         # Format results for the prompt
         results_list = mem_response.get("results", [])
         formatted_facts = "\n".join(
-            [f"• {r['content']} (Source: {r['source']})" for r in results_list]
+            [f"* {r['content']} (Source: {r['source']})" for r in results_list]
         )
         graph_ctx = mem_response.get("graph_context", "")
 
         memory_context = f"{formatted_facts}\n\n{graph_ctx}"
         retrieval_method = mem_response.get("tier", "standard")
     except Exception as e:
-        print(f"⚠️ Memory Engine Error: {e}")
+        print(f"[WARN] Memory Engine Error: {e}")
         memory_context = "(Memory retrieval unavailable)"
         retrieval_method = "failed"
 
@@ -592,7 +592,7 @@ async def persona_chat(
     toxicity = toxic_scorer.score(user_msg)
     if toxicity > 0.8 and session_mode == "safe":
         print(
-            f"⚠️ High Toxicity ({toxicity:.2f}) detected in Safe Mode. Remaining Safe (Architectural Decision)."
+            f"[WARN] High Toxicity ({toxicity:.2f}) detected in Safe Mode. Remaining Safe (Architectural Decision)."
         )
         # Optional: Auto-switch to vault? User said "Zero cloud leakage".
         # If toxic, maybe we SHOULD switch to vault?
@@ -611,12 +611,12 @@ async def persona_chat(
         cognitive_context = dual_cognition.build_cognitive_context(cognitive_merge)
 
         print(
-            f"🧠 Cognitive State: {cognitive_merge.tension_type} (tension={cognitive_merge.tension_level:.2f})"
+            f"[MEM] Cognitive State: {cognitive_merge.tension_type} (tension={cognitive_merge.tension_level:.2f})"
         )
         print(f"💭 Inner thought: {cognitive_merge.inner_monologue[:100]}")
 
     except Exception as e:
-        print(f"⚠️ Dual cognition failed: {e}")
+        print(f"[WARN] Dual cognition failed: {e}")
         cognitive_context = ""
 
     # 3. Assemble System Prompt
@@ -652,7 +652,7 @@ async def persona_chat(
             reply = await call_local_spicy(full_prompt)
             model_used = "The Vault (Stheno)"
         except Exception as e:
-            print(f"⚠️ Vault failed: {e}. Falling back to OpenRouter.")
+            print(f"[WARN] Vault failed: {e}. Falling back to OpenRouter.")
             reply = await call_or_fallback(full_prompt)
             model_used = "The Vault (OpenRouter Fallback)"
 
@@ -663,7 +663,7 @@ async def persona_chat(
 
         if "CODING" in classification:
             # === THE HACKER (Claude Sonnet 4.5) ===
-            print("💻 Routing to THE HACKER (Claude Sonnet 4.5)")
+            print("[CMD] Routing to THE HACKER (Claude Sonnet 4.5)")
             reply = await call_ag_code(messages)
             model_used = "The Hacker (Sonnet 4.5 [Placeholder])"
 
@@ -723,7 +723,7 @@ async def persona_chat(
             # We must pass the RAW messages (without the user's last msg? No, messages already has it)
             background_tasks.add_task(continue_conversation, request.user_id, messages, reply)
         else:
-            print("⚠️ No BackgroundTasks object available. Using asyncio.create_task.")
+            print("[WARN] No BackgroundTasks object available. Using asyncio.create_task.")
             asyncio.create_task(continue_conversation(request.user_id, messages, reply))
 
     return {
@@ -793,7 +793,7 @@ async def gentle_worker_loop():
         except asyncio.CancelledError:
             break
         except Exception as e:
-            print(f"⚠️ Worker: {e}")
+            print(f"[WARN] Worker: {e}")
             await asyncio.sleep(60)
 
 
@@ -909,7 +909,7 @@ def update_inbound_message(
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print("🧠 Booting Antigravity Gateway v2...")
+    print("[MEM] Booting Antigravity Gateway v2...")
     ensure_bridge_db()
     worker_task = asyncio.create_task(gentle_worker_loop())
 
@@ -920,10 +920,10 @@ async def lifespan(app: FastAPI):
         num_workers=2,
     )
     await app.state.worker.start()
-    print("🚀 Async Gateway Pipeline started.")
+    print("[INFO] Async Gateway Pipeline started.")
 
     yield
-    print("🛑 Shutting down...")
+    print("[STOP] Shutting down...")
     brain.save_graph()
     worker_task.cancel()
     if hasattr(app.state, "worker"):
@@ -946,9 +946,9 @@ app.add_middleware(
 )
 
 
-# ═══════════════════════════════════════════
+# ===========================================
 #  ROUTES
-# ═══════════════════════════════════════════
+# ===========================================
 
 
 @app.get("/")
@@ -1136,7 +1136,7 @@ async def chat_webhook(request: Request):
 async def chat_the_creator(
     request: ChatRequest, background_tasks: BackgroundTasks, http_request: Request
 ):
-    """Chat as Synapse → primary_user (Bro Mode 👊)"""
+    """Chat as Synapse -> primary_user (Bro Mode 👊)"""
     validate_api_key(http_request)
     return await persona_chat(request, "the_creator", background_tasks)
 
@@ -1145,7 +1145,7 @@ async def chat_the_creator(
 async def chat_the_partner(
     request: ChatRequest, background_tasks: BackgroundTasks, http_request: Request
 ):
-    """Chat as Synapse → partner_user (Caring PA Mode 🌹)"""
+    """Chat as Synapse -> partner_user (Caring PA Mode 🌹)"""
     validate_api_key(http_request)
     return await persona_chat(request, "the_partner", background_tasks)
 
@@ -1221,9 +1221,9 @@ def ingest_fact(
 
 @app.post("/add")
 async def add_memory(item: MemoryItem, background_tasks: BackgroundTasks, request: Request):
-    """Unstructured memory → LLM → triple extraction → graph."""
+    """Unstructured memory -> LLM -> triple extraction -> graph."""
     validate_api_key(request)
-    print(f"📥 Ingesting: {item.content[:60]}...")
+    print(f"[ADD] Ingesting: {item.content[:60]}...")
 
     try:
         messages = [
@@ -1259,7 +1259,7 @@ async def add_memory(item: MemoryItem, background_tasks: BackgroundTasks, reques
                 return {"status": "memorized", "triple": f"{s} -[{r}]-> {o}"}
 
     except Exception as e:
-        print(f"⚠️ Extraction Error: {e}")
+        print(f"[WARN] Extraction Error: {e}")
 
     return {"status": "failed_extraction", "content": item.content}
 

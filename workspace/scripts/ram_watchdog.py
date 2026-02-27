@@ -15,17 +15,17 @@ def send_alert(msg):
     # Send WhatsApp alert via OpenClaw Gateway (if running)
     # Using the local agent to send message is complex from a standalone script without auth.
     # For now, we'll just log it. In a real setup, we'd hit the webhook.
-    print(f"⚠️ ALERT: {msg}")
+    print(f"[WARN] ALERT: {msg}")
 
 def free_memory():
-    print("🧹 Attempting to free memory (Safe Mode)...")
+    print("[CLEAN] Attempting to free memory (Safe Mode)...")
     
     # 1. Kill Chrome/Brave Renderers (They eat the most RAM)
     try:
         # Pkill is standard and doesn't need sudo for owned processes
         subprocess.run(["pkill", "-f", "Brave Browser Helper"], check=False)
         subprocess.run(["pkill", "-f", "Google Chrome Helper"], check=False)
-        send_alert("🧹 Cleared Browser Renderers to save RAM.")
+        send_alert("[CLEAN] Cleared Browser Renderers to save RAM.")
     except Exception as e:
         print(f"Error killing browser: {e}")
 

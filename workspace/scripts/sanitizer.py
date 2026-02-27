@@ -9,10 +9,10 @@ OUTPUT_DB = "db/memory_sanitized.db"
 SENSITIVE_KEYWORDS = ["User Name", "Personal Name", "Nickname", "Email", "Phone", "Partner", "Secret", "Password", "Key"]
 
 def sanitize_memory():
-    print("🧬 Initializing Soul Sanitizer Protocol...")
+    print("[PROC] Initializing Soul Sanitizer Protocol...")
     
     if not os.path.exists(DB_PATH):
-        print("❌ Error: Original memory.db not found.")
+        print("[ERROR] Error: Original memory.db not found.")
         return
 
     # Create a copy for sanitization
@@ -25,15 +25,15 @@ def sanitize_memory():
     # 1. Wipe purely personal tables
     tables_to_wipe = ["relationship_memories", "sentiment_logs", "gift_date_vault", "life_checkin"]
     for table in tables_to_wipe:
-        print(f"🧹 Wiping table: {table}...")
+        print(f"[CLEAN] Wiping table: {table}...")
         cursor.execute(f"DELETE FROM {table}")
 
     # 2. Anonymize the Users table (Keep only Tier 0 structure)
-    print("👤 Anonymizing user profiles...")
+    print("[USER] Anonymizing user profiles...")
     cursor.execute("UPDATE users SET phone_number = 'TEMPLATE_USER', name = 'Host', tier = 0, privileges = 'GOD_MODE'")
 
     # 3. Scrub the Documents table (High-intensity pattern matching)
-    print("📝 Scrubbing conversation history...")
+    print("[LOG] Scrubbing conversation history...")
     cursor.execute("SELECT id, content FROM documents")
     rows = cursor.fetchall()
     
@@ -51,8 +51,8 @@ def sanitize_memory():
     conn.commit()
     conn.close()
 
-    print(f"\n✅ Sanitization Complete. Path: {OUTPUT_DB}")
-    print("⚠️  Manual Check Recommended: Verify 'Operating Wisdom' is intact but secrets are gone.")
+    print(f"\n[OK] Sanitization Complete. Path: {OUTPUT_DB}")
+    print("[WARN]  Manual Check Recommended: Verify 'Operating Wisdom' is intact but secrets are gone.")
 
 if __name__ == "__main__":
     sanitize_memory()

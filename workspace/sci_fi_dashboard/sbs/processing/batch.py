@@ -18,12 +18,12 @@ class BatchProcessor:
     - Manual trigger
 
     Responsibilities:
-    1. Vocabulary Census — track all terms, frequencies, emergence dates
-    2. Linguistic Style Analysis — Banglish ratio trends, sentence length trends
-    3. Interaction Pattern Analysis — active hours, response length preferences
-    4. Domain Map Update — what topics are hot right now
-    5. Exemplar Re-selection — pick the best few-shot examples
-    6. Temporal Decay Sweep — demote stale patterns
+    1. Vocabulary Census -- track all terms, frequencies, emergence dates
+    2. Linguistic Style Analysis -- Banglish ratio trends, sentence length trends
+    3. Interaction Pattern Analysis -- active hours, response length preferences
+    4. Domain Map Update -- what topics are hot right now
+    5. Exemplar Re-selection -- pick the best few-shot examples
+    6. Temporal Decay Sweep -- demote stale patterns
     """
 
     def __init__(self, db_path: Path, profile_manager: ProfileManager):

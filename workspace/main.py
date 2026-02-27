@@ -15,20 +15,20 @@ def verify_system():
     2. Air-Gap Integrity (Tag Counts & Breach Test)
     3. Latency (Filter Speed)
     """
-    print("🕵️  Verifying System Integrity...\n")
+    print("[CHECK]  Verifying System Integrity...\n")
     conn = get_db_connection()
     
     try:
         # 1. Page Health
         freelist = conn.execute("PRAGMA freelist_count").fetchone()[0]
-        print(f"1️⃣  Page Health: Freelist={freelist} {'✅' if freelist == 0 else '⚠️'}")
+        print(f"1️⃣  Page Health: Freelist={freelist} {'[OK]' if freelist == 0 else '[WARN]'}")
         
         # 2. Air-Gap Integrity (Tag Counts)
         cursor = conn.execute("SELECT hemisphere_tag, count(*) FROM documents GROUP BY hemisphere_tag")
         counts = {row[0]: row[1] for row in cursor.fetchall()}
         safe = counts.get('safe', 0)
         spicy = counts.get('spicy', 0)
-        print(f"2️⃣  Tag Integrity: Safe={safe} | Spicy={spicy} {'✅' if safe > 0 and spicy > 0 else '❌'}")
+        print(f"2️⃣  Tag Integrity: Safe={safe} | Spicy={spicy} {'[OK]' if safe > 0 and spicy > 0 else '[ERROR]'}")
         
         # 2b. Breach Test (Can 'safe' session see 'spicy'?)
         # We manually simulate a 'safe' query to ensure SQL enforcement works
@@ -36,7 +36,7 @@ def verify_system():
         # Real test: Using the retriever logic simulation
         # A 'safe' session should NEVER return a spicy tag. 
         # But here we just check if the database allows mixing easily or if tags are distinct.
-        print(f"    Breach Test: ZERO shared tags {'✅' if breach == 0 else '❌'}")
+        print(f"    Breach Test: ZERO shared tags {'[OK]' if breach == 0 else '[ERROR]'}")
 
         # 3. Latency (Air-Gap Filter Speed)
         start = time.perf_counter()
@@ -48,11 +48,11 @@ def verify_system():
             AND d.id IN (SELECT document_id FROM vec_items LIMIT 10)
         """).fetchall()
         duration = (time.perf_counter() - start) * 1000
-        print(f"3️⃣  Filter Latency: {duration:.2f}ms {'✅' if duration < 5 else '⚠️'}")
+        print(f"3️⃣  Filter Latency: {duration:.2f}ms {'[OK]' if duration < 5 else '[WARN]'}")
 
     finally:
         conn.close()
-    print("\n✅ System Verification Complete." if duration < 50 else "\n⚠️ System Verification Warning: High Latency")
+    print("\n[OK] System Verification Complete." if duration < 50 else "\n[WARN] System Verification Warning: High Latency")
 
 import asyncio
 import aiohttp
@@ -65,7 +65,7 @@ async def interactive_chat_loop():
     """
 
     # Start Gateway in background
-    print("🚀 Launching Gateway Process...")
+    print("[INFO] Launching Gateway Process...")
     # We use a separate process for the server so we can keep the CLI responsive
     server_process = subprocess.Popen(
         [sys.executable, "-m", "uvicorn", "sci_fi_dashboard.api_gateway:app", "--host", "127.0.0.1", "--port", "8000"],
@@ -75,11 +75,11 @@ async def interactive_chat_loop():
     )
     
     # Wait for server to boot (naive wait)
-    print("⏳ Waiting for neural link...")
+    print("[WAIT] Waiting for neural link...")
     time.sleep(3) 
     
     session_type = "safe" # Default start
-    print(f"\n✅ Connected. Session: 🔒 SAFE MODE")
+    print(f"\n[OK] Connected. Session: [LOCK] SAFE MODE")
     print("commands: /spicy (unlock), /safe (lock), /quit (exit)\n")
     
     async with aiohttp.ClientSession() as session:
@@ -92,15 +92,15 @@ async def interactive_chat_loop():
                 
                 # --- COMMAND HANDLING ---
                 if user_input == "/quit":
-                    print("👋 Disconnecting...")
+                    print("[BYE] Disconnecting...")
                     break
                 elif user_input == "/spicy":
                     session_type = "spicy"
-                    print("🔓 SPICY MODE ACTIVATED: Personal memories unlocked.")
+                    print("[UNLOCK] SPICY MODE ACTIVATED: Personal memories unlocked.")
                     continue
                 elif user_input == "/safe":
                     session_type = "safe"
-                    print("🔒 SAFE MODE ACTIVATED: Personal memories hidden.")
+                    print("[LOCK] SAFE MODE ACTIVATED: Personal memories hidden.")
                     continue
                 
                 # --- CHAT REQUEST ---
@@ -121,17 +121,17 @@ async def interactive_chat_loop():
                         reply = data.get("reply", "...")
                         print(f"[Synapse]: {reply}")
                     else:
-                        print(f"❌ Error {resp.status}: {await resp.text()}")
+                        print(f"[ERROR] Error {resp.status}: {await resp.text()}")
                         
             except KeyboardInterrupt:
                 break
             except Exception as e:
-                print(f"⚠️ Connection Error: {e}")
+                print(f"[WARN] Connection Error: {e}")
                 break
     
     # Cleanup
     server_process.terminate()
-    print("🛑 Gateway Stopped.")
+    print("[STOP] Gateway Stopped.")
 
 def start_chat():
     """Wrapper to run the async loop"""
@@ -149,13 +149,13 @@ def ingest_data():
 
 def optimized_vacuum():
     """Runs a VACUUM command to optimize the DB."""
-    print("🧹 optimizing Database...")
+    print("[CLEAN] optimizing Database...")
     conn = get_db_connection()
     try:
         initial_size = os.path.getsize(get_db_connection().execute("PRAGMA database_list").fetchone()[2]) / (1024*1024)
         conn.execute("VACUUM;")
         final_size = os.path.getsize(get_db_connection().execute("PRAGMA database_list").fetchone()[2]) / (1024*1024)
-        print(f"✅ VACUUM Complete. Size: {initial_size:.1f}MB -> {final_size:.1f}MB")
+        print(f"[OK] VACUUM Complete. Size: {initial_size:.1f}MB -> {final_size:.1f}MB")
     finally:
         conn.close()
 

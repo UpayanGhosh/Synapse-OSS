@@ -13,7 +13,7 @@ from sbs.orchestrator import SBSOrchestrator  # noqa: E402
 
 
 def bootstrap_sbs():
-    print("🚀 Starting SBS Bootstrap (Past-to-Brain Ingestion)...")
+    print("[INFO] Starting SBS Bootstrap (Past-to-Brain Ingestion)...")
 
     # 1. Setup Orchestrators
     sbs_data_dir = CURRENT_DIR / "synapse_data"
@@ -30,10 +30,10 @@ def bootstrap_sbs():
     for filename, orchestrator, user_name in files_to_process:
         fpath = archive_dir / filename
         if not fpath.exists():
-            print(f"⚠️ Skipping {filename} (Not found in archive)")
+            print(f"[WARN] Skipping {filename} (Not found in archive)")
             continue
 
-        print(f"📖 Ingesting {filename}...")
+        print(f"[READ] Ingesting {filename}...")
         raw_messages = parse_messages(str(fpath))
         turns = group_into_turns(raw_messages)
 
@@ -73,7 +73,7 @@ def bootstrap_sbs():
             if count % 100 == 0:
                 print(f"   Processed {count} turns...")
 
-        print(f"✅ Ingested {count} turns for {user_name}. Triggering Full Rebuild...")
+        print(f"[OK] Ingested {count} turns for {user_name}. Triggering Full Rebuild...")
         orchestrator.force_batch(full_rebuild=True)
 
     print("\n🏁 SBS Bootstrap Complete. Synapse is now fully 'Soul-Synced'.")

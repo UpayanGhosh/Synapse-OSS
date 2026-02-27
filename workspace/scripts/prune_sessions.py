@@ -66,7 +66,7 @@ def prune_sessions():
 
         with open(SESSION_FILE, "w") as f:
             json.dump(new_sessions, f, indent=2)
-        print("✅ Pruning complete.")
+        print("[OK] Pruning complete.")
     else:
         print("No sessions to prune.")
 

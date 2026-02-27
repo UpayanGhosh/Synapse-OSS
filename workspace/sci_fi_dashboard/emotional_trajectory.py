@@ -1,5 +1,5 @@
 """
-Emotional Trajectory — Tracks emotional state across sessions.
+Emotional Trajectory -- Tracks emotional state across sessions.
 Uses Peak-End Rule weighting: peaks and most recent entries matter most.
 """
 

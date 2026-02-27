@@ -51,7 +51,7 @@ def cleanup():
     cursor.execute("VACUUM")
     
     conn.close()
-    print(f"✅ Cleanup complete. Total items removed: {total_deleted}")
+    print(f"[OK] Cleanup complete. Total items removed: {total_deleted}")
 
 if __name__ == "__main__":
     cleanup()

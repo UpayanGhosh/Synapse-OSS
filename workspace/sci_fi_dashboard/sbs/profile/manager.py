@@ -13,19 +13,19 @@ class ProfileManager:
 
     Profile Structure:
     data/profiles/
-    ├── current/
-    │   ├── core_identity.json      # IMMUTABLE base personality
-    │   ├── linguistic.json         # Language style metrics
-    │   ├── emotional_state.json    # Current mood/sentiment (hot-updated)
-    │   ├── domain.json             # Topic interests
-    │   ├── interaction.json        # Usage patterns
-    │   ├── vocabulary.json         # Word frequency/tracking
-    │   ├── exemplars.json          # Selected few-shot pairs
-    │   └── meta.json               # System metadata
-    └── archive/
-        ├── v_001_2025-07-10T22:00/
-        ├── v_002_2025-07-11T04:00/
-        └── ...
+    ├-- current/
+    │   ├-- core_identity.json      # IMMUTABLE base personality
+    │   ├-- linguistic.json         # Language style metrics
+    │   ├-- emotional_state.json    # Current mood/sentiment (hot-updated)
+    │   ├-- domain.json             # Topic interests
+    │   ├-- interaction.json        # Usage patterns
+    │   ├-- vocabulary.json         # Word frequency/tracking
+    │   ├-- exemplars.json          # Selected few-shot pairs
+    │   └-- meta.json               # System metadata
+    └-- archive/
+        ├-- v_001_2025-07-10T22:00/
+        ├-- v_002_2025-07-11T04:00/
+        └-- ...
     """
 
     LAYERS = [

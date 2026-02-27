@@ -69,7 +69,7 @@ def migrate():
         print(f"Uploaded final batch ({len(facts_to_upload)} points)...")
 
     conn.close()
-    print("✅ Migration Complete!")
+    print("[OK] Migration Complete!")
 
 if __name__ == "__main__":
     migrate()
