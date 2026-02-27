@@ -34,7 +34,9 @@ transformers>=4.35.0             # Hugging Face Transformers (Toxic-BERT)
 qdrant-client>=1.6.0
 
 # --- Web Browsing & Scraping ---
-crawl4ai>=0.2.0                  # Headless browser automation (ToolRegistry /browse)
+# crawl4ai on Mac/Linux; playwright on Windows (crawl4ai has build failures on Windows)
+crawl4ai>=0.2.0 ; sys_platform != 'win32'   # Headless browser automation -- Mac/Linux only (Windows: fails to install)
+playwright>=1.20.0 ; sys_platform == 'win32' # Windows browser automation -- replaces crawl4ai on Windows
 
 # --- Audio Transcription ---
 groq>=0.4.0                      # Groq Whisper API (voice message transcription)
