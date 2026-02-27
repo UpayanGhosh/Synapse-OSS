@@ -11,6 +11,8 @@
 ![CI](https://img.shields.io/github/actions/workflow/status/UpayanGhosh/Synapse-OSS/tests.yml?branch=main&style=for-the-badge&logo=github&label=CI)
 ![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?style=for-the-badge&logo=docker&logoColor=white)
 
+> **🚧 Under Active Maintenance** — Features may change, bugs are being fixed. Use at your own risk and check back for updates.
+
 > A self-hosted AI system that remembers everything, develops its own personality
 > from conversation patterns, thinks before replying, and routes private conversations
 > to local models with zero cloud exposure. Built on top of
