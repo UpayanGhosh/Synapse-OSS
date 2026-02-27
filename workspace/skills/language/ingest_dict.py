@@ -4,6 +4,7 @@ import urllib.request
 import urllib.error
 import sys
 
+
 def ingest_banglish_dictionary():
     file_path = os.path.join(
         os.path.expanduser("~/.openclaw"), "workspace", "skills", "language", "banglish_dict.json"
@@ -24,12 +25,11 @@ def ingest_banglish_dictionary():
 
     # Helper function to send POST request
     def send_post(content, category):
-        payload = json.dumps({
-            "content": content,
-            "category": category
-        }).encode('utf-8')
-        
-        req = urllib.request.Request(api_url, data=payload, headers={'Content-Type': 'application/json'})
+        payload = json.dumps({"content": content, "category": category}).encode("utf-8")
+
+        req = urllib.request.Request(
+            api_url, data=payload, headers={"Content-Type": "application/json"}
+        )
         try:
             with urllib.request.urlopen(req) as response:
                 return response.status == 200
@@ -45,8 +45,8 @@ def ingest_banglish_dictionary():
             sentiment = info.get("sentiment", "")
             full_text += f"- {word}: {meaning} ({sentiment})\n"
         else:
-             full_text += f"- {word}: {info}\n"
-    
+            full_text += f"- {word}: {info}\n"
+
     if send_post(full_text, "language_skill_master_list"):
         print("Master list ingested successfully.")
     else:
@@ -62,7 +62,7 @@ def ingest_banglish_dictionary():
         else:
             # Fallback for simple key-value if mixed
             content_text = f"Banglish Word: '{word}'\nEnglish Meaning: {info}\nUsage: Used in Bengali/Banglish conversations."
-        
+
         if send_post(content_text, "language_skill_entry"):
             print(f"Ingested: {word} -> {meaning}")
             count += 1
@@ -71,6 +71,7 @@ def ingest_banglish_dictionary():
             errors += 1
 
     print(f"\nIngestion Complete. Success: {count}, Errors: {errors}")
+
 
 if __name__ == "__main__":
     ingest_banglish_dictionary()

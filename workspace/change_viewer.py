@@ -114,21 +114,25 @@ def show_diff(ref: str = "HEAD~1"):
         console.print("[dim]No changes.[/dim]")
         return
 
-    console.print(Panel(
-        Text(output),
-        title=f"[STATS] Changes since {ref}",
-        border_style="cyan",
-    ))
+    console.print(
+        Panel(
+            Text(output),
+            title=f"[STATS] Changes since {ref}",
+            border_style="cyan",
+        )
+    )
 
     # Show actual diff with syntax highlighting
     diff_output = git("diff", ref)
     if diff_output:
-        console.print(Syntax(
-            diff_output[:5000],  # Cap at 5k chars
-            "diff",
-            theme="monokai",
-            line_numbers=False,
-        ))
+        console.print(
+            Syntax(
+                diff_output[:5000],  # Cap at 5k chars
+                "diff",
+                theme="monokai",
+                line_numbers=False,
+            )
+        )
 
 
 def show_file_history(filepath: str, count: int = 10):
@@ -154,7 +158,9 @@ def show_file_history(filepath: str, count: int = 10):
             date_display = date[:16]
 
         auto = "[BOT]" if "[auto]" in subject else "[USER]"
-        console.print(f"  {auto} [yellow]{hash_short}[/yellow] {subject} [dim]({date_display})[/dim]")
+        console.print(
+            f"  {auto} [yellow]{hash_short}[/yellow] {subject} [dim]({date_display})[/dim]"
+        )
 
 
 def show_summary():
@@ -167,17 +173,19 @@ def show_summary():
     auto_count = git("log", "--all", "--oneline", "--grep=[auto]")
     auto_commits = len([l for l in auto_count.split("\n") if l.strip()]) if auto_count else 0
 
-    console.print(Panel(
-        Text.from_markup(
-            f"  Total commits: [bold]{total_commits}[/bold]\n"
-            f"  Auto-commits:  [bold green]{auto_commits}[/bold green]\n"
-            f"  Branches:      [cyan]{', '.join(b.strip() for b in branches if b.strip())}[/cyan]\n"
-            f"  Current:       [bold yellow]{current}[/bold yellow]\n"
-            f"  Last commit:   {last_commit}"
-        ),
-        title="[CHART] Repository Summary",
-        border_style="blue",
-    ))
+    console.print(
+        Panel(
+            Text.from_markup(
+                f"  Total commits: [bold]{total_commits}[/bold]\n"
+                f"  Auto-commits:  [bold green]{auto_commits}[/bold green]\n"
+                f"  Branches:      [cyan]{', '.join(b.strip() for b in branches if b.strip())}[/cyan]\n"
+                f"  Current:       [bold yellow]{current}[/bold yellow]\n"
+                f"  Last commit:   {last_commit}"
+            ),
+            title="[CHART] Repository Summary",
+            border_style="blue",
+        )
+    )
 
 
 def main():

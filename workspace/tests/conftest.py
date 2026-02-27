@@ -84,9 +84,7 @@ def pytest_configure(config):
 # Custom pytest options
 def pytest_addoption(parser):
     """Add custom command line options."""
-    parser.addoption(
-        "--run-slow", action="store_true", default=False, help="Run slow tests"
-    )
+    parser.addoption("--run-slow", action="store_true", default=False, help="Run slow tests")
 
 
 def pytest_collection_modifyitems(config, items):

@@ -243,11 +243,7 @@ class BrainDashboard:
             return "[PERF] SBS"
 
         # --- DualCognition ---
-        if (
-            subsystem == "dualcognition"
-            or "dualcognition" in msg_lower
-            or "tension" in msg_lower
-        ):
+        if subsystem == "dualcognition" or "dualcognition" in msg_lower or "tension" in msg_lower:
             tension_match = re.search(r"tension=([0-9.]+)", msg_lower)
             decision_match = re.search(r"\(([A-Z]+)\)", msg)
 
@@ -262,11 +258,7 @@ class BrainDashboard:
             return "[PUZZLE] DualCognition"
 
         # --- TrafficCop (Intent/Routing) ---
-        if (
-            subsystem == "trafficcop"
-            or "trafficcop" in msg_lower
-            or "intent" in msg_lower
-        ):
+        if subsystem == "trafficcop" or "trafficcop" in msg_lower or "intent" in msg_lower:
             intent_match = re.search(r"intent=([A-Za-z_]+)", msg_lower)
             routing_match = re.search(r"routing to\s+(\w+)", msg_lower)
 
@@ -303,11 +295,7 @@ class BrainDashboard:
             return "[CMD] Agent"
 
         # --- Response Sent ---
-        if (
-            "response sent" in msg_lower
-            or "auto-reply sent" in msg_lower
-            or "sent chunk" in msg
-        ):
+        if "response sent" in msg_lower or "auto-reply sent" in msg_lower or "sent chunk" in msg:
             to = ""
             if "to" in msg and "+" in msg:
                 match = re.search(r"\+\d+", msg)
@@ -440,9 +428,7 @@ class BrainDashboard:
                         try:
                             sub_data = json.loads(raw_subsystem)
                             subsystem = (
-                                sub_data.get("subsystem")
-                                or sub_data.get("module")
-                                or subsystem
+                                sub_data.get("subsystem") or sub_data.get("module") or subsystem
                             )
                         except Exception:
                             pass
@@ -513,9 +499,7 @@ def generate_layout(m: BrainDashboard):
 
     # --- API Usage Panel ---
     usage_pct = (
-        (m.total_tokens_used / m.total_tokens_limit * 100)
-        if m.total_tokens_limit > 0
-        else 0
+        (m.total_tokens_used / m.total_tokens_limit * 100) if m.total_tokens_limit > 0 else 0
     )
     usage_color = "green"
     if usage_pct > 80:
@@ -539,9 +523,7 @@ def generate_layout(m: BrainDashboard):
     usage_text.append(f"  |  Output: ", style="dim")
     usage_text.append(f"{format_tokens(m.output_tokens)}", style="bold magenta")
     usage_text.append(f"  |  Total: ", style="dim")
-    usage_text.append(
-        f"{format_tokens(m.total_tokens_used)}", style=f"bold {usage_color}"
-    )
+    usage_text.append(f"{format_tokens(m.total_tokens_used)}", style=f"bold {usage_color}")
     usage_text.append(f" / {format_tokens(m.total_tokens_limit)}\n", style="dim")
 
     layout["top"]["api_usage"].update(
@@ -575,9 +557,7 @@ def generate_layout(m: BrainDashboard):
 
     action_text = Text()
     action_text.append(f"\n  {action}\n\n", style=action_style)
-    action_text.append(
-        f"  [{pulse_bar}] {m.neural_activity}%\n", style=f"bold {pulse_color}"
-    )
+    action_text.append(f"  [{pulse_bar}] {m.neural_activity}%\n", style=f"bold {pulse_color}")
 
     layout["top"]["action"].update(
         Panel(

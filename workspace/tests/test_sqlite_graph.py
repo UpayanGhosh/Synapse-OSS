@@ -60,9 +60,7 @@ class TestSQLiteGraph:
         graph.add_node("ProjectX", "project", status="active")
 
         conn = graph._conn()
-        cursor = conn.execute(
-            "SELECT name, type FROM nodes WHERE name = ?", ("ProjectX",)
-        )
+        cursor = conn.execute("SELECT name, type FROM nodes WHERE name = ?", ("ProjectX",))
         row = cursor.fetchone()
         conn.close()
 
@@ -91,9 +89,7 @@ class TestSQLiteGraph:
         graph.add_edge("Charlie", "Dave", "colleague", weight=0.5)
 
         conn = graph._conn()
-        cursor = conn.execute(
-            "SELECT name FROM nodes WHERE name IN (?, ?)", ("Charlie", "Dave")
-        )
+        cursor = conn.execute("SELECT name FROM nodes WHERE name IN (?, ?)", ("Charlie", "Dave"))
         rows = cursor.fetchall()
         conn.close()
 

@@ -13,7 +13,9 @@ print("ANALYZE complete.")
 
 print("\nQuery Plan:")
 try:
-    cursor = conn.execute("EXPLAIN QUERY PLAN SELECT d.content FROM documents d JOIN vec_items v ON d.id = v.document_id LIMIT 100 OFFSET 5000")
+    cursor = conn.execute(
+        "EXPLAIN QUERY PLAN SELECT d.content FROM documents d JOIN vec_items v ON d.id = v.document_id LIMIT 100 OFFSET 5000"
+    )
     for row in cursor:
         print(row)
 except Exception as e:

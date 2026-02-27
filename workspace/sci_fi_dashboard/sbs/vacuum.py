@@ -11,7 +11,9 @@ def vacuum_sbs(data_dir: str = "./data", retain_days: int = 30, keep_versions: i
     2. Moves old raw JSONL records to cold storage (optional/future)
     3. Prunes old profile versions beyond the `keep_versions` limit.
     """
-    print(f"[CLEAN] Starting SBS Vacuum (Retain: {retain_days} days, Keep Versions: {keep_versions})")
+    print(
+        f"[CLEAN] Starting SBS Vacuum (Retain: {retain_days} days, Keep Versions: {keep_versions})"
+    )
 
     data_path = Path(data_dir)
     db_path = data_path / "indices" / "messages.db"

@@ -5,6 +5,7 @@ import os
 OPENCLAW_HOME = os.path.expanduser("~/.openclaw")
 DB_PATH = os.path.join(OPENCLAW_HOME, "workspace", "db", "memory.db")
 
+
 def update_schema():
     conn = sqlite3.connect(DB_PATH)
     conn.enable_load_extension(True)
@@ -55,6 +56,7 @@ def update_schema():
     conn.commit()
     conn.close()
     print("[OK] Schema update complete.")
+
 
 if __name__ == "__main__":
     update_schema()

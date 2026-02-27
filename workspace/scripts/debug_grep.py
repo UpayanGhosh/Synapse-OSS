@@ -1,4 +1,3 @@
-
 import os
 
 log_file = "/tmp/openclaw/openclaw-2026-02-13.log"

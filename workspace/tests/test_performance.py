@@ -38,9 +38,7 @@ class TestQueuePerformance:
 
         # Enqueue 100 tasks as fast as possible
         for i in range(100):
-            task = MessageTask(
-                task_id=f"task_{i}", chat_id="chat", user_message=f"Msg {i}"
-            )
+            task = MessageTask(task_id=f"task_{i}", chat_id="chat", user_message=f"Msg {i}")
             await queue.enqueue(task)
 
         elapsed = time.time() - start
@@ -56,9 +54,7 @@ class TestQueuePerformance:
 
         # Enqueue tasks
         for i in range(50):
-            task = MessageTask(
-                task_id=f"task_{i}", chat_id="chat", user_message=f"Msg {i}"
-            )
+            task = MessageTask(task_id=f"task_{i}", chat_id="chat", user_message=f"Msg {i}")
             await queue.enqueue(task)
 
         results = []
@@ -192,9 +188,7 @@ class TestMemoryFootprint:
 
         # Add max tasks
         for i in range(100):
-            task = MessageTask(
-                task_id=f"task_{i}", chat_id="chat", user_message="x" * 1000
-            )
+            task = MessageTask(task_id=f"task_{i}", chat_id="chat", user_message="x" * 1000)
             await queue.enqueue(task)
 
         # Complete and archive
@@ -238,9 +232,7 @@ class TestLatencyMeasurements:
 
         for _ in range(1000):
             start = time.perf_counter()
-            task = MessageTask(
-                task_id=f"task_{time.time()}", chat_id="chat", user_message="x"
-            )
+            task = MessageTask(task_id=f"task_{time.time()}", chat_id="chat", user_message="x")
             await queue.enqueue(task)
             latencies.append((time.perf_counter() - start) * 1000)
 
@@ -270,9 +262,7 @@ class TestStressTests:
             if queue.pending_count >= queue._queue.maxsize:
                 overflow_count += 1
                 continue
-            task = MessageTask(
-                task_id=f"task_overflow_{i}", chat_id="chat", user_message="x"
-            )
+            task = MessageTask(task_id=f"task_overflow_{i}", chat_id="chat", user_message="x")
             await queue.enqueue(task)
 
         # Queue was already full at start

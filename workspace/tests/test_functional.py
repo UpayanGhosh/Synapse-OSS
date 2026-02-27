@@ -102,9 +102,7 @@ class TestMessageProcessingFunctionality:
         tasks_created = 0
 
         for i in range(50):
-            task = MessageTask(
-                task_id=f"task_{i}", chat_id="chat_001", user_message=f"Message {i}"
-            )
+            task = MessageTask(task_id=f"task_{i}", chat_id="chat_001", user_message=f"Message {i}")
             try:
                 await queue.enqueue(task)
                 tasks_created += 1
@@ -198,7 +196,9 @@ class TestPersonaFunctionality:
         }
 
         # Simulate injection
-        full_prompt = f"{base_prompt}\n\n{persona_context['personality']}\n{persona_context['relationship']}"
+        full_prompt = (
+            f"{base_prompt}\n\n{persona_context['personality']}\n{persona_context['relationship']}"
+        )
 
         assert "witty" in full_prompt
         assert "close friend" in full_prompt

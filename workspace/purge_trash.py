@@ -8,17 +8,18 @@ TRASH_PATTERNS = [
     "%multi-modal safety classifiers%",
     "%slip past the sensors%",
     "%Research Context flag%",
-    "%Google's Gemini models%"
+    "%Google's Gemini models%",
 ]
+
 
 def clean_brain():
     conn = sqlite3.connect(DB_PATH)
-    
+
     # --- MAC M1 EXTENSION LOADING ---
     conn.enable_load_extension(True)
-    sqlite_vec.load(conn) # Uses the python package to load the dylib correctly
+    sqlite_vec.load(conn)  # Uses the python package to load the dylib correctly
     # --------------------------------
-    
+
     cursor = conn.cursor()
     all_trash_ids = []
 
@@ -36,21 +37,24 @@ def clean_brain():
         return
 
     confirm = input(f"[WARN] Delete {len(all_trash_ids)} items? (y/n): ")
-    if confirm.lower() == 'y':
-        placeholders = ','.join(['?'] * len(all_trash_ids))
+    if confirm.lower() == "y":
+        placeholders = ",".join(["?"] * len(all_trash_ids))
         try:
             # We delete from vec_items first so the foreign keys/linkage stay clean
-            cursor.execute(f"DELETE FROM vec_items WHERE document_id IN ({placeholders})", all_trash_ids)
+            cursor.execute(
+                f"DELETE FROM vec_items WHERE document_id IN ({placeholders})", all_trash_ids
+            )
             cursor.execute(f"DELETE FROM documents WHERE id IN ({placeholders})", all_trash_ids)
             conn.commit()
-            
+
             print("[CLEAN] Optimizing DB...")
             conn.execute("VACUUM")
             print("[SPARK] Purge complete. Stheno is now free of Gemini's ghost.")
         except Exception as e:
             print(f"[ERROR] Error: {e}")
-    
+
     conn.close()
+
 
 if __name__ == "__main__":
     clean_brain()

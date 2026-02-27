@@ -31,9 +31,7 @@ def prune_sessions():
     for key, session in sessions.items():
         # Check 'updatedAt' primarily
         last_active = (
-            session.get("updatedAt")
-            or session.get("lastMessageAt")
-            or session.get("createdAt")
+            session.get("updatedAt") or session.get("lastMessageAt") or session.get("createdAt")
         )
 
         keep = True

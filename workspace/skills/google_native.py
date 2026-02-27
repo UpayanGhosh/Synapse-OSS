@@ -40,9 +40,7 @@ class GoogleNative:
             if self.creds and self.creds.expired and self.creds.refresh_token:
                 self.creds.refresh(Request())
             else:
-                flow = InstalledAppFlow.from_client_secrets_file(
-                    CREDENTIALS_FILE, SCOPES
-                )
+                flow = InstalledAppFlow.from_client_secrets_file(CREDENTIALS_FILE, SCOPES)
                 self.creds = flow.run_local_server(port=0)
 
             with open(TOKEN_FILE, "w") as token:
@@ -76,25 +74,16 @@ class GoogleNative:
 
             summary = []
             for msg in messages:
-                txt = (
-                    self.service_gmail.users()
-                    .messages()
-                    .get(userId="me", id=msg["id"])
-                    .execute()
-                )
+                txt = self.service_gmail.users().messages().get(userId="me", id=msg["id"]).execute()
                 payload = txt.get("payload", {})
                 headers = payload.get("headers", [])
                 subject = next(
                     (h["value"] for h in headers if h["name"] == "Subject"),
                     "No Subject",
                 )
-                sender = next(
-                    (h["value"] for h in headers if h["name"] == "From"), "Unknown"
-                )
+                sender = next((h["value"] for h in headers if h["name"] == "From"), "Unknown")
                 snippet = txt.get("snippet", "")
-                summary.append(
-                    f"From: {sender} | Subject: {subject} | Snippet: {snippet}"
-                )
+                summary.append(f"From: {sender} | Subject: {subject} | Snippet: {snippet}")
             return summary
         except Exception as e:
             return [f"Error searching emails: {str(e)}"]

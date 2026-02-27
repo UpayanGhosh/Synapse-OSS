@@ -169,9 +169,7 @@ class TestMemoryRetrievalFlow:
 
         # Process messages (simulated SBS analysis)
         casual_count = sum(
-            1
-            for m in messages
-            if any(w in m.lower() for w in ["hey", "lol", "nice", "cool"])
+            1 for m in messages if any(w in m.lower() for w in ["hey", "lol", "nice", "cool"])
         )
 
         # Verify casual communication style detected
@@ -266,9 +264,7 @@ class TestSystemRecoveryFlow:
 
         # Add some tasks
         for i in range(5):
-            task = MessageTask(
-                task_id=f"task_{i}", chat_id="chat_001", user_message=f"Msg {i}"
-            )
+            task = MessageTask(task_id=f"task_{i}", chat_id="chat_001", user_message=f"Msg {i}")
             await queue.enqueue(task)
 
         # Simulate restart by creating new queue instance

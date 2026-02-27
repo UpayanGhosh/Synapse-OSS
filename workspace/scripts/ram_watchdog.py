@@ -8,8 +8,10 @@ import requests
 THRESHOLD = 85.0
 CHECK_INTERVAL = 60  # Check every 1 minute
 
+
 def get_ram_usage():
     return psutil.virtual_memory().percent
+
 
 def send_alert(msg):
     # Send WhatsApp alert via OpenClaw Gateway (if running)
@@ -17,9 +19,10 @@ def send_alert(msg):
     # For now, we'll just log it. In a real setup, we'd hit the webhook.
     print(f"[WARN] ALERT: {msg}")
 
+
 def free_memory():
     print("[CLEAN] Attempting to free memory (Safe Mode)...")
-    
+
     # 1. Kill Chrome/Brave Renderers (They eat the most RAM)
     try:
         # Pkill is standard and doesn't need sudo for owned processes
@@ -33,6 +36,7 @@ def free_memory():
     # This is drastic, so only if VERY critical (>90%)?
     # Keeping it simple for now: just browsers.
 
+
 def main():
     print(f"[EYES] RAM Watchdog Started. Threshold: {THRESHOLD}%")
     while True:
@@ -41,8 +45,9 @@ def main():
             msg = f"RAM Critical: {usage}%! System under load."
             send_alert(msg)
             # free_memory() # Uncomment if we have a safe kill-list
-        
+
         time.sleep(CHECK_INTERVAL)
+
 
 if __name__ == "__main__":
     main()

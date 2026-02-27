@@ -2,7 +2,10 @@ import random
 
 NARRATIVE_MAP = {
     "POST /api/send_email": [
-        ("[INBOX] Crafting response to quarterly report inquiry...", "Analyzing recipient sentiment..."),
+        (
+            "[INBOX] Crafting response to quarterly report inquiry...",
+            "Analyzing recipient sentiment...",
+        ),
         ("[FLASH] Dispatching urgent communications...", "Routing through encrypted nodes..."),
     ],
     "SCRAPE: news_source": [

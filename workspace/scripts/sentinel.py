@@ -80,9 +80,7 @@ def check_body():
     """Checks if OpenClaw process is running."""
     try:
         # pgrep returns 0 if process found, 1 if not
-        subprocess.check_call(
-            ["/usr/bin/pgrep", "-f", "openclaw"], stdout=subprocess.DEVNULL
-        )
+        subprocess.check_call(["/usr/bin/pgrep", "-f", "openclaw"], stdout=subprocess.DEVNULL)
         return True
     except subprocess.CalledProcessError:
         return False
@@ -108,9 +106,7 @@ def check_vitals(state):
 
     # 2. Swap Check (macOS specific)
     try:
-        result = subprocess.check_output(["/usr/sbin/sysctl", "vm.swapusage"]).decode(
-            "utf-8"
-        )
+        result = subprocess.check_output(["/usr/sbin/sysctl", "vm.swapusage"]).decode("utf-8")
         match = re.search(r"used\s*=\s*(\d+\.\d+)M", result)
         if match:
             swap_used = float(match.group(1))
@@ -130,9 +126,7 @@ def check_vitals(state):
             return int(match.group(1)) if match else 0
 
         available_pages = (
-            get_stat("Pages free")
-            + get_stat("Pages inactive")
-            + get_stat("Pages speculative")
+            get_stat("Pages free") + get_stat("Pages inactive") + get_stat("Pages speculative")
         )
         available_ram_mb = (available_pages * page_size) / 1024 / 1024
 
@@ -200,9 +194,7 @@ def run_sentinel():
             alert_macos("Sentinel Action", "Restarted Memory Server.")
         else:
             log("Brain Critical Failure. Max retries exceeded.", "CRITICAL")
-            alert_macos(
-                "CRITICAL FAILURE", "Memory Server is dead and refuses to restart."
-            )
+            alert_macos("CRITICAL FAILURE", "Memory Server is dead and refuses to restart.")
         dirty = True
     else:
         if state.get("brain_strikes", 0) > 0:

@@ -63,6 +63,7 @@ except ImportError:
 
 try:
     import ollama
+
     OLLAMA_AVAILABLE = True
 except ImportError:
     ollama = None
@@ -110,6 +111,7 @@ class MemoryEngine:
         """Fallback embedding using all-MiniLM-L6-v2 (384-dim). Lazy-loaded."""
         if self._st_model is None:
             from sentence_transformers import SentenceTransformer
+
             self._st_model = SentenceTransformer("all-MiniLM-L6-v2")
         return tuple(self._st_model.encode(text).tolist())
 

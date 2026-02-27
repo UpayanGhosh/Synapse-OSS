@@ -123,9 +123,7 @@ class TestZeroMessageLossRequirements:
         enqueued = 0
         for i in range(150):
             if queue.pending_count < queue._queue.maxsize:
-                task = MessageTask(
-                    task_id=f"task_{i}", chat_id="chat", user_message=f"Msg {i}"
-                )
+                task = MessageTask(task_id=f"task_{i}", chat_id="chat", user_message=f"Msg {i}")
                 await queue.enqueue(task)
                 enqueued += 1
 
@@ -278,8 +276,7 @@ class TestRoutingRequirements:
         for msg in coding_messages:
             # Would route to Claude
             has_coding_keyword = any(
-                kw in msg.lower()
-                for kw in ["write", "function", "code", "bug", "refactor"]
+                kw in msg.lower() for kw in ["write", "function", "code", "bug", "refactor"]
             )
             assert has_coding_keyword is True
 

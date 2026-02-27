@@ -8,9 +8,10 @@ from qdrant_handler import QdrantVectorStore
 OPENCLAW_HOME = os.path.expanduser("~/.openclaw")
 DB_PATH = os.path.join(OPENCLAW_HOME, "workspace", "db", "memory.db")
 
+
 def migrate():
     print("Starting Migration: SQLite -> Qdrant")
-    
+
     # 1. Connect to SQLite
     conn = sqlite3.connect(DB_PATH)
     conn.enable_load_extension(True)
@@ -32,7 +33,7 @@ def migrate():
         JOIN atomic_facts_vec v ON f.id = v.fact_id
     """)
     rows = cursor.fetchall()
-    
+
     if not rows:
         print("No atomic facts found in SQLite.")
         return
@@ -44,20 +45,22 @@ def migrate():
 
     for row in rows:
         fid, entity, content, category, created_at, embedding_json = row
-        
+
         # Parse JSON vector
         embedding = json.loads(embedding_json)
-        
-        facts_to_upload.append({
-            "id": fid,
-            "vector": embedding,
-            "metadata": {
-                "entity": entity,
-                "text": content,
-                "category": category,
-                "created_at": created_at
+
+        facts_to_upload.append(
+            {
+                "id": fid,
+                "vector": embedding,
+                "metadata": {
+                    "entity": entity,
+                    "text": content,
+                    "category": category,
+                    "created_at": created_at,
+                },
             }
-        })
+        )
 
         if len(facts_to_upload) >= batch_size:
             qdrant.upsert_facts(facts_to_upload)
@@ -70,6 +73,7 @@ def migrate():
 
     conn.close()
     print("[OK] Migration Complete!")
+
 
 if __name__ == "__main__":
     migrate()

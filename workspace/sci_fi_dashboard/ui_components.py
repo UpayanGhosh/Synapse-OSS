@@ -125,7 +125,11 @@ class UIComponents:
     def create_system_log(state: DashboardState) -> Panel:
         log_text = Text()
         for log in state.logs:
-            level_icon = "[GREEN]" if log.level == "INFO" else "[YELLOW]" if log.level == "WARNING" else "[RED]"
+            level_icon = (
+                "[GREEN]"
+                if log.level == "INFO"
+                else "[YELLOW]" if log.level == "WARNING" else "[RED]"
+            )
 
             log_text.append(f"{level_icon} {log.timestamp}  ", style="bright_black")
             log_text.append(f"{log.message}\n", style="white")

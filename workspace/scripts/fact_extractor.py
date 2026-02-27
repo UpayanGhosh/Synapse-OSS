@@ -10,9 +10,11 @@ DB_PATH = os.path.join(OPENCLAW_HOME, "workspace", "db", "memory.db")
 OLLAMA_URL = "http://127.0.0.1:11434/api/embeddings"
 EMBED_MODEL = "nomic-embed-text:latest"
 
+
 def get_embedding(text):
     response = requests.post(OLLAMA_URL, json={"model": EMBED_MODEL, "prompt": text})
     return response.json()["embedding"]
+
 
 def extract_facts_with_gemini(content):
     prompt = f"""
@@ -29,25 +31,23 @@ def extract_facts_with_gemini(content):
 
     Only return valid JSON.
     """
-    
+
     # Use gemini-cli for one-shot extraction
     # We use --output-format json if supported by the CLI version
     try:
-        result = subprocess.run(
-            ["gemini", prompt], 
-            capture_output=True, text=True, check=True
-        )
+        result = subprocess.run(["gemini", prompt], capture_output=True, text=True, check=True)
         # Clean up possible markdown code blocks
         raw_output = result.stdout.strip()
         if raw_output.startswith("```json"):
             raw_output = raw_output[7:-3].strip()
         elif raw_output.startswith("```"):
             raw_output = raw_output[3:-3].strip()
-            
+
         return json.loads(raw_output)
     except Exception as e:
         print(f"Error extracting facts: {e}")
         return []
+
 
 def process_memory():
     conn = sqlite3.connect(DB_PATH)
@@ -67,7 +67,7 @@ def process_memory():
     for doc_id, content in rows:
         print(f"Processing doc {doc_id}...")
         facts = extract_facts_with_gemini(content)
-        
+
         for fact in facts:
             entity = fact.get("entity")
             fact_content = fact.get("content")
@@ -77,7 +77,7 @@ def process_memory():
             # 1. Insert into atomic_facts
             cursor.execute(
                 "INSERT INTO atomic_facts (entity, content, category, source_doc_id) VALUES (?, ?, ?, ?)",
-                (entity, fact_content, category, doc_id)
+                (entity, fact_content, category, doc_id),
             )
             fact_id = cursor.lastrowid
 
@@ -85,7 +85,7 @@ def process_memory():
             embedding = get_embedding(fact_content)
             cursor.execute(
                 "INSERT INTO atomic_facts_vec (fact_id, embedding) VALUES (?, ?)",
-                (fact_id, sqlite_vec.serialize_float32(embedding))
+                (fact_id, sqlite_vec.serialize_float32(embedding)),
             )
 
             # 3. Insert into entity_links
@@ -93,7 +93,7 @@ def process_memory():
                 if len(link) == 3:
                     cursor.execute(
                         "INSERT INTO entity_links (subject, relation, object, source_fact_id) VALUES (?, ?, ?, ?)",
-                        (link[0], link[1], link[2], fact_id)
+                        (link[0], link[1], link[2], fact_id),
                     )
 
         # Mark as processed
@@ -102,6 +102,7 @@ def process_memory():
 
     conn.close()
     print("[OK] Batch processing complete.")
+
 
 if __name__ == "__main__":
     process_memory()

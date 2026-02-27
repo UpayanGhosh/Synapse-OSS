@@ -51,9 +51,7 @@ class LLMRouter:
             return env_url, env_token
 
         root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-        config_path = os.getenv("OPENCLAW_CONFIG_PATH") or os.path.join(
-            root_dir, "openclaw.json"
-        )
+        config_path = os.getenv("OPENCLAW_CONFIG_PATH") or os.path.join(root_dir, "openclaw.json")
 
         try:
             with open(config_path, "r", encoding="utf-8") as f:
@@ -66,9 +64,7 @@ class LLMRouter:
             return f"http://{host}:{port}/v1/messages", token
         except Exception as e:
             logger.warning("Failed to read OpenClaw gateway config: %s", str(e))
-            return os.getenv("OPENCLAW_GATEWAY_URL"), os.getenv(
-                "OPENCLAW_GATEWAY_TOKEN"
-            )
+            return os.getenv("OPENCLAW_GATEWAY_URL"), os.getenv("OPENCLAW_GATEWAY_TOKEN")
 
     def _normalize_google_model(self, model_name: str) -> str:
         """
@@ -83,9 +79,7 @@ class LLMRouter:
             return model_name.split("/", 1)[1]
         return model_name
 
-    def generate(
-        self, prompt, system_prompt="You are a helpful assistant.", force_kimi=False
-    ):
+    def generate(self, prompt, system_prompt="You are a helpful assistant.", force_kimi=False):
         """
         Attempts generation with OpenClaw local gateway (google-antigravity OAuth).
         Legacy arg `force_kimi` is ignored to prevent external NVAPI/Kimi routing.
@@ -156,9 +150,7 @@ class LLMRouter:
                 )
                 continue
             except Exception as e:
-                logger.warning(
-                    "Gateway call failed for model %s: %s", candidate_model, str(e)
-                )
+                logger.warning("Gateway call failed for model %s: %s", candidate_model, str(e))
                 continue
 
         return None
@@ -200,13 +192,9 @@ class LLMRouter:
         # 1. Remove <think> blocks completely
         text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL | re.IGNORECASE)
         # 2. Extract content from <final> tags if they exist
-        text = re.sub(
-            r"<final>(.*?)</final>", r"\1", text, flags=re.DOTALL | re.IGNORECASE
-        )
+        text = re.sub(r"<final>(.*?)</final>", r"\1", text, flags=re.DOTALL | re.IGNORECASE)
         # 3. Clean up generic thought headers
-        text = re.sub(
-            r"^Thought for\b.*$", "", text, flags=re.MULTILINE | re.IGNORECASE
-        )
+        text = re.sub(r"^Thought for\b.*$", "", text, flags=re.MULTILINE | re.IGNORECASE)
         # 4. Clean up any leftover thinking content (non-greedy)
         text = re.sub(r"\n+Thinking\n+.*?\n+", "\n\n", text, flags=re.IGNORECASE)
 
@@ -216,12 +204,10 @@ class LLMRouter:
         """
         Backward-compat shim. External Kimi/NVIDIA path is intentionally disabled.
         """
-        logger.warning(
-            "Legacy Kimi/NVIDIA route disabled; using google-antigravity OAuth route."
+        logger.warning("Legacy Kimi/NVIDIA route disabled; using google-antigravity OAuth route.")
+        return self._call_antigravity(prompt, system_prompt, self.kimi_model) or self._call_ollama(
+            prompt, system_prompt
         )
-        return self._call_antigravity(
-            prompt, system_prompt, self.kimi_model
-        ) or self._call_ollama(prompt, system_prompt)
 
     def _call_ollama(self, prompt, system_prompt):
         if HAS_OLLAMA:
