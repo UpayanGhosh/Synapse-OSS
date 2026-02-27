@@ -14,7 +14,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Unicode Source Fix** - Replace all emoji in workspace Python files with ASCII tags so the app imports without crashing on Windows cp1252 (completed 2026-02-27)
 - [x] **Phase 2: Optional Ollama** - Guard the Ollama import at module level and activate the sentence-transformers fallback so the app starts cleanly without Ollama installed (completed 2026-02-27)
-- [ ] **Phase 3: Platform-Aware Browser Backend** - Add PEP 508 platform markers and a Playwright adapter so pip install and the browser tool both work on Windows
+- [x] **Phase 3: Platform-Aware Browser Backend** - Add PEP 508 platform markers and a Playwright adapter so pip install and the browser tool both work on Windows (completed 2026-02-27)
 - [ ] **Phase 4: Startup Validation** - Add .env key validation and a feature availability summary at startup so users know exactly what is working and what is not
 
 ## Phase Details
@@ -59,7 +59,7 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 03-01-PLAN.md -- Add PEP 508 markers to requirements.txt + playwright binary install in synapse_onboard.bat (BRW-01, BRW-02, BRW-03)
+- [x] 03-01-PLAN.md -- Add PEP 508 markers to requirements.txt + playwright binary install in synapse_onboard.bat (BRW-01, BRW-02, BRW-03)
 - [ ] 03-02-PLAN.md -- Rewrite tools.py with platform-aware dispatch + guard scrape_threads.py (BRW-04)
 
 ### Phase 4: Startup Validation
@@ -81,5 +81,5 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4
 |-------|----------------|--------|-----------|
 | 1. Unicode Source Fix | 1/1 | Complete    | 2026-02-27 |
 | 2. Optional Ollama | 2/2 | Complete   | 2026-02-27 |
-| 3. Platform-Aware Browser Backend | 0/2 | Not started | - |
+| 3. Platform-Aware Browser Backend | 2/2 | Complete   | 2026-02-27 |
 | 4. Startup Validation | 0/TBD | Not started | - |
