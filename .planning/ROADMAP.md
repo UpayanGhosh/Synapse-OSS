@@ -13,7 +13,7 @@ This milestone makes Synapse-OSS installable and runnable by anyone on Windows, 
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Unicode Source Fix** - Replace all emoji in workspace Python files with ASCII tags so the app imports without crashing on Windows cp1252 (completed 2026-02-27)
-- [ ] **Phase 2: Optional Ollama** - Guard the Ollama import at module level and activate the sentence-transformers fallback so the app starts cleanly without Ollama installed
+- [x] **Phase 2: Optional Ollama** - Guard the Ollama import at module level and activate the sentence-transformers fallback so the app starts cleanly without Ollama installed (completed 2026-02-27)
 - [ ] **Phase 3: Platform-Aware Browser Backend** - Add PEP 508 platform markers and a Playwright adapter so pip install and the browser tool both work on Windows
 - [ ] **Phase 4: Startup Validation** - Add .env key validation and a feature availability summary at startup so users know exactly what is working and what is not
 
@@ -44,8 +44,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 02-01-PLAN.md -- Guard memory_engine.py import + sentence-transformers fallback + startup log (OLL-01, OLL-02, OLL-03)
-- [ ] 02-02-PLAN.md -- Demote Ollama to optional in synapse_onboard.bat and synapse_onboard.sh (OLL-04)
+- [x] 02-01-PLAN.md -- Guard memory_engine.py import + sentence-transformers fallback + startup log (OLL-01, OLL-02, OLL-03)
+- [x] 02-02-PLAN.md -- Demote Ollama to optional in synapse_onboard.bat and synapse_onboard.sh (OLL-04)
 
 ### Phase 3: Platform-Aware Browser Backend
 **Goal**: pip install succeeds on Windows and the /browse tool works using Playwright on Windows and Crawl4AI on Mac/Linux
@@ -76,6 +76,6 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Unicode Source Fix | 1/1 | Complete    | 2026-02-27 |
-| 2. Optional Ollama | 0/2 | Not started | - |
+| 2. Optional Ollama | 2/2 | Complete   | 2026-02-27 |
 | 3. Platform-Aware Browser Backend | 0/TBD | Not started | - |
 | 4. Startup Validation | 0/TBD | Not started | - |
