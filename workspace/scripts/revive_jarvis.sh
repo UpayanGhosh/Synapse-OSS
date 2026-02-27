@@ -30,8 +30,9 @@ openclaw gateway start
 echo "👻 Starting Memory Server (Soul)..."
 # Check if already running
 if ! pgrep -f "memory/server.py" > /dev/null; then
-    cd /path/to/openclaw/workspace
-    nohup /path/to/openclaw/.venv/bin/python3 db/server.py > /path/to/openclaw/server.log 2>&1 &
+    OPENCLAW_HOME="${OPENCLAW_HOME:-$HOME/.openclaw}"
+    cd "$OPENCLAW_HOME/workspace"
+    nohup "$OPENCLAW_HOME/.venv/bin/python3" db/server.py > "$OPENCLAW_HOME/server.log" 2>&1 &
     echo "✅ Memory Server launched (PID: $!)"
 else
     echo "✅ Memory Server already running."
@@ -40,8 +41,9 @@ fi
 # 5. Start Worker (The Hands - Celery)
 echo "✋ Starting Worker (Hands)..."
 if ! pgrep -f "celery worker" > /dev/null; then
-    cd /path/to/openclaw/workspace
-    nohup /path/to/openclaw/.venv/bin/celery -A db.worker worker --loglevel=info > /path/to/openclaw/worker.log 2>&1 &
+    OPENCLAW_HOME="${OPENCLAW_HOME:-$HOME/.openclaw}"
+    cd "$OPENCLAW_HOME/workspace"
+    nohup "$OPENCLAW_HOME/.venv/bin/celery" -A db.worker worker --loglevel=info > "$OPENCLAW_HOME/worker.log" 2>&1 &
     echo "✅ Worker launched (PID: $!)"
 else
     echo "✅ Worker already running."

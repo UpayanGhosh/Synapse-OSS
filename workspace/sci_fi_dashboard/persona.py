@@ -4,7 +4,9 @@ import random
 
 
 class PersonaManager:
-    def __init__(self, workspace_root="/path/to/openclaw"):
+    def __init__(self, workspace_root=None):
+        if workspace_root is None:
+            workspace_root = os.path.expanduser("~/.openclaw")
         self.root = workspace_root
         self.workspace = os.path.join(self.root, "workspace")
         self.dict_path = os.path.join(self.workspace, "skills/language/banglish_dict.json")

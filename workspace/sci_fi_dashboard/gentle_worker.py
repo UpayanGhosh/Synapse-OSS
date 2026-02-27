@@ -3,10 +3,18 @@ import time
 import psutil
 import schedule
 
+from .sqlite_graph import SQLiteGraph
+
 
 class GentleWorker:
-    def __init__(self):
+    """
+    Thermal-aware background worker.
+    Only runs heavy maintenance tasks when the system is idle and plugged in.
+    """
+
+    def __init__(self, graph: SQLiteGraph = None):
         self.is_running = True
+        self.graph = graph or SQLiteGraph()
 
     def check_conditions(self):
         """
@@ -16,53 +24,52 @@ class GentleWorker:
         # 1. Check Power
         try:
             battery = psutil.sensors_battery()
-            # On macOS, battery can be None if permissions issue or desktop
             if battery is not None and not battery.power_plugged:
                 return False, f"🔋 On Battery ({battery.percent}%)"
-            elif battery is None:
-                # Assume true if we can't detect, or maybe log a warning.
-                # For a Gentle Worker, err on side of caution?
-                # Let's assume plugged in but print once.
-                pass
         except Exception as e:
             print(f"⚠️ Battery check error: {e}")
 
         # 2. Check CPU Load (Gentle Mode)
-        # Interval=1 blocks for 1 second to measure CPU
         cpu_load = psutil.cpu_percent(interval=1)
         if cpu_load > 20:
             return False, f"🔥 CPU Busy ({cpu_load}%)"
 
         return True, "✅ System Idle & Plugged In"
 
-    def heavy_task_ingestion(self):
+    def heavy_task_graph_pruning(self):
         can_run, reason = self.check_conditions()
         if not can_run:
-            print(f"Skipping Ingestion: {reason}")
+            print(f"Skipping Graph Pruning: {reason}")
             return
 
-        print("🚜 Starting Heavy Ingestion Task...")
-        # Simulate work
-        time.sleep(2)
-        print("✅ Ingestion Complete")
+        print("🧠 Pruning Knowledge Graph (low-confidence triples)...")
+        try:
+            pruned = self.graph.prune_graph()
+            print(f"✅ Graph Pruned ({pruned} triples removed)")
+        except Exception as e:
+            print(f"⚠️ Graph pruning failed: {e}")
 
-    def heavy_task_graph_optimization(self):
+    def heavy_task_db_optimize(self):
         can_run, reason = self.check_conditions()
         if not can_run:
-            print(f"Skipping Graph Opt: {reason}")
+            print(f"Skipping DB Optimize: {reason}")
             return
 
-        print("🧠 Optimizing Knowledge Graph...")
-        # Simulate work
-        time.sleep(1)
-        print("✅ Graph Optimized")
+        print("📦 Optimizing databases (VACUUM)...")
+        try:
+            conn = self.graph._conn()
+            conn.execute("VACUUM")
+            conn.close()
+            print("✅ Database optimized")
+        except Exception as e:
+            print(f"⚠️ DB optimization failed: {e}")
 
     def start(self):
         print(f"👷 Gentle Worker Started (PID: {psutil.Process().pid})")
 
-        # Schedule tasks
-        schedule.every(10).seconds.do(self.heavy_task_ingestion)  # Run often for testing
-        schedule.every(30).seconds.do(self.heavy_task_graph_optimization)
+        # Schedule tasks at production-appropriate intervals
+        schedule.every(10).minutes.do(self.heavy_task_graph_pruning)
+        schedule.every(30).minutes.do(self.heavy_task_db_optimize)
 
         try:
             while self.is_running:

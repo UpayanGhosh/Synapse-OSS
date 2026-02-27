@@ -3,7 +3,8 @@
 # Sentinel Self-Healing & Freshness Protocol
 # Runs daily at 5:00 AM IST
 
-LOG_FILE="/path/to/openclaw/workspace/logs/sentinel.log"
+OPENCLAW_HOME="${OPENCLAW_HOME:-$HOME/.openclaw}"
+LOG_FILE="$OPENCLAW_HOME/workspace/logs/sentinel.log"
 mkdir -p "$(dirname "$LOG_FILE")"
 
 log() {
@@ -24,7 +25,7 @@ else
 fi
 
 # 2. Database Scrubbing
-DB_PATH="/path/to/openclaw/workspace/db/memory.db"
+DB_PATH="$OPENCLAW_HOME/workspace/db/memory.db"
 if [ -f "$DB_PATH" ]; then
     log "Scrubbing Database..."
     sqlite3 "$DB_PATH" "PRAGMA integrity_check;" >> "$LOG_FILE" 2>&1

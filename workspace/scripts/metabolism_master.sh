@@ -3,9 +3,10 @@
 # Metabolism Master Script (v1.0)
 # Handles 3 AM routine with notifications and busy state.
 
-VENV_PYTHON="/path/to/openclaw/.venv/bin/python"
-WORKSPACE="/path/to/openclaw/workspace"
-CLI="/opt/homebrew/bin/openclaw"
+OPENCLAW_HOME="${OPENCLAW_HOME:-$HOME/.openclaw}"
+VENV_PYTHON="$OPENCLAW_HOME/.venv/bin/python"
+WORKSPACE="$OPENCLAW_HOME/workspace"
+CLI=$(command -v openclaw 2>/dev/null || echo "openclaw")
 USER1="+1234567890"
 USER2="+1987654321"
 

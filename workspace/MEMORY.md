@@ -6,4 +6,4 @@
 
 ## System Maintenance
 - **Archived Files:** The directory `_archived_memories/` is strictly off-limits. Do not read or search files inside it unless explicitly asked to retrieve a specific historical fact not found in the DB.
-- **Database Backups:** Automated backups for `memory.db` are stored in `db/backups/`. A cron job runs every 12 hours (00:00, 12:00 IST) executing `db/backup_db.sh`. It keeps the last 7 backups (gzipped).
+- **Database Backups:** Automated backups for `memory.db` are stored in `db/backups/`. A cron job runs every 12 hours (00:00, 12:00 UTC) executing `db/backup_db.sh`. It keeps the last 7 backups (gzipped).

@@ -13,7 +13,7 @@ To see what the bot is doing in real-time, you can run the `monitor.py` script. 
 Open a new terminal and run:
 
 ```bash
-/path/to/openclaw/.venv/bin/python /path/to/openclaw/workspace/scripts/monitor.py
+~/.openclaw/.venv/bin/python ~/.openclaw/workspace/scripts/monitor.py
 ```
 
 ## Icons used in the monitor:

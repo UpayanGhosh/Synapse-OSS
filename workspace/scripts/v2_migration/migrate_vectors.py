@@ -5,7 +5,8 @@ import sys
 import json
 from qdrant_handler import QdrantVectorStore
 
-DB_PATH = "/path/to/openclaw/workspace/db/memory.db"
+OPENCLAW_HOME = os.path.expanduser("~/.openclaw")
+DB_PATH = os.path.join(OPENCLAW_HOME, "workspace", "db", "memory.db")
 
 def migrate():
     print("Starting Migration: SQLite -> Qdrant")

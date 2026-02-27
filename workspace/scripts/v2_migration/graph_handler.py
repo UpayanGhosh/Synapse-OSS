@@ -4,8 +4,9 @@ import gzip
 import sqlite3
 import os
 
-DB_PATH = "/path/to/openclaw/workspace/db/memory.db"
-GRAPH_PATH = "/path/to/openclaw/workspace/db/knowledge_graph.json.gz"
+OPENCLAW_HOME = os.path.expanduser("~/.openclaw")
+DB_PATH = os.path.join(OPENCLAW_HOME, "workspace", "db", "memory.db")
+GRAPH_PATH = os.path.join(OPENCLAW_HOME, "workspace", "db", "knowledge_graph.json.gz")
 
 class GraphStore:
     def __init__(self):

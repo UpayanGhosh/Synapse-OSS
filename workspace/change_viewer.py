@@ -24,7 +24,7 @@ from rich.syntax import Syntax
 from rich import box
 
 console = Console()
-WORKSPACE = "/path/to/openclaw/workspace"
+WORKSPACE = os.path.join(os.path.expanduser("~/.openclaw"), "workspace")
 
 
 def git(*args) -> str:

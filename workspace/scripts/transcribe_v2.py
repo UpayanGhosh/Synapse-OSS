@@ -43,7 +43,7 @@ def transcribe_audio(file_path):
     # Fallback: Try to read from openclaw.json if still not found
     if not api_key:
         try:
-            config_path = "/path/to/openclaw/openclaw.json"
+            config_path = os.path.join(os.path.expanduser("~/.openclaw"), "openclaw.json")
             if os.path.exists(config_path):
                 with open(config_path, "r") as f:
                     config = json.load(f)

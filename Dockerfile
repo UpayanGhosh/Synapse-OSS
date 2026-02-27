@@ -13,7 +13,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY workspace/ ./workspace/
-COPY .env.example .env
+# NOTE: Do NOT bake .env into the image. Use docker-compose env_file or -e flags at runtime.
 
 EXPOSE 8000
 

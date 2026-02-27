@@ -1,7 +1,11 @@
 import os
 import json
-import fcntl
 from pathlib import Path
+
+try:
+    import fcntl
+except ImportError:
+    fcntl = None  # Not available on Windows — use filelock fallback
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -42,9 +46,11 @@ class GoogleNative:
                 self.creds = flow.run_local_server(port=0)
 
             with open(TOKEN_FILE, "w") as token:
-                fcntl.flock(token, fcntl.LOCK_EX)
+                if fcntl:
+                    fcntl.flock(token, fcntl.LOCK_EX)
                 token.write(self.creds.to_json())
-                fcntl.flock(token, fcntl.LOCK_UN)
+                if fcntl:
+                    fcntl.flock(token, fcntl.LOCK_UN)
 
         self.service_gmail = build("gmail", "v1", credentials=self.creds)
         self.service_calendar = build("calendar", "v3", credentials=self.creds)

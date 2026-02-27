@@ -24,8 +24,9 @@ class SBSOrchestrator:
         from .processing.batch import BatchProcessor
 
         self.batch = BatchProcessor(self.logger.db_path, self.profile_mgr)
-        # from .feedback.implicit import ImplicitFeedbackDetector
-        # self.feedback = ImplicitFeedbackDetector(self.profile_mgr)
+        from .feedback.implicit import ImplicitFeedbackDetector
+
+        self.feedback = ImplicitFeedbackDetector(self.profile_mgr)
         self.compiler = PromptCompiler(self.profile_mgr)
 
         # Track unbatched messages

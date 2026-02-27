@@ -5,7 +5,8 @@ import json
 import requests
 import os
 
-DB_PATH = "/path/to/openclaw/workspace/db/memory.db"
+OPENCLAW_HOME = os.path.expanduser("~/.openclaw")
+DB_PATH = os.path.join(OPENCLAW_HOME, "workspace", "db", "memory.db")
 OLLAMA_URL = "http://127.0.0.1:11434/api/embeddings"
 EMBED_MODEL = "nomic-embed-text:latest"
 

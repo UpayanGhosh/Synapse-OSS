@@ -50,7 +50,7 @@ def write_log(subsystem, message):
 # Simulate thoughts
 def write_thought():
     thought = random.choice(THOUGHTS)
-    brain_state = "/path/to/openclaw/brain_state.json"
+    brain_state = os.path.join(os.path.expanduser("~/.openclaw"), "brain_state.json")
     with open(brain_state, "w") as f:
         json.dump({"thought": thought}, f)
 

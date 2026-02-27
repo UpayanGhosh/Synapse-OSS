@@ -4,7 +4,8 @@ import shutil
 import time
 from datetime import datetime, timedelta
 
-SESSION_FILE = "/path/to/openclaw/agents/main/sessions/sessions.json"
+OPENCLAW_HOME = os.path.expanduser("~/.openclaw")
+SESSION_FILE = os.path.join(OPENCLAW_HOME, "agents", "main", "sessions", "sessions.json")
 MAX_AGE_DAYS = 7
 
 

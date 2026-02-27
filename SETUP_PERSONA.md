@@ -35,14 +35,14 @@ In `workspace/sci_fi_dashboard/api_gateway.py`, search for the `PHONE_MAP` and t
 ```python
     # Strict Phone Mapping
     PHONE_MAP = {
-        "9198XXXXXXXX": "your_girlfriend_or_friend",
-        "858XXXXXXX": "your_name"
+        "1555XXXXXXX": "your_contact",
+        "1555YYYYYYY": "your_name"
     }
 ```
 
 ## 2. Define Your Personas (SBS Architecture)
 
-The system automatically generates its "soul" data when you first start the API Gateway (via `synapse_start.sh` / `synapse_start.ps1`). Instead of single files, it uses a layered architecture located in:
+The system automatically generates its "soul" data when you first start the API Gateway (via `synapse_start.sh` on Mac/Linux or `synapse_start.bat` on Windows). Instead of single files, it uses a layered architecture located in:
 
 **File Location:**
 - **macOS/Linux:** `workspace/sci_fi_dashboard/synapse_data/the_creator/profiles/current/`
@@ -101,8 +101,8 @@ curl -X POST http://localhost:8000/ingest \
   -d '{"subject": "User", "relation": "works_as", "object": "Backend Engineer"}'
 ```
 
-**Windows PowerShell:**
-```powershell
+**Windows:**
+```cmd
 curl.exe -X POST http://localhost:8000/ingest -H "Content-Type: application/json" -d "{\"subject\": \"User\", \"relation\": \"works_as\", \"object\": \"Backend Engineer\"}"
 ```
 
@@ -128,11 +128,10 @@ Because the bot has native file-reading tool capabilities (inherited from OpenCl
 
 ## 4. The Language Walkthrough (Customizing Dialects)
 
-By default, the "soul" of this bot is programmed to speak in **Benglish** (a mix of Bengali and English) because that is how the creator communicates. If you want the bot to speak in plain English, or in your own local language (Hindi, Spanish, French, etc.), you need to update a few key files.
+By default, the "soul" of this bot is programmed to speak in **Banglish** (a mix of Bengali and English) because that is how the creator communicates. If you want the bot to speak in plain English, or in your own local language (Hindi, Spanish, French, etc.), you need to update a few key files.
 
 ### To Switch to Plain English:
-1.  **Open `workspace/CORE.md`**: Locate the language instructions and change to "Plain English".
-2.  **Open `workspace/sci_fi_dashboard/api_gateway.py`**: Search for the function `route_traffic_cop` (the Traffic Cop intent classifier) and `translate_banglish` (the language post-processor). Update the `system` prompt strings inside those two functions to instruct the model to use English only. Tip: use Ctrl+F and search for `def route_traffic_cop` and `def translate_banglish` to jump directly to the right locations — there are many occurrences of the word "Banglish" in the file across unrelated sections.
+1.  **Open `workspace/sci_fi_dashboard/api_gateway.py`**: Search for the function `route_traffic_cop` (the Traffic Cop intent classifier) and `translate_banglish` (the language post-processor). Update the `system` prompt strings inside those two functions to instruct the model to use English only. Tip: use Ctrl+F and search for `def route_traffic_cop` and `def translate_banglish` to jump directly to the right locations — there are many occurrences of the word "Banglish" in the file across unrelated sections.
 
 ### To Use Your Own Local Language:
 If you want a "Spanglish" bot or a French-speaking Synapse:
@@ -141,6 +140,40 @@ If you want a "Spanglish" bot or a French-speaking Synapse:
 3.  **Update Transcription (Optional)**: If you use audio messages, check `workspace/scripts/transcribe_v2.py` and update the `language` code (e.g., `es` for Spanish, `fr` for French) to improve Whisper/Groq accuracy for your dialect.
 
 The bot is model-agnostic, meaning as long as you update the **Instructions** and provide **Examples**, it will adapt to any human language you prefer.
+
+---
+
+## 5. Implicit Feedback Detection (Automatic Style Adaptation)
+
+Synapse includes an `ImplicitFeedbackDetector` that continuously monitors your messages for style corrections. You don't need to explicitly configure anything — just talk naturally and Synapse will adapt.
+
+### How It Works
+
+When you say things like:
+- **"Too long"** or **"keep it short"** → Synapse halves its preferred response length
+- **"Stop being formal"** or **"sound like a robot"** → Synapse increases its casual/Banglish ratio
+- **"Be serious"** or **"professional"** → Synapse decreases casual language
+- **"Elaborate"** or **"explain more"** → Synapse doubles its response length
+- **"Good job"** or **"perfect"** → Synapse reinforces its current style
+
+These adjustments happen **immediately** on the current conversation and are reinforced by the batch processor on its next cycle.
+
+### Customizing Feedback Patterns
+
+The detection patterns are defined in `workspace/sci_fi_dashboard/sbs/feedback/implicit.py` in the `FEEDBACK_PATTERNS` dictionary. You can add patterns for your own language or communication style:
+
+```python
+FEEDBACK_PATTERNS = {
+    "correction_formal": [
+        r"why (are you|so) formal",
+        r"stop being (formal|robotic)",
+        # Add your own patterns here
+    ],
+    # ... more categories
+}
+```
+
+Each category maps to a specific profile adjustment. The system supports English, Bengali, and Banglish patterns out of the box.
 
 ---
 

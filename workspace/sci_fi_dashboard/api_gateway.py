@@ -45,7 +45,7 @@ if WORKSPACE_ROOT not in sys.path:
 
 def _resolve_openclaw_cli_bin() -> str:
     configured = os.environ.get("OPENCLAW_CLI_BIN", "").strip()
-    return configured or shutil.which("openclaw") or "/opt/homebrew/bin/openclaw"
+    return configured or shutil.which("openclaw") or "openclaw"
 
 
 def _extract_cli_send_route(raw_stdout: str) -> str:
@@ -212,7 +212,7 @@ load_env_file(anchor=Path(__file__))  # noqa: E402
 # We route via localhost:8080 (Antigravity Proxy)
 OPENCLAW_GATEWAY_URL = "http://localhost:8080/v1/messages"
 # Ideally read from openclaw.json, but for now using the known token or env
-OPENCLAW_GATEWAY_TOKEN = os.environ.get("OPENCLAW_GATEWAY_TOKEN", "dev-token-local")
+OPENCLAW_GATEWAY_TOKEN = os.environ.get("OPENCLAW_GATEWAY_TOKEN", "")
 
 # REDIS_URL removed — no Redis dependency
 BRIDGE_DB_PATH = Path(__file__).resolve().with_name("whatsapp_bridge.db")
@@ -326,7 +326,7 @@ class WhatsAppLoopTestRequest(BaseModel):
 
 # --- Remote LLM Clients ---
 
-WINDOWS_PC_IP = os.environ.get("WINDOWS_PC_IP", "192.168.1.XXX")
+WINDOWS_PC_IP = os.environ.get("WINDOWS_PC_IP", "")
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
 PROXY_URL = "http://localhost:8080"  # Antigravity proxy for Claude/GPT/Gemini-Pro
 
@@ -492,7 +492,7 @@ async def persona_chat(
 
     # 1. Memory Retrieval (Phoenix v3 Unified Engine)
     try:
-        env_session = os.environ.get("MAC_APP_SESSION_TYPE", "safe")
+        env_session = os.environ.get("SESSION_TYPE", "safe")
         session_mode = request.session_type or env_session
         if session_mode not in ["safe", "spicy"]:
             session_mode = "safe"

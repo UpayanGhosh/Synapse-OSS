@@ -77,7 +77,7 @@ You have access to a **Llama 3.2 (3B)** model running locally for free.
 
 If you see an inbound file path in a message (e.g., `media/inbound/audio_123.ogg`), you can transcribe it.
 
-- **Command:** `curl -s -X POST "http://127.0.0.1:8989/transcribe" -H "Content-Type: application/json" -d '{"file_path": "/path/to/openclaw/media/inbound/audio_123.ogg"}'`
+- **Command:** `curl -s -X POST "http://127.0.0.1:8989/transcribe" -H "Content-Type: application/json" -d '{"file_path": "~/.openclaw/media/inbound/audio_123.ogg"}'`
 - **Result:** You will get the text, language, and confidence score.
 
 ### �📝 Write It Down - No "Mental Notes"!

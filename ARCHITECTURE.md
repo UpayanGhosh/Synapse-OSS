@@ -217,6 +217,16 @@ graph TD
 - `sbs_the_creator` — tuned for primary user (casual, direct, sibling-like)
 - `sbs_the_partner` — tuned for the partner (warm, supportive, PA-like)
 
+#### Implicit Feedback Detection (`sbs/feedback/`)
+
+The `ImplicitFeedbackDetector` monitors every user message for conversational corrections — phrases like "too long", "be more casual", "stop being robotic", or Banglish corrections like "banglish e bolo". When a correction signal is detected:
+
+1. The signal type is classified (formality, length, praise, rejection)
+2. The corresponding profile layer is adjusted immediately (e.g., `banglish_ratio += 0.2` on a "be less formal" signal)
+3. The batch processor reinforces the adjustment on its next cycle
+
+This allows the persona to adapt in real-time without explicit configuration commands.
+
 ---
 
 ### 6. 🧩 Dual Cognition Engine (`dual_cognition.py`)
@@ -274,18 +284,64 @@ If JARVIS is cut off mid-sentence (no terminal punctuation at end of reply), a *
 
 ---
 
-### 9. 🛡️ Sentinel (`sbs/sentinel/`)
+### 8.5 🎤 Voice Message Processing
 
-A file-governance module that runs at boot. It enforces structural rules on the workspace — preventing accidental writes to protected paths and logging file events for audit.
+Voice notes received via WhatsApp are processed through:
+
+1. **Download:** OpenClaw Gateway saves the audio file locally
+2. **Transcribe:** `AudioProcessor` (Groq Whisper-Large-v3) transcribes OGG/MP3 audio to text in 2-4 seconds
+3. **Process:** Transcribed text enters the normal cognitive pipeline (memory retrieval → SBS → Dual Cognition → MoA routing)
+
+Cloud-based transcription via Groq eliminates the need for local Whisper model loading — critical for 8GB RAM hosts.
+
+---
+
+### 8.6 🌐 Web Browsing (Crawl4AI)
+
+The `ToolRegistry` (`workspace/db/tools.py`) provides headless browser automation via Crawl4AI. When the LLM determines it needs live data:
+
+1. The MoA router dispatches a `search_web` tool call with a target URL
+2. `ToolRegistry.search_web()` launches an async Crawl4AI session
+3. Page content is extracted as clean markdown and truncated to 3000 characters
+4. The result is fed back to the LLM as tool output for the final response
+
+The tool schema is OpenAI function-calling compatible, making it work with any model that supports tool use.
+
+---
+
+### 9. 🛡️ Sentinel — File Governance (`sbs/sentinel/`)
+
+A fail-closed file governance gateway. Every file operation by the AI agent passes through Sentinel before reaching the filesystem.
+
+**Protection Levels:**
+
+| Level | Access | Use Case |
+|-------|--------|----------|
+| `CRITICAL` | No read, write, delete, or list | Core application files, secrets, Sentinel itself |
+| `PROTECTED` | Read-only | SBS processing modules, ingestion schemas |
+| `MONITORED` | Read-write with audit logging | Profile layers, raw chat logs, generated content |
+| `OPEN` | Unrestricted | Temp files, exports |
+
+**Components:**
+- `manifest.py` — Declares which files and directories fall into each protection level
+- `gateway.py` — `Sentinel` class that checks every access request against the manifest. Design: if anything is ambiguous, **DENY**.
+- `audit.py` — Append-only JSONL audit trail of all access decisions (allowed + denied)
+- `tools.py` — Wrapped file operations (`agent_read_file`, `agent_write_file`, `agent_delete_file`) that agent frameworks should register as tools instead of raw `open()`
 
 ---
 
 ### 10. 👷 Gentle Worker Loop
 
-A background async loop that runs every **10 minutes** (when plugged in and CPU < 20%) to:
+A thermal-aware background maintenance worker. Checks two conditions before running any task:
 
-- `brain.prune_graph()` — Remove low-confidence or stale knowledge triples.
-- `conflicts.prune_conflicts()` — Deduplicate conflict entries in the conflict graph.
+1. **Power:** Must be plugged in (battery.power_plugged == True). Skips on battery to preserve laptop runtime.
+2. **CPU:** Must be below 20% utilization. Waits until the system is genuinely idle.
+
+**Scheduled Tasks:**
+- Every 10 minutes: `graph.prune_graph()` — Remove low-confidence or stale knowledge triples
+- Every 30 minutes: Database VACUUM — Reclaim disk space and rebuild indices
+
+Both the standalone `gentle_worker.py` (for independent maintenance) and the inline `gentle_worker_loop()` in `api_gateway.py` (runs during normal gateway operation) share the same thermal-awareness logic.
 
 ---
 

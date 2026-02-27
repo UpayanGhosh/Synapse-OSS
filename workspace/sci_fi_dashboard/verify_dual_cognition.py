@@ -1,9 +1,11 @@
 import asyncio
+import os
 import sys
 
 # Add workspace to path
-sys.path.insert(0, "/path/to/openclaw/workspace/sci_fi_dashboard")
-sys.path.insert(0, "/path/to/openclaw/workspace")
+_openclaw_home = os.path.expanduser("~/.openclaw")
+sys.path.insert(0, os.path.join(_openclaw_home, "workspace", "sci_fi_dashboard"))
+sys.path.insert(0, os.path.join(_openclaw_home, "workspace"))
 
 from dual_cognition import DualCognitionEngine
 

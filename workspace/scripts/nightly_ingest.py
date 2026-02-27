@@ -10,7 +10,8 @@ from qdrant_client import QdrantClient
 from qdrant_client.http import models
 
 # --- CONFIGURATION ---
-DB_PATH = "/path/to/openclaw/workspace/db/memory.db"
+OPENCLAW_HOME = os.path.expanduser("~/.openclaw")
+DB_PATH = os.path.join(OPENCLAW_HOME, "workspace", "db", "memory.db")
 EMBEDDING_MODEL = 'nomic-embed-text'
 THINK_MODEL = 'llama3.2:3b'
 

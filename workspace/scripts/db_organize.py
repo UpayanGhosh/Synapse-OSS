@@ -2,7 +2,8 @@ import sqlite3
 import sqlite_vec
 import os
 
-DB_PATH = "/path/to/openclaw/workspace/db/memory.db"
+OPENCLAW_HOME = os.path.expanduser("~/.openclaw")
+DB_PATH = os.path.join(OPENCLAW_HOME, "workspace", "db", "memory.db")
 
 def organize():
     conn = sqlite3.connect(DB_PATH)

@@ -7,6 +7,7 @@
 fastapi>=0.104.0
 uvicorn>=0.24.0
 httpx>=0.25.0
+requests>=2.31.0
 pydantic>=2.5.0
 
 # --- System Monitoring ---
@@ -31,8 +32,15 @@ transformers>=4.35.0             # Hugging Face Transformers (Toxic-BERT)
 # --- Vector Database (Qdrant) ---
 qdrant-client>=1.6.0
 
-# --- Web Scraping (Optional) ---
-# crawl4ai>=0.2.0               # Uncomment if using /browse endpoint
+# --- Web Browsing & Scraping ---
+crawl4ai>=0.2.0                  # Headless browser automation (ToolRegistry /browse)
+
+# --- Audio Transcription ---
+groq>=0.4.0                      # Groq Whisper API (voice message transcription)
+
+# --- Background Workers ---
+schedule>=1.2.0                  # GentleWorker task scheduling
+filelock>=3.12.0                 # File locking for SBS audit and profile writes
 
 # --- Google APIs (Optional — Gmail/Calendar integration) ---
 # google-auth>=2.23.0

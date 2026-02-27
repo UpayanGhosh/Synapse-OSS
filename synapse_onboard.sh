@@ -211,17 +211,30 @@ openclaw config set channels.whatsapp.allowFrom "[\"$phone_number\"]" --json 2>/
 echo "✓ Phone number saved: $phone_number"
 echo ""
 
-# Configure OpenClaw to use Synapse workspace
-echo ""
-echo "🚀 Step 4: Configuring OpenClaw workspace..."
-echo ""
+# ---- Workspace Configuration ----
+echo "🔧 Configuring OpenClaw workspace..."
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SYNAPSE_WORKSPACE="$SCRIPT_DIR/workspace"
 
-openclaw config set agents.defaults.workspace "$SYNAPSE_WORKSPACE" 2>/dev/null
-echo "✓ Workspace set to: $SYNAPSE_WORKSPACE"
-echo ""
+# Tell OpenClaw where Synapse lives
+openclaw config set agents.defaults.workspace "$SYNAPSE_WORKSPACE" 2>/dev/null || \
+    openclaw config set agents.defaults.workspace "$SYNAPSE_WORKSPACE"
+echo "   ✓ Workspace: $SYNAPSE_WORKSPACE"
+
+# Create required directories for databases, logs, and persona data
+mkdir -p "$SYNAPSE_WORKSPACE/db"
+mkdir -p "$SYNAPSE_WORKSPACE/sci_fi_dashboard/synapse_data/the_creator/profiles/current"
+mkdir -p "$SYNAPSE_WORKSPACE/sci_fi_dashboard/synapse_data/the_partner/profiles/current"
+mkdir -p "$HOME/.openclaw/logs"
+echo "   ✓ Directories created"
+
+# Verify the workspace is configured
+CONFIGURED_DIR=$(openclaw config get agents.defaults.workspace 2>/dev/null || echo "")
+if [ -n "$CONFIGURED_DIR" ]; then
+    echo "   ✓ Verified: $CONFIGURED_DIR"
+else
+    echo "   ✓ Workspace set (could not verify — this is normal on first setup)"
+fi
 
 echo ""
 echo "🚀 ======================================="

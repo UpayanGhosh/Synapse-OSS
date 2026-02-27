@@ -22,24 +22,27 @@ Make sure you have these installed on your computer before proceeding:
 ### Mac / Linux
 
 ```bash
-cd /path/to/Synapse-OSS
+cd Synapse-OSS                 # Enter the cloned repo directory
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
+crawl4ai-setup                 # Downloads browser for web browsing feature
 cp .env.example .env
-# Edit .env — add at minimum: GEMINI_API_KEY=your_key_here
+# Edit .env — add at minimum: GEMINI_API_KEY and GROQ_API_KEY (for voice messages)
 ```
 
-### Windows (Command Prompt)
+### Windows
 
-Open **Command Prompt as Administrator**:
+Open **Windows Terminal** (or Command Prompt):
 
-```batch
-cd C:\path\to\Synapse-OSS
+```cmd
+cd Synapse-OSS
 python -m venv .venv
 .venv\Scripts\activate.bat
 pip install -r requirements.txt
+crawl4ai-setup                 &REM Downloads browser for web browsing feature
 copy .env.example .env
-REM Edit .env — add at minimum: GEMINI_API_KEY=your_key_here
+REM Edit .env — add at minimum: GEMINI_API_KEY and GROQ_API_KEY (for voice messages)
+REM (If using Git Bash, use: source .venv/Scripts/activate)
 ```
 
 ---
@@ -72,13 +75,17 @@ chmod +x synapse_onboard.sh  # Make executable (if needed)
 ./synapse_onboard.sh
 ```
 
-### Windows (Batch)
+### Windows
 
-```batch
+Simply double-click `synapse_onboard.bat` in the project folder. Or from a terminal:
+
+```cmd
 synapse_onboard.bat
 ```
 
 That's it! The script will guide you through everything.
+
+> **Note:** Do NOT double-click the `.ps1` files — Windows opens them in Notepad by default. Always use the `.bat` launchers instead.
 
 ---
 
@@ -90,10 +97,10 @@ This repository uses a custom workspace folder located at `workspace/` in the re
 
 ```bash
 # Windows
-openclaw config set agents.defaults.workspace "D:\Shreya\Jarvis-OSS\workspace"
+openclaw config set agents.defaults.workspace "D:\Shreya\Synapse-OSS\workspace"
 
 # Mac/Linux (use absolute path)
-openclaw config set agents.defaults.workspace "/absolute/path/to/Jarvis-OSS/workspace"
+openclaw config set agents.defaults.workspace "/absolute/path/to/Synapse-OSS/workspace"
 ```
 
 ### Verify Workspace Configuration
@@ -120,7 +127,7 @@ The `synapse_onboard.bat` script automatically:
 2. Sets `SYNAPSE_WORKSPACE=%PROJECT_ROOT%\workspace`
 3. Runs: `openclaw config set agents.defaults.workspace "%SYNAPSE_WORKSPACE%"`
 
-This points OpenClaw to use `D:\Shreya\Jarvis-OSS\workspace` instead of the default `~/.openclaw/workspace`.
+This points OpenClaw to use `D:\Shreya\Synapse-OSS\workspace` instead of the default `~/.openclaw/workspace`.
 
 ---
 
@@ -137,6 +144,10 @@ When you run it, the script will:
 5. Start all Synapse services (Qdrant, Ollama, API Gateway, WhatsApp bridge)
 6. Verify services are running
 7. Tell you how to start chatting
+8. Configure OpenClaw workspace directory (maps workspace to `~/.openclaw/workspace/`)
+9. Create required directories for databases and persona profiles
+
+> **Note:** Databases (`memory.db`, `knowledge_graph.db`) are automatically created on first boot — no manual setup required.
 
 The script also pulls the required Ollama embedding model (`nomic-embed-text`) and creates the Qdrant Docker container automatically.
 
@@ -165,9 +176,11 @@ Every time you want to use Synapse after the first setup:
 ./synapse_start.sh
 ```
 
-### Windows (Batch)
+### Windows
 
-```batch
+Double-click `synapse_start.bat` or from a terminal:
+
+```cmd
 synapse_start.bat
 ```
 

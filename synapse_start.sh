@@ -6,6 +6,12 @@ echo ""
 project_root="$(cd "$(dirname "$0")" && pwd)"
 cd "$project_root"
 
+# Ensure OpenClaw workspace is configured and directories exist
+WORKSPACE_DIR="$HOME/.openclaw/workspace"
+mkdir -p "$WORKSPACE_DIR/db"
+mkdir -p "$HOME/.openclaw/logs"
+openclaw config set workspaceDir "$WORKSPACE_DIR" 2>/dev/null || true
+
 echo "[1/4] Starting Qdrant..."
 docker start antigravity_qdrant 2>/dev/null && echo "   ✓ Started" || echo "   ✓ Already running or not found"
 

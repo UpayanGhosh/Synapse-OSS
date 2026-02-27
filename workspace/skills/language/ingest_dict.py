@@ -1,10 +1,13 @@
 import json
+import os
 import urllib.request
 import urllib.error
 import sys
 
 def ingest_banglish_dictionary():
-    file_path = "/path/to/openclaw/workspace/skills/language/banglish_dict.json"
+    file_path = os.path.join(
+        os.path.expanduser("~/.openclaw"), "workspace", "skills", "language", "banglish_dict.json"
+    )
     api_url = "http://127.0.0.1:8989/add"
 
     try:

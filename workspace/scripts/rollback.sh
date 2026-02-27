@@ -12,7 +12,8 @@ while getopts "n:" opt; do
 done
 
 # Find the most recent session file
-SESSION_DIR="/path/to/openclaw/agents/main/sessions"
+OPENCLAW_HOME="${OPENCLAW_HOME:-$HOME/.openclaw}"
+SESSION_DIR="$OPENCLAW_HOME/agents/main/sessions"
 SESSION_FILE=$(ls -t "$SESSION_DIR"/*.jsonl | head -n 1)
 
 if [ -z "$SESSION_FILE" ]; then

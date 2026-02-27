@@ -113,7 +113,7 @@ class MemoryEngine:
                 if self._ranker is None:
                     self._ranker = Ranker(
                         model_name=RERANK_MODEL_NAME,
-                        cache_dir="/path/to/openclaw/models",
+                        cache_dir=os.path.join(os.path.expanduser("~/.openclaw"), "models"),
                     )
         return self._ranker
 

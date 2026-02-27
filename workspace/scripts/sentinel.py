@@ -218,7 +218,7 @@ def run_sentinel():
         if state["body_strikes"] <= MAX_RETRIES:
             log("Attempting CPR (Restarting OpenClaw)...", "WARN")
             subprocess.run(
-                ["/opt/homebrew/bin/openclaw", "gateway", "start"], check=False
+                [shutil.which("openclaw") or "openclaw", "gateway", "start"], check=False
             )
             alert_macos("Sentinel Action", "Restarted OpenClaw Gateway.")
         else:

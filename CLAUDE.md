@@ -8,11 +8,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 # First-time setup
 ./synapse_onboard.sh        # Mac/Linux
-.\synapse_onboard.bat       # Windows
+synapse_onboard.bat         # Windows (double-click or run from cmd)
 
 # Start all services (Qdrant, Ollama, API Gateway, OpenClaw)
 ./synapse_start.sh          # Mac/Linux
-.\synapse_start.bat         # Windows
+synapse_start.bat           # Windows (double-click or run from cmd)
 ```
 
 ### Run the API server directly
@@ -117,6 +117,17 @@ Located in `workspace/sci_fi_dashboard/sbs/`. Continuously evolves behavioral pr
 
 Profile layers: `core_identity`, `linguistic`, `emotional_state`, `domain`, `interaction`, `vocabulary`, `exemplars`, `meta`.
 
+- **Feedback** (`feedback/implicit.py`): detects implicit user corrections (e.g. "too long", "be less formal") and adjusts profile in real-time
+- **Sentinel** (`sentinel/`): fail-closed file governance — controls what the AI agent can read/write/delete, with JSONL audit trail
+- **Vacuum** (`vacuum.py`): SBS data compaction and old profile pruning
+
+### Database Tools (`workspace/db/`)
+
+- `tools.py` — `ToolRegistry`: Crawl4AI headless browser automation (OpenAI function-calling compatible)
+- `model_orchestrator.py` — `ModelOrchestrator`: 3-tier local model routing (REFLEX/WORKER/ARCHITECT) via Ollama
+- `audio_processor.py` — `AudioProcessor`: Groq Whisper-Large-v3 cloud transcription for voice messages
+- `ingest.py` — Bulk file ingestion pipeline with WhatsApp/markdown chunking and thermal safety
+
 ### Key Singletons (initialized once at boot in `api_gateway.py`)
 
 - `Brain` — central LLM caller
@@ -149,7 +160,7 @@ All known race conditions resolved (see `workspace/Vulnerabilities.md`):
 
 ### Internal Tool Endpoints (at `http://127.0.0.1:8989`)
 
-These are used by the Jarvis assistant persona at runtime, not by the development workflow:
+These are used by the Synapse assistant persona at runtime, not by the development workflow:
 - `POST /query` — semantic memory search
 - `POST /add` — store a new memory
 - `POST /browse` — headless browser (Playwright/Crawl4AI)
@@ -161,10 +172,16 @@ These are used by the Jarvis assistant persona at runtime, not by the developmen
 ### Environment
 
 Copy `.env.example` to `.env`. Key variables:
-- `GEMINI_API_KEY`, `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `GROQ_API_KEY`
+- `GEMINI_API_KEY` — primary LLM (required)
+- `GROQ_API_KEY` — voice message transcription via Groq Whisper (required for voice)
+- `OPENROUTER_API_KEY` — fallback model routing
+- `OPENAI_API_KEY` — for specific tools/overrides
 - `WHATSAPP_BRIDGE_TOKEN` — OpenClaw bridge auth
-- `WINDOWS_PC_IP` — remote Ollama instance for distributed inference
+- `WINDOWS_PC_IP` — remote Ollama instance for distributed inference (optional)
 - `OLLAMA_KEEP_ALIVE=0` — evict models immediately after use (RAM management)
+
+Databases (`memory.db`, `knowledge_graph.db`) are auto-created on first boot — no manual setup needed.
+The onboarding script auto-configures the OpenClaw workspace directory.
 
 ### Code Style
 

@@ -22,7 +22,8 @@ console = Console()
 
 # Configuration
 LOG_DIR = "/tmp/openclaw"
-SESSIONS_FILE = "/path/to/openclaw/agents/main/sessions/sessions.json"
+OPENCLAW_HOME = os.path.expanduser("~/.openclaw")
+SESSIONS_FILE = os.path.join(OPENCLAW_HOME, "agents", "main", "sessions", "sessions.json")
 
 # ═══════════════════════════════════════════
 #  Tool Label Map — Technical → Human Readable

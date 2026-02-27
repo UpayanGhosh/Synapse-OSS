@@ -103,9 +103,9 @@ if (-not (Test-Path $venvPython)) {
     Write-Host "❌ Python virtual environment not found at:" -ForegroundColor Red
     Write-Host "   $venvPython"
     Write-Host ""
-    Write-Host "Run these commands first:"
+    Write-Host "Open Windows Terminal (or Command Prompt) and run:"
     Write-Host "   python -m venv .venv"
-    Write-Host "   .venv\Scripts\Activate.ps1"
+    Write-Host "   .venv\Scripts\activate.bat"
     Write-Host "   pip install -r requirements.txt"
     Write-Host ""
     Read-Host -Prompt "Press Enter to exit"
@@ -233,6 +233,44 @@ if ($LASTEXITCODE -ne 0) {
 
 Write-Host "✓ Phone number saved: $phone_number"
 Write-Host ""
+
+# ---- Workspace Configuration ----
+Write-Host "🔧 Configuring OpenClaw workspace..."
+
+# Use a DIFFERENT variable name to avoid clobbering $workspaceDir (the repo path)
+# PowerShell variable names are case-insensitive, so $WorkspaceDir == $workspaceDir
+$openclawWorkspace = "$HOME/.openclaw/workspace"
+
+# Tell OpenClaw where Jarvis lives
+openclaw config set workspaceDir $openclawWorkspace 2>$null
+if ($LASTEXITCODE -ne 0) {
+    openclaw config set workspaceDir $openclawWorkspace
+}
+Write-Host "   ✓ Workspace: $openclawWorkspace"
+
+# Create required directories for databases, logs, and persona data
+$dirsToCreate = @(
+    (Join-Path $openclawWorkspace "db"),
+    (Join-Path $openclawWorkspace "sci_fi_dashboard" "synapse_data" "the_creator" "profiles" "current"),
+    (Join-Path $openclawWorkspace "sci_fi_dashboard" "synapse_data" "the_partner" "profiles" "current"),
+    "$HOME/.openclaw/logs"
+)
+foreach ($dir in $dirsToCreate) {
+    New-Item -Path $dir -ItemType Directory -Force | Out-Null
+}
+Write-Host "   ✓ Directories created"
+
+# Verify the workspace is configured
+try {
+    $configuredDir = openclaw config get workspaceDir 2>$null
+    if ($configuredDir) {
+        Write-Host "   ✓ Verified: $configuredDir"
+    } else {
+        Write-Host "   ✓ Workspace set (could not verify — this is normal on first setup)"
+    }
+} catch {
+    Write-Host "   ✓ Workspace set (could not verify — this is normal on first setup)"
+}
 
 # Section 3: Start Services
 #--------------------------------------------------------------------------
@@ -365,7 +403,7 @@ if ($services_ok) {
     Write-Host ""
     Write-Host "⚠️  Some services may not have started correctly." -ForegroundColor Yellow
     Write-Host "   Logs are in: $logDir"
-    Write-Host "   You can also try running 'synapse_start.ps1'."
+    Write-Host "   You can also try running 'synapse_start.bat'."
 }
 
 Write-Host ""

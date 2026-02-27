@@ -20,7 +20,7 @@ To read emails (like OTPs), you cannot use the default GOG credentials. You must
     - Download the JSON file (it will look like `client_secret_xgSF...json`).
 6.  **Save the file**:
     - Rename it to `client_secret.json`.
-    - Place it in this folder (`/path/to/openclaw/workspace/skills/gog/client_secret.json`).
+    - Place it in this folder (`~/.openclaw/workspace/skills/gog/client_secret.json`).
 7.  **Run Setup**:
     - `gog auth credentials workspace/skills/gog/client_secret.json`
     - `gog auth add user@example.com --services gmail,calendar`

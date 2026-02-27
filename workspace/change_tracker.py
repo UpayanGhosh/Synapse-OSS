@@ -38,7 +38,7 @@ from watchdog.events import RegexMatchingEventHandler
 #  CONFIGURATION
 # ═══════════════════════════════════════════
 
-WORKSPACE = "/path/to/openclaw"
+WORKSPACE = os.path.expanduser("~/.openclaw")
 BRANCH = "synapse-auto-updates"
 DEFAULT_DEBOUNCE = 30.0  # seconds of silence before commit
 PAUSE_FILE = os.path.join(WORKSPACE, ".pause_tracking")

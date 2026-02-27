@@ -5,7 +5,8 @@ from datetime import datetime
 from qdrant_client import QdrantClient
 
 # Paths
-DB_PATH = "/path/to/openclaw/workspace/db/memory.db"
+OPENCLAW_HOME = os.path.expanduser("~/.openclaw")
+DB_PATH = os.path.join(OPENCLAW_HOME, "workspace", "db", "memory.db")
 QDRANT_HOST = "localhost"
 QDRANT_PORT = 6333
 COLLECTION_NAME = "atomic_facts"

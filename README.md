@@ -53,6 +53,7 @@ most chatbots ignore:
 | **Thinking**                 | Generate first token immediately                      | Dual Cognition — generates inner monologue, calculates tension between memory and current message, then responds.                                      |
 | **WhatsApp reliability**     | Webhook timeout, lost messages, duplicates            | Async pipeline — FloodGate batching, deduplication, bounded queue, concurrent workers. Zero dropped messages.                                          |
 | **RAM on consumer hardware** | "Just buy a bigger server"                            | Lazy-loading (ToxicScorer unloads after 30s idle), SQLite instead of NetworkX (99.2% memory reduction), thermal-aware workers. Runs on 8GB MacBook Air. |
+| **Voice Notes**            | Ignore or crash                                       | Groq Whisper — 2-4s cloud transcription, zero local RAM, then processed like text through the full cognitive pipeline.                                       |
 
 ---
 
@@ -132,28 +133,28 @@ cd Jarvis-OSS
 # macOS/Linux:
 python3 -m venv .venv && source .venv/bin/activate
 
-# Windows PowerShell (run as Administrator first time):
-# Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+# Windows:
 python -m venv .venv
-.venv\Scripts\Activate.ps1
+.venv\Scripts\activate.bat
 
 pip install -r requirements.txt
+crawl4ai-setup                 # Downloads browser for web browsing feature
 
 # 3. Configure
 # macOS/Linux:
 cp .env.example .env
 
-# Windows PowerShell:
+# Windows:
 copy .env.example .env
 
-# Edit .env — add at minimum one LLM API key (GEMINI_API_KEY recommended)
+# Edit .env — add at minimum: GEMINI_API_KEY and GROQ_API_KEY (for voice messages)
 
 # 4. Boot the Gateway
 # macOS/Linux:
 cd workspace
 uvicorn sci_fi_dashboard.api_gateway:app --host 0.0.0.0 --port 8000
 
-# Windows PowerShell:
+# Windows:
 cd workspace
 python -m uvicorn sci_fi_dashboard.api_gateway:app --host 0.0.0.0 --port 8000
 
@@ -169,7 +170,7 @@ curl http://localhost:8000/health
 ```bash
 git clone https://github.com/UpayanGhosh/Jarvis-OSS.git
 cd Jarvis-OSS
-cp .env.example .env    # Edit .env with your API keys
+cp .env.example .env    # Edit .env with your API keys (Windows: copy .env.example .env)
 
 docker compose up --build
 # Gateway: http://localhost:8000  |  Qdrant: http://localhost:6333
@@ -187,7 +188,7 @@ curl -X POST http://localhost:8000/chat/the_creator \
   -H "Content-Type: application/json" \
   -d '{"message": "What do you remember about our last conversation?"}'
 
-# Windows PowerShell
+# Windows
 curl.exe -X POST http://localhost:8000/chat/the_creator -H "Content-Type: application/json" -d "{\"message\": \"What do you remember about our last conversation?\"}"
 ```
 
@@ -199,7 +200,7 @@ curl -X POST http://localhost:8000/query \
   -H "Content-Type: application/json" \
   -d '{"text": "What is the user'\''s favorite programming language?"}'
 
-# Windows PowerShell
+# Windows
 curl.exe -X POST http://localhost:8000/query -H "Content-Type: application/json" -d "{\"text\": \"What is the user's favorite programming language?\"}"
 ```
 
@@ -211,7 +212,7 @@ curl -X POST http://localhost:8000/add \
   -H "Content-Type: application/json" \
   -d '{"content": "The user prefers Python over JavaScript", "category": "tech_preferences"}'
 
-# Windows PowerShell
+# Windows
 curl.exe -X POST http://localhost:8000/add -H "Content-Type: application/json" -d "{\"content\": \"The user prefers Python over JavaScript\", \"category\": \"tech_preferences\"}"
 ```
 
@@ -228,7 +229,7 @@ curl http://localhost:8000/health
 # macOS/Linux
 curl -X POST http://localhost:8000/persona/rebuild
 
-# Windows PowerShell
+# Windows
 curl.exe -X POST http://localhost:8000/persona/rebuild
 ```
 
@@ -264,6 +265,26 @@ Before generating a reply, a `DualCognitionEngine` produces an inner monologue (
 
 Sensitive conversations route to a local Ollama instance on a dedicated compute node (RTX 3060Ti). Zero cloud API calls, zero external logging. Hemisphere integrity (the separation between cloud-routed and local-only memories) is verified by automated tests (`verify` CLI command).
 
+### Voice Message Transcription (Groq Whisper)
+
+Voice notes received via WhatsApp are transcribed using the Groq API (Whisper-Large-v3). Cloud-based transcription with zero local RAM impact — results in 2-4 seconds. Requires a `GROQ_API_KEY` (free tier available at [console.groq.com](https://console.groq.com)).
+
+### Web Browsing (Crawl4AI)
+
+Jarvis can browse the live internet using Crawl4AI headless browser automation. When the user asks a question requiring real-time data (weather, news, live scores), the `ToolRegistry` dispatches a browser session, extracts clean markdown, and feeds the result back to the LLM. Content is truncated to 3000 characters to protect context window limits.
+
+### Implicit Feedback Detection (SBS Feedback Loop)
+
+The SBS subsystem includes an `ImplicitFeedbackDetector` that watches for conversational corrections. If you tell Jarvis "too long" or "be more casual", it automatically adjusts its persona profile (Banglish ratio, response length, formality) — no explicit configuration needed. Corrections take effect immediately; the batch processor reinforces them over time.
+
+### Sentinel File Governance
+
+A fail-closed file governance system (`sbs/sentinel/`) that controls what the AI agent can read, write, or delete. Files are classified as CRITICAL (total lockout), PROTECTED (read-only), MONITORED (read-write with audit logging), or OPEN. All access decisions are logged to an immutable JSONL audit trail.
+
+### Thermal-Aware Background Maintenance (GentleWorker)
+
+A background worker that prunes stale knowledge graph triples and optimizes databases — but only when the host machine is plugged in and CPU usage is below 20%. Designed for consumer hardware where every watt matters.
+
 ---
 
 ## 🎯 Engineering Competencies Demonstrated
@@ -288,7 +309,7 @@ Sensitive conversations route to a local Ollama instance on a dedicated compute 
 | Languages          | Python 3.11, JavaScript (Node.js), Bash                                                                              |
 | Frameworks         | FastAPI, Uvicorn, OpenAI SDK                                                                                         |
 | Databases          | SQLite (WAL Mode),`sqlite-vec`, Qdrant (Active)                                                                    |
-| AI/ML              | Ollama, Google Gemini, Anthropic Claude, OpenRouter, Toxic-BERT, FlashRank, sentence-transformers, Whisper           |
+| AI/ML              | Ollama, Google Gemini, Anthropic Claude, OpenRouter, Groq (Whisper), Crawl4AI, Toxic-BERT, FlashRank, sentence-transformers |
 | Infrastructure     | macOS `launchd`, OrbStack/Docker, distributed compute (remote GPU node)                                            |
 | Practices          | Async programming, queue-based architectures, model-agnostic routing, automated testing, auto-commit version control |
 
@@ -330,7 +351,13 @@ workspace/
 │       ├── processing/            #     Realtime + batch analysis
 │       ├── injection/             #     Profile → system prompt
 │       ├── profile/               #     Behavioral profile store
+│       ├── feedback/              #     Implicit feedback detection
 │       └── sentinel/              #     File governance guardrails
+├── db/                           # Database tools & ingestion
+│   ├── tools.py                  #   Crawl4AI browser automation
+│   ├── model_orchestrator.py     #   3-tier local model routing
+│   ├── audio_processor.py        #   Groq Whisper transcription
+│   └── ingest.py                 #   Bulk file ingestion pipeline
 ├── scripts/                       # Maintenance & utilities
 │   ├── revive_jarvis.sh           #   Full system resurrection
 │   ├── ram_watchdog.py            #   Memory pressure monitor
@@ -378,7 +405,7 @@ workspace/
 
 **Upayan Ghosh** — Fresher software engineer building AI systems on evenings and weekends.
 
-This project was built using AI coding tools (Claude, ChatGPT,Gemini etc)
+This project was built using AI coding tools (Claude, ChatGPT, Gemini, etc.)
 for implementation, with architecture design, system integration,
 and debugging done by hand. I believe in using every tool available
 to build things that work.

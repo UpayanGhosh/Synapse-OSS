@@ -1,7 +1,8 @@
 #!/bin/bash
 set -e
-cd /path/to/openclaw/workspace
-source /path/to/openclaw/.venv/bin/activate
+OPENCLAW_HOME="${OPENCLAW_HOME:-$HOME/.openclaw}"
+cd "$OPENCLAW_HOME/workspace"
+source "$OPENCLAW_HOME/.venv/bin/activate"
 mkdir -p ~/.openclaw/logs
 
 echo "╔══════════════════════════════════════╗"

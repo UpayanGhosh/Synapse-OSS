@@ -10,24 +10,96 @@ MAX_DB_SIZE_MB = 100
 
 class DatabaseManager:
     """
-    The Single Source of Truth for Database Integriy.
+    The Single Source of Truth for Database Integrity.
     Handles connection lifecycle, extension loading, and invariant checking.
+    Auto-creates the database and schema on first boot.
     """
+
+    _initialized = False
+
+    @staticmethod
+    def _ensure_db():
+        """Create the database directory and schema if they don't exist."""
+        if DatabaseManager._initialized:
+            return
+
+        os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+
+        if not os.path.exists(DB_PATH):
+            print(f"📦 First boot: Creating memory database at {DB_PATH}")
+            conn = sqlite3.connect(DB_PATH)
+            conn.execute("PRAGMA journal_mode=WAL;")
+            conn.execute("PRAGMA synchronous=NORMAL;")
+            conn.execute("PRAGMA foreign_keys=ON;")
+
+            # Load sqlite-vec extension for virtual table creation
+            conn.enable_load_extension(True)
+            try:
+                sqlite_vec.load(conn)
+            except Exception:
+                try:
+                    conn.load_extension("vec0")
+                except Exception as e2:
+                    print(f"⚠️ sqlite-vec not available during DB init: {e2}")
+                    print("   Vector search will not work until sqlite-vec is installed.")
+            conn.enable_load_extension(False)
+
+            conn.executescript("""
+                CREATE TABLE IF NOT EXISTS documents (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    filename TEXT,
+                    content TEXT NOT NULL,
+                    hemisphere_tag TEXT DEFAULT 'safe',
+                    content_hash TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_documents_hemisphere
+                    ON documents(hemisphere_tag);
+            """)
+
+            # Create vector virtual table (requires sqlite-vec extension)
+            try:
+                conn.execute("""
+                    CREATE VIRTUAL TABLE IF NOT EXISTS vec_items USING vec0(
+                        document_id INTEGER,
+                        embedding float[768]
+                    );
+                """)
+            except Exception as e:
+                print(f"⚠️ Could not create vec_items table: {e}")
+                print("   Vector search disabled. Install sqlite-vec to enable.")
+
+            # Create FTS5 virtual table for full-text search
+            try:
+                conn.execute("""
+                    CREATE VIRTUAL TABLE IF NOT EXISTS documents_fts
+                        USING fts5(content, content=documents, content_rowid=id);
+                """)
+            except Exception as e:
+                print(f"⚠️ Could not create FTS5 table: {e}")
+
+            conn.commit()
+            conn.close()
+            print("✅ Memory database initialized successfully.")
+
+        DatabaseManager._initialized = True
 
     @staticmethod
     def get_connection(journal_mode: str = "WAL") -> sqlite3.Connection:
         """
         Get a configured SQLite connection with extensions loaded.
+        Auto-creates the database on first call if it doesn't exist.
         """
-        if not os.path.exists(DB_PATH):
-            raise FileNotFoundError(f"CRITICAL: memory.db not found at {DB_PATH}")
+        DatabaseManager._ensure_db()
 
         # Check invariant on every connect (lightweight stat)
-        size_mb = os.path.getsize(DB_PATH) / (1024 * 1024)
-        if size_mb > MAX_DB_SIZE_MB:
-            print(
-                f"⚠️ WARNING: Database size ({size_mb:.1f}MB) exceeds target ({MAX_DB_SIZE_MB}MB). Running VACUUM recommended."
-            )
+        if os.path.exists(DB_PATH):
+            size_mb = os.path.getsize(DB_PATH) / (1024 * 1024)
+            if size_mb > MAX_DB_SIZE_MB:
+                print(
+                    f"⚠️ WARNING: Database size ({size_mb:.1f}MB) exceeds target ({MAX_DB_SIZE_MB}MB). Running VACUUM recommended."
+                )
 
         conn = sqlite3.connect(DB_PATH)
 
