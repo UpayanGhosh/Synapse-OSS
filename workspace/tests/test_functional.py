@@ -178,7 +178,7 @@ class TestPersonaFunctionality:
         """Persona profile should have expected structure."""
         # Mock persona profile
         profile = {
-            "name": "Jarvis",
+            "name": "Synapse",
             "personality_traits": ["helpful", "witty"],
             "communication_style": "casual",
             "language_preferences": {"primary": "en", "use_emoji": True},

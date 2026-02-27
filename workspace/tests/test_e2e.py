@@ -48,7 +48,7 @@ class TestWhatsAppMessageFlow:
             "message_id": "wa_test_001",
             "from": "+1234567890",
             "chat_id": "chat_001",
-            "body": "Hello Jarvis",
+            "body": "Hello Synapse",
         }
 
         # Step 1: Check for duplicates
@@ -136,7 +136,7 @@ class TestMemoryRetrievalFlow:
         db_path = os.path.join(temp_dir, "memory.db")
         graph = SQLiteGraph(db_path=db_path)
 
-        # User tells Jarvis something important
+        # User tells Synapse something important
         user_message = "Remember that I have a meeting with John tomorrow at 3pm"
 
         # Extract and store (simulated)

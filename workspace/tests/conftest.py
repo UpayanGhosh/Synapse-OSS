@@ -50,7 +50,7 @@ def sample_message():
         "message_id": "wa_test_001",
         "from": "+1234567890",
         "chat_id": "chat_001",
-        "body": "Hello Jarvis",
+        "body": "Hello Synapse",
         "timestamp": 1234567890,
     }
 

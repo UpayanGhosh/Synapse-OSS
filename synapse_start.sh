@@ -28,13 +28,13 @@ fi
 
 echo "[3/4] Starting API Gateway..."
 if ! pgrep -f "uvicorn.*api_gateway" > /dev/null; then
-    cd "$project_root/workspace"
     source "$project_root/.venv/bin/activate" 2>/dev/null || true
-    nohup python -m uvicorn sci_fi_dashboard.api_gateway:app \
+    export PYTHONUTF8=1
+    nohup python -X utf8 -m uvicorn --app-dir "$project_root/workspace" \
+        sci_fi_dashboard.api_gateway:app \
         --host 0.0.0.0 --port 8000 \
         --workers 1 \
         > ~/.openclaw/logs/gateway.log 2>&1 &
-    cd "$project_root"
     echo "   ✓ Started"
 else
     echo "   ✓ Already running"
