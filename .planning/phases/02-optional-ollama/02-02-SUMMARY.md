@@ -67,7 +67,7 @@ Each task was committed atomically:
 1. **Task 1: Demote Ollama to optional in synapse_onboard.bat** - `7601750` (feat)
 2. **Task 2: Demote Ollama to optional in synapse_onboard.sh** - `3b26d73` (feat)
 
-**Plan metadata:** (docs commit below)
+**Plan metadata:** `543670e` (docs: complete plan)
 
 ## Files Created/Modified
 - `synapse_onboard.bat` - Ollama check block changed from hard-fail to optional warning; pull command gated on OLLAMA_FOUND
@@ -94,6 +94,15 @@ None - no external service configuration required.
 - Both onboarding scripts now pass `bash -n` syntax check
 - Users without Ollama can complete full onboarding -- they will see clear `[--]` warnings and Synapse will start using the sentence-transformer fallback for embeddings
 - Phase 3 (embedding fallback) is unblocked: the onboarding no longer requires Ollama to be present before the fallback logic is exercised
+
+## Self-Check: PASSED
+
+- FOUND: synapse_onboard.bat (modified)
+- FOUND: synapse_onboard.sh (modified)
+- FOUND: 02-02-SUMMARY.md (created)
+- FOUND: commit 7601750 (Task 1)
+- FOUND: commit 3b26d73 (Task 2)
+- FOUND: commit 543670e (metadata)
 
 ---
 *Phase: 02-optional-ollama*

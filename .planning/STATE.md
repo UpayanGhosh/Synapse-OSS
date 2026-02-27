@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: in_progress
-last_updated: "2026-02-27T17:01:00Z"
+last_updated: "2026-02-27T17:38:30Z"
 progress:
   total_phases: 4
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 5
-  completed_plans: 3
+  completed_plans: 4
 ---
 
 # Project State
@@ -18,23 +18,23 @@ progress:
 See: .planning/PROJECT.md (updated 2026-02-27)
 
 **Core value:** Anyone can install and run Synapse-OSS on their machine without hitting cryptic errors, regardless of OS or which optional services they have installed.
-**Current focus:** Phase 2 — Optional Ollama (plan 02 complete)
+**Current focus:** Phase 3 — Platform-Aware Browser Backend (plan 01 complete)
 
 ## Current Position
 
-Phase: 2 of 4 (Optional Ollama)
-Plan: 2 of 2 in current phase
-Status: Phase 2 complete
-Last activity: 2026-02-27 — Plan 02-02 executed: Ollama demoted to optional in both onboarding scripts
+Phase: 3 of 4 (Platform-Aware Browser Backend)
+Plan: 1 of 2 in current phase
+Status: Phase 3 plan 1 complete
+Last activity: 2026-02-27 — Plan 03-01 executed: PEP 508 platform markers in requirements.txt, playwright Chromium install in synapse_onboard.bat
 
-Progress: [####------] 50% (Phase 1 + Phase 2 complete)
+Progress: [######----] 62% (Phase 1 + Phase 2 + Phase 3 Plan 1 complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 3
-- Average duration: ~13min
-- Total execution time: ~0.6 hours
+- Total plans completed: 4
+- Average duration: ~11min
+- Total execution time: ~0.7 hours
 
 **By Phase:**
 
@@ -42,15 +42,18 @@ Progress: [####------] 50% (Phase 1 + Phase 2 complete)
 |-------|-------|-------|----------|
 | 01-unicode-source-fix | 1 | 35min | 35min |
 | 02-optional-ollama | 2 | ~5min | ~3min |
+| 03-platform-aware-browser-backend | 2 | ~6min | ~3min |
 
 **Recent Trend:**
-- Last 5 plans: 35min, ~3min, 2min
-- Trend: Shorter plans as fixes become more targeted
+- Last 5 plans: 35min, ~3min, 2min, 4min
+- Trend: Fast targeted fixes
 
 *Updated after each plan completion*
 | Phase 01-unicode-source-fix P01 | 35min | 2 tasks | 57 files |
 | Phase 02-optional-ollama P01 | ~3min | 1 task | 1 file |
 | Phase 02-optional-ollama P02 | 2min | 2 tasks | 2 files |
+| Phase 03-platform-aware-browser-backend P01 | 4min | 2 tasks | 2 files |
+| Phase 03-platform-aware-browser-backend P02 | 2min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -67,6 +70,16 @@ Recent decisions affecting current work:
 - [Phase 02-optional-ollama]: Ollama demoted to optional in both onboarding scripts -- prints [--] warning and continues, never blocks with MISSING=1 / all_good=false
 - [Phase 02-optional-ollama]: OLLAMA_FOUND flag pattern used for gating ollama pull/serve -- clean, idiomatic in both bat and sh
 - [Phase 02-optional-ollama]: [OK]/[--] ASCII markers used for Ollama lines in .sh (not emoji) -- consistent with bat style
+- [Phase 02-optional-ollama P01]: OLLAMA_AVAILABLE flag at module level in memory_engine.py guards all call sites; ollama=None when unavailable prevents NameError
+- [Phase 02-optional-ollama P01]: Warn-only on 768-vs-384-dim mismatch -- three startup [WARN] lines direct users to re-ingest; no hard-fail
+- [Phase 02-optional-ollama P01]: nightly_ingest.py uses sys.exit(1) with actionable error -- batch scripts require Ollama, graceful degradation would silently corrupt results
+- [Phase 02-optional-ollama P01]: ollama commented out (not removed) in requirements.txt -- one uncomment to enable
+- [Phase 03-platform-aware-browser-backend P01]: crawl4ai gated to sys_platform != 'win32' -- confirmed build failures on Windows; fix at pip layer
+- [Phase 03-platform-aware-browser-backend P01]: playwright added as Windows replacement with sys_platform == 'win32' -- same Chromium engine as crawl4ai
+- [Phase 03-platform-aware-browser-backend P01]: playwright binary install placed unconditionally after venv if/else block -- ensures re-runs and existing venv users both get Chromium
+- [Phase 03-platform-aware-browser-backend P01]: playwright install failure is warn-only ([--]) -- browse tool non-critical, consistent with Ollama optional pattern
+- [Phase 03-platform-aware-browser-backend]: Playwright on Windows, Crawl4AI on Mac/Linux via sys.platform dispatch with lazy imports in tools.py
+- [Phase 03-platform-aware-browser-backend]: scrape_threads.py uses early sys.exit(1) guard (not lazy import) -- appropriate pattern for scripts vs libraries
 
 ### Pending Todos
 
@@ -74,10 +87,10 @@ None yet.
 
 ### Blockers/Concerns
 
-- Phase 3: Embedding dimension mismatch behavior is an open decision — warn-only vs. hard-fail when nomic-embed-text (768-dim) stored vectors meet all-MiniLM-L6-v2 (384-dim) fallback. Research recommends warn-only. Confirm during Phase 3 planning.
+None.
 
 ## Session Continuity
 
 Last session: 2026-02-27
-Stopped at: Completed 02-02-PLAN.md (Phase 2 Plan 2 Optional Ollama) -- both onboarding scripts demoted Ollama to optional
+Stopped at: Completed 03-01-PLAN.md (Phase 3 Plan 1 Platform-Aware Browser Backend) -- PEP 508 platform markers in requirements.txt, playwright Chromium binary install in synapse_onboard.bat
 Resume file: None
