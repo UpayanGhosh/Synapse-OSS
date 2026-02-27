@@ -119,62 +119,60 @@ The system consists of 11 interconnected subsystems:
 
 ## 🚀 Quick Start
 
-```bash
-# 1. Clone
-git clone https://github.com/UpayanGhosh/Synapse-OSS.git
-cd Synapse-OSS
+> **Full setup guide** (API keys, Qdrant, Ollama, WhatsApp linking): [HOW_TO_RUN.md](HOW_TO_RUN.md)
 
-# 2. Environment
-# macOS/Linux:
-python3 -m venv .venv && source .venv/bin/activate
+**1. Install OpenClaw**
 
-# Windows:
-python -m venv .venv
-.venv\Scripts\activate.bat
+Download and install from the [OpenClaw GitHub releases page](https://github.com/openclaw/openclaw/releases).
 
-pip install -r requirements.txt
-
-# macOS/Linux only — downloads browser for web browsing feature:
-crawl4ai-setup
-# Windows: Playwright (the Windows browser backend) is installed automatically
-#          by synapse_onboard.bat — no manual step needed here.
-
-# 3. Configure
-# macOS/Linux:
-cp .env.example .env
-
-# Windows:
-copy .env.example .env
-
-# Edit .env — only GEMINI_API_KEY is required to start.
-# GROQ_API_KEY enables voice transcription (optional).
-
-# 4. Boot the Gateway
-# macOS/Linux:
-cd workspace
-uvicorn sci_fi_dashboard.api_gateway:app --host 0.0.0.0 --port 8000
-
-# Windows:
-cd workspace
-python -m uvicorn sci_fi_dashboard.api_gateway:app --host 0.0.0.0 --port 8000
-
-# Gateway starts on http://localhost:8000
-
-# 5. Verify
-curl http://localhost:8000/health
-# Windows: curl.exe http://localhost:8000/health
-```
-
-### Docker Quick Start
+**2. Download Synapse-OSS**
 
 ```bash
 git clone https://github.com/UpayanGhosh/Synapse-OSS.git
-cd Synapse-OSS
-cp .env.example .env    # Edit .env with your API keys (Windows: copy .env.example .env)
-
-docker compose up --build
-# Gateway: http://localhost:8000  |  Qdrant: http://localhost:6333
 ```
+
+**3. Run OpenClaw onboard**
+
+```bash
+openclaw onboard
+```
+
+This creates the `~/.openclaw/` directory and completes OpenClaw's initial setup (WhatsApp linking, workspace config).
+
+**4. Copy Synapse-OSS files into `.openclaw`**
+
+Copy the entire contents of the cloned `Synapse-OSS/` folder into your `.openclaw` directory:
+
+```bash
+# Windows
+xcopy /E /H /Y "C:\path\to\Synapse-OSS\*" "%USERPROFILE%\.openclaw\"
+
+# macOS/Linux
+cp -r Synapse-OSS/. ~/.openclaw/
+```
+
+Then set up your API keys:
+
+```bash
+# Windows
+copy %USERPROFILE%\.openclaw\.env.example %USERPROFILE%\.openclaw\.env
+# Open .env and add your GEMINI_API_KEY (only key required to start)
+
+# macOS/Linux
+cp ~/.openclaw/.env.example ~/.openclaw/.env
+```
+
+**5. Run `synapse_start.bat` — you're live**
+
+```bash
+# Windows — double-click or run:
+%USERPROFILE%\.openclaw\synapse_start.bat
+
+# macOS/Linux
+~/.openclaw/synapse_start.sh
+```
+
+Open WhatsApp → **Message Yourself** → say hello to Synapse.
 
 ---
 
