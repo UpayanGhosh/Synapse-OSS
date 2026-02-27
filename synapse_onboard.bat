@@ -128,9 +128,35 @@ if %ERRORLEVEL% NEQ 0 (
     echo [OK] Started Qdrant container.
 )
 
-REM Step 4: Link WhatsApp
+REM Step 4: Get phone number BEFORE WhatsApp scan
+REM (must happen before openclaw runs — openclaw can close stdin on Windows)
 echo.
-echo Step 4: Linking WhatsApp...
+echo Step 4: Your phone number...
+echo.
+echo This lets Synapse know it is YOU messaging it.
+echo Enter your number with country code (e.g., +15551234567)
+echo.
+
+:phone_input
+set /p PHONE_NUMBER="Your phone number: "
+
+REM Validate phone number format
+echo %PHONE_NUMBER% | findstr /R "^+[0-9][0-9]*$" >nul
+if %ERRORLEVEL% NEQ 0 (
+    echo.
+    echo ERROR: Invalid format. Use E.164 format, e.g. +15551234567
+    echo   - Start with +
+    echo   - Include country code
+    echo   - Digits only after the +
+    echo.
+    goto phone_input
+)
+
+echo [OK] Got it: %PHONE_NUMBER%
+
+REM Step 5: Link WhatsApp
+echo.
+echo Step 5: Linking WhatsApp...
 echo.
 echo    1. Open WhatsApp on your phone
 echo    2. Go to Settings - Linked Devices
@@ -154,37 +180,16 @@ echo.
 echo [OK] WhatsApp linked!
 echo.
 
-REM Step 5: Get phone number
+REM Step 6: Save phone number and configure workspace
 echo.
-echo Step 5: Enter your phone number...
-echo.
-
-echo This lets Synapse know it is YOU messaging it.
-echo Enter your number with country code (e.g., +15551234567)
+echo Step 6: Saving config...
 echo.
 
-set /p PHONE_NUMBER="Your phone number: "
-
-REM Validate phone number format
-echo %PHONE_NUMBER% | findstr /R "^+[0-9][0-9]*$" >nul
-if %ERRORLEVEL% NEQ 0 (
-    echo ERROR: Invalid format! Use E.164 format like: +15551234567
-    pause
-    exit /b 1
-)
-
-echo.
-echo Saving phone number to OpenClaw config...
 openclaw config set channels.whatsapp.allowFrom "[\"%PHONE_NUMBER%\"]" --json >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
     openclaw config set channels.whatsapp.allowFrom "[\"%PHONE_NUMBER%\"]" >nul 2>&1
 )
 echo [OK] Phone number saved: %PHONE_NUMBER%
-
-REM Step 6: Configure OpenClaw to use Synapse workspace
-echo.
-echo Step 6: Configuring OpenClaw workspace...
-echo.
 
 set "PROJECT_ROOT=%~dp0"
 set "PROJECT_ROOT=%PROJECT_ROOT:~0,-1%"
