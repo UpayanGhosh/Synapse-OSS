@@ -7,8 +7,8 @@ OPENCLAW_HOME="${OPENCLAW_HOME:-$HOME/.openclaw}"
 VENV_PYTHON="$OPENCLAW_HOME/.venv/bin/python"
 WORKSPACE="$OPENCLAW_HOME/workspace"
 CLI=$(command -v openclaw 2>/dev/null || echo "openclaw")
-USER1="+1234567890"
-USER2="+1987654321"
+USER1="${ADMIN_PHONE}"
+USER2="${VIP_PHONE}"
 
 notify() {
     $CLI message send --target "$USER1" --message "$1"

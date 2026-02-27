@@ -97,7 +97,7 @@ This repository uses a custom workspace folder located at `workspace/` in the re
 
 ```bash
 # Windows
-openclaw config set agents.defaults.workspace "D:\Shreya\Synapse-OSS\workspace"
+openclaw config set agents.defaults.workspace "C:\Users\YourName\Synapse-OSS\workspace"
 
 # Mac/Linux (use absolute path)
 openclaw config set agents.defaults.workspace "/absolute/path/to/Synapse-OSS/workspace"
@@ -127,7 +127,7 @@ The `synapse_onboard.bat` script automatically:
 2. Sets `SYNAPSE_WORKSPACE=%PROJECT_ROOT%\workspace`
 3. Runs: `openclaw config set agents.defaults.workspace "%SYNAPSE_WORKSPACE%"`
 
-This points OpenClaw to use `D:\Shreya\Synapse-OSS\workspace` instead of the default `~/.openclaw/workspace`.
+This points OpenClaw to use `C:\Users\YourName\Synapse-OSS\workspace` instead of the default `~/.openclaw/workspace`.
 
 ---
 
@@ -148,6 +148,8 @@ When you run it, the script will:
 9. Create required directories for databases and persona profiles
 
 > **Note:** Databases (`memory.db`, `knowledge_graph.db`) are automatically created on first boot — no manual setup required.
+
+> **Note:** The API Gateway (`api_gateway.py`) is automatically started by the onboarding and start scripts — you do NOT need to run it manually. Both `synapse_onboard.bat/.sh` and `synapse_start.bat/.sh` launch it as step 3 of 4.
 
 The script also pulls the required Ollama embedding model (`nomic-embed-text`) and creates the Qdrant Docker container automatically.
 
