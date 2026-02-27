@@ -2,6 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
+status: unknown
+last_updated: "2026-02-27T18:03:31.353Z"
+progress:
+  total_phases: 4
+  completed_phases: 4
+  total_plans: 6
+  completed_plans: 6
+---
+
+---
+gsd_state_version: 1.0
+milestone: v1.0
+milestone_name: milestone
 status: in_progress
 last_updated: "2026-02-27T17:38:30Z"
 progress:
@@ -18,23 +31,23 @@ progress:
 See: .planning/PROJECT.md (updated 2026-02-27)
 
 **Core value:** Anyone can install and run Synapse-OSS on their machine without hitting cryptic errors, regardless of OS or which optional services they have installed.
-**Current focus:** Phase 3 — Platform-Aware Browser Backend (plan 01 complete)
+**Current focus:** Phase 4 — Startup Validation (plan 01 complete)
 
 ## Current Position
 
-Phase: 3 of 4 (Platform-Aware Browser Backend)
-Plan: 1 of 2 in current phase
-Status: Phase 3 plan 1 complete
-Last activity: 2026-02-27 — Plan 03-01 executed: PEP 508 platform markers in requirements.txt, playwright Chromium install in synapse_onboard.bat
+Phase: 4 of 4 (Startup Validation)
+Plan: 1 of 1 in current phase
+Status: Phase 4 plan 1 complete
+Last activity: 2026-02-27 — Plan 04-01 executed: socket import, _port_open helper, validate_env() with sys.exit(1) on GEMINI_API_KEY and 5-row feature availability block
 
-Progress: [######----] 62% (Phase 1 + Phase 2 + Phase 3 Plan 1 complete)
+Progress: [##########] 100% (All 4 phases complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 4
-- Average duration: ~11min
-- Total execution time: ~0.7 hours
+- Total plans completed: 5
+- Average duration: ~10min
+- Total execution time: ~0.8 hours
 
 **By Phase:**
 
@@ -43,6 +56,7 @@ Progress: [######----] 62% (Phase 1 + Phase 2 + Phase 3 Plan 1 complete)
 | 01-unicode-source-fix | 1 | 35min | 35min |
 | 02-optional-ollama | 2 | ~5min | ~3min |
 | 03-platform-aware-browser-backend | 2 | ~6min | ~3min |
+| 04-startup-validation | 1 | 5min | 5min |
 
 **Recent Trend:**
 - Last 5 plans: 35min, ~3min, 2min, 4min
@@ -54,6 +68,7 @@ Progress: [######----] 62% (Phase 1 + Phase 2 + Phase 3 Plan 1 complete)
 | Phase 02-optional-ollama P02 | 2min | 2 tasks | 2 files |
 | Phase 03-platform-aware-browser-backend P01 | 4min | 2 tasks | 2 files |
 | Phase 03-platform-aware-browser-backend P02 | 2min | 2 tasks | 2 files |
+| Phase 04-startup-validation P01 | 5min | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -80,6 +95,9 @@ Recent decisions affecting current work:
 - [Phase 03-platform-aware-browser-backend P01]: playwright install failure is warn-only ([--]) -- browse tool non-critical, consistent with Ollama optional pattern
 - [Phase 03-platform-aware-browser-backend]: Playwright on Windows, Crawl4AI on Mac/Linux via sys.platform dispatch with lazy imports in tools.py
 - [Phase 03-platform-aware-browser-backend]: scrape_threads.py uses early sys.exit(1) guard (not lazy import) -- appropriate pattern for scripts vs libraries
+- [Phase 04-startup-validation]: Only GEMINI_API_KEY triggers sys.exit(1) -- all other keys are warn-only optional
+- [Phase 04-startup-validation]: _port_open uses timeout=0.5s to avoid 75s OS TCP timeout for absent localhost services
+- [Phase 04-startup-validation]: validate_env() placed after load_env_file() call -- .env values must be present before any key check
 
 ### Pending Todos
 
@@ -92,5 +110,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-27
-Stopped at: Completed 03-01-PLAN.md (Phase 3 Plan 1 Platform-Aware Browser Backend) -- PEP 508 platform markers in requirements.txt, playwright Chromium binary install in synapse_onboard.bat
+Stopped at: Completed 04-01-PLAN.md (Phase 4 Plan 1 Startup Validation) -- socket import, _port_open helper, validate_env() with hard-fail on GEMINI_API_KEY and 5-row feature availability block (Ollama, Qdrant, Groq, OpenRouter, WhatsApp)
 Resume file: None

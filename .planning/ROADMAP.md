@@ -15,7 +15,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: Unicode Source Fix** - Replace all emoji in workspace Python files with ASCII tags so the app imports without crashing on Windows cp1252 (completed 2026-02-27)
 - [x] **Phase 2: Optional Ollama** - Guard the Ollama import at module level and activate the sentence-transformers fallback so the app starts cleanly without Ollama installed (completed 2026-02-27)
 - [ ] **Phase 3: Platform-Aware Browser Backend** - Add PEP 508 platform markers and a Playwright adapter so pip install and the browser tool both work on Windows (1/2 plans complete)
-- [ ] **Phase 4: Startup Validation** - Add .env key validation and a feature availability summary at startup so users know exactly what is working and what is not
+- [x] **Phase 4: Startup Validation** - Add .env key validation and a feature availability summary at startup so users know exactly what is working and what is not (completed 2026-02-27)
 
 ## Phase Details
 
@@ -70,7 +70,10 @@ Plans:
   1. Starting the app without GEMINI_API_KEY causes a hard exit with a message that names the missing key and explains it is required
   2. Starting the app without optional keys (GROQ_API_KEY, OPENROUTER_API_KEY, etc.) prints a per-key warning naming the affected feature but does not prevent startup
   3. The startup output includes a feature availability block listing each service (Ollama, Qdrant, Groq, OpenRouter, WhatsApp bridge) as ON or OFF
-**Plans**: TBD
+**Plans**: 1 plan
+
+Plans:
+- [ ] 04-01-PLAN.md -- Add _port_open() helper + validate_env() function + call site in api_gateway.py (ENV-01, ENV-02, ENV-03)
 
 ## Progress
 
@@ -82,4 +85,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4
 | 1. Unicode Source Fix | 1/1 | Complete    | 2026-02-27 |
 | 2. Optional Ollama | 2/2 | Complete   | 2026-02-27 |
 | 3. Platform-Aware Browser Backend | 1/2 | In progress | - |
-| 4. Startup Validation | 0/TBD | Not started | - |
+| 4. Startup Validation | 1/1 | Complete   | 2026-02-27 |

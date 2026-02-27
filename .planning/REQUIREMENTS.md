@@ -28,9 +28,9 @@ Requirements for this milestone. Each maps to a roadmap phase.
 
 ### Startup Validation
 
-- [ ] **ENV-01**: Startup validates all env keys — hard-fails only on GEMINI_API_KEY, warns-only on optional keys
-- [ ] **ENV-02**: Each warning names the affected feature (e.g. "GROQ_API_KEY not set — voice transcription disabled")
-- [ ] **ENV-03**: Startup prints a feature availability summary showing which services are ON vs OFF (Ollama, Qdrant, Groq, OpenRouter, WhatsApp bridge)
+- [x] **ENV-01**: Startup validates all env keys — hard-fails only on GEMINI_API_KEY, warns-only on optional keys
+- [x] **ENV-02**: Each warning names the affected feature (e.g. "GROQ_API_KEY not set — voice transcription disabled")
+- [x] **ENV-03**: Startup prints a feature availability summary showing which services are ON vs OFF (Ollama, Qdrant, Groq, OpenRouter, WhatsApp bridge)
 
 ## v2 Requirements
 
@@ -73,9 +73,9 @@ Which phases cover which requirements. Confirmed during roadmap creation.
 | BRW-02 | Phase 3 | Pending |
 | BRW-03 | Phase 3 | Pending |
 | BRW-04 | Phase 3 | Complete |
-| ENV-01 | Phase 4 | Pending |
-| ENV-02 | Phase 4 | Pending |
-| ENV-03 | Phase 4 | Pending |
+| ENV-01 | Phase 4 | Complete |
+| ENV-02 | Phase 4 | Complete |
+| ENV-03 | Phase 4 | Complete |
 
 **Coverage:**
 - v1 requirements: 13 total
