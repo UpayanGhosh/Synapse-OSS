@@ -56,13 +56,14 @@ if %ERRORLEVEL% NEQ 0 (
     echo    [OK] docker is installed
 )
 
-REM Check Ollama
+REM Check Ollama (OPTIONAL -- needed for local embedding and The Vault)
 where ollama >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
-    echo    [X] ollama is NOT installed
-    set "MISSING=1"
+    echo    [--] ollama is NOT installed -- local embedding and The Vault will be disabled
+    echo         Install from: https://ollama.com (optional, app will run without it)
 ) else (
     echo    [OK] ollama is installed
+    set "OLLAMA_FOUND=1"
 )
 
 REM Check OpenClaw
@@ -228,11 +229,13 @@ echo.
 
 call "%PROJECT_ROOT%\synapse_start.bat"
 
-REM Pull required Ollama embedding model in background (first-time setup)
-echo.
-echo Pulling Ollama embedding model ^(nomic-embed-text^) in background...
-start /B ollama pull nomic-embed-text >nul 2>&1
-echo [OK] Pull started. ^(First run may take a few minutes in the background.^)
+REM Pull Ollama embedding model only if Ollama is installed
+if defined OLLAMA_FOUND (
+    echo.
+    echo Pulling Ollama embedding model ^(nomic-embed-text^) in background...
+    start /B ollama pull nomic-embed-text >nul 2>&1
+    echo [OK] Pull started. ^(First run may take a few minutes in the background.^)
+)
 
 echo.
 echo ========================================
