@@ -21,10 +21,10 @@ def ensure_schema_migration():
         columns = [row[1] for row in cursor.fetchall()]
 
         if "content_hash" not in columns:
-            print("📦 Migrating Schema: Adding 'content_hash' column...")
+            print("[PKG] Migrating Schema: Adding 'content_hash' column...")
             conn.execute("ALTER TABLE documents ADD COLUMN content_hash TEXT")
 
-            print("🔄 Backfilling content hashes (this may take a moment)...")
+            print("[REFRESH] Backfilling content hashes (this may take a moment)...")
             cursor = conn.execute("SELECT id, content FROM documents WHERE content_hash IS NULL")
             updates = []
             for row in cursor:
@@ -63,7 +63,7 @@ def ingest_atomic():
 
     try:
         # 1. Setup Shadow Table
-        print("🌑 Creating Shadow Table...")
+        print("[MOON] Creating Shadow Table...")
         conn.execute("DROP TABLE IF EXISTS documents_shadow")
         conn.execute("CREATE TABLE documents_shadow AS SELECT * FROM documents WHERE 1=1")
         # Ensure indices on shadow for performance
@@ -95,7 +95,7 @@ def ingest_atomic():
                                 new_items.append((file, chunk, chash))
                                 existing_hashes.add(chash)  # Avoid dupes in same batch
 
-        print(f"🧩 New Memories Found: {len(new_items)}")
+        print(f"[PUZZLE] New Memories Found: {len(new_items)}")
 
         # 3. Embed & Insert New Items
         if new_items:

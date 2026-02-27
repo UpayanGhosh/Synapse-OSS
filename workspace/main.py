@@ -21,14 +21,14 @@ def verify_system():
     try:
         # 1. Page Health
         freelist = conn.execute("PRAGMA freelist_count").fetchone()[0]
-        print(f"1️⃣  Page Health: Freelist={freelist} {'[OK]' if freelist == 0 else '[WARN]'}")
+        print(f"1[KEYCAP]  Page Health: Freelist={freelist} {'[OK]' if freelist == 0 else '[WARN]'}")
         
         # 2. Air-Gap Integrity (Tag Counts)
         cursor = conn.execute("SELECT hemisphere_tag, count(*) FROM documents GROUP BY hemisphere_tag")
         counts = {row[0]: row[1] for row in cursor.fetchall()}
         safe = counts.get('safe', 0)
         spicy = counts.get('spicy', 0)
-        print(f"2️⃣  Tag Integrity: Safe={safe} | Spicy={spicy} {'[OK]' if safe > 0 and spicy > 0 else '[ERROR]'}")
+        print(f"2[KEYCAP]  Tag Integrity: Safe={safe} | Spicy={spicy} {'[OK]' if safe > 0 and spicy > 0 else '[ERROR]'}")
         
         # 2b. Breach Test (Can 'safe' session see 'spicy'?)
         # We manually simulate a 'safe' query to ensure SQL enforcement works
@@ -48,7 +48,7 @@ def verify_system():
             AND d.id IN (SELECT document_id FROM vec_items LIMIT 10)
         """).fetchall()
         duration = (time.perf_counter() - start) * 1000
-        print(f"3️⃣  Filter Latency: {duration:.2f}ms {'[OK]' if duration < 5 else '[WARN]'}")
+        print(f"3[KEYCAP]  Filter Latency: {duration:.2f}ms {'[OK]' if duration < 5 else '[WARN]'}")
 
     finally:
         conn.close()

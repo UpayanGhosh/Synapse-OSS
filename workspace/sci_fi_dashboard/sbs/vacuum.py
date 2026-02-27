@@ -22,7 +22,7 @@ def vacuum_sbs(data_dir: str = "./data", retain_days: int = 30, keep_versions: i
         return
 
     # 1. Vacuum SQLite
-    print("📦 Rebuilding SQLite indices and reclaiming space...")
+    print("[PKG] Rebuilding SQLite indices and reclaiming space...")
     with sqlite3.connect(db_path) as conn:
         before_size = db_path.stat().st_size
         # SQLite VACUUM physically reconstructs the database file
@@ -40,7 +40,7 @@ def vacuum_sbs(data_dir: str = "./data", retain_days: int = 30, keep_versions: i
 
         if len(versions) > keep_versions:
             to_delete = versions[:-keep_versions]
-            print(f"🗑️ Pruning {len(to_delete)} old profile versions...")
+            print(f"[DEL] Pruning {len(to_delete)} old profile versions...")
 
             for v_dir in to_delete:
                 shutil.rmtree(v_dir)
@@ -48,7 +48,7 @@ def vacuum_sbs(data_dir: str = "./data", retain_days: int = 30, keep_versions: i
         else:
             print(f"[OK] Profile archive healthy ({len(versions)} versions).")
 
-    print("✨ Vacuum complete.")
+    print("[SPARK] Vacuum complete.")
 
 
 if __name__ == "__main__":

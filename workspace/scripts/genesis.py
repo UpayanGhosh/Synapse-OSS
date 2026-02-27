@@ -9,7 +9,7 @@ import json
 def check_environment():
     print("[WEB] Detecting Host Environment...")
     system = platform.system()
-    print(f"🖥️  OS: {system}")
+    print(f"[PC]  OS: {system}")
 
     # Check for core dependencies
     deps = ["python3", "docker", "ollama"]
@@ -22,7 +22,7 @@ def check_environment():
 
 
 def run_onboarding():
-    print("\n🐣 INITIALIZING NEURAL PATHWAYS...")
+    print("\n[CHICK] INITIALIZING NEURAL PATHWAYS...")
     print("Welcome to Project Synapse. Let's define my DNA.\n")
 
     config = {}
@@ -49,7 +49,7 @@ def run_onboarding():
 
 
 def main():
-    print("✨ PROJECT SYNAPSE // GENESIS PROTOCOL")
+    print("[SPARK] PROJECT SYNAPSE // GENESIS PROTOCOL")
     check_environment()
     run_onboarding()
     print("\n[INFO] Synapse is now ready to breathe. Use 'openclaw start' to wake me.")

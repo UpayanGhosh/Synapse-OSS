@@ -74,7 +74,7 @@ class ConflictManager:
         self.pending_conflicts.append(conflict_entry)
         self.prune_conflicts()
         self.save_conflicts()
-        # print(f"🚩 Conflict Registered: {subject} -> '{new_fact}' vs '{existing_fact}'")
+        # print(f"[FLAG] Conflict Registered: {subject} -> '{new_fact}' vs '{existing_fact}'")
 
     def prune_conflicts(self, max_conflicts=20):
         """Auto-discards old conflicts if queue gets too large."""
@@ -89,7 +89,7 @@ class ConflictManager:
             # Rebuild list: kept pending + already resolved
             resolved = [c for c in self.pending_conflicts if c["status"] != "pending"]
             self.pending_conflicts = kept + resolved
-            print(f"✂️ Pruned {discarded_count} old conflicts to prevent overflow.")
+            print(f"[CUT] Pruned {discarded_count} old conflicts to prevent overflow.")
 
     def get_morning_briefing_questions(self):
         questions = []

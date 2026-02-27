@@ -36,9 +36,9 @@ def resolve_env_path(anchor: Path | None = None) -> str:
     # Heuristic: project root is the first ancestor that is NOT
     # "workspace" or a sub-package inside workspace.
     # Concrete layout:
-    #   OpenClaw-OSS/               ← project root
-    #   OpenClaw-OSS/workspace/     ← workspace root
-    #   OpenClaw-OSS/workspace/sci_fi_dashboard/  ← sub-package
+    #   OpenClaw-OSS/               <- project root
+    #   OpenClaw-OSS/workspace/     <- workspace root
+    #   OpenClaw-OSS/workspace/sci_fi_dashboard/  <- sub-package
     #
     # We try project root first, then workspace root.
 

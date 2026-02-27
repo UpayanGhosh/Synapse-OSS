@@ -34,7 +34,7 @@ def free_memory():
     # Keeping it simple for now: just browsers.
 
 def main():
-    print(f"👀 RAM Watchdog Started. Threshold: {THRESHOLD}%")
+    print(f"[EYES] RAM Watchdog Started. Threshold: {THRESHOLD}%")
     while True:
         usage = get_ram_usage()
         if usage > THRESHOLD:

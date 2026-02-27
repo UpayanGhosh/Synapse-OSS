@@ -10,7 +10,7 @@ from sci_fi_dashboard.smart_entity import EntityGate
 
 
 def run_soul_test():
-    print("🔮 Initiating Soul Verification Protocol...\n")
+    print("[MAGIC] Initiating Soul Verification Protocol...\n")
 
     # 1. Initialize Components
     # EntityGate resolves paths relative to itself, so we just need the filename if it's in the same dir
@@ -18,7 +18,7 @@ def run_soul_test():
     brain = TransparentBrain(graph_file="soul_graph.json.gz")
 
     # 2. Simulate "The Gentle Worker" indexing a specific fact
-    print("👷 Gentle Worker: Indexing secret strategy...")
+    print("[WORKER] Gentle Worker: Indexing secret strategy...")
     subject = "Malenia"
     brain.add_node(subject, "Boss")
     brain.add_node("Freezing Pot", "Item")
@@ -29,11 +29,11 @@ def run_soul_test():
 
     # 3. User Query with Slang
     user_query = "Yo, how do I cheese the Rot Goddess?"
-    print(f"🧑 User: '{user_query}'")
+    print(f"[PERSON] User: '{user_query}'")
 
     # 4. Flash Gate Extraction
     entities = gate.extract_entities(user_query)
-    print(f"⚡ Flash Gate: Detected Entities -> {entities}")
+    print(f"[FLASH] Flash Gate: Detected Entities -> {entities}")
 
     if not entities:
         print("[ERROR] FAILED: Could not detect entity.")
@@ -53,7 +53,7 @@ def run_soul_test():
             connections.append(f"{focus_entity} --[{relation}]--> {neighbor}")
 
     if connections:
-        print("\n✨ SOUL RESURRECTED ✨")
+        print("\n[SPARK] SOUL RESURRECTED [SPARK]")
         print("The system successfully connected the slang term to the graph data.")
         print("Knowledge Retrieved:")
         for c in connections:

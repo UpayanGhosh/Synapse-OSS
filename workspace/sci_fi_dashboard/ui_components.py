@@ -12,13 +12,13 @@ class UIComponents:
     def create_header(state: DashboardState) -> Panel:
         status_color = "green" if "OPERATIONAL" in state.status else "red"
         title = Text.assemble(
-            (" ⚡ ", "yellow"),
+            (" [FLASH] ", "yellow"),
             (state.system_name, "cyan bold"),
-            ("  │  ", "white"),
+            ("  |  ", "white"),
             ("STATUS: ", "white"),
             (state.status, status_color + " bold"),
-            ("  │  ", "white"),
-            (f"⟨ {state.get_uptime_str()} ⟩", "magenta"),
+            ("  |  ", "white"),
+            (f"< {state.get_uptime_str()} >", "magenta"),
         )
 
         # Determine battery/health color
@@ -30,14 +30,14 @@ class UIComponents:
 
         subtitle = Text.assemble(
             (f"Tasks: {state.active_tasks_count}", "blue"),
-            ("  │  ", "white"),
+            ("  |  ", "white"),
             (f"CPU: {state.cpu_load}%", "cyan"),
-            ("  │  ", "white"),
+            ("  |  ", "white"),
             (f"MEM: {state.memory_usage}", "cyan"),
-            ("  │  ", "white"),
+            ("  |  ", "white"),
             ("Network: ", "white"),
-            ("█" * (state.network_health // 10), health_color),
-            ("░" * (10 - state.network_health // 10), "bright_black"),
+            ("#" * (state.network_health // 10), health_color),
+            ("." * (10 - state.network_health // 10), "bright_black"),
             (f" {state.network_health}%", health_color),
         )
 
@@ -53,11 +53,11 @@ class UIComponents:
 
         for activity in state.activities:
             table.add_row(
-                Text(f"⟨{activity.time_str}⟩", style="bright_black"),
+                Text(f"<{activity.time_str}>", style="bright_black"),
                 Text(activity.narrative, style="cyan"),
             )
             if activity.sub_text:
-                table.add_row("", Text(f"└- {activity.sub_text}", style="bright_black italic"))
+                table.add_row("", Text(f"+- {activity.sub_text}", style="bright_black italic"))
             table.add_row("", "")  # Spacer
 
         return Panel(
@@ -72,7 +72,7 @@ class UIComponents:
         content = []
 
         # Quota Watchdog
-        content.append(Text("┌- QUOTA WATCHDOG ------┐", style="bright_red"))
+        content.append(Text("+- QUOTA WATCHDOG ------+", style="bright_red"))
 
         # Token usage calculation
         total_tokens = state.total_tokens_in + state.total_tokens_out
@@ -91,16 +91,16 @@ class UIComponents:
 
         # Mini progress bar for quota
         done = int(min(10, usage_pct / 10))
-        bar = "█" * done + "░" * (10 - done)
+        bar = "#" * done + "." * (10 - done)
         content.append(Text(f"  [{bar}] {usage_pct:.1f}%", style=usage_color))
 
         content.append(
             Text.assemble(("  Sessions: ", "white"), (f"{state.active_sessions}", "cyan"))
         )
-        content.append(Text("└-----------------------┘", style="bright_red"))
+        content.append(Text("+-----------------------+", style="bright_red"))
         content.append(Text(""))
 
-        content.append(Text("┌- ACTIVE PROCESSES ----┐", style="bright_blue"))
+        content.append(Text("+- ACTIVE PROCESSES ----+", style="bright_blue"))
 
         for name, proc in state.processes.items():
             icon = "[RESUME]" if proc.status == "ACTIVE" else "[PAUSED]"
@@ -109,11 +109,11 @@ class UIComponents:
 
             # Progress bar
             done = int(proc.progress / 10)
-            bar = "█" * done + "░" * (10 - done)
+            bar = "#" * done + "." * (10 - done)
             content.append(Text(f"   {bar} {proc.progress:.0f}%", style=color))
             content.append(Text(""))
 
-        content.append(Text("└-----------------------┘", style="bright_blue"))
+        content.append(Text("+-----------------------+", style="bright_blue"))
         return Panel(
             Group(*content),
             title="[bold white]SYSTEM STATUS[/]",
@@ -125,7 +125,7 @@ class UIComponents:
     def create_system_log(state: DashboardState) -> Panel:
         log_text = Text()
         for log in state.logs:
-            level_icon = "🟢" if log.level == "INFO" else "🟡" if log.level == "WARNING" else "🔴"
+            level_icon = "[GREEN]" if log.level == "INFO" else "[YELLOW]" if log.level == "WARNING" else "[RED]"
 
             log_text.append(f"{level_icon} {log.timestamp}  ", style="bright_black")
             log_text.append(f"{log.message}\n", style="white")

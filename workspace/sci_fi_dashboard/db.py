@@ -26,7 +26,7 @@ class DatabaseManager:
         os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 
         if not os.path.exists(DB_PATH):
-            print(f"📦 First boot: Creating memory database at {DB_PATH}")
+            print(f"[PKG] First boot: Creating memory database at {DB_PATH}")
             conn = sqlite3.connect(DB_PATH)
             conn.execute("PRAGMA journal_mode=WAL;")
             conn.execute("PRAGMA synchronous=NORMAL;")
@@ -155,7 +155,7 @@ def get_db_connection(journal_mode: str = "WAL") -> sqlite3.Connection:
 
 
 if __name__ == "__main__":
-    print("🔬 db.py Self-Test...")
+    print("[LAB] db.py Self-Test...")
     try:
         conn = get_db_connection()
         print("[OK] Connection Successful")
