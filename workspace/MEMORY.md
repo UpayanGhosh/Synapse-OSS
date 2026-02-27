@@ -1,7 +1,7 @@
 # MEMORY.md - Core Learnings & Preferences
 
 ## Communication & Language
-- **"Kal" (Tomorrow):** When the User says "Kal" late at night (e.g., 1 AM - 4 AM), he usually means "Later today / After I wake up", NOT the next calendar date. Always clarify or assume the current awakening cycle.
+- **"Kal" (Tomorrow):** When a user says "Kal" late at night (e.g., 1 AM - 4 AM), they usually mean "Later today / After I wake up", NOT the next calendar date. Always clarify or assume the current awakening cycle.
 - **Review Protocol (Verified Users):** **ENABLED.** The User has authorized direct messaging to verified contacts. No need to send drafts for review first unless specifically requested for a sensitive strategy. Maintain high EQ and personalized persona.
 
 ## System Maintenance

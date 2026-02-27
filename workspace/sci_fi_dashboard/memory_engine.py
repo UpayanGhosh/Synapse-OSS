@@ -149,27 +149,31 @@ class MemoryEngine:
                         neighborhoods.append(f"Context for {ent}:\n{ctx}")
                 graph_context = "\n\n".join(neighborhoods)
 
-            # Temporal routing
+            # Temporal routing label
             query_lower = text.lower()
             historical = ["was", "did", "history", "back then", "2024", "2025", "past"]
             current = ["current", "now", "latest", "status", "currently", "today"]
 
-            alpha = 0.7
             if any(k in query_lower for k in historical):
-                beta, routing = 0.0, "Historical"
+                routing = "Historical"
             elif any(k in query_lower for k in current):
-                beta, routing = 0.5, "Current State"
+                routing = "Current State"
             else:
-                beta, routing = 0.1, "Default (Hybrid)"
+                routing = "Default (Hybrid)"
 
             # Qdrant search
             query_vec = list(self.get_embedding(text))
             q_results = self.qdrant_store.search(query_vec, limit=limit * 3)
 
-            # Apply temporal scoring
+            # Apply 3-factor scoring: relevance + temporal + importance
             for r in q_results:
                 ts = r["metadata"].get("unix_timestamp")
-                r["combined_score"] = (r["score"] * alpha) + (self._temporal_score(ts) * beta)
+                importance = r["metadata"].get("importance", 5)
+                r["combined_score"] = (
+                    (r["score"] * 0.4)
+                    + (self._temporal_score(ts) * 0.3)
+                    + (importance / 10 * 0.3)
+                )
 
             q_results.sort(key=lambda x: x["combined_score"], reverse=True)
 
@@ -245,9 +249,11 @@ class MemoryEngine:
             # Store - Unified connection path
             conn = get_db_connection()
             cursor = conn.cursor()
+            importance = self._score_importance_heuristic(content)
             cursor.execute(
-                "INSERT INTO documents (filename, content, processed, unix_timestamp) VALUES (?, ?, 0, ?)",
-                (category, content, int(time.time())),
+                "INSERT INTO documents (filename, content, processed, unix_timestamp, importance)"
+                " VALUES (?, ?, 0, ?, ?)",
+                (category, content, int(time.time()), importance),
             )
             doc_id = cursor.lastrowid
             conn.commit()
@@ -255,6 +261,61 @@ class MemoryEngine:
             return {"status": "queued", "id": doc_id}
         except Exception as e:
             return {"error": str(e)}
+
+    def _score_importance_heuristic(self, content: str) -> int:
+        """Tier 1: Fast keyword-based importance scoring. Zero tokens."""
+        score = 3
+        content_lower = content.lower()
+
+        emotional_words = [
+            "love", "hate", "angry", "sad", "happy", "excited",
+            "scared", "proud", "ashamed", "miss", "breakup",
+            "fight", "sorry", "grateful", "cry", "depressed",
+        ]
+        score += sum(1 for w in emotional_words if w in content_lower) * 2
+
+        life_events = [
+            "interview", "job", "exam", "result", "hospital",
+            "birthday", "anniversary", "moving", "travel",
+            "married", "died", "born", "graduated", "fired", "hired",
+        ]
+        score += sum(1 for w in life_events if w in content_lower) * 2
+
+        if len(content.split()) < 5:
+            score -= 2
+
+        return max(1, min(10, score))
+
+    async def _score_importance_llm(self, content: str, llm_fn=None) -> int:
+        """Tier 2: LLM-rated importance for ambiguous memories. ~150 tokens."""
+        if not llm_fn:
+            return 5
+
+        prompt = (
+            "Rate the importance of this memory on a scale of 1 to 10.\n"
+            '1 = mundane (e.g., "ate lunch", "said hi")\n'
+            '5 = moderately notable (e.g., "started a new book")\n'
+            '10 = life-altering (e.g., "got into a fight", "received exam results")\n\n'
+            f'Memory: "{content}"\n\n'
+            "Return ONLY a single integer 1-10:"
+        )
+
+        try:
+            result = await llm_fn(
+                [{"role": "user", "content": prompt}],
+                temperature=0.0,
+                max_tokens=5,
+            )
+            return max(1, min(10, int(result.strip())))
+        except Exception:
+            return 5
+
+    async def score_importance(self, content: str, llm_fn=None) -> int:
+        """Hybrid: heuristic first, LLM only for grey zone (4-7)."""
+        heuristic = self._score_importance_heuristic(content)
+        if heuristic <= 3 or heuristic >= 8:
+            return heuristic
+        return await self._score_importance_llm(content, llm_fn)
 
     def think(self, prompt: str, system: str = "You are a helpful, concise assistant.") -> dict:
         """Local LLM call with zero persistence."""

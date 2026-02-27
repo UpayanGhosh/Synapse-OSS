@@ -146,6 +146,7 @@ async def continue_conversation(target: str, messages: list[dict], last_reply: s
 
 from sci_fi_dashboard.conflict_resolver import ConflictManager  # noqa: E402
 from sci_fi_dashboard.dual_cognition import DualCognitionEngine  # noqa: E402
+from sci_fi_dashboard.emotional_trajectory import EmotionalTrajectory  # noqa: E402
 from sci_fi_dashboard.memory_engine import MemoryEngine  # noqa: E402
 from sci_fi_dashboard.retriever import (  # noqa: E402
     get_db_stats,
@@ -161,9 +162,13 @@ brain = SQLiteGraph()
 gate = EntityGate(entities_file="entities.json")
 conflicts = ConflictManager(conflicts_file="conflicts.json")
 toxic_scorer = LazyToxicScorer(idle_timeout=30.0)
+emotional_trajectory = EmotionalTrajectory()
 memory_engine = MemoryEngine(graph_store=brain, keyword_processor=gate)
 dual_cognition = DualCognitionEngine(
-    memory_engine=memory_engine, graph=brain, toxic_scorer=toxic_scorer
+    memory_engine=memory_engine,
+    graph=brain,
+    toxic_scorer=toxic_scorer,
+    emotional_trajectory=emotional_trajectory,
 )
 
 # --- Async Gateway Components ---

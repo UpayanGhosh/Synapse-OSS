@@ -6,7 +6,7 @@
 ============================= test session starts ==============================
 platform darwin -- Python 3.14.2, pytest-9.0.2, pluggy-1.6.0
 cachedir: .pytest_cache
-rootdir: /Users/shorty/Desktop/OpenClaw-OSS/workspace/tests
+rootdir: <project_root>/workspace/tests
 configfile: pytest.ini
 plugins: timeout-2.4.0, asyncio-1.3.0, cov-7.0.0
 asyncio: mode=Mode.Auto, debug=False

@@ -51,6 +51,9 @@ class DatabaseManager:
                     content TEXT NOT NULL,
                     hemisphere_tag TEXT DEFAULT 'safe',
                     content_hash TEXT,
+                    processed INTEGER DEFAULT 0,
+                    unix_timestamp INTEGER,
+                    importance INTEGER DEFAULT 5,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
 

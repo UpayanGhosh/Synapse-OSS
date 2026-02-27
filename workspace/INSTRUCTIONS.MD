@@ -58,7 +58,7 @@ curl -s -X POST "http://127.0.0.1:8989/add" \
 
 - **Reasoning blocks** (`<think>`) are for internal processing ONLY. Strip them from final output.
 - **Always respond.** Silence is failure. If confused, ask.
-- **Interim updates:** For tasks >10s, send "Working on it, bhai..." every 30s.
+- **Interim updates:** For tasks >10s, send "Working on it, give me a moment..." every 30s.
 
 ### Tools Available
 
