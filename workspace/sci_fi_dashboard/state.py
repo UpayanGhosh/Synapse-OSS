@@ -102,9 +102,7 @@ class DashboardState:
             # Indexing based on memory folder size (simplified proxy)
             _workspace_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
             _memory_dir = os.path.join(_workspace_root, "memory")
-            mem_files = sum(
-                [len(files) for r, d, files in os.walk(_memory_dir)]
-            )
+            mem_files = sum([len(files) for r, d, files in os.walk(_memory_dir)])
             self.processes["Memory Indexing"].progress = min(100.0, (mem_files / 500) * 100)
 
             # Sentiment based on random drift for visual effect but could be linked to last log

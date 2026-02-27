@@ -170,9 +170,7 @@ class MemoryEngine:
                 ts = r["metadata"].get("unix_timestamp")
                 importance = r["metadata"].get("importance", 5)
                 r["combined_score"] = (
-                    (r["score"] * 0.4)
-                    + (self._temporal_score(ts) * 0.3)
-                    + (importance / 10 * 0.3)
+                    (r["score"] * 0.4) + (self._temporal_score(ts) * 0.3) + (importance / 10 * 0.3)
                 )
 
             q_results.sort(key=lambda x: x["combined_score"], reverse=True)
@@ -268,16 +266,41 @@ class MemoryEngine:
         content_lower = content.lower()
 
         emotional_words = [
-            "love", "hate", "angry", "sad", "happy", "excited",
-            "scared", "proud", "ashamed", "miss", "breakup",
-            "fight", "sorry", "grateful", "cry", "depressed",
+            "love",
+            "hate",
+            "angry",
+            "sad",
+            "happy",
+            "excited",
+            "scared",
+            "proud",
+            "ashamed",
+            "miss",
+            "breakup",
+            "fight",
+            "sorry",
+            "grateful",
+            "cry",
+            "depressed",
         ]
         score += sum(1 for w in emotional_words if w in content_lower) * 2
 
         life_events = [
-            "interview", "job", "exam", "result", "hospital",
-            "birthday", "anniversary", "moving", "travel",
-            "married", "died", "born", "graduated", "fired", "hired",
+            "interview",
+            "job",
+            "exam",
+            "result",
+            "hospital",
+            "birthday",
+            "anniversary",
+            "moving",
+            "travel",
+            "married",
+            "died",
+            "born",
+            "graduated",
+            "fired",
+            "hired",
         ]
         score += sum(1 for w in life_events if w in content_lower) * 2
 

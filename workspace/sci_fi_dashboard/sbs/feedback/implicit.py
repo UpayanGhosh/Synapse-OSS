@@ -16,27 +16,39 @@ class ImplicitFeedbackDetector:
     # Heuristic patterns for feedback detection
     FEEDBACK_PATTERNS = {
         "correction_formal": [
-            r"why (are you|so) formal", r"stop being (formal|robotic)",
-            r"sound[s]? like a robot", r"banglish e bolo", r"bengali te kotha bolo"
+            r"why (are you|so) formal",
+            r"stop being (formal|robotic)",
+            r"sound[s]? like a robot",
+            r"banglish e bolo",
+            r"bengali te kotha bolo",
         ],
-        "correction_casual": [
-            r"too casual", r"be serious", r"serious hou", r"professional"
-        ],
+        "correction_casual": [r"too casual", r"be serious", r"serious hou", r"professional"],
         "correction_length": [
-            r"too long", r"keep it short", r"short e bolo", r"tl;dr",
-            r"stop yapping", r"too much text"
+            r"too long",
+            r"keep it short",
+            r"short e bolo",
+            r"tl;dr",
+            r"stop yapping",
+            r"too much text",
         ],
-        "correction_short": [
-            r"elaborate", r"explain more", r"details dao", r"too short"
-        ],
+        "correction_short": [r"elaborate", r"explain more", r"details dao", r"too short"],
         "praise": [
-            r"good boy", r"good job", r"perfect", r"exactly",
-            r"love this tone", r"darun bolecho", r"sheraa"
+            r"good boy",
+            r"good job",
+            r"perfect",
+            r"exactly",
+            r"love this tone",
+            r"darun bolecho",
+            r"sheraa",
         ],
         "rejection": [
-            r"no that'?s wrong", r"vul", r"bhul", r"not what i meant",
-            r"shut up", r"off ja"
-        ]
+            r"no that'?s wrong",
+            r"vul",
+            r"bhul",
+            r"not what i meant",
+            r"shut up",
+            r"off ja",
+        ],
     }
 
     def __init__(self, profile_manager: ProfileManager):
@@ -60,7 +72,7 @@ class ImplicitFeedbackDetector:
             for pattern in patterns:
                 if pattern.search(user_text):
                     detected_signals.append(category)
-                    break # only need one match per category
+                    break  # only need one match per category
 
         if not detected_signals:
             return None
@@ -74,8 +86,8 @@ class ImplicitFeedbackDetector:
 
         return {
             "type": primary_signal,
-            "matched_text": user_text, # In a real system, you'd extract the span
-            "context": last_assistant_text[:50] + "..." if last_assistant_text else None
+            "matched_text": user_text,  # In a real system, you'd extract the span
+            "context": last_assistant_text[:50] + "..." if last_assistant_text else None,
         }
 
     def apply_feedback(self, signal: dict[str, Any]):
