@@ -23,8 +23,8 @@ Make sure you have these installed on your computer before proceeding:
 ## Step 2: Clone the Repository
 
 ```bash
-git clone https://github.com/UpayanGhosh/Jarvis-OSS.git
-cd Jarvis-OSS
+git clone https://github.com/UpayanGhosh/Synapse-OSS.git
+cd Synapse-OSS
 ```
 
 ---
@@ -43,7 +43,7 @@ cp .env.example .env
 
 ### Windows
 
-Open **Windows Terminal** (or Command Prompt) from inside the `Jarvis-OSS` folder:
+Open **Windows Terminal** (or Command Prompt) from inside the `Synapse-OSS` folder:
 
 ```cmd
 python -m venv .venv
@@ -159,10 +159,10 @@ This repository uses a custom workspace folder at `workspace/` in the repository
 
 ```bash
 # Windows
-openclaw config set agents.defaults.workspace "C:\Users\YourName\Jarvis-OSS\workspace"
+openclaw config set agents.defaults.workspace "C:\Users\YourName\Synapse-OSS\workspace"
 
 # Mac/Linux (use absolute path)
-openclaw config set agents.defaults.workspace "/absolute/path/to/Jarvis-OSS/workspace"
+openclaw config set agents.defaults.workspace "/absolute/path/to/Synapse-OSS/workspace"
 
 # Verify
 openclaw config get agents.defaults.workspace
@@ -172,4 +172,4 @@ openclaw config get agents.defaults.workspace
 
 ## Need Help?
 
-- Open an issue: [github.com/UpayanGhosh/Jarvis-OSS/issues](https://github.com/UpayanGhosh/Jarvis-OSS/issues)
+- Open an issue: [github.com/UpayanGhosh/Synapse-OSS/issues](https://github.com/UpayanGhosh/Synapse-OSS/issues)

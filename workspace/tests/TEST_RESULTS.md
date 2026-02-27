@@ -1,4 +1,4 @@
-# Jarvis-OSS Test Suite Results
+# Synapse-OSS Test Suite Results
 
 ## Test Summary
 
