@@ -116,7 +116,7 @@ def ingest_nightly():
         time.sleep(0.5)
 
     conn.close()
-    print("✅ Nightly Ingestion & Archival Complete.")
+    print("[OK] Nightly Ingestion & Archival Complete.")
 
 if __name__ == "__main__":
     ingest_nightly()

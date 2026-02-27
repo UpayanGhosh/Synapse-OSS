@@ -1,5 +1,5 @@
 """
-Chat Parser Module — Extracts personality data from WhatsApp chat markdown logs.
+Chat Parser Module -- Extracts personality data from WhatsApp chat markdown logs.
 
 Parses [YYYY-MM-DD HH:MM] Name: format into structured message objects,
 groups turns, filters noise, and extracts Synapse's speaking patterns.
@@ -36,7 +36,7 @@ class Turn:
 
 @dataclass
 class ConversationPair:
-    """A user → synapse exchange."""
+    """A user -> synapse exchange."""
 
     user_turn: str
     synapse_turn: str
@@ -85,12 +85,12 @@ TIMESTAMP_PATTERN = re.compile(r"^\[(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2})\]\s+(\w+):
 
 # Lines to skip entirely
 NOISE_PATTERNS = [
-    r"^⚠️",  # Error lines
+    r"^[WARN]",  # Error lines
     r"^\[SYSTEM\]",  # System messages
     r"^<Media omitted>",  # Media markers
     r"^OpenClaw:",  # OpenClaw system messages
     r"^Cloud Code Assist",  # API errors
-    r"^✅ New session started",  # Session resets
+    r"^[OK] New session started",  # Session resets
     r"^You deleted this message",
     r"^Deleting message\.\.\.",
     r"^Pairing code:",
@@ -345,7 +345,7 @@ def group_into_turns(messages: list[Message]) -> list[Turn]:
 
 
 def extract_conversation_pairs(turns: list[Turn], user_name: str) -> list[ConversationPair]:
-    """Extract user→Synapse conversation pairs for few-shot examples."""
+    """Extract user->Synapse conversation pairs for few-shot examples."""
     pairs = []
     for i in range(len(turns) - 1):
         if turns[i].speaker == user_name and turns[i + 1].speaker == "Synapse":
@@ -504,7 +504,7 @@ def analyze_style(synapse_messages: list[str]) -> dict:
         :30
     ]
 
-    # Greeting patterns — first line of messages
+    # Greeting patterns -- first line of messages
     greetings = []
     closings = []
     for msg in synapse_messages:
@@ -536,7 +536,7 @@ def analyze_style(synapse_messages: list[str]) -> dict:
             c in ll
             for c in [
                 "👊",
-                "🚀",
+                "[INFO]",
                 "💪",
                 "take care",
                 "good night",
@@ -547,14 +547,14 @@ def analyze_style(synapse_messages: list[str]) -> dict:
         ):
             closings.append(last_line)
 
-    # Catchphrases — repeated exact phrases
+    # Catchphrases -- repeated exact phrases
     phrase_counter = Counter()
     for msg in synapse_messages:
         # Look for recurring short phrases
         if "👊" in msg:
             phrase_counter["👊"] += 1
-        if "🚀" in msg:
-            phrase_counter["🚀"] += 1
+        if "[INFO]" in msg:
+            phrase_counter["[INFO]"] += 1
         if "the_brother" in msg.lower():
             phrase_counter["primary_user_nickname"] += 1
         if "the_partner_nickname" in msg.lower():
@@ -697,9 +697,9 @@ def select_best_examples(pairs: list[ConversationPair], n: int = 12) -> list[dic
 def build_persona_profile(
     filepath: str, user_name: str, relationship_mode: str = "brother"
 ) -> PersonaProfile:
-    """Full pipeline: parse → analyze → build profile."""
+    """Full pipeline: parse -> analyze -> build profile."""
 
-    print(f"📖 Parsing {os.path.basename(filepath)}...")
+    print(f"[READ] Parsing {os.path.basename(filepath)}...")
     messages = parse_messages(filepath)
     print(f"   Found {len(messages)} raw messages")
 
@@ -738,17 +738,17 @@ def build_persona_profile(
     # Build rules (relationship-specific)
     rules = [
         "Never use generic AI phrases like 'Great question!' or 'I'd be happy to help!'",
-        "Always respond — silence is failure",
+        "Always respond -- silence is failure",
         "Use Banglish naturally (Bengali + English mix)",
-        "Be direct, no fluff — concise when needed, thorough when it matters",
+        "Be direct, no fluff -- concise when needed, thorough when it matters",
     ]
 
     if relationship_mode == "caring_pa":
         rules.extend(
             [
-                "NEVER call primary_partner 'Princess' — she explicitly banned this",
+                "NEVER call primary_partner 'Princess' -- she explicitly banned this",
                 "Address her as 'primary_partner' or 'the_partner_name' only",
-                "No unsolicited check-ins — she said to stop the periodic pings",
+                "No unsolicited check-ins -- she said to stop the periodic pings",
                 "Be warm and supportive but respect her boundaries",
                 "Don't send messages meant for primary_user to primary_partner's chat",
             ]
@@ -820,7 +820,7 @@ def save_profile(profile: PersonaProfile, output_path: str):
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
-    print(f"✅ Saved profile to {output_path}")
+    print(f"[OK] Saved profile to {output_path}")
 
 
 if __name__ == "__main__":

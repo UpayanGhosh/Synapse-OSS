@@ -25,7 +25,7 @@ def run_soul_test():
     brain.add_relation(subject, "is weak to", "Freezing Pot")
     brain.save_graph()
     time.sleep(1)  # Dramatic pause
-    print("✅ Indexing Complete.\n")
+    print("[OK] Indexing Complete.\n")
 
     # 3. User Query with Slang
     user_query = "Yo, how do I cheese the Rot Goddess?"
@@ -36,12 +36,12 @@ def run_soul_test():
     print(f"⚡ Flash Gate: Detected Entities -> {entities}")
 
     if not entities:
-        print("❌ FAILED: Could not detect entity.")
+        print("[ERROR] FAILED: Could not detect entity.")
         return
 
     # 5. Connect to Transparent Brain
     focus_entity = entities[0]  # Should be "Malenia"
-    print(f"🧠 Transparent Brain: Recalling knowledge for '{focus_entity}'...")
+    print(f"[MEM] Transparent Brain: Recalling knowledge for '{focus_entity}'...")
 
     context = brain.get_context(focus_entity)
     connections = []
@@ -59,7 +59,7 @@ def run_soul_test():
         for c in connections:
             print(f"  > {c}")
     else:
-        print("❌ FAILED: Entity found but no knowledge retrieved.")
+        print("[ERROR] FAILED: Entity found but no knowledge retrieved.")
 
 
 if __name__ == "__main__":

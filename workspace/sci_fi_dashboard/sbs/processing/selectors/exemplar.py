@@ -10,23 +10,23 @@ class ExemplarSelector:
     Principled few-shot exemplar selection.
 
     The algorithm ensures:
-    1. DIVERSITY  — Exemplars cover different topics/moods/styles
-    2. RECENCY    — Recent interactions are preferred (but not exclusively)
-    3. QUALITY    — Only "good" interactions (no errors, corrections, confusion)
-    4. RICHNESS   — Longer, more substantive exchanges over one-word replies
-    5. IDENTITY   — Pairs that best showcase the desired Synapse personality
+    1. DIVERSITY  -- Exemplars cover different topics/moods/styles
+    2. RECENCY    -- Recent interactions are preferred (but not exclusively)
+    3. QUALITY    -- Only "good" interactions (no errors, corrections, confusion)
+    4. RICHNESS   -- Longer, more substantive exchanges over one-word replies
+    5. IDENTITY   -- Pairs that best showcase the desired Synapse personality
 
     Selection Strategy:
-    ┌──────────────────────────────────────────────────┐
+    ┌--------------------------------------------------┐
     │  SLOT ALLOCATION (14 total exemplars):           │
     │                                                  │
-    │  [4] RECENT HIGH-QUALITY     — last 48h, best   │
-    │  [3] TOPIC-DIVERSE           — one per top topic │
-    │  [2] MOOD-DIVERSE            — different moods   │
-    │  [2] BANGLISH SHOWCASE       — best code-switch  │
-    │  [2] PERSONALITY HIGHLIGHT   — humor/care/tech   │
-    │  [1] WILDCARD                — random for variety │
-    └──────────────────────────────────────────────────┘
+    │  [4] RECENT HIGH-QUALITY     -- last 48h, best   │
+    │  [3] TOPIC-DIVERSE           -- one per top topic │
+    │  [2] MOOD-DIVERSE            -- different moods   │
+    │  [2] BANGLISH SHOWCASE       -- best code-switch  │
+    │  [2] PERSONALITY HIGHLIGHT   -- humor/care/tech   │
+    │  [1] WILDCARD                -- random for variety │
+    └--------------------------------------------------┘
     """
 
     def __init__(self, db_path: Path):
@@ -87,7 +87,7 @@ class ExemplarSelector:
         return [self._format_exemplar(p) for p in selected]
 
     def _build_pairs(self) -> list[dict]:
-        """Build user→assistant conversation pairs from the database."""
+        """Build user->assistant conversation pairs from the database."""
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             messages = [dict(r) for r in conn.execute("""

@@ -42,7 +42,7 @@ class LazyToxicScorer:
         with self._lock:
             if self._model is None:
                 return
-            print("🧹 Unloading Toxic-BERT (saving ~600MB)...")
+            print("[CLEAN] Unloading Toxic-BERT (saving ~600MB)...")
             del self._model
             del self._tokenizer
             self._model = None
@@ -83,7 +83,7 @@ class LazyToxicScorer:
             return score
 
         except Exception as e:
-            print(f"⚠️ Toxic score error: {e}")
+            print(f"[WARN] Toxic score error: {e}")
             return 0.0
 
     def is_loaded(self) -> bool:

@@ -74,7 +74,7 @@ BACKUP_FILE = os.path.join(WORKSPACE_ROOT, "_archived_memories", "persistent_log
 class MemoryEngine:
     """
     Single instance that replaces the entire db/server.py process.
-    Shared by the gateway — no duplicate graph, no duplicate FlashText.
+    Shared by the gateway -- no duplicate graph, no duplicate FlashText.
     """
 
     def __init__(self, graph_store=None, keyword_processor=None):
@@ -84,7 +84,7 @@ class MemoryEngine:
         """
         self.qdrant_store = QdrantVectorStore()
 
-        # SHARED — not duplicated
+        # SHARED -- not duplicated
         self.graph_store = graph_store
         self.keyword_processor = keyword_processor
 
@@ -92,7 +92,7 @@ class MemoryEngine:
         self._ranker = None
         self._ranker_lock = threading.Lock()
 
-        print("✅ MemoryEngine initialized (shared graph, no duplication)")
+        print("[OK] MemoryEngine initialized (shared graph, no duplication)")
 
     @lru_cache(maxsize=500)  # noqa: B019
     def get_embedding(self, text: str) -> list:
@@ -104,7 +104,7 @@ class MemoryEngine:
             )
             return tuple(response["embedding"])  # tuple for lru_cache hashability
         except Exception as e:
-            print(f"⚠️ Embedding generation failed: {e}")
+            print(f"[WARN] Embedding generation failed: {e}")
             return tuple([0.0] * 768)  # Return zero vector as fallback
 
     def _get_ranker(self) -> Ranker:
@@ -175,7 +175,7 @@ class MemoryEngine:
 
             q_results.sort(key=lambda x: x["combined_score"], reverse=True)
 
-            # Smart gate — fast path
+            # Smart gate -- fast path
             high_conf = [
                 r
                 for r in q_results
@@ -226,7 +226,7 @@ class MemoryEngine:
                 "routing": routing,
             }
         except Exception as e:
-            print(f"⚠️ Memory query failed: {e}")
+            print(f"[WARN] Memory query failed: {e}")
             return {
                 "results": [],
                 "tier": "error",

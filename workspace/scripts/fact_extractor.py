@@ -101,7 +101,7 @@ def process_memory():
         conn.commit()
 
     conn.close()
-    print("✅ Batch processing complete.")
+    print("[OK] Batch processing complete.")
 
 if __name__ == "__main__":
     process_memory()

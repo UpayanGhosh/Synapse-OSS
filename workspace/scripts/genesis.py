@@ -7,7 +7,7 @@ import json
 
 # --- PROJECT GENESIS ---
 def check_environment():
-    print("🌍 Detecting Host Environment...")
+    print("[WEB] Detecting Host Environment...")
     system = platform.system()
     print(f"🖥️  OS: {system}")
 
@@ -16,9 +16,9 @@ def check_environment():
     for dep in deps:
         try:
             subprocess.run([dep, "--version"], capture_output=True, check=True)
-            print(f"✅ {dep} is active.")
+            print(f"[OK] {dep} is active.")
         except:
-            print(f"❌ {dep} is missing. Please install it to continue.")
+            print(f"[ERROR] {dep} is missing. Please install it to continue.")
 
 
 def run_onboarding():
@@ -30,7 +30,7 @@ def run_onboarding():
     config["jarvis_name"] = input("What is my name? (Default: Synapse): ") or "Synapse"
     config["sarcasm_level"] = input("Sarcasm Level (0-10): ")
 
-    print("\n🧠 Configuring Cognitive Slots...")
+    print("\n[MEM] Configuring Cognitive Slots...")
     config["openrouter_key"] = input("Enter OpenRouter API Key (optional): ")
 
     # Generate IDENTITY.md
@@ -45,14 +45,14 @@ def run_onboarding():
             f"# CORE.md\n\n- Host: {config['host_name']}\n- Goal: Optimized human-AI symbiosis.\n"
         )
 
-    print("\n🧬 Genesis Sequence Complete. DNA generated.")
+    print("\n[PROC] Genesis Sequence Complete. DNA generated.")
 
 
 def main():
     print("✨ PROJECT SYNAPSE // GENESIS PROTOCOL")
     check_environment()
     run_onboarding()
-    print("\n🚀 Synapse is now ready to breathe. Use 'openclaw start' to wake me.")
+    print("\n[INFO] Synapse is now ready to breathe. Use 'openclaw start' to wake me.")
 
 
 if __name__ == "__main__":

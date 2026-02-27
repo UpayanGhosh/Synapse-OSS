@@ -34,9 +34,9 @@ def ensure_schema_migration():
 
             conn.executemany("UPDATE documents SET content_hash = ? WHERE id = ?", updates)
             conn.commit()
-            print(f"✅ Backfilled hashes for {len(updates)} documents.")
+            print(f"[OK] Backfilled hashes for {len(updates)} documents.")
     except Exception as e:
-        print(f"❌ Migration Error: {e}")
+        print(f"[ERROR] Migration Error: {e}")
         conn.rollback()
     finally:
         conn.close()
@@ -55,7 +55,7 @@ def ingest_atomic():
     4. Atomic Swap: Replace 'documents' with 'documents_shadow'.
     5. Rebuild FTS index.
     """
-    print("🚀 Starting Atomic Ingestion...")
+    print("[INFO] Starting Atomic Ingestion...")
     ensure_schema_migration()
 
     conn = get_db_connection()
@@ -73,12 +73,12 @@ def ingest_atomic():
         existing_hashes = {
             row[0] for row in conn.execute("SELECT content_hash FROM documents_shadow").fetchall()
         }
-        print(f"📊 Existing Memories: {len(existing_hashes)}")
+        print(f"[STATS] Existing Memories: {len(existing_hashes)}")
 
         # 2. Scan & Process
         new_items = []
         if os.path.exists(SOURCE_DIR):
-            print(f"📂 Scanning {SOURCE_DIR}...")
+            print(f"[DIR] Scanning {SOURCE_DIR}...")
             for root, _, files in os.walk(SOURCE_DIR):
                 for file in files:
                     if file.endswith((".md", ".txt")):
@@ -99,7 +99,7 @@ def ingest_atomic():
 
         # 3. Embed & Insert New Items
         if new_items:
-            print("🧠 Embedding new memories (M1 Optimized)...")
+            print("[MEM] Embedding new memories (M1 Optimized)...")
             inserts = []
             for filename, content, chash in new_items:
                 # Embed using retriever (uses db.py connection internally if needed, but we just want embedding)
@@ -214,13 +214,13 @@ def ingest_atomic():
                     print(f"   ... Committed {count} memories")
 
             conn.commit()
-            print(f"✅ Successfully ingested {count} new memories.")
+            print(f"[OK] Successfully ingested {count} new memories.")
 
         else:
-            print("✅ No new memories to ingest.")
+            print("[OK] No new memories to ingest.")
 
     except Exception as e:
-        print(f"❌ Ingestion Failed: {e}")
+        print(f"[ERROR] Ingestion Failed: {e}")
         conn.rollback()
         # Clean up shadow if we made one
     finally:

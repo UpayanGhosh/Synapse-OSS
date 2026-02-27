@@ -46,7 +46,7 @@ def organize():
     
     conn.commit()
     conn.close()
-    print("✅ Database optimization complete.")
+    print("[OK] Database optimization complete.")
 
 if __name__ == "__main__":
     organize()

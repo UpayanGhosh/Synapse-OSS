@@ -12,7 +12,7 @@ QDRANT_PORT = 6333
 COLLECTION_NAME = "atomic_facts"
 
 def migrate():
-    print("🚀 Starting Temporal Migration v2 (Using DB created_at)...")
+    print("[INFO] Starting Temporal Migration v2 (Using DB created_at)...")
     
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
@@ -55,7 +55,7 @@ def migrate():
 
     conn.commit()
     conn.close()
-    print(f"✅ Migration Complete. Updated {count} records with unix_timestamp payload.")
+    print(f"[OK] Migration Complete. Updated {count} records with unix_timestamp payload.")
 
 if __name__ == "__main__":
     migrate()

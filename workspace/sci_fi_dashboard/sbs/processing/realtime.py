@@ -94,7 +94,7 @@ class RealtimeProcessor:
     def process(self, message: RawMessage) -> dict:
         """
         Returns realtime analysis results.
-        Fast path only — must complete in < 50ms.
+        Fast path only -- must complete in < 50ms.
         """
         text = message.content.lower()
         words = text.split()

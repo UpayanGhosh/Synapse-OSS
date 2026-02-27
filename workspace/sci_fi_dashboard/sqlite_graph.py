@@ -1,6 +1,6 @@
 """
-SQLite-backed Knowledge Graph — replaces NetworkX.
-Memory: ~150MB → ~1MB (only query results in RAM).
+SQLite-backed Knowledge Graph -- replaces NetworkX.
+Memory: ~150MB -> ~1MB (only query results in RAM).
 """
 
 import gzip
@@ -163,13 +163,13 @@ class SQLiteGraph:
         finally:
             conn.close()
 
-    # ── NetworkX Compatibility Layer ──
+    # -- NetworkX Compatibility Layer --
     # These methods allow drop-in replacement in api_gateway.py
 
     def add_relation(
         self, source: str, relation: str, target: str, weight: float = 1.0, evidence: str = ""
     ):
-        """Alias for add_edge — matches TransparentBrain API."""
+        """Alias for add_edge -- matches TransparentBrain API."""
         self.add_edge(source, target, relation=relation, weight=weight, evidence=evidence)
 
     def has_node(self, name: str) -> bool:
@@ -212,7 +212,7 @@ class SQLiteGraph:
         self.prune_weak_edges(0.1)
 
     def save_graph(self):
-        """No-op — SQLite auto-persists. Keeps interface compatible."""
+        """No-op -- SQLite auto-persists. Keeps interface compatible."""
         pass
 
     @classmethod
@@ -220,7 +220,7 @@ class SQLiteGraph:
         """One-time migration from knowledge_graph.json.gz to SQLite."""
         import networkx as nx
 
-        print(f"📦 Migrating {graph_file} → {db_path}")
+        print(f"📦 Migrating {graph_file} -> {db_path}")
 
         if graph_file.endswith(".gz"):
             with gzip.open(graph_file, "rt") as f:
@@ -247,5 +247,5 @@ class SQLiteGraph:
             )
             edge_count += 1
 
-        print(f"✅ Migrated {node_count} nodes, {edge_count} edges")
+        print(f"[OK] Migrated {node_count} nodes, {edge_count} edges")
         return db

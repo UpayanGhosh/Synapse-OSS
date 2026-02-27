@@ -132,7 +132,7 @@ class MessageWorker:
 
             # Tell the user something went wrong
             await self.sender.send_text(
-                chat_id, "⚠️ A technical glitch occurred. Please try again. 🔧"
+                chat_id, "[WARN] A technical glitch occurred. Please try again. 🔧"
             )
 
     async def _keep_typing(self, chat_id: str):

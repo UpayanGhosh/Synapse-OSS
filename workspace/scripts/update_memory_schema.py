@@ -54,7 +54,7 @@ def update_schema():
 
     conn.commit()
     conn.close()
-    print("✅ Schema update complete.")
+    print("[OK] Schema update complete.")
 
 if __name__ == "__main__":
     update_schema()

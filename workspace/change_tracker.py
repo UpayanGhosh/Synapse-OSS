@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
 """
-Change Tracker v2.0 — Hardened Git Auto-Commit Daemon
+Change Tracker v2.0 -- Hardened Git Auto-Commit Daemon
 
 Watches the OpenClaw workspace for file changes and auto-commits them
 to the `synapse-auto-updates` branch with descriptive messages.
 
 Safety features:
-  1. RegexMatchingEventHandler — .git/, .db, .log, __pycache__ excluded at OS level
-  2. 30-second sliding debounce — handles LLM streaming / chunk writes
-  3. Branch isolation — commits to synapse-auto-updates, never touches main
-  4. Binary exclusion — skips .db, .sqlite, .gz, images, etc.
-  5. Git lock detection — waits if another git process is running
-  6. Kill-switch (.pause_tracking) — prevents commits during merges/manual edits
-  7. Merge conflict detection — refuses to commit conflict markers
+  1. RegexMatchingEventHandler -- .git/, .db, .log, __pycache__ excluded at OS level
+  2. 30-second sliding debounce -- handles LLM streaming / chunk writes
+  3. Branch isolation -- commits to synapse-auto-updates, never touches main
+  4. Binary exclusion -- skips .db, .sqlite, .gz, images, etc.
+  5. Git lock detection -- waits if another git process is running
+  6. Kill-switch (.pause_tracking) -- prevents commits during merges/manual edits
+  7. Merge conflict detection -- refuses to commit conflict markers
 
 Usage:
   python3 change_tracker.py                 # Run (via launchd or foreground)
@@ -34,9 +34,9 @@ from threading import Timer, Lock
 from watchdog.observers import Observer
 from watchdog.events import RegexMatchingEventHandler
 
-# ═══════════════════════════════════════════
+# ===========================================
 #  CONFIGURATION
-# ═══════════════════════════════════════════
+# ===========================================
 
 WORKSPACE = os.path.expanduser("~/.openclaw")
 BRANCH = "synapse-auto-updates"
@@ -44,7 +44,7 @@ DEFAULT_DEBOUNCE = 30.0  # seconds of silence before commit
 PAUSE_FILE = os.path.join(WORKSPACE, ".pause_tracking")
 LOG_FILE = os.path.join(WORKSPACE, "logs", "change_tracker.log")
 
-# Logging — works for both foreground and launchd
+# Logging -- works for both foreground and launchd
 os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
 logging.basicConfig(
     level=logging.INFO,
@@ -59,29 +59,29 @@ log = logging.getLogger("tracker")
 
 # Patterns to IGNORE (regex, applied to full path)
 IGNORE_REGEXES = [
-    # ── Git internals ──
-    r".*[/\\]\.git[/\\].*",  # .git/ internals — prevents infinite loop
+    # -- Git internals --
+    r".*[/\\]\.git[/\\].*",  # .git/ internals -- prevents infinite loop
     r".*[/\\]\.git$",  # .git directory itself
-    # ── Binary / large files ──
+    # -- Binary / large files --
     r".*\.db$",  # SQLite databases (memory.db = 214MB)
     r".*\.db-shm$",  # SQLite shared memory
     r".*\.db-wal$",  # SQLite write-ahead log
     r".*\.sqlite$",  # Alternative SQLite extension
     r".*\.gz$",  # Compressed files
     r".*\.jsonl$",  # Session JSONL (large, rotates)
-    # ── Logs ──
+    # -- Logs --
     r".*\.log$",  # All log files
     r".*[/\\]logs[/\\].*",  # logs/ directories
-    # ── Backups ──
+    # -- Backups --
     r".*\.bak$",  # Backup files
     r".*\.bak\.\d+$",  # Numbered backups (.bak.1, .bak.2, etc.)
-    # ── Python ──
+    # -- Python --
     r".*[/\\]__pycache__[/\\].*",  # Python cache
     r".*\.pyc$",  # Compiled Python
     r".*[/\\]\.venv[/\\].*",  # Virtual environment
-    # ── macOS ──
+    # -- macOS --
     r".*[/\\]\.DS_Store$",  # macOS metadata
-    # ── OpenClaw internals (not workspace content) ──
+    # -- OpenClaw internals (not workspace content) --
     r".*[/\\]agents[/\\].*[/\\]sessions[/\\].*",  # Agent session files
     r".*[/\\]browser[/\\].*",  # Browser automation data
     r".*[/\\]media[/\\].*",  # Media files
@@ -94,11 +94,11 @@ IGNORE_REGEXES = [
     r".*[/\\]\.clawhub[/\\].*",  # ClawHub internals
     r".*[/\\]\.vscode[/\\].*",  # VS Code settings
     r".*[/\\]models[/\\].*",  # Model data
-    # ── Workspace exclusions ──
+    # -- Workspace exclusions --
     r".*[/\\]qdrant[/\\]storage[/\\].*",  # Qdrant vector storage
     r".*[/\\]_archived_memories[/\\].*",  # Archived memories
     r".*[/\\]node_modules[/\\].*",  # Node modules
-    # ── Editor / misc ──
+    # -- Editor / misc --
     r".*\.swp$",  # Vim swap files
     r".*~$",  # Editor backup files
     r".*\.pause_tracking$",  # Kill-switch file itself
@@ -133,9 +133,9 @@ CATEGORY_MAP = {
 }
 
 
-# ═══════════════════════════════════════════
+# ===========================================
 #  UTILITIES
-# ═══════════════════════════════════════════
+# ===========================================
 
 
 def git(*args, cwd=WORKSPACE) -> tuple[int, str]:
@@ -243,12 +243,12 @@ def build_commit_message(changes: dict[str, set[str]]) -> str:
     if len(parts) > 3:
         summary += f" (+{len(parts) - 3} more)"
 
-    return f"[auto] {summary} — {timestamp}"
+    return f"[auto] {summary} -- {timestamp}"
 
 
-# ═══════════════════════════════════════════
+# ===========================================
 #  WATCHDOG HANDLER
-# ═══════════════════════════════════════════
+# ===========================================
 
 
 class BotChangeHandler(RegexMatchingEventHandler):
@@ -303,7 +303,7 @@ class BotChangeHandler(RegexMatchingEventHandler):
         with self.lock:
             self.pending[action].add(path)
             filename = os.path.basename(path)
-            log.info(f"📝 {action.upper()}: {filename}")
+            log.info(f"[LOG] {action.upper()}: {filename}")
 
             # Cancel existing timer and start a new one
             if self.commit_timer is not None:
@@ -319,14 +319,14 @@ class BotChangeHandler(RegexMatchingEventHandler):
     def _execute_commit(self):
         """Commit all pending changes after the debounce window."""
         with self.lock:
-            # ── KILL-SWITCH CHECK ──
+            # -- KILL-SWITCH CHECK --
             if is_paused():
-                log.warning("⏸️  PAUSED — .pause_tracking exists, skipping commit")
+                log.warning("[PAUSED]  PAUSED -- .pause_tracking exists, skipping commit")
                 return
 
-            # ── MERGE CONFLICT CHECK (pre-stage) ──
+            # -- MERGE CONFLICT CHECK (pre-stage) --
             if has_merge_conflict():
-                log.error("🚨 MERGE CONFLICT DETECTED — refusing to commit!")
+                log.error("[ALERT] MERGE CONFLICT DETECTED -- refusing to commit!")
                 log.error("   Fix the conflict, then run: python3 change_tracker.py --resume")
                 return
 
@@ -338,12 +338,12 @@ class BotChangeHandler(RegexMatchingEventHandler):
             # Wait for git lock to clear
             retries = 0
             while is_git_locked() and retries < 10:
-                log.info("⏳ Waiting for git lock to clear...")
+                log.info("[WAIT] Waiting for git lock to clear...")
                 time.sleep(2)
                 retries += 1
 
             if is_git_locked():
-                log.warning("⚠️ Git lock persisted, skipping commit")
+                log.warning("[WARN] Git lock persisted, skipping commit")
                 return
 
             # Build commit message before clearing pending
@@ -356,9 +356,9 @@ class BotChangeHandler(RegexMatchingEventHandler):
                 log.error(f"git add failed: {out}")
                 return
 
-            # ── POST-STAGE CONFLICT CHECK ──
+            # -- POST-STAGE CONFLICT CHECK --
             if has_merge_conflict():
-                log.error("🚨 CONFLICT MARKERS detected after staging — aborting!")
+                log.error("[ALERT] CONFLICT MARKERS detected after staging -- aborting!")
                 git("reset", "HEAD")  # Unstage everything
                 return
 
@@ -380,14 +380,14 @@ class BotChangeHandler(RegexMatchingEventHandler):
 
             self.total_commits += 1
             self.total_files_tracked += file_count
-            log.info(f"✅ COMMITTED #{self.total_commits}: {commit_msg}")
+            log.info(f"[OK] COMMITTED #{self.total_commits}: {commit_msg}")
             log.info(f"   Files: {file_count} | Total tracked: {self.total_files_tracked}")
 
             # Optional: push to GitHub
             if self.auto_push:
                 rc, out = git("push", "origin", BRANCH)
                 if rc == 0:
-                    log.info(f"🚀 Pushed to origin/{BRANCH}")
+                    log.info(f"[INFO] Pushed to origin/{BRANCH}")
                 else:
                     log.warning(f"Push failed: {out}")
 
@@ -395,9 +395,9 @@ class BotChangeHandler(RegexMatchingEventHandler):
             self.pending = {"modified": set(), "created": set(), "deleted": set()}
 
 
-# ═══════════════════════════════════════════
+# ===========================================
 #  MAIN
-# ═══════════════════════════════════════════
+# ===========================================
 
 
 def ensure_branch():
@@ -441,7 +441,7 @@ def cmd_pause():
     """Create the .pause_tracking kill-switch file."""
     with open(PAUSE_FILE, "w") as f:
         f.write(f"Paused at {datetime.now().isoformat()} by user\n")
-    print(f"  ⏸️  Kill-switch ON — created {PAUSE_FILE}")
+    print(f"  [PAUSED]  Kill-switch ON -- created {PAUSE_FILE}")
     print("  Tracker will skip all commits until you run --resume")
 
 
@@ -449,10 +449,10 @@ def cmd_resume():
     """Remove the .pause_tracking kill-switch file."""
     if os.path.exists(PAUSE_FILE):
         os.remove(PAUSE_FILE)
-        print(f"  ▶️  Kill-switch OFF — removed {PAUSE_FILE}")
+        print(f"  [RESUME]  Kill-switch OFF -- removed {PAUSE_FILE}")
         print("  Tracker will resume committing changes")
     else:
-        print("  ℹ️  Tracker is not paused (no .pause_tracking file)")
+        print("  [INFO]  Tracker is not paused (no .pause_tracking file)")
 
 
 def main():
@@ -482,17 +482,17 @@ def main():
 
     paused = is_paused()
 
-    log.info("═" * 56)
-    log.info("🔍 CHANGE TRACKER v2.0 — Hardened Git Auto-Commit")
-    log.info("═" * 56)
-    log.info(f"📂 Watching: {WORKSPACE}")
-    log.info(f"🌿 Branch:   {BRANCH}")
-    log.info(f"⏱️  Debounce: {args.debounce}s")
-    log.info(f"🚀 Auto-push: {'ON' if args.push else 'OFF'}")
-    log.info(f"⏸️  Paused:    {'YES ⚠️' if paused else 'NO'}")
-    log.info(f"📝 Log file: {LOG_FILE}")
-    log.info(f"🛡️  Excluded:  .git/, .db, .log, __pycache__, qdrant/")
-    log.info("═" * 56)
+    log.info("=" * 56)
+    log.info("[SEARCH] CHANGE TRACKER v2.0 -- Hardened Git Auto-Commit")
+    log.info("=" * 56)
+    log.info(f"[DIR] Watching: {WORKSPACE}")
+    log.info(f"[BRANCH] Branch:   {BRANCH}")
+    log.info(f"[TIME]  Debounce: {args.debounce}s")
+    log.info(f"[INFO] Auto-push: {'ON' if args.push else 'OFF'}")
+    log.info(f"[PAUSED]  Paused:    {'YES [WARN]' if paused else 'NO'}")
+    log.info(f"[LOG] Log file: {LOG_FILE}")
+    log.info(f"[GUARD]  Excluded:  .git/, .db, .log, __pycache__, qdrant/")
+    log.info("=" * 56)
 
     if paused:
         log.warning("Tracker is PAUSED. Commits will be skipped until --resume.")
@@ -513,7 +513,7 @@ def main():
     # Graceful shutdown
     def shutdown(signum, frame):
         log.info("")
-        log.info("🛑 Shutting down tracker...")
+        log.info("[STOP] Shutting down tracker...")
         log.info(f"   Total commits: {handler.total_commits}")
         log.info(f"   Total files tracked: {handler.total_files_tracked}")
 
@@ -532,10 +532,10 @@ def main():
         observer.join()
 
         # NOTE: Do NOT switch back to main here.
-        # Under launchd, the daemon auto-restarts — switching branches
+        # Under launchd, the daemon auto-restarts -- switching branches
         # would cause the next start to be on 'main', and auto-commits
         # would go to the wrong branch. Stay on synapse-auto-updates.
-    log.info("👋 Tracker stopped (staying on synapse-auto-updates).")
+    log.info("[BYE] Tracker stopped (staying on synapse-auto-updates).")
         sys.exit(0)
 
     signal.signal(signal.SIGINT, shutdown)
@@ -544,7 +544,7 @@ def main():
     # Start watching
     observer.start()
     log.info("")
-    log.info("👁️  Watching for changes... (Ctrl+C or SIGTERM to stop)")
+    log.info("[WATCH]  Watching for changes... (Ctrl+C or SIGTERM to stop)")
     log.info("")
 
     try:

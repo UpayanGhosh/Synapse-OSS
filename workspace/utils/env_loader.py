@@ -69,7 +69,7 @@ def load_env_file(anchor: Path | None = None) -> None:
     if not os.path.exists(env_path):
         return
 
-    print(f"🌍 Loading .env from {env_path}")
+    print(f"[WEB] Loading .env from {env_path}")
     with open(env_path, "r") as f:
         for raw_line in f:
             line = raw_line.strip()

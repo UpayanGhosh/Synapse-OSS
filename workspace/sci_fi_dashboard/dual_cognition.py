@@ -159,7 +159,7 @@ class DualCognitionEngine:
         try:
             complexity = self.classify_complexity(user_message, conversation_history)
 
-            # FAST PATH: 0 LLM calls — return minimal merge immediately
+            # FAST PATH: 0 LLM calls -- return minimal merge immediately
             if complexity == "fast":
                 return CognitiveMerge(
                     tension_level=0.0,
@@ -200,7 +200,7 @@ class DualCognitionEngine:
             return merge
 
         except Exception as e:
-            print(f"⚠️ Dual cognition failed: {e}")
+            print(f"[WARN] Dual cognition failed: {e}")
             return CognitiveMerge(
                 inner_monologue="I'm having trouble thinking through this right now.",
                 tension_level=0.0,
@@ -266,7 +266,7 @@ JSON only:"""
                 present.topics = data.get("topics", [])
                 present.conversational_pattern = data.get("conversational_pattern", "single_turn")
         except Exception as e:
-            print(f"⚠️ Present stream failed: {e}")
+            print(f"[WARN] Present stream failed: {e}")
 
         return present
 
@@ -279,7 +279,7 @@ JSON only:"""
             memory.relevant_facts = [r["content"] for r in results.get("results", [])]
             memory.graph_connections = results.get("graph_context", "")
         except Exception as e:
-            print(f"⚠️ Memory recall failed: {e}")
+            print(f"[WARN] Memory recall failed: {e}")
 
         try:
             target_name = "primary_partner" if "the_partner" in target.lower() else "primary_user"
@@ -377,7 +377,7 @@ JSON only:"""
                 merge.inner_monologue = data.get("inner_monologue", "")
                 merge.memory_insights = memory.relevant_facts[:3]
         except Exception as e:
-            print(f"⚠️ Merge failed: {e}")
+            print(f"[WARN] Merge failed: {e}")
 
         return merge
 
@@ -412,7 +412,7 @@ JSON only:"""
                 if isinstance(terms, list):
                     return " ".join(str(t) for t in terms[:3])
         except Exception as e:
-            print(f"⚠️ Search intent extraction failed: {e}")
+            print(f"[WARN] Search intent extraction failed: {e}")
 
         return ""
 

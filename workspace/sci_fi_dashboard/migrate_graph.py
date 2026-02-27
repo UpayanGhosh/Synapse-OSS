@@ -12,9 +12,9 @@ DB_PATH = os.path.expanduser("~/.openclaw/workspace/db/knowledge_graph.db")
 
 if __name__ == "__main__":
     if not os.path.exists(GRAPH_FILE):
-        print(f"❌ Source graph file not found at {GRAPH_FILE}")
+        print(f"[ERROR] Source graph file not found at {GRAPH_FILE}")
         sys.exit(1)
 
-    print(f"🚀 Starting migration from {GRAPH_FILE}...")
+    print(f"[INFO] Starting migration from {GRAPH_FILE}...")
     SQLiteGraph.migrate_from_networkx(GRAPH_FILE, DB_PATH)
     print("✨ Migration complete!")

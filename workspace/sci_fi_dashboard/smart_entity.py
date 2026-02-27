@@ -18,9 +18,9 @@ class EntityGate:
             with open(self.entities_file) as f:
                 entities_dict = json.load(f)
                 self.keyword_processor.add_keywords_from_dict(entities_dict)
-                print(f"✅ Loaded {len(entities_dict)} entity groups from {self.entities_file}")
+                print(f"[OK] Loaded {len(entities_dict)} entity groups from {self.entities_file}")
         else:
-            print(f"⚠️ Warning: Entities file {self.entities_file} not found. Starting empty.")
+            print(f"[WARN] Warning: Entities file {self.entities_file} not found. Starting empty.")
 
     def extract_entities(self, text):
         """

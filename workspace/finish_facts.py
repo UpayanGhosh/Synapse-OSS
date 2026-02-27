@@ -21,7 +21,7 @@ def finish_facts():
     cur.execute("SELECT id, content FROM atomic_facts")
     facts = cur.fetchall()
     
-    print(f"🧬 Finalizing {len(facts)} Atomic Facts on Mac...")
+    print(f"[PROC] Finalizing {len(facts)} Atomic Facts on Mac...")
     for f_id, content in tqdm(facts):
         try:
             payload = json.dumps({"model": "nomic-embed-text", "input": [content[:1024]]}).encode("utf-8")
@@ -34,16 +34,16 @@ def finish_facts():
                     if len(emb) == 768:
                         cur.execute("INSERT OR REPLACE INTO atomic_facts_vec(fact_id, embedding) VALUES (?, ?)", (f_id, struct.pack("768f", *emb)))
                     else:
-                        print(f"⚠️ Fact {f_id}: dimension mismatch {len(emb)}")
+                        print(f"[WARN] Fact {f_id}: dimension mismatch {len(emb)}")
                 else:
-                     print(f"⚠️ Fact {f_id}: no embedding returned")
+                     print(f"[WARN] Fact {f_id}: no embedding returned")
         except Exception as e:
-            print(f"❌ Error processing fact {f_id}: {e}")
+            print(f"[ERROR] Error processing fact {f_id}: {e}")
 
     conn.commit()
     cur.execute("VACUUM")
     conn.close()
-    print("✅ Memory Fully Synchronized.")
+    print("[OK] Memory Fully Synchronized.")
 
 if __name__ == "__main__":
     finish_facts()

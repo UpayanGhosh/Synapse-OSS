@@ -32,7 +32,7 @@ class MockGraph:
 
 async def mock_llm(messages, temperature=0.7, max_tokens=500):
     prompt = messages[-1]["content"]
-    print(f"\n🤖 [Mock LLM] Processing prompt: {prompt[:100]}...")
+    print(f"\n[BOT] [Mock LLM] Processing prompt: {prompt[:100]}...")
 
     if "Analyze this message" in prompt:
         return """
@@ -59,7 +59,7 @@ async def mock_llm(messages, temperature=0.7, max_tokens=500):
 
 
 async def main():
-    print("🚀 Starting Dual Cognition Isolation Test...")
+    print("[INFO] Starting Dual Cognition Isolation Test...")
 
     memory = MockMemory()
     graph = MockGraph()
@@ -67,11 +67,11 @@ async def main():
 
     user_msg = "I really love spicy food, it's the best!"
 
-    print(f"\n👤 [User]: {user_msg}")
+    print(f"\n[USER] [User]: {user_msg}")
 
     result = await engine.think(user_message=user_msg, chat_id="test_user", llm_fn=mock_llm)
 
-    print("\n🧠 [Cognitive Merge Results]:")
+    print("\n[MEM] [Cognitive Merge Results]:")
     print(f"   - Tension Level: {result.tension_level}")
     print(f"   - Tension Type: {result.tension_type}")
     print(f"   - Strategy: {result.response_strategy}")
@@ -79,10 +79,10 @@ async def main():
     print(f"   - Inner Monologue: {result.inner_monologue}")
 
     context = engine.build_cognitive_context(result)
-    print("\n📝 [Injected Context]:")
+    print("\n[LOG] [Injected Context]:")
     print(context)
 
-    print("\n✅ Isolation test completed.")
+    print("\n[OK] Isolation test completed.")
 
 
 if __name__ == "__main__":

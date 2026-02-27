@@ -11,14 +11,14 @@ def vacuum_sbs(data_dir: str = "./data", retain_days: int = 30, keep_versions: i
     2. Moves old raw JSONL records to cold storage (optional/future)
     3. Prunes old profile versions beyond the `keep_versions` limit.
     """
-    print(f"🧹 Starting SBS Vacuum (Retain: {retain_days} days, Keep Versions: {keep_versions})")
+    print(f"[CLEAN] Starting SBS Vacuum (Retain: {retain_days} days, Keep Versions: {keep_versions})")
 
     data_path = Path(data_dir)
     db_path = data_path / "indices" / "messages.db"
     profiles_archive = data_path / "profiles" / "archive"
 
     if not db_path.exists():
-        print("⚠️ No SQLite database found.")
+        print("[WARN] No SQLite database found.")
         return
 
     # 1. Vacuum SQLite
@@ -46,7 +46,7 @@ def vacuum_sbs(data_dir: str = "./data", retain_days: int = 30, keep_versions: i
                 shutil.rmtree(v_dir)
                 print(f"   Deleted: {v_dir.name}")
         else:
-            print(f"✅ Profile archive healthy ({len(versions)} versions).")
+            print(f"[OK] Profile archive healthy ({len(versions)} versions).")
 
     print("✨ Vacuum complete.")
 

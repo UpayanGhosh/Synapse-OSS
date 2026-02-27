@@ -85,13 +85,13 @@ async def monitor():
                     except asyncio.TimeoutError:
                         print("Timeout waiting for Pong!")
                         diff = time.time() - last_pong
-                        await send_whatsapp(f"⚠️ Gateway Unresponsive! Lag: {diff:.1f}s")
+                        await send_whatsapp(f"[WARN] Gateway Unresponsive! Lag: {diff:.1f}s")
                         
                     await asyncio.sleep(PING_INTERVAL)
                     
         except ConnectionRefusedError:
             print("Connection Refused - Server Down?")
-            await send_whatsapp("⚠️ Gateway Down! Connection refused.")
+            await send_whatsapp("[WARN] Gateway Down! Connection refused.")
             await asyncio.sleep(10) # Wait before retry
         except Exception as e:
             print(f"Watcher Error: {e}")

@@ -28,7 +28,7 @@ def log_dsa_problem(name, logic, code, complexity):
     
     conn.commit()
     conn.close()
-    print(f"✅ Success: '{name}' logged to DSA Journal.")
+    print(f"[OK] Success: '{name}' logged to DSA Journal.")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Synapse DSA Logger")

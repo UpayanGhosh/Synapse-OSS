@@ -6,10 +6,10 @@ import time
 API_URL = "http://localhost:8000/add"
 
 def ingest_file(file_path):
-    print(f"📖 Ingesting: {file_path}")
+    print(f"[READ] Ingesting: {file_path}")
     
     if not os.path.exists(file_path):
-        print(f"❌ File not found: {file_path}")
+        print(f"[ERROR] File not found: {file_path}")
         return
 
     with open(file_path, 'r') as f:
@@ -39,14 +39,14 @@ def ingest_file(file_path):
                 data = response.json()
                 status = data.get("status")
                 if status == "memorized":
-                    print(f"   ✅ Memorized: {data.get('triple')}")
+                    print(f"   [OK] Memorized: {data.get('triple')}")
                 else:
-                    print(f"   ⚠️ Failed: {status}")
+                    print(f"   [WARN] Failed: {status}")
             else:
-                print(f"   ❌ API Error: {response.status_code}")
+                print(f"   [ERROR] API Error: {response.status_code}")
                 
         except Exception as e:
-            print(f"   🚨 Script Error: {e}")
+            print(f"   [ALERT] Script Error: {e}")
 
         # Rate limiting for local LLM health
         time.sleep(2)
@@ -59,7 +59,7 @@ if __name__ == "__main__":
     target = sys.argv[1]
     
     if os.path.isdir(target):
-        print(f"📂 Scanning directory: {target}")
+        print(f"[DIR] Scanning directory: {target}")
         for root, dirs, files in os.walk(target):
             for file in files:
                 if file.endswith(".md") or file.endswith(".txt"):

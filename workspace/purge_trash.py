@@ -22,7 +22,7 @@ def clean_brain():
     cursor = conn.cursor()
     all_trash_ids = []
 
-    print("🔍 Scanning for ghost data...")
+    print("[SEARCH] Scanning for ghost data...")
     for pattern in TRASH_PATTERNS:
         cursor.execute("SELECT id, content FROM documents WHERE content LIKE ?", (pattern,))
         results = cursor.fetchall()
@@ -31,11 +31,11 @@ def clean_brain():
             all_trash_ids.append(row_id)
 
     if not all_trash_ids:
-        print("✅ No trash found.")
+        print("[OK] No trash found.")
         conn.close()
         return
 
-    confirm = input(f"⚠️ Delete {len(all_trash_ids)} items? (y/n): ")
+    confirm = input(f"[WARN] Delete {len(all_trash_ids)} items? (y/n): ")
     if confirm.lower() == 'y':
         placeholders = ','.join(['?'] * len(all_trash_ids))
         try:
@@ -44,11 +44,11 @@ def clean_brain():
             cursor.execute(f"DELETE FROM documents WHERE id IN ({placeholders})", all_trash_ids)
             conn.commit()
             
-            print("🧹 Optimizing DB...")
+            print("[CLEAN] Optimizing DB...")
             conn.execute("VACUUM")
             print("✨ Purge complete. Stheno is now free of Gemini's ghost.")
         except Exception as e:
-            print(f"❌ Error: {e}")
+            print(f"[ERROR] Error: {e}")
     
     conn.close()
 

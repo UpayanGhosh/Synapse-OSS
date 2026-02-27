@@ -29,7 +29,7 @@ class PersonaManager:
                 with open(self.dict_path) as f:
                     return json.load(f)
         except Exception:
-            # print(f"⚠️ Persona Error: Could not load Banglish dict: {e}")
+            # print(f"[WARN] Persona Error: Could not load Banglish dict: {e}")
             pass
         return {}
 

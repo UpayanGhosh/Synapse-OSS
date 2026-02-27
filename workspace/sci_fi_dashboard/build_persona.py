@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Build Persona — One-time CLI script to parse chat logs and generate persona profiles.
+Build Persona -- One-time CLI script to parse chat logs and generate persona profiles.
 
 Usage:
     python build_persona.py                          # Build both profiles
@@ -43,19 +43,19 @@ def print_profile_summary(profile: PersonaProfile):
     print(f"  📋 Profile: {profile.target_user} ({profile.relationship_mode})")
     print(f"{'=' * 60}")
     print(
-        f"  📈 Messages analyzed: {profile.total_synapse_messages} Synapse, "
+        f"  [CHART] Messages analyzed: {profile.total_synapse_messages} Synapse, "
         f"{profile.total_user_messages} {profile.target_user}"
     )
-    print(f"  💬 Conversation pairs: {profile.total_exchanges}")
-    print(f"  📝 Avg message length: {profile.avg_message_length} chars")
+    print(f"  [REPLY] Conversation pairs: {profile.total_exchanges}")
+    print(f"  [LOG] Avg message length: {profile.avg_message_length} chars")
     print(f"  😀 Emoji density: {profile.emoji_density} per message")
     print(f"  🎯 Top emojis: {' '.join(profile.top_emojis[:8])}")
     print(f"  🗣️  Catchphrases: {', '.join(profile.catchphrases[:5])}")
     print(f"  🇮🇳 Banglish words: {len(profile.banglish_words)} found")
-    print(f"  💻 Tech jargon: {len(profile.tech_jargon)} terms")
-    print(f"  📂 Topics: {json.dumps(profile.topic_categories, indent=4)}")
+    print(f"  [CMD] Tech jargon: {len(profile.tech_jargon)} terms")
+    print(f"  [DIR] Topics: {json.dumps(profile.topic_categories, indent=4)}")
     print(f"  🎓 Few-shot examples: {len(profile.few_shot_examples)}")
-    print(f"  📜 Rules: {len(profile.rules)}")
+    print(f"  [HISTORY] Rules: {len(profile.rules)}")
     print(f"{'=' * 60}\n")
 
 
@@ -75,9 +75,9 @@ def main():
 
     os.makedirs(args.output_dir, exist_ok=True)
 
-    print("🧠 Synapse Persona Builder v1.0")
-    print(f"📂 Looking for chat files in: {args.chat_dir}")
-    print(f"📂 Output directory: {args.output_dir}\n")
+    print("[MEM] Synapse Persona Builder v1.0")
+    print(f"[DIR] Looking for chat files in: {args.chat_dir}")
+    print(f"[DIR] Output directory: {args.output_dir}\n")
 
     profiles_built = 0
 
@@ -85,7 +85,7 @@ def main():
     if not args.the_partner_only:
         the_creator_chat = find_chat_file(args.chat_dir, "Chat_with_primary_user_LLM.md")
         if the_creator_chat:
-            print(f"📖 Found primary_user chat: {the_creator_chat}")
+            print(f"[READ] Found primary_user chat: {the_creator_chat}")
             profile = build_persona_profile(
                 filepath=the_creator_chat, user_name="primary_user", relationship_mode="brother"
             )
@@ -94,14 +94,14 @@ def main():
             print_profile_summary(profile)
             profiles_built += 1
         else:
-            print("❌ Could not find Chat_with_primary_user_LLM.md")
+            print("[ERROR] Could not find Chat_with_primary_user_LLM.md")
             print(f"   Searched: {args.chat_dir}, ~/Desktop, ~/Downloads, {SCRIPT_DIR}")
 
     # Build partner_user profile
     if not args.the_creator_only:
         the_partner_chat = find_chat_file(args.chat_dir, "Chat_with_partner_user_LLM.md")
         if the_partner_chat:
-            print(f"📖 Found partner_user chat: {the_partner_chat}")
+            print(f"[READ] Found partner_user chat: {the_partner_chat}")
             profile = build_persona_profile(
                 filepath=the_partner_chat, user_name="partner_user", relationship_mode="caring_pa"
             )
@@ -110,7 +110,7 @@ def main():
             print_profile_summary(profile)
             profiles_built += 1
         else:
-            print("❌ Could not find Chat_with_partner_user_LLM.md")
+            print("[ERROR] Could not find Chat_with_partner_user_LLM.md")
             print(f"   Searched: {args.chat_dir}, ~/Desktop, ~/Downloads, {SCRIPT_DIR}")
 
     # Summary
@@ -125,7 +125,7 @@ def main():
                 with open(fpath) as f:
                     data = json.load(f)
                 print(
-                    f"   ✅ {fname}: {len(data.get('few_shot_examples', []))} examples, "
+                    f"   [OK] {fname}: {len(data.get('few_shot_examples', []))} examples, "
                     f"{len(data.get('banglish_words', []))} vocab words"
                 )
 
