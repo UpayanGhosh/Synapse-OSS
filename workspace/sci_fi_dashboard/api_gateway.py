@@ -53,6 +53,38 @@ def _port_open(host: str, port: int, timeout: float = 0.5) -> bool:
         return False
 
 
+def validate_env() -> None:
+    """Validate required and optional env keys. Hard-fail only on missing GEMINI_API_KEY."""
+    # --- Required ---
+    gemini_key = os.environ.get("GEMINI_API_KEY", "").strip()
+    if not gemini_key:
+        print("[ERROR] GEMINI_API_KEY is not set -- Synapse cannot call any LLM.")
+        print("[ERROR] Add GEMINI_API_KEY to your .env file and restart.")
+        sys.exit(1)
+
+    # --- Optional keys: warn only ---
+    if not os.environ.get("GROQ_API_KEY", "").strip():
+        print("[WARN] GROQ_API_KEY not set -- voice transcription disabled")
+    if not os.environ.get("OPENROUTER_API_KEY", "").strip():
+        print("[WARN] OPENROUTER_API_KEY not set -- fallback model routing disabled")
+    if not os.environ.get("WHATSAPP_BRIDGE_TOKEN", "").strip():
+        print("[WARN] WHATSAPP_BRIDGE_TOKEN not set -- WhatsApp bridge unauthenticated")
+
+    # --- Feature availability block ---
+    ollama_on = _port_open("localhost", 11434)
+    qdrant_on = _port_open("localhost", 6333)
+    groq_on = bool(os.environ.get("GROQ_API_KEY", "").strip())
+    openrouter_on = bool(os.environ.get("OPENROUTER_API_KEY", "").strip())
+    whatsapp_on = bool(os.environ.get("WHATSAPP_BRIDGE_TOKEN", "").strip())
+
+    print("[INFO] Feature availability:")
+    print(f"   Ollama         {'[ON]' if ollama_on else '[--]'}  local embedding + The Vault")
+    print(f"   Qdrant         {'[ON]' if qdrant_on else '[--]'}  vector search")
+    print(f"   Groq           {'[ON]' if groq_on else '[--]'}  voice transcription")
+    print(f"   OpenRouter     {'[ON]' if openrouter_on else '[--]'}  fallback model routing")
+    print(f"   WhatsApp       {'[ON]' if whatsapp_on else '[--]'}  bridge authentication")
+
+
 def _resolve_openclaw_cli_bin() -> str:
     configured = os.environ.get("OPENCLAW_CLI_BIN", "").strip()
     return configured or shutil.which("openclaw") or "openclaw"
@@ -222,6 +254,7 @@ def get_sbs_for_target(target: str) -> SBSOrchestrator:
 from utils.env_loader import load_env_file  # noqa: E402
 
 load_env_file(anchor=Path(__file__))  # noqa: E402
+validate_env()  # ENV-01, ENV-02, ENV-03 -- hard-fail or warn before singletons
 
 # --- LLM Client ---
 # Primary path: OpenClaw Antigravity Proxy (OAuth) at localhost:8080
