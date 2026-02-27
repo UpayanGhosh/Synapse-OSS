@@ -1,13 +1,5 @@
 # 🧬 SYNAPSE — Multi-Agent AI Assistant with Hybrid Memory, Evolving Personality, and Privacy-First Routing
 
-> ## ⚠️ MAINTENANCE WARNING ⚠️
-> 
-> **This repository is currently under active maintenance and is NOT recommended for use or cloning at this time.**
-> 
-> Breaking changes may be introduced without notice. Please wait for a stable release before setting this up.
->
-> ---
-
 > **📢 Renamed from Jarvis-OSS to Synapse-OSS (Feb 2026)** — Same codebase, new name!
 
 ![Python](https://img.shields.io/badge/Python-3.11-3776AB?style=for-the-badge&logo=python&logoColor=white)
@@ -28,9 +20,10 @@
 >
 > **Want the story behind the engineering?** Read [MANIFESTO.md](MANIFESTO.md) — the opinionated, in-character deep-dive.
 
-> ⚠️ **Platform Note:** This project was developed and tested
-> on macOS (Apple Silicon). Linux and Windows support is
-> experimental — if you hit issues, please
+> **Platform Note:** Developed and tested on macOS (Apple Silicon).
+> Windows is fully supported — `pip install`, onboarding script, and the web
+> browsing tool all work on Windows 11 out of the box. Linux should work but
+> is less tested. If you hit issues, please
 > [open an issue](https://github.com/UpayanGhosh/Synapse-OSS/issues).
 
 > **⚠️ CRITICAL: WhatsApp-Only Platform(For now)**
@@ -41,7 +34,7 @@
 ## 💡 What Makes This Different
 
 Most AI chatbot projects are thin wrappers around an API call.
-JARVIS is an **11-subsystem architecture** that solves problems
+Synapse is an **11-subsystem architecture** that solves problems
 most chatbots ignore:
 
 | Problem                            | How Most Bots Handle It                               | How JARVIS Handles It                                                                                                                                   |
@@ -61,7 +54,7 @@ most chatbots ignore:
 
 ### WhatsApp Conversation
 
-> *JARVIS responding to a real message with memory context, persona adaptation, and model routing visible in the footer stats.*
+> *Synapse responding to a real message with memory context, persona adaptation, and model routing visible in the footer stats.*
 
 ### Architecture Overview
 
@@ -138,7 +131,11 @@ python -m venv .venv
 .venv\Scripts\activate.bat
 
 pip install -r requirements.txt
-crawl4ai-setup                 # Downloads browser for web browsing feature
+
+# macOS/Linux only — downloads browser for web browsing feature:
+crawl4ai-setup
+# Windows: Playwright (the Windows browser backend) is installed automatically
+#          by synapse_onboard.bat — no manual step needed here.
 
 # 3. Configure
 # macOS/Linux:
@@ -147,7 +144,8 @@ cp .env.example .env
 # Windows:
 copy .env.example .env
 
-# Edit .env — add at minimum: GEMINI_API_KEY and GROQ_API_KEY (for voice messages)
+# Edit .env — only GEMINI_API_KEY is required to start.
+# GROQ_API_KEY enables voice transcription (optional).
 
 # 4. Boot the Gateway
 # macOS/Linux:
@@ -180,7 +178,7 @@ docker compose up --build
 
 ## 💻 Usage Examples
 
-### Chat with JARVIS
+### Chat with Synapse
 
 ```bash
 # macOS/Linux
@@ -235,7 +233,7 @@ curl.exe -X POST http://localhost:8000/persona/rebuild
 
 > **Full setup guide** (Qdrant, Ollama, WhatsApp bridge, persona config): [HOW_TO_RUN.md](HOW_TO_RUN.md)
 >
-> **Persona customization** (how to make JARVIS yours): [SETUP_PERSONA.md](SETUP_PERSONA.md)
+> **Persona customization** (how to make Synapse yours): [SETUP_PERSONA.md](SETUP_PERSONA.md)
 
 ---
 
@@ -269,13 +267,13 @@ Sensitive conversations route to a local Ollama instance on a dedicated compute 
 
 Voice notes received via WhatsApp are transcribed using the Groq API (Whisper-Large-v3). Cloud-based transcription with zero local RAM impact — results in 2-4 seconds. Requires a `GROQ_API_KEY` (free tier available at [console.groq.com](https://console.groq.com)).
 
-### Web Browsing (Crawl4AI)
+### Web Browsing (Platform-Aware)
 
-Jarvis can browse the live internet using Crawl4AI headless browser automation. When the user asks a question requiring real-time data (weather, news, live scores), the `ToolRegistry` dispatches a browser session, extracts clean markdown, and feeds the result back to the LLM. Content is truncated to 3000 characters to protect context window limits.
+Synapse can browse the live internet using a headless browser. When the user asks a question requiring real-time data (weather, news, live scores), the `ToolRegistry` dispatches a browser session, extracts clean text, and feeds the result back to the LLM. Content is truncated to 3000 characters to protect context window limits. The backend is platform-aware: **Crawl4AI** on Mac/Linux, **Playwright** on Windows — the `search_web(url)` interface is identical on both.
 
 ### Implicit Feedback Detection (SBS Feedback Loop)
 
-The SBS subsystem includes an `ImplicitFeedbackDetector` that watches for conversational corrections. If you tell Jarvis "too long" or "be more casual", it automatically adjusts its persona profile (Banglish ratio, response length, formality) — no explicit configuration needed. Corrections take effect immediately; the batch processor reinforces them over time.
+The SBS subsystem includes an `ImplicitFeedbackDetector` that watches for conversational corrections. If you tell Synapse "too long" or "be more casual", it automatically adjusts its persona profile (Banglish ratio, response length, formality) — no explicit configuration needed. Corrections take effect immediately; the batch processor reinforces them over time.
 
 ### Sentinel File Governance
 
@@ -354,7 +352,7 @@ workspace/
 │       ├── feedback/              #     Implicit feedback detection
 │       └── sentinel/              #     File governance guardrails
 ├── db/                           # Database tools & ingestion
-│   ├── tools.py                  #   Crawl4AI browser automation
+│   ├── tools.py                  #   Platform-aware browser (Crawl4AI/Playwright)
 │   ├── model_orchestrator.py     #   3-tier local model routing
 │   ├── audio_processor.py        #   Groq Whisper transcription
 │   └── ingest.py                 #   Bulk file ingestion pipeline
