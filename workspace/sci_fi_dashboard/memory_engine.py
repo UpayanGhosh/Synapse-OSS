@@ -61,7 +61,12 @@ except ImportError:
     sys.path.append(os.path.join(WORKSPACE_ROOT, "sci_fi_dashboard"))
     from retriever import QdrantVectorStore  # noqa: E402
 
-import ollama  # noqa: E402
+try:
+    import ollama
+    OLLAMA_AVAILABLE = True
+except ImportError:
+    ollama = None
+    OLLAMA_AVAILABLE = False
 
 # Configuration
 EMBEDDING_MODEL = "nomic-embed-text"
@@ -91,21 +96,37 @@ class MemoryEngine:
         # Lazy-loaded reranker
         self._ranker = None
         self._ranker_lock = threading.Lock()
+        self._st_model = None  # lazy-loaded sentence-transformers fallback
 
+        if OLLAMA_AVAILABLE:
+            print("[OK] MemoryEngine initialized (Ollama available -- nomic-embed-text)")
+        else:
+            print("[WARN] Ollama not found -- local embedding and The Vault disabled")
+            print("[WARN] Embedding fallback: sentence-transformers all-MiniLM-L6-v2 (384-dim)")
+            print("[WARN] If DB has existing 768-dim vectors, re-ingest to restore semantic search")
         print("[OK] MemoryEngine initialized (shared graph, no duplication)")
 
+    def _sentence_transformer_embed(self, text: str) -> tuple:
+        """Fallback embedding using all-MiniLM-L6-v2 (384-dim). Lazy-loaded."""
+        if self._st_model is None:
+            from sentence_transformers import SentenceTransformer
+            self._st_model = SentenceTransformer("all-MiniLM-L6-v2")
+        return tuple(self._st_model.encode(text).tolist())
+
     @lru_cache(maxsize=500)  # noqa: B019
-    def get_embedding(self, text: str) -> list:
+    def get_embedding(self, text: str) -> tuple:
+        if not OLLAMA_AVAILABLE:
+            return self._sentence_transformer_embed(text)
         try:
             response = ollama.embeddings(
                 model=EMBEDDING_MODEL,
                 prompt=text,
                 keep_alive=OLLAMA_KEEP_ALIVE,
             )
-            return tuple(response["embedding"])  # tuple for lru_cache hashability
+            return tuple(response["embedding"])
         except Exception as e:
             print(f"[WARN] Embedding generation failed: {e}")
-            return tuple([0.0] * 768)  # Return zero vector as fallback
+            return tuple([0.0] * 768)
 
     def _get_ranker(self) -> Ranker:
         if self._ranker is None:
@@ -358,18 +379,21 @@ class MemoryEngine:
                 pass
 
             # Local fallback
-            response = ollama.chat(
-                model="llama3.2:3b",
-                messages=[
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": prompt},
-                ],
-                keep_alive=OLLAMA_KEEP_ALIVE,
-            )
-            return {
-                "response": response["message"]["content"],
-                "model": "llama3.2:3b",
-                "source": "local_fallback",
-            }
+            if OLLAMA_AVAILABLE:
+                response = ollama.chat(
+                    model="llama3.2:3b",
+                    messages=[
+                        {"role": "system", "content": system},
+                        {"role": "user", "content": prompt},
+                    ],
+                    keep_alive=OLLAMA_KEEP_ALIVE,
+                )
+                return {
+                    "response": response["message"]["content"],
+                    "model": "llama3.2:3b",
+                    "source": "local_fallback",
+                }
+            else:
+                return {"error": "Ollama not available and cloud LLM router unavailable"}
         except Exception as e:
             return {"error": str(e)}
