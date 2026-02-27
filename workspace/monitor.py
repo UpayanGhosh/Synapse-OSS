@@ -1,3 +1,4 @@
+import tempfile
 import time
 import psutil
 import os
@@ -20,8 +21,8 @@ from rich.columns import Columns
 
 console = Console()
 
-# Configuration
-LOG_DIR = "/tmp/openclaw"
+# Configuration — use system temp dir so this works on Windows and Mac/Linux
+LOG_DIR = os.path.join(tempfile.gettempdir(), "openclaw")
 OPENCLAW_HOME = os.path.expanduser("~/.openclaw")
 SESSIONS_FILE = os.path.join(OPENCLAW_HOME, "agents", "main", "sessions", "sessions.json")
 
@@ -418,12 +419,20 @@ class BrainDashboard:
                     # Handle message field — can be string or dict
                     msg_part = data.get("1", "")
                     if isinstance(msg_part, dict):
-                        # Auto-reply messages contain the actual text
-                        text = msg_part.get("text", "")
-                        if text:
-                            msg_part = f"auto-reply sent: {text[:100]}"
+                        if msg_part.get("isBoom"):
+                            # Hapi/Boom HTTP error from OpenClaw gateway layer
+                            output = msg_part.get("output", {})
+                            status = output.get("statusCode", "?")
+                            payload = output.get("payload", {})
+                            err_msg = payload.get("message") or payload.get("error") or "unknown"
+                            msg_part = f"OpenClaw HTTP {status}: {err_msg}"
                         else:
-                            msg_part = str(msg_part)
+                            # Auto-reply messages contain the actual text
+                            text = msg_part.get("text", "")
+                            if text:
+                                msg_part = f"auto-reply sent: {text[:100]}"
+                            else:
+                                msg_part = str(msg_part)
 
                     raw_subsystem = data.get("0", "")
                     subsystem = "unknown"
