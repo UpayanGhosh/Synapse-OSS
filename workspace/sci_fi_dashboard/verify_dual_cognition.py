@@ -7,7 +7,7 @@ _openclaw_home = os.path.expanduser("~/.openclaw")
 sys.path.insert(0, os.path.join(_openclaw_home, "workspace", "sci_fi_dashboard"))
 sys.path.insert(0, os.path.join(_openclaw_home, "workspace"))
 
-from dual_cognition import DualCognitionEngine
+from dual_cognition import DualCognitionEngine  # noqa: E402
 
 
 # Mock dependencies

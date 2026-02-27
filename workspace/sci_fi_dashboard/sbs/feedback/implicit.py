@@ -1,6 +1,8 @@
 import re
-from typing import Optional, Dict, Any
+from typing import Any
+
 from ..profile.manager import ProfileManager
+
 
 class ImplicitFeedbackDetector:
     """
@@ -46,7 +48,7 @@ class ImplicitFeedbackDetector:
             for category, patterns in self.FEEDBACK_PATTERNS.items()
         }
 
-    def analyze(self, user_text: str, last_assistant_text: str = "") -> Optional[Dict[str, Any]]:
+    def analyze(self, user_text: str, last_assistant_text: str = "") -> dict[str, Any] | None:
         """
         Analyze user text for feedback signals.
         If a signal is detected, returns a dict with the signal type and details.
@@ -76,7 +78,7 @@ class ImplicitFeedbackDetector:
             "context": last_assistant_text[:50] + "..." if last_assistant_text else None
         }
 
-    def apply_feedback(self, signal: Dict[str, Any]):
+    def apply_feedback(self, signal: dict[str, Any]):
         """
         Act on the detected feedback signal to adjust the persona profile immediately.
         """

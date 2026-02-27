@@ -1,1 +1,1 @@
-from .implicit import ImplicitFeedbackDetector
+from .implicit import ImplicitFeedbackDetector as ImplicitFeedbackDetector
