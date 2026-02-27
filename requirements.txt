@@ -1,5 +1,5 @@
 # ============================================================
-# Jarvis-OSS — Core Dependencies
+# Synapse-OSS — Core Dependencies
 # Install with: pip install -r requirements.txt
 # ============================================================
 

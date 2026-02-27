@@ -5,7 +5,7 @@ Acceptance tests verify that the system meets business requirements.
 These are formal tests that check if the system satisfies requirements.
 
 These tests are designed to verify the core value propositions
-of the Jarvis-OSS system.
+of the Synapse-OSS system.
 """
 
 import pytest

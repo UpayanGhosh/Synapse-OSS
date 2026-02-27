@@ -1,7 +1,7 @@
 FROM python:3.11-slim
 
 LABEL maintainer="Upayan Ghosh <upayan1231@gmail.com>"
-LABEL description="Jarvis-OSS API Gateway"
+LABEL description="Synapse-OSS API Gateway"
 
 WORKDIR /app
 

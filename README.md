@@ -16,7 +16,7 @@
 ![Lines of Code](https://img.shields.io/badge/Lines_of_Code-15,000+-blueviolet?style=for-the-badge)
 ![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
 ![Status](https://img.shields.io/badge/Status-Active-brightgreen?style=for-the-badge)
-![CI](https://img.shields.io/github/actions/workflow/status/UpayanGhosh/Jarvis-OSS/tests.yml?branch=main&style=for-the-badge&logo=github&label=CI)
+![CI](https://img.shields.io/github/actions/workflow/status/UpayanGhosh/Synapse-OSS/tests.yml?branch=main&style=for-the-badge&logo=github&label=CI)
 ![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?style=for-the-badge&logo=docker&logoColor=white)
 
 > A self-hosted AI system that remembers everything, develops its own personality
@@ -31,7 +31,7 @@
 > ⚠️ **Platform Note:** This project was developed and tested
 > on macOS (Apple Silicon). Linux and Windows support is
 > experimental — if you hit issues, please
-> [open an issue](https://github.com/UpayanGhosh/Jarvis-OSS/issues).
+> [open an issue](https://github.com/UpayanGhosh/Synapse-OSS/issues).
 
 > **⚠️ CRITICAL: WhatsApp-Only Platform(For now)**
 > This system is designed exclusively for **WhatsApp** messaging. All features — async message pipeline, persona routing, hybrid memory, The Vault privacy routing, and multi-model MoA — operate through WhatsApp webhooks and the WhatsApp API. Voice notes, media handling, and outbound messaging are all WhatsApp-specific.
@@ -126,8 +126,8 @@ The system consists of 11 interconnected subsystems:
 
 ```bash
 # 1. Clone
-git clone https://github.com/UpayanGhosh/Jarvis-OSS.git
-cd Jarvis-OSS
+git clone https://github.com/UpayanGhosh/Synapse-OSS.git
+cd Synapse-OSS
 
 # 2. Environment
 # macOS/Linux:
@@ -168,8 +168,8 @@ curl http://localhost:8000/health
 ### Docker Quick Start
 
 ```bash
-git clone https://github.com/UpayanGhosh/Jarvis-OSS.git
-cd Jarvis-OSS
+git clone https://github.com/UpayanGhosh/Synapse-OSS.git
+cd Synapse-OSS
 cp .env.example .env    # Edit .env with your API keys (Windows: copy .env.example .env)
 
 docker compose up --build
