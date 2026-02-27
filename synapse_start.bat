@@ -28,6 +28,8 @@ tasklist /FI "IMAGENAME eq ollama.exe" 2>nul | find /I "ollama.exe" >nul
 if %ERRORLEVEL% NEQ 0 (
     start /B ollama serve >nul 2>&1
     echo    [OK] Started.
+    REM Pull embedding model in background (no-op if already present)
+    start /B ollama pull nomic-embed-text >nul 2>&1
 ) else (
     echo    [OK] Already running.
 )

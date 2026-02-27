@@ -5,6 +5,10 @@ setlocal EnableDelayedExpansion
 REM Synapse Onboard Script for Windows (Batch)
 REM This script guides a user through the initial setup and launch of Synapse.
 
+REM Get project root early so all paths are absolute
+set "PROJECT_ROOT=%~dp0"
+set "PROJECT_ROOT=%PROJECT_ROOT:~0,-1%"
+
 echo.
 echo =======================================
 echo    Synapse Onboard - Let's Get Started!
@@ -52,6 +56,15 @@ if %ERRORLEVEL% NEQ 0 (
     echo    [OK] docker is installed
 )
 
+REM Check Ollama
+where ollama >nul 2>&1
+if %ERRORLEVEL% NEQ 0 (
+    echo    [X] ollama is NOT installed
+    set "MISSING=1"
+) else (
+    echo    [OK] ollama is installed
+)
+
 REM Check OpenClaw
 where openclaw >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
@@ -88,16 +101,28 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 REM Check .env file
-if not exist ".env" (
+if not exist "%PROJECT_ROOT%\.env" (
     echo.
     echo ERROR: No .env file found.
     echo.
     echo Run this first:
-    echo    copy .env.example .env
+    echo    copy "%PROJECT_ROOT%\.env.example" "%PROJECT_ROOT%\.env"
     echo Then open .env and add your GEMINI_API_KEY.
     echo.
     pause
     exit /b 1
+)
+
+REM Warn if GEMINI_API_KEY looks unset (still has placeholder)
+findstr /C:"GEMINI_API_KEY=\"your_gemini" "%PROJECT_ROOT%\.env" >nul 2>&1
+if %ERRORLEVEL% EQU 0 (
+    echo.
+    echo WARNING: GEMINI_API_KEY in your .env still has the placeholder value.
+    echo    Open .env and replace: GEMINI_API_KEY="your_gemini_api_key_here"
+    echo    with your real key from https://aistudio.google.com/
+    echo.
+    echo Press any key to continue anyway ^(Synapse will start but LLM calls will fail^)...
+    pause >nul
 )
 
 REM Step 2: Set up Python environment
@@ -105,11 +130,11 @@ echo.
 echo Step 2: Setting up Python...
 echo.
 
-if not exist ".venv\Scripts\python.exe" (
+if not exist "%PROJECT_ROOT%\.venv\Scripts\python.exe" (
     echo Creating virtual environment...
-    python -m venv .venv
+    python -m venv "%PROJECT_ROOT%\.venv"
     echo Installing dependencies...
-    call .venv\Scripts\pip.exe install -r requirements.txt
+    call "%PROJECT_ROOT%\.venv\Scripts\pip.exe" install -r "%PROJECT_ROOT%\requirements.txt"
     echo [OK] Virtual environment ready.
 ) else (
     echo [OK] Virtual environment already exists.
@@ -191,8 +216,6 @@ if %ERRORLEVEL% NEQ 0 (
 )
 echo [OK] Phone number saved: %PHONE_NUMBER%
 
-set "PROJECT_ROOT=%~dp0"
-set "PROJECT_ROOT=%PROJECT_ROOT:~0,-1%"
 set "SYNAPSE_WORKSPACE=%PROJECT_ROOT%\workspace"
 
 openclaw config set agents.defaults.workspace "%SYNAPSE_WORKSPACE%" >nul 2>&1
@@ -203,7 +226,13 @@ echo.
 echo Step 7: Starting All Synapse Services...
 echo.
 
-call synapse_start.bat
+call "%PROJECT_ROOT%\synapse_start.bat"
+
+REM Pull required Ollama embedding model in background (first-time setup)
+echo.
+echo Pulling Ollama embedding model ^(nomic-embed-text^) in background...
+start /B ollama pull nomic-embed-text >nul 2>&1
+echo [OK] Pull started. ^(First run may take a few minutes in the background.^)
 
 echo.
 echo ========================================

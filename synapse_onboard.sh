@@ -44,6 +44,7 @@ all_good=true
 check_tool git       || all_good=false
 check_tool python3   || all_good=false
 check_tool docker    || all_good=false
+check_tool ollama    || all_good=false
 check_tool openclaw  || all_good=false
 
 if [ "$all_good" = false ]; then
@@ -191,7 +192,7 @@ echo ""
 echo "Scan the QR code now! I'll wait..."
 echo ""
 
-if ! openclaw channels login; then
+if ! openclaw channels login --channel whatsapp; then
     echo ""
     echo "⚠️  Note: 'openclaw channels login' returned an error."
     echo "   This is normal if WhatsApp is already linked."
@@ -239,7 +240,7 @@ fi
 
 echo ""
 echo "🚀 ======================================="
-echo "   Step 5: Starting All Synapse Services"
+echo "   Step 3: Starting All Synapse Services"
 echo "=========================================="
 echo ""
 

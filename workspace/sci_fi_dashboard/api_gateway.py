@@ -1297,5 +1297,5 @@ async def query_memory(item: QueryItem, request: Request):
 if __name__ == "__main__":
     import uvicorn
 
-    BIND_HOST = os.environ.get("API_BIND_HOST", "127.0.0.1")
+    BIND_HOST = os.environ.get("API_BIND_HOST", "0.0.0.0")
     uvicorn.run(app, host=BIND_HOST, port=8000)
