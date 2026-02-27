@@ -5,6 +5,31 @@
   "description": "Relays incoming WhatsApp messages to the Synapse FastAPI gateway via async enqueue endpoint",
   "main": "index.js",
   "type": "module",
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "endpoint": {
+        "type": "string",
+        "description": "FastAPI enqueue endpoint URL",
+        "default": "http://127.0.0.1:8000/whatsapp/enqueue"
+      },
+      "timeoutMs": {
+        "type": "number",
+        "description": "Request timeout in milliseconds",
+        "default": 8000
+      },
+      "ttlMs": {
+        "type": "number",
+        "description": "Suppression TTL for duplicate replies in milliseconds",
+        "default": 30000
+      },
+      "bridgeToken": {
+        "type": "string",
+        "description": "Auth token sent as x-bridge-token header",
+        "default": ""
+      }
+    }
+  },
   "config": {
     "endpoint": "http://127.0.0.1:8000/whatsapp/enqueue",
     "timeoutMs": 8000,
