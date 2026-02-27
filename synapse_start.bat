@@ -42,7 +42,14 @@ netstat -ano | findstr ":8000" | find "LISTENING" >nul
 if %ERRORLEVEL% NEQ 0 (
     if exist "%PROJECT_ROOT%\.venv\Scripts\python.exe" (
         mkdir "%USERPROFILE%\.openclaw\logs" >nul 2>&1
-        start /B cmd /c "set PYTHONUTF8=1 && "%PROJECT_ROOT%\.venv\Scripts\python.exe" -X utf8 -m uvicorn --app-dir "%PROJECT_ROOT%\workspace" sci_fi_dashboard.api_gateway:app --host 0.0.0.0 --port 8000 --workers 1 >> "%USERPROFILE%\.openclaw\logs\gateway.log" 2>&1"
+        REM Write a temp launcher to avoid nested-quote breakage in cmd /c "..."
+        (
+            echo @echo off
+            echo set PYTHONUTF8=1
+            echo set PYTHONIOENCODING=utf-8
+            echo "%PROJECT_ROOT%\.venv\Scripts\python.exe" -X utf8 -m uvicorn --app-dir "%PROJECT_ROOT%\workspace" sci_fi_dashboard.api_gateway:app --host 0.0.0.0 --port 8000 --workers 1 ^>^> "%USERPROFILE%\.openclaw\logs\gateway.log" 2^>^&1
+        ) > "%TEMP%\_synapse_gateway.bat"
+        start "Synapse API Gateway" /B cmd /c "%TEMP%\_synapse_gateway.bat"
         echo    [OK] Started. (log: %USERPROFILE%\.openclaw\logs\gateway.log)
     ) else (
         echo    [X] ERROR: Python virtual environment not found at %PROJECT_ROOT%\.venv
