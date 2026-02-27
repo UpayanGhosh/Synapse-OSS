@@ -144,7 +144,37 @@ while true; do
     esac
 done
 
+# Collect phone number BEFORE running openclaw (openclaw can close stdin)
 echo ""
+echo "📞 Enter your phone number first..."
+echo ""
+echo "This lets Synapse know it's YOU messaging it."
+echo "Enter your number with country code (e.g., +15551234567)"
+echo ""
+
+while true; do
+    read -p "Your phone number: " phone_number
+
+    if [ -z "$phone_number" ]; then
+        echo "Phone number cannot be empty. Please try again."
+        continue
+    fi
+
+    if [[ ! "$phone_number" =~ ^\+[0-9]{10,15}$ ]]; then
+        echo "Invalid format! Use E.164 format like:"
+        echo "   • US: +15551234567"
+        echo "   • India: +919876543210"
+        echo "   • UK: +447912345678"
+        echo "(Start with +, include country code, 10-15 digits total)"
+        continue
+    fi
+
+    break
+done
+
+echo "✓ Got it: $phone_number"
+echo ""
+
 echo "Now let's link your WhatsApp..."
 echo ""
 echo "⚠️  A QR code will appear on your screen!"
@@ -171,35 +201,6 @@ fi
 echo ""
 echo "✓ WhatsApp linked!"
 echo ""
-
-read -p "Press Enter to continue..."
-
-echo ""
-echo "📞 Enter your phone number..."
-echo ""
-echo "This lets Synapse know it's YOU messaging it."
-echo "Enter your number with country code (e.g., +15551234567)"
-echo ""
-
-while true; do
-    read -p "Your phone number: " phone_number
-
-    if [ -z "$phone_number" ]; then
-        echo "Phone number cannot be empty. Please try again."
-        continue
-    fi
-
-    if [[ ! "$phone_number" =~ ^\+[0-9]{10,15}$ ]]; then
-        echo "Invalid format! Use E.164 format like:"
-        echo "   • US: +15551234567"
-        echo "   • India: +919876543210"
-        echo "   • UK: +447912345678"
-        echo "(Start with +, include country code, 10-15 digits total)"
-        continue
-    fi
-
-    break
-done
 
 echo ""
 echo "Saving phone number to OpenClaw config..."
