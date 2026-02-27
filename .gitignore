@@ -33,6 +33,7 @@ db/*.gz
 !requirements.txt
 *.json
 !workspace/sci_fi_dashboard/entities.json
+!.planning/config.json
 *.bak
 *.gz
 db/memory.db*
