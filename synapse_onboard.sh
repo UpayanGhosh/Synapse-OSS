@@ -163,9 +163,9 @@ echo ""
 
 if ! openclaw channels login; then
     echo ""
-    echo "❌ WhatsApp login failed or was cancelled."
-    echo "Please re-run this script and scan the QR code when prompted."
-    exit 1
+    echo "⚠️  Note: 'openclaw channels login' returned an error."
+    echo "   This is normal if WhatsApp is already linked."
+    echo "   Continuing with setup..."
 fi
 
 echo ""

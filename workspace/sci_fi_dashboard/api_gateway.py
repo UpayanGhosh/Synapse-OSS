@@ -213,16 +213,71 @@ from utils.env_loader import load_env_file  # noqa: E402
 
 load_env_file(anchor=Path(__file__))  # noqa: E402
 
-# --- LLM Client (OpenClaw Gateway OAuth) ---
-# We route via localhost:8080 (Antigravity Proxy)
+# --- LLM Client ---
+# Primary path: OpenClaw Antigravity Proxy (OAuth) at localhost:8080
+# Fallback path: Direct Gemini REST API using GEMINI_API_KEY
 OPENCLAW_GATEWAY_URL = "http://localhost:8080/v1/messages"
-# Ideally read from openclaw.json, but for now using the known token or env
 OPENCLAW_GATEWAY_TOKEN = os.environ.get("OPENCLAW_GATEWAY_TOKEN", "")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
+
+# Map internal model IDs to Gemini REST API model names
+GEMINI_MODEL_MAP = {
+    "gemini-3-flash": "gemini-2.0-flash",
+    "gemini-3-pro-high": "gemini-1.5-pro",
+}
 
 # REDIS_URL removed — no Redis dependency
 BRIDGE_DB_PATH = Path(__file__).resolve().with_name("whatsapp_bridge.db")
 # bridge_queue REMOVED — Celery no longer needed
 # WhatsApp messages handled by gateway.worker.MessageWorker (async)
+
+
+async def call_gemini_direct(
+    model_id: str,
+    input_messages: list,
+    temperature: float = 0.7,
+    max_tokens: int = 1000,
+) -> str:
+    """Direct Gemini REST API call using GEMINI_API_KEY (no OpenClaw proxy needed)."""
+    if not GEMINI_API_KEY:
+        return "Error: GEMINI_API_KEY is not set. Add it to your .env file."
+
+    gemini_model = GEMINI_MODEL_MAP.get(model_id, "gemini-2.0-flash")
+
+    system_parts = []
+    contents = []
+    for msg in input_messages:
+        role = msg.get("role", "user")
+        content = msg.get("content", "")
+        if role == "system":
+            system_parts.append({"text": content})
+        else:
+            gemini_role = "model" if role == "assistant" else "user"
+            contents.append({"role": gemini_role, "parts": [{"text": content}]})
+
+    if not contents:
+        contents = [{"role": "user", "parts": [{"text": "Hello"}]}]
+
+    payload: dict = {
+        "contents": contents,
+        "generationConfig": {"temperature": temperature, "maxOutputTokens": max_tokens},
+    }
+    if system_parts:
+        payload["system_instruction"] = {"parts": system_parts}
+
+    url = f"{GEMINI_API_BASE}/{gemini_model}:generateContent?key={GEMINI_API_KEY}"
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        resp = await client.post(url, json=payload)
+        if resp.status_code != 200:
+            print(f"⚠️ Gemini Direct Error ({resp.status_code}): {resp.text[:200]}")
+            return f"Error: Gemini API returned {resp.status_code}"
+        data = resp.json()
+        candidates = data.get("candidates", [])
+        if not candidates:
+            return "(No response from Gemini)"
+        parts = candidates[0].get("content", {}).get("parts", [])
+        return "".join(p.get("text", "") for p in parts)
 
 
 async def call_gateway_model(
@@ -231,7 +286,10 @@ async def call_gateway_model(
     temperature: float = 0.7,
     max_tokens: int = 1000,
 ) -> str:
-    """Helper to call OpenClaw Antigravity Proxy (Anthropic Format). Returns text with thinking blocks prepended."""
+    """Route to OpenClaw Antigravity Proxy if token is set, else direct Gemini API."""
+    if not OPENCLAW_GATEWAY_TOKEN:
+        return await call_gemini_direct(model_id, input_messages, temperature, max_tokens)
+
     headers = {
         "x-api-key": OPENCLAW_GATEWAY_TOKEN,
         "anthropic-version": "2023-06-01",
@@ -282,8 +340,15 @@ MODEL_CODING = "gemini-3-flash"  # Placeholder
 MODEL_ANALYSIS = "gemini-3-pro-high"
 MODEL_REVIEW = "gemini-3-pro-high"  # Placeholder
 
+_llm_arch = (
+    "OAuth (OpenClaw Proxy)"
+    if OPENCLAW_GATEWAY_TOKEN
+    else f"Direct Gemini API ({'key set' if GEMINI_API_KEY else 'KEY MISSING — add GEMINI_API_KEY to .env'})"
+)
 print(
-    f"🤖 LLM Architecture (OAuth): \n   Casual: {MODEL_CASUAL}\n   Coding: {MODEL_CODING}\n   Analysis: {MODEL_ANALYSIS}\n   Review: {MODEL_REVIEW}"
+    f"🤖 LLM Architecture ({_llm_arch}): \n"
+    f"   Casual: {MODEL_CASUAL}\n   Coding: {MODEL_CODING}\n"
+    f"   Analysis: {MODEL_ANALYSIS}\n   Review: {MODEL_REVIEW}"
 )
 
 # --- Persona Profiles Layer Migrated to SBS ---

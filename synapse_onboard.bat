@@ -145,14 +145,9 @@ echo.
 openclaw channels login --channel whatsapp --verbose
 if %ERRORLEVEL% NEQ 0 (
     echo.
-    echo ERROR: WhatsApp login failed.
+    echo Note: WhatsApp login returned an error. This is normal if already linked.
+    echo Continuing with setup...
     echo.
-    echo If you have not set up OpenClaw before, run this first:
-    echo    openclaw setup --wizard
-    echo Then select WhatsApp when prompted.
-    echo.
-    pause
-    exit /b 1
 )
 
 echo.

@@ -616,7 +616,7 @@ def generate_layout(m: BrainDashboard):
 
         stream_text.append(item + "\n", style=style)
 
-    layout["middle"]["stream"].update(
+    layout["middle"].update(
         Panel(
             stream_text,
             title="🔄 PIPELINE",
