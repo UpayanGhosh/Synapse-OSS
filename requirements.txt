@@ -20,7 +20,8 @@ rich>=13.0.0
 sqlite-vec>=0.1.1
 
 # --- Embeddings & NLP ---
-ollama>=0.1.0                    # Local LLM & embeddings (Ollama Python client)
+# --- Optional: Local LLM (Ollama CLI must be installed separately from https://ollama.com) ---
+# ollama>=0.1.0
 sentence-transformers>=2.2.0     # Fallback embedding model (all-MiniLM-L6-v2)
 flashtext>=2.7                   # Fast keyword extraction (EntityGate)
 flashrank>=0.2.0                 # Reranking retrieved memories
