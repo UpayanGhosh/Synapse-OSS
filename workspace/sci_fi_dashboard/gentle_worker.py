@@ -25,14 +25,14 @@ class GentleWorker:
         try:
             battery = psutil.sensors_battery()
             if battery is not None and not battery.power_plugged:
-                return False, f"🔋 On Battery ({battery.percent}%)"
+                return False, f"[BATTERY] On Battery ({battery.percent}%)"
         except Exception as e:
             print(f"[WARN] Battery check error: {e}")
 
         # 2. Check CPU Load (Gentle Mode)
         cpu_load = psutil.cpu_percent(interval=1)
         if cpu_load > 20:
-            return False, f"🔥 CPU Busy ({cpu_load}%)"
+            return False, f"[FIRE] CPU Busy ({cpu_load}%)"
 
         return True, "[OK] System Idle & Plugged In"
 
@@ -55,7 +55,7 @@ class GentleWorker:
             print(f"Skipping DB Optimize: {reason}")
             return
 
-        print("📦 Optimizing databases (VACUUM)...")
+        print("[PKG] Optimizing databases (VACUUM)...")
         try:
             conn = self.graph._conn()
             conn.execute("VACUUM")
@@ -65,7 +65,7 @@ class GentleWorker:
             print(f"[WARN] DB optimization failed: {e}")
 
     def start(self):
-        print(f"👷 Gentle Worker Started (PID: {psutil.Process().pid})")
+        print(f"[WORKER] Gentle Worker Started (PID: {psutil.Process().pid})")
 
         # Schedule tasks at production-appropriate intervals
         schedule.every(10).minutes.do(self.heavy_task_graph_pruning)

@@ -46,7 +46,7 @@ def sanitize_memory():
         cursor.execute("UPDATE documents SET content = ? WHERE id = ?", (sanitized_content, doc_id))
 
     # 4. Final Vacuum
-    print("⚛️  Executing recursive entropy reduction (Vacuum)...")
+    print("[ATOM]  Executing recursive entropy reduction (Vacuum)...")
     conn.execute("VACUUM")
     conn.commit()
     conn.close()

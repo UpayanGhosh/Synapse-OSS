@@ -40,7 +40,7 @@ def find_chat_file(directory: str, filename: str) -> str:
 def print_profile_summary(profile: PersonaProfile):
     """Print a human-readable summary of a generated profile."""
     print(f"\n{'=' * 60}")
-    print(f"  📋 Profile: {profile.target_user} ({profile.relationship_mode})")
+    print(f"  [CLIPBOARD] Profile: {profile.target_user} ({profile.relationship_mode})")
     print(f"{'=' * 60}")
     print(
         f"  [CHART] Messages analyzed: {profile.total_synapse_messages} Synapse, "
@@ -48,13 +48,13 @@ def print_profile_summary(profile: PersonaProfile):
     )
     print(f"  [REPLY] Conversation pairs: {profile.total_exchanges}")
     print(f"  [LOG] Avg message length: {profile.avg_message_length} chars")
-    print(f"  😀 Emoji density: {profile.emoji_density} per message")
-    print(f"  🎯 Top emojis: {' '.join(profile.top_emojis[:8])}")
-    print(f"  🗣️  Catchphrases: {', '.join(profile.catchphrases[:5])}")
-    print(f"  🇮🇳 Banglish words: {len(profile.banglish_words)} found")
+    print(f"  [SMILE] Emoji density: {profile.emoji_density} per message")
+    print(f"  [TARGET] Top emojis: {' '.join(profile.top_emojis[:8])}")
+    print(f"  [SPEAK]  Catchphrases: {', '.join(profile.catchphrases[:5])}")
+    print(f"  [IN] Banglish words: {len(profile.banglish_words)} found")
     print(f"  [CMD] Tech jargon: {len(profile.tech_jargon)} terms")
     print(f"  [DIR] Topics: {json.dumps(profile.topic_categories, indent=4)}")
-    print(f"  🎓 Few-shot examples: {len(profile.few_shot_examples)}")
+    print(f"  [GRAD] Few-shot examples: {len(profile.few_shot_examples)}")
     print(f"  [HISTORY] Rules: {len(profile.rules)}")
     print(f"{'=' * 60}\n")
 
@@ -114,7 +114,7 @@ def main():
             print(f"   Searched: {args.chat_dir}, ~/Desktop, ~/Downloads, {SCRIPT_DIR}")
 
     # Summary
-    print(f"\n🏁 Done! Built {profiles_built} profile(s).")
+    print(f"\n[FLAG] Done! Built {profiles_built} profile(s).")
     if profiles_built > 0:
         print(f"   Files saved to: {args.output_dir}/")
 

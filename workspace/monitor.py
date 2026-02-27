@@ -57,15 +57,15 @@ TOOL_LABELS = {
     "contacts": "[CONTACTS] SEARCHING CONTACTS",
     # Media & generation
     "image": "[IMG]  GENERATING IMAGE",
-    "transcribe": "🎙️ TRANSCRIBING AUDIO",
-    "whisper": "🎙️ TRANSCRIBING AUDIO",
-    "summarize": "📋 SUMMARIZING CONTENT",
+    "transcribe": "[MIC] TRANSCRIBING AUDIO",
+    "whisper": "[MIC] TRANSCRIBING AUDIO",
+    "summarize": "[CLIPBOARD] SUMMARIZING CONTENT",
     # File ops
-    "nano-pdf": "📄 EDITING PDF",
-    "video-frames": "🎬 EXTRACTING FRAMES",
+    "nano-pdf": "[PAGE] EDITING PDF",
+    "video-frames": "[VIDEO] EXTRACTING FRAMES",
     # Skills
-    "weather": "🌤️  CHECKING WEATHER",
-    "github": "🐙 GITHUB OPERATION",
+    "weather": "[CLOUD]  CHECKING WEATHER",
+    "github": "[OCTOPUS] GITHUB OPERATION",
     "things": "[OK] MANAGING TASKS",
     # WhatsApp
     "send-v2": "[MSG]  SENDING WHATSAPP",
@@ -79,7 +79,7 @@ class BrainDashboard:
     def __init__(self):
         self.log_file = None
         self.file_handle = None
-        self.activity_stream = ["🟢 SYSTEM INITIALIZED"]
+        self.activity_stream = ["[GREEN] SYSTEM INITIALIZED"]
         self.thinking_buffer = ""  # Current model reasoning
         self.current_action = "IDLE"  # Human-readable current action
         self.neural_activity = 0
@@ -131,7 +131,7 @@ class BrainDashboard:
         for key, label in TOOL_LABELS.items():
             if key in t:
                 return label
-        return f"🛠️  USING TOOL: {tool_name.upper()}"
+        return f"[TOOLS]  USING TOOL: {tool_name.upper()}"
 
     def extract_thinking(self, msg: str) -> str | None:
         """Extract model thinking/reasoning from log messages."""
@@ -171,7 +171,7 @@ class BrainDashboard:
             # Extract message text
             text_match = re.search(r'"([^"]+)"', msg)
             text = text_match.group(1)[:50] if text_match else msg[:50]
-            return f'📱 WhatsApp -> "{text}"'
+            return f'[PHONE] WhatsApp -> "{text}"'
 
         # --- FloodGate (Rate Limiting) ---
         if subsystem == "floodgate" or "flood" in msg_lower:
@@ -181,7 +181,7 @@ class BrainDashboard:
                     return f"[GUARD] FloodGate: batched ({match.group(1)} msg, {match.group(2)}s window)"
                 return "[GUARD] FloodGate: batched"
             if "passed" in msg_lower or "allowed" in msg_lower:
-                return "�️ FloodGate: passed through"
+                return "? FloodGate: passed through"
             return "[GUARD] FloodGate"
 
         # --- Dedup (Deduplication) ---
@@ -189,28 +189,28 @@ class BrainDashboard:
             if "new message" in msg_lower:
                 hash_match = re.search(r"hash:\s*([a-f0-9]+)", msg_lower)
                 if hash_match:
-                    return f"🔁 Dedup: new message (hash: {hash_match.group(1)[:6]}...)"
-                return "🔁 Dedup: new message"
+                    return f"[REPEAT] Dedup: new message (hash: {hash_match.group(1)[:6]}...)"
+                return "[REPEAT] Dedup: new message"
             if "duplicate" in msg_lower:
-                return "🔁 Dedup: duplicate ignored"
-            return "🔁 Dedup"
+                return "[REPEAT] Dedup: duplicate ignored"
+            return "[REPEAT] Dedup"
 
         # --- Queue ---
         if subsystem == "queue" or "queue" in msg_lower:
             if "enqueue" in msg_lower or "enqueued" in msg_lower:
                 match = re.search(r"depth:\s*(\d+)", msg_lower)
                 if match:
-                    return f"📦 Queue: enqueued (depth: {match.group(1)}/100)"
-                return "📦 Queue: enqueued"
+                    return f"[PKG] Queue: enqueued (depth: {match.group(1)}/100)"
+                return "[PKG] Queue: enqueued"
             if "dequeue" in msg_lower:
-                return "📦 Queue: dequeued"
-            return "📦 Queue"
+                return "[PKG] Queue: dequeued"
+            return "[PKG] Queue"
 
         # --- Memory (RAG) ---
         if subsystem == "memory" or "memory" in msg_lower:
             hits_match = re.search(r"(\d+)\s*relevant\s*hits?", msg_lower)
             score_match = re.search(r"top:\s*([0-9.]+)", msg_lower)
-            gate_match = re.search(r"fast-gate\s*([[OK]✔])", msg_lower)
+            gate_match = re.search(r"fast-gate\s*([[OK][OK]])", msg_lower)
 
             parts = []
             if hits_match:
@@ -239,8 +239,8 @@ class BrainDashboard:
                 parts.append(f"formality={formality_match.group(1)}")
 
             if parts:
-                return f"🎭 SBS: {', '.join(parts)}"
-            return "🎭 SBS"
+                return f"[PERF] SBS: {', '.join(parts)}"
+            return "[PERF] SBS"
 
         # --- DualCognition ---
         if (
@@ -258,8 +258,8 @@ class BrainDashboard:
                 parts.append(decision_match.group(1))
 
             if parts:
-                return f"🧩 DualCognition: {', '.join(parts)}"
-            return "🧩 DualCognition"
+                return f"[PUZZLE] DualCognition: {', '.join(parts)}"
+            return "[PUZZLE] DualCognition"
 
         # --- TrafficCop (Intent/Routing) ---
         if (
@@ -277,8 +277,8 @@ class BrainDashboard:
                 parts.append(f"routing to {routing_match.group(1)}")
 
             if parts:
-                return f"🚦 TrafficCop: {', '.join(parts)}"
-            return "🚦 TrafficCop"
+                return f"[SIGNAL] TrafficCop: {', '.join(parts)}"
+            return "[SIGNAL] TrafficCop"
 
         # --- Agent/Model Execution ---
         if subsystem == "agent" or "embedded run agent" in msg_lower:
@@ -313,8 +313,8 @@ class BrainDashboard:
                 match = re.search(r"\+\d+", msg)
                 if match:
                     to = f" -> {match.group()}"
-            self.set_action("📤 Response sent", priority=2, duration=1.0)
-            return f"📤 Response sent via WhatsApp{to}"
+            self.set_action("[OUTBOX] Response sent", priority=2, duration=1.0)
+            return f"[OUTBOX] Response sent via WhatsApp{to}"
 
         # --- Tool Usage ---
         if "embedded run tool start" in msg:
@@ -322,7 +322,7 @@ class BrainDashboard:
             label = self.get_tool_label(tool)
             self.set_action(label, priority=3, duration=1.5)
             self.tools_called += 1
-            return f"🔧 {label}"
+            return f"[WRENCH] {label}"
 
         if "embedded run tool end" in msg:
             dur = ""
@@ -337,9 +337,9 @@ class BrainDashboard:
 
         # --- Agent Lifecycle ---
         if "embedded run prompt start" in msg:
-            self.set_action("⚡ PROCESSING PROMPT", priority=2, duration=1.0)
+            self.set_action("[FLASH] PROCESSING PROMPT", priority=2, duration=1.0)
             self.neural_activity = 80
-            return "⚡ PROCESSING PROMPT"
+            return "[FLASH] PROCESSING PROMPT"
 
         if "embedded run prompt end" in msg:
             dur = ""
@@ -350,8 +350,8 @@ class BrainDashboard:
                     self.last_response_time = f"{dur_ms / 1000:.1f}s"
                 except Exception:
                     pass
-            self.set_action(f"✨ RESPONSE READY{dur}", priority=2, duration=2.0)
-            return f"✨ RESPONSE GENERATED{dur}"
+            self.set_action(f"[SPARK] RESPONSE READY{dur}", priority=2, duration=2.0)
+            return f"[SPARK] RESPONSE GENERATED{dur}"
 
         if "embedded run done" in msg:
             self.set_action("IDLE", priority=0)
@@ -526,7 +526,7 @@ def generate_layout(m: BrainDashboard):
     # Build usage bar manually
     bar_width = 35
     filled = int((usage_pct / 100) * bar_width)
-    bar = "█" * filled + "░" * (bar_width - filled)
+    bar = "#" * filled + "." * (bar_width - filled)
 
     usage_text = Text()
     usage_text.append(f"  Model: ", style="dim")
@@ -536,9 +536,9 @@ def generate_layout(m: BrainDashboard):
     usage_text.append(f" {usage_pct:.1f}%\n", style=f"bold {usage_color}")
     usage_text.append(f"  Input:  ", style="dim")
     usage_text.append(f"{format_tokens(m.input_tokens)}", style="bold green")
-    usage_text.append(f"  │  Output: ", style="dim")
+    usage_text.append(f"  |  Output: ", style="dim")
     usage_text.append(f"{format_tokens(m.output_tokens)}", style="bold magenta")
-    usage_text.append(f"  │  Total: ", style="dim")
+    usage_text.append(f"  |  Total: ", style="dim")
     usage_text.append(
         f"{format_tokens(m.total_tokens_used)}", style=f"bold {usage_color}"
     )
@@ -571,7 +571,7 @@ def generate_layout(m: BrainDashboard):
         pulse_color = "red"
     elif m.neural_activity > 40:
         pulse_color = "yellow"
-    pulse_bar = "▓" * pulse_filled + "░" * (pulse_width - pulse_filled)
+    pulse_bar = "#" * pulse_filled + "." * (pulse_width - pulse_filled)
 
     action_text = Text()
     action_text.append(f"\n  {action}\n\n", style=action_style)
@@ -582,7 +582,7 @@ def generate_layout(m: BrainDashboard):
     layout["top"]["action"].update(
         Panel(
             action_text,
-            title="⚡ NOW",
+            title="[FLASH] NOW",
             border_style="cyan",
             padding=(0, 0),
         )
@@ -594,33 +594,33 @@ def generate_layout(m: BrainDashboard):
         style = "white" if i > 0 else "bold white"
 
         # Color by subsystem icon
-        if "📱" in item:  # WhatsApp
+        if "[PHONE]" in item:  # WhatsApp
             style = "bold cyan"
         elif "[GUARD]" in item:  # FloodGate
             style = "yellow"
-        elif "🔁" in item:  # Dedup
+        elif "[REPEAT]" in item:  # Dedup
             style = "magenta"
-        elif "📦" in item:  # Queue
+        elif "[PKG]" in item:  # Queue
             style = "blue"
         elif "[MEM]" in item:  # Memory
             style = "bold green"
-        elif "🎭" in item:  # SBS
+        elif "[PERF]" in item:  # SBS
             style = "bright_magenta"
-        elif "🧩" in item:  # DualCognition
+        elif "[PUZZLE]" in item:  # DualCognition
             style = "bright_yellow"
-        elif "🚦" in item:  # TrafficCop
+        elif "[SIGNAL]" in item:  # TrafficCop
             style = "bold yellow"
         elif "[CMD]" in item:  # Agent
             style = "bold cyan"
-        elif "📤" in item:  # Response sent
+        elif "[OUTBOX]" in item:  # Response sent
             style = "bold green"
-        elif "🔧" in item:  # Tool
+        elif "[WRENCH]" in item:  # Tool
             style = "blue"
         elif "[WARN]" in item:  # Error
             style = "bold red"
-        elif "⚡" in item:  # Processing
+        elif "[FLASH]" in item:  # Processing
             style = "bold yellow"
-        elif "✨" in item:  # Response ready
+        elif "[SPARK]" in item:  # Response ready
             style = "bold green"
 
         stream_text.append(item + "\n", style=style)
@@ -628,7 +628,7 @@ def generate_layout(m: BrainDashboard):
     layout["middle"].update(
         Panel(
             stream_text,
-            title="🔄 PIPELINE",
+            title="[REFRESH] PIPELINE",
             border_style="green",
             padding=(0, 1),
         )

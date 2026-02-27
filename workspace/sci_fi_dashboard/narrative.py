@@ -2,12 +2,12 @@ import random
 
 NARRATIVE_MAP = {
     "POST /api/send_email": [
-        ("📨 Crafting response to quarterly report inquiry...", "Analyzing recipient sentiment..."),
-        ("⚡ Dispatching urgent communications...", "Routing through encrypted nodes..."),
+        ("[INBOX] Crafting response to quarterly report inquiry...", "Analyzing recipient sentiment..."),
+        ("[FLASH] Dispatching urgent communications...", "Routing through encrypted nodes..."),
     ],
     "SCRAPE: news_source": [
         ("[SEARCH] Diving into archives...", "Hunting for AI breakthroughs and breakthroughs..."),
-        ("🎯 Scanning global networks...", "Aggregating real-time data streams..."),
+        ("[TARGET] Scanning global networks...", "Aggregating real-time data streams..."),
     ],
     "PROCESS: analytics": [
         ("[MEM] Crunching performance numbers...", "Identifying latent patterns..."),
@@ -15,26 +15,26 @@ NARRATIVE_MAP = {
     ],
     "SYSTEM: backup": [
         ("[GUARD] Securing digital assets...", "Fragmenting data for redundancy..."),
-        ("💾 Initializing cloud backup...", "Verifying integrity of 3 repositories..."),
+        ("[SAVE] Initializing cloud backup...", "Verifying integrity of 3 repositories..."),
     ],
     "ERROR: timeout": [
         ("[WARN] Connection stumbled...", "Retrying with exponential backoff..."),
-        ("🚫 Node unreachable...", "Rerouting traffic through secondary gateway..."),
+        ("[NOPE] Node unreachable...", "Rerouting traffic through secondary gateway..."),
     ],
     "MEMORY: search": [
         ("[MEM] Deep searching context...", "Recalling relevant nodes and threads..."),
         ("[SEARCH] Querying Vector DB...", "Filtering by semantic similarity..."),
     ],
     "SYSTEM: thinking": [
-        ("💭 Agent in deep thought...", "Generating multi-step reasoning plan..."),
-        ("⚡ High-entropy analysis...", "Optimizing decision tree..."),
+        ("[THOUGHT] Agent in deep thought...", "Generating multi-step reasoning plan..."),
+        ("[FLASH] High-entropy analysis...", "Optimizing decision tree..."),
     ],
     "sentiment_logs": [
         ("[MEM] Analyzing emotional subtext...", "Updating relationship state..."),
-        ("⚖️ Balancing logic vs empathy...", "Sentiment score calculated..."),
+        ("[BALANCE] Balancing logic vs empathy...", "Sentiment score calculated..."),
     ],
     "language_nuance": [
-        ("🗣️ Refining Banglish dialect...", "Parsing slang and context..."),
+        ("[SPEAK] Refining Banglish dialect...", "Parsing slang and context..."),
         ("[READ] Updating vocabulary...", "Nuance adjustment complete..."),
     ],
     "growth_log": [

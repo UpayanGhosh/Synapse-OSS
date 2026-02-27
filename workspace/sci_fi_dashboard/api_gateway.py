@@ -108,7 +108,7 @@ async def continue_conversation(target: str, messages: list[dict], last_reply: s
     """
     Background task to generate and send the rest of the message.
     """
-    print(f"🔄 [AUTO-CONTINUE] Handling cut-off response for {target}...")
+    print(f"[REFRESH] [AUTO-CONTINUE] Handling cut-off response for {target}...")
 
     # 1. Update History
     # We clone messages to avoid mutating the original reference if reused
@@ -407,7 +407,7 @@ async def call_local_spicy(prompt: str) -> str:
     The Vault. Zero-cloud leakage.
     15.0s connection timeout. Raises httpx.TimeoutException if offline.
     """
-    print(f"🌶️ Calling LOCAL_SPICY (The Vault) at {WINDOWS_PC_IP}...")
+    print(f"[HOT] Calling LOCAL_SPICY (The Vault) at {WINDOWS_PC_IP}...")
     async with httpx.AsyncClient(timeout=httpx.Timeout(15.0, connect=15.0)) as client:
         payload = {
             "model": "fluffy/l3-8b-stheno-v3.2:latest",
@@ -425,7 +425,7 @@ async def call_or_fallback(prompt: str) -> str:
     """
     OR_FALLBACK: OpenRouter API (gryphe/mythomax-l2-13b)
     """
-    print("🔄 Calling OR_FALLBACK...")
+    print("[REFRESH] Calling OR_FALLBACK...")
     async with httpx.AsyncClient(timeout=30.0) as client:
         payload = {
             "model": "gryphe/mythomax-l2-13b",
@@ -473,8 +473,8 @@ async def call_ag_oracle(messages: list) -> str:
     """
     AG_ORACLE (The Architect): Google Antigravity Gemini 3 Pro
     """
-    print("🏛️ Calling The Architect (Gemini 3 Pro)...")
-    print("🏛️ Calling The Architect (Gemini 3 Pro via OAuth)...")
+    print("[BLDG] Calling The Architect (Gemini 3 Pro)...")
+    print("[BLDG] Calling The Architect (Gemini 3 Pro via OAuth)...")
     # But usually better to format cleanly.
     # Re-using logic:
     return await call_gateway_model(MODEL_ANALYSIS, messages, temperature=0.7, max_tokens=1500)
@@ -484,7 +484,7 @@ async def call_ag_review(messages: list) -> str:
     """
     AG_REVIEW (The Philosopher): Claude Opus 4.6 Thinking
     """
-    print("🧐 Calling The Philosopher (Claude Opus 4.6)...")
+    print("[THINK] Calling The Philosopher (Claude Opus 4.6)...")
     # Placeholder: Routing to Gemini Pro to save Claude credits
     print("[WARN] CREDIT_SAVER: Routing Review Task to Gemini 3 Pro (Placeholder)")
     return await call_ag_oracle(messages)
@@ -543,7 +543,7 @@ async def route_traffic_cop(user_message: str) -> str:
         import re
 
         decision = re.sub(r"[^A-Z]", "", decision)
-        print(f"🚦 Traffic Cop: {decision}")
+        print(f"[SIGNAL] Traffic Cop: {decision}")
         return decision
     except Exception:
         return "CASUAL"
@@ -558,7 +558,7 @@ async def persona_chat(
     background_tasks: BackgroundTasks | None = None,
 ):
     user_msg = request.message
-    print(f"📩 [{target.upper()}] Inbound: {user_msg[:80]}...")
+    print(f"[MAIL] [{target.upper()}] Inbound: {user_msg[:80]}...")
 
     # 1. Memory Retrieval (Phoenix v3 Unified Engine)
     try:
@@ -613,7 +613,7 @@ async def persona_chat(
         print(
             f"[MEM] Cognitive State: {cognitive_merge.tension_type} (tension={cognitive_merge.tension_level:.2f})"
         )
-        print(f"💭 Inner thought: {cognitive_merge.inner_monologue[:100]}")
+        print(f"[THOUGHT] Inner thought: {cognitive_merge.inner_monologue[:100]}")
 
     except Exception as e:
         print(f"[WARN] Dual cognition failed: {e}")
@@ -642,7 +642,7 @@ async def persona_chat(
 
     if session_mode == "spicy":
         # === THE VAULT (Local Stheno) ===
-        print("🌶️ Routing to THE VAULT (Local Stheno)")
+        print("[HOT] Routing to THE VAULT (Local Stheno)")
         # Translate first? Stheno understands Banglish moderately well, but translation helps RAG.
         # But for "Authentic" spicy chat, we might want raw Banglish.
         # Let's keep raw for Stheno to maintain flavor, unless requested otherwise.
@@ -669,19 +669,19 @@ async def persona_chat(
 
         elif "ANALYSIS" in classification:
             # === THE ARCHITECT (Gemini 3 Pro) ===
-            print("🏛️ Routing to THE ARCHITECT (Gemini 3 Pro)")
+            print("[BLDG] Routing to THE ARCHITECT (Gemini 3 Pro)")
             reply = await call_ag_oracle(messages)
             model_used = "The Architect (Gemini 3 Pro)"
 
         elif "REVIEW" in classification:
             # === THE PHILOSOPHER (Claude Opus 4.6) ===
-            print("🧐 Routing to THE PHILOSOPHER (Claude Opus 4.6)")
+            print("[THINK] Routing to THE PHILOSOPHER (Claude Opus 4.6)")
             reply = await call_ag_review(messages)
             model_used = "The Philosopher (Opus 4.6 [Placeholder])"
 
         else:
             # === AG_CASUAL (Gemini Flash) ===
-            print("🟢 Routing to AG_CASUAL (Gemini Flash)")
+            print("[GREEN] Routing to AG_CASUAL (Gemini Flash)")
             reply = await call_gemini_flash(messages, temperature=0.85)
             model_used = "Traffic Cop / Casual (Gemini Flash)"
 
@@ -700,7 +700,7 @@ async def persona_chat(
     stats_footer = f"\n\n---\n**Context Usage:** {total_tokens // 1000}k / {max_context // 1000000}m ({usage_pct:.2f}%)\n**Model:** {model_used}\n**Turn Total Tokens:** {total_tokens:,}\n**Response Time:** [Calc in Node]"
 
     final_reply = reply + stats_footer
-    print(f"✨ [{target.upper()}] Response via {model_used}: {final_reply[:60]}...")
+    print(f"[SPARK] [{target.upper()}] Response via {model_used}: {final_reply[:60]}...")
 
     # Log assistant message
     sbs_orchestrator = get_sbs_for_target(target)
@@ -711,14 +711,14 @@ async def persona_chat(
     # --- AUTO-CONTINUE LOGIC ---
     # Check for cut-off (no terminal punctuation)
     # Punctuation marks that end a sentence/thought
-    terminals = [".", "!", "?", '"', "'", "”", "’", ")", "]", "}"]
+    terminals = [".", "!", "?", '"', "'", ")", "]", "}"]
     # Only check if length is significant (> 50 chars) to avoid false positives on short replies
     is_long = len(reply) > 50
     cleaned_reply = reply.strip()
     ends_with_terminal = any(cleaned_reply.endswith(t) for t in terminals)
 
     if is_long and not ends_with_terminal:
-        print("✂️ DETECTED CUT-OFF! Triggering Auto-Continue...")
+        print("[CUT] DETECTED CUT-OFF! Triggering Auto-Continue...")
         if background_tasks:
             # We must pass the RAW messages (without the user's last msg? No, messages already has it)
             background_tasks.add_task(continue_conversation, request.user_id, messages, reply)
@@ -777,7 +777,7 @@ flood.set_callback(on_batch_ready)
 
 async def gentle_worker_loop():
     """Background maintenance loop."""
-    print("👷 Gentle Worker: running.")
+    print("[WORKER] Gentle Worker: running.")
     while True:
         try:
             battery = psutil.sensors_battery()
@@ -1136,7 +1136,7 @@ async def chat_webhook(request: Request):
 async def chat_the_creator(
     request: ChatRequest, background_tasks: BackgroundTasks, http_request: Request
 ):
-    """Chat as Synapse -> primary_user (Bro Mode 👊)"""
+    """Chat as Synapse -> primary_user (Bro Mode [FIST])"""
     validate_api_key(http_request)
     return await persona_chat(request, "the_creator", background_tasks)
 
@@ -1145,7 +1145,7 @@ async def chat_the_creator(
 async def chat_the_partner(
     request: ChatRequest, background_tasks: BackgroundTasks, http_request: Request
 ):
-    """Chat as Synapse -> partner_user (Caring PA Mode 🌹)"""
+    """Chat as Synapse -> partner_user (Caring PA Mode [ROSE])"""
     validate_api_key(http_request)
     return await persona_chat(request, "the_partner", background_tasks)
 
@@ -1268,7 +1268,7 @@ async def add_memory(item: MemoryItem, background_tasks: BackgroundTasks, reques
 async def query_memory(item: QueryItem, request: Request):
     """Query knowledge graph + vector memory."""
     validate_api_key(request)
-    print(f"🔎 Query: {item.text}")
+    print(f"[SEARCH] Query: {item.text}")
 
     # Graph search
     graph_results = []

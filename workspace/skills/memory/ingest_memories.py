@@ -19,7 +19,7 @@ def ingest_file(file_path):
     chunks = content.split('\n\n')
     
     total = len(chunks)
-    print(f"🧩 Found {total} chunks. Starting ingestion...")
+    print(f"[PUZZLE] Found {total} chunks. Starting ingestion...")
 
     for i, chunk in enumerate(chunks):
         chunk = chunk.strip()

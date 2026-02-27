@@ -535,9 +535,9 @@ def analyze_style(synapse_messages: list[str]) -> dict:
         if any(
             c in ll
             for c in [
-                "👊",
+                "[FIST]",
                 "[INFO]",
-                "💪",
+                "[STRONG]",
                 "take care",
                 "good night",
                 "sleep well",
@@ -551,8 +551,8 @@ def analyze_style(synapse_messages: list[str]) -> dict:
     phrase_counter = Counter()
     for msg in synapse_messages:
         # Look for recurring short phrases
-        if "👊" in msg:
-            phrase_counter["👊"] += 1
+        if "[FIST]" in msg:
+            phrase_counter["[FIST]"] += 1
         if "[INFO]" in msg:
             phrase_counter["[INFO]"] += 1
         if "the_brother" in msg.lower():
@@ -565,12 +565,12 @@ def analyze_style(synapse_messages: list[str]) -> dict:
             phrase_counter["Mission accomplished"] += 1
         if "digital brother" in msg.lower():
             phrase_counter["Digital Brother"] += 1
-        if "🫡" in msg:
-            phrase_counter["🫡"] += 1
-        if "🌹" in msg:
-            phrase_counter["🌹"] += 1
-        if "🦞" in msg:
-            phrase_counter["🦞"] += 1
+        if "[SALUTE]" in msg:
+            phrase_counter["[SALUTE]"] += 1
+        if "[ROSE]" in msg:
+            phrase_counter["[ROSE]"] += 1
+        if "[LOBSTER]" in msg:
+            phrase_counter["[LOBSTER]"] += 1
 
     catchphrases = [p for p, c in phrase_counter.most_common(10) if c >= 3]
 

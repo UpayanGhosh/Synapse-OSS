@@ -37,7 +37,7 @@ def extract_structured_data(content):
         return {"atomic_facts": [], "relations": []}
 
 def ingest_nightly():
-    print(f"🌙 Starting Nightly Ingestion [{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}]")
+    print(f"[MOON] Starting Nightly Ingestion [{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}]")
     
     if not os.path.exists(DB_PATH):
         print("Error: DB not found.")

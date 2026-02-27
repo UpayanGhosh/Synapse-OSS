@@ -27,7 +27,7 @@ def clean_brain():
         cursor.execute("SELECT id, content FROM documents WHERE content LIKE ?", (pattern,))
         results = cursor.fetchall()
         for row_id, content in results:
-            print(f"🚩 FOUND: (ID: {row_id})")
+            print(f"[FLAG] FOUND: (ID: {row_id})")
             all_trash_ids.append(row_id)
 
     if not all_trash_ids:
@@ -46,7 +46,7 @@ def clean_brain():
             
             print("[CLEAN] Optimizing DB...")
             conn.execute("VACUUM")
-            print("✨ Purge complete. Stheno is now free of Gemini's ghost.")
+            print("[SPARK] Purge complete. Stheno is now free of Gemini's ghost.")
         except Exception as e:
             print(f"[ERROR] Error: {e}")
     

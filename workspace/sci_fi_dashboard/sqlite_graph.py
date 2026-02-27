@@ -203,7 +203,7 @@ class SQLiteGraph:
             deleted = conn.execute("DELETE FROM edges WHERE weight < ?", (min_weight,)).rowcount
             conn.commit()
             if deleted:
-                print(f"✂️ Pruned {deleted} weak edges")
+                print(f"[CUT] Pruned {deleted} weak edges")
         finally:
             conn.close()
 
@@ -220,7 +220,7 @@ class SQLiteGraph:
         """One-time migration from knowledge_graph.json.gz to SQLite."""
         import networkx as nx
 
-        print(f"📦 Migrating {graph_file} -> {db_path}")
+        print(f"[PKG] Migrating {graph_file} -> {db_path}")
 
         if graph_file.endswith(".gz"):
             with gzip.open(graph_file, "rt") as f:

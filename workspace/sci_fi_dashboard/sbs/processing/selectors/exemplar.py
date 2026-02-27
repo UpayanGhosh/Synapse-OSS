@@ -17,16 +17,16 @@ class ExemplarSelector:
     5. IDENTITY   -- Pairs that best showcase the desired Synapse personality
 
     Selection Strategy:
-    ┌--------------------------------------------------┐
-    │  SLOT ALLOCATION (14 total exemplars):           │
-    │                                                  │
-    │  [4] RECENT HIGH-QUALITY     -- last 48h, best   │
-    │  [3] TOPIC-DIVERSE           -- one per top topic │
-    │  [2] MOOD-DIVERSE            -- different moods   │
-    │  [2] BANGLISH SHOWCASE       -- best code-switch  │
-    │  [2] PERSONALITY HIGHLIGHT   -- humor/care/tech   │
-    │  [1] WILDCARD                -- random for variety │
-    └--------------------------------------------------┘
+    +--------------------------------------------------+
+    |  SLOT ALLOCATION (14 total exemplars):           |
+    |                                                  |
+    |  [4] RECENT HIGH-QUALITY     -- last 48h, best   |
+    |  [3] TOPIC-DIVERSE           -- one per top topic |
+    |  [2] MOOD-DIVERSE            -- different moods   |
+    |  [2] BANGLISH SHOWCASE       -- best code-switch  |
+    |  [2] PERSONALITY HIGHLIGHT   -- humor/care/tech   |
+    |  [1] WILDCARD                -- random for variety |
+    +--------------------------------------------------+
     """
 
     def __init__(self, db_path: Path):
@@ -234,7 +234,7 @@ class ExemplarSelector:
         """Pairs where Synapse showed strong personality (humor, care, expertise)."""
         # Heuristic: assistant responses with emojis, exclamations,
         # or specific personality markers
-        personality_markers = ["the_brother", "arey", "!", "😎", "🔥", "chal", "dekh"]
+        personality_markers = ["the_brother", "arey", "!", "[COOL]", "[FIRE]", "chal", "dekh"]
 
         scored = []
         for pair in pairs:

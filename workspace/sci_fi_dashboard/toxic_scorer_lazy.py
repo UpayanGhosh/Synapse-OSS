@@ -24,7 +24,7 @@ class LazyToxicScorer:
         if self._model is not None:
             return
 
-        print("🧪 Loading Toxic-BERT (lazy)...")
+        print("[TEST] Loading Toxic-BERT (lazy)...")
         start = time.time()
         from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
@@ -36,7 +36,7 @@ class LazyToxicScorer:
             self._model = self._model.to("mps")
 
         self._model.eval()
-        print(f"🧪 Toxic-BERT loaded in {time.time() - start:.1f}s")
+        print(f"[TEST] Toxic-BERT loaded in {time.time() - start:.1f}s")
 
     def _unload(self):
         with self._lock:

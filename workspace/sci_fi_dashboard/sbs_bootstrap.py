@@ -76,7 +76,7 @@ def bootstrap_sbs():
         print(f"[OK] Ingested {count} turns for {user_name}. Triggering Full Rebuild...")
         orchestrator.force_batch(full_rebuild=True)
 
-    print("\n🏁 SBS Bootstrap Complete. Synapse is now fully 'Soul-Synced'.")
+    print("\n[FLAG] SBS Bootstrap Complete. Synapse is now fully 'Soul-Synced'.")
 
 
 if __name__ == "__main__":

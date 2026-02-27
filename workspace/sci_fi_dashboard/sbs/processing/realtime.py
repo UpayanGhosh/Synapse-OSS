@@ -20,10 +20,10 @@ BANGLISH_MARKERS = {
 
 MOOD_KEYWORDS = {
     "stressed": [r"pressure", r"deadline", r"pagol", r"er\\s*upor", r"jhame+la"],
-    "playful": [r"lol", r"haha+", r"😂", r"🤣", r"moja", r"maza"],
-    "tired": [r"l[yi]a+dh", r"ghu+m", r"thak", r"uff+", r"😴"],
+    "playful": [r"lol", r"haha+", r"[LOL]", r"[ROFL]", r"moja", r"maza"],
+    "tired": [r"l[yi]a+dh", r"ghu+m", r"thak", r"uff+", r"[SLEEP]"],
     "focused": [r"implement", r"build", r"code", r"debug", r"fix", r"deploy"],
-    "excited": [r"!!+", r"🔥", r"daru+n", r"jhakkas", r"let'?s\\s*go"],
+    "excited": [r"!!+", r"[FIRE]", r"daru+n", r"jhakkas", r"let'?s\\s*go"],
     "frustrated": [r"wtf", r"keno", r"kaaj\\s*kor(che)?\\s*na", r"broken", r"error"],
 }
 
@@ -70,9 +70,9 @@ class RealtimeProcessor:
             "love": 0.7,
             "perfect": 0.8,
             "jhakkas": 0.9,
-            "🔥": 0.6,
-            "❤️": 0.5,
-            "😊": 0.4,
+            "[FIRE]": 0.6,
+            "[HEART]": 0.5,
+            "[HAPPY]": 0.4,
             # Negative
             "kharap": -0.5,
             "baje": -0.6,
@@ -82,8 +82,8 @@ class RealtimeProcessor:
             "hate": -0.7,
             "pagol": -0.3,
             "uff": -0.4,
-            "😤": -0.5,
-            "😢": -0.6,
+            "[TRIUMPH]": -0.5,
+            "[SAD]": -0.6,
             "wtf": -0.6,
             # Neutral-ish
             "ok": 0.0,

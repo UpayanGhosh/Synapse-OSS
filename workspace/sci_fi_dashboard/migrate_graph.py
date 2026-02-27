@@ -17,4 +17,4 @@ if __name__ == "__main__":
 
     print(f"[INFO] Starting migration from {GRAPH_FILE}...")
     SQLiteGraph.migrate_from_networkx(GRAPH_FILE, DB_PATH)
-    print("✨ Migration complete!")
+    print("[SPARK] Migration complete!")
