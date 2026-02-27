@@ -48,11 +48,30 @@ class CognitiveMerge:
     contradictions: list = field(default_factory=list)
 
 
-FAST_PHRASES = frozenset([
-    "hi", "hello", "hey", "ok", "thanks", "good morning",
-    "good night", "bye", "hmm", "haha", "lol", "yes", "no",
-    "yep", "nope", "sure", "cool", "nice", "wow", "damn",
-])
+FAST_PHRASES = frozenset(
+    [
+        "hi",
+        "hello",
+        "hey",
+        "ok",
+        "thanks",
+        "good morning",
+        "good night",
+        "bye",
+        "hmm",
+        "haha",
+        "lol",
+        "yes",
+        "no",
+        "yep",
+        "nope",
+        "sure",
+        "cool",
+        "nice",
+        "wow",
+        "damn",
+    ]
+)
 
 
 class DualCognitionEngine:
@@ -83,21 +102,38 @@ class DualCognitionEngine:
             deep_signals += 1
 
         contradiction_markers = [
-            "but", "however", "actually", "didn't", "never",
-            "that's not", "i don't think", "you're wrong",
+            "but",
+            "however",
+            "actually",
+            "didn't",
+            "never",
+            "that's not",
+            "i don't think",
+            "you're wrong",
         ]
         if any(m in msg_lower for m in contradiction_markers):
             deep_signals += 1
 
         emotional_markers = [
-            "help", "stuck", "frustrated", "can't", "failed",
-            "stressed", "scared", "angry", "depressed", "crying",
+            "help",
+            "stuck",
+            "frustrated",
+            "can't",
+            "failed",
+            "stressed",
+            "scared",
+            "angry",
+            "depressed",
+            "crying",
         ]
         if any(m in msg_lower for m in emotional_markers):
             deep_signals += 1
 
         ambiguity_markers = [
-            "that thing", "what we", "you know", "remember when",
+            "that thing",
+            "what we",
+            "you know",
+            "remember when",
         ]
         if any(m in msg_lower for m in ambiguity_markers):
             deep_signals += 1
@@ -139,9 +175,7 @@ class DualCognitionEngine:
                     self._analyze_present(user_message, conversation_history, llm_fn),
                     self._recall_memory(user_message, chat_id, target),
                 )
-                merge = await self._merge_streams(
-                    present, memory, target, llm_fn, use_cot=False
-                )
+                merge = await self._merge_streams(present, memory, target, llm_fn, use_cot=False)
                 if self.trajectory:
                     self.trajectory.record(merge, present.topics)
                 return merge
@@ -160,9 +194,7 @@ class DualCognitionEngine:
             )
 
             # Step 3: CoT merge
-            merge = await self._merge_streams(
-                present, memory, target, llm_fn, use_cot=True
-            )
+            merge = await self._merge_streams(present, memory, target, llm_fn, use_cot=True)
             if self.trajectory:
                 self.trajectory.record(merge, present.topics)
             return merge
@@ -189,9 +221,7 @@ class DualCognitionEngine:
         recent_context = ""
         if history and len(history) > 0:
             last_3 = history[-3:]
-            recent_context = "\n".join(
-                f"{m['role']}: {m['content'][:100]}" for m in last_3
-            )
+            recent_context = "\n".join(f"{m['role']}: {m['content'][:100]}" for m in last_3)
 
         prompt = f"""Analyze this message IN CONTEXT. Return JSON only.
 
@@ -234,9 +264,7 @@ JSON only:"""
                 present.claims = data.get("claims", [])
                 present.emotional_state = data.get("emotional_state", "calm")
                 present.topics = data.get("topics", [])
-                present.conversational_pattern = data.get(
-                    "conversational_pattern", "single_turn"
-                )
+                present.conversational_pattern = data.get("conversational_pattern", "single_turn")
         except Exception as e:
             print(f"⚠️ Present stream failed: {e}")
 
@@ -353,18 +381,14 @@ JSON only:"""
 
         return merge
 
-    async def _extract_search_intent(
-        self, message: str, history: list = None, llm_fn=None
-    ) -> str:
+    async def _extract_search_intent(self, message: str, history: list = None, llm_fn=None) -> str:
         """Pre-retrieval intent extraction (deep path only).
         Returns space-joined search terms for memory.query().
         """
         if not llm_fn:
             return ""
 
-        recent = "\n".join(
-            f"{m['role']}: {m['content'][:80]}" for m in (history or [])[-3:]
-        )
+        recent = "\n".join(f"{m['role']}: {m['content'][:80]}" for m in (history or [])[-3:])
         prompt = (
             "What specific topics/events is the user referring to?\n"
             f"Recent conversation:\n{recent}\n"

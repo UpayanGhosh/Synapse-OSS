@@ -83,8 +83,7 @@ class EmotionalTrajectory:
         for r in rows:
             age_hrs = (time.time() - r[4]) / 3600
             lines.append(
-                f"- {age_hrs:.0f}h ago: {r[0]} "
-                f"(tension={r[1]:.1f}, type={r[2]}, topic={r[3]})"
+                f"- {age_hrs:.0f}h ago: {r[0]} " f"(tension={r[1]:.1f}, type={r[2]}, topic={r[3]})"
             )
 
         return "EMOTIONAL TRAJECTORY (last 72h, peaks highlighted):\n" + "\n".join(lines)
