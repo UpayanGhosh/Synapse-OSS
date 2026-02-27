@@ -5,7 +5,17 @@ import requests
 import subprocess
 import time
 from datetime import datetime
-import ollama
+import sys as _sys
+
+try:
+    import ollama
+    HAS_OLLAMA = True
+except ImportError:
+    HAS_OLLAMA = False
+
+if not HAS_OLLAMA:
+    print("[ERROR] nightly_ingest.py requires Ollama. Install from https://ollama.com")
+    _sys.exit(1)
 from qdrant_client import QdrantClient
 from qdrant_client.http import models
 
