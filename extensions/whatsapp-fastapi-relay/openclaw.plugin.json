@@ -1,4 +1,5 @@
 {
+  "id": "whatsapp-fastapi-relay",
   "name": "whatsapp-fastapi-relay",
   "version": "1.0.0",
   "description": "Relays incoming WhatsApp messages to the Synapse FastAPI gateway via async enqueue endpoint",
