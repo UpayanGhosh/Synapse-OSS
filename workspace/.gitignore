@@ -30,6 +30,7 @@ db/*.gz
 # Large Data Files
 *.txt
 *.json
+!sci_fi_dashboard/entities.json
 *.bak
 *.gz
 db/memory.db*
