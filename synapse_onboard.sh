@@ -44,7 +44,15 @@ all_good=true
 check_tool git       || all_good=false
 check_tool python3   || all_good=false
 check_tool docker    || all_good=false
-check_tool ollama    || all_good=false
+# Ollama check -- optional (needed for local embedding and The Vault)
+if command -v ollama &> /dev/null; then
+    echo "   [OK] ollama is installed"
+    OLLAMA_FOUND=true
+else
+    echo "   [--] ollama NOT installed -- local embedding and The Vault disabled"
+    echo "        Install from: https://ollama.com (optional)"
+    OLLAMA_FOUND=false
+fi
 check_tool openclaw  || all_good=false
 
 if [ "$all_good" = false ]; then
@@ -267,21 +275,25 @@ else
     fi
 fi
 
-echo ""
-echo "[2/4] Starting Ollama..."
-export OLLAMA_KEEP_ALIVE=0
-export OLLAMA_MAX_LOADED_MODELS=1
-export OLLAMA_NUM_PARALLEL=1
-if ! pgrep -f "ollama serve" > /dev/null; then
-    nohup ollama serve > ~/.openclaw/logs/ollama.log 2>&1 &
-    echo "   ✓ Ollama started"
-    # Give Ollama a moment to start before pulling
-    sleep 3
-    echo "   Pulling required embedding model (nomic-embed-text)..."
-    ollama pull nomic-embed-text >> ~/.openclaw/logs/ollama.log 2>&1 &
-    echo "   ✓ nomic-embed-text pull started in background"
+if [ "$OLLAMA_FOUND" = true ]; then
+    echo ""
+    echo "[2/4] Starting Ollama..."
+    export OLLAMA_KEEP_ALIVE=0
+    export OLLAMA_MAX_LOADED_MODELS=1
+    export OLLAMA_NUM_PARALLEL=1
+    if ! pgrep -f "ollama serve" > /dev/null; then
+        nohup ollama serve > ~/.openclaw/logs/ollama.log 2>&1 &
+        echo "   [OK] Ollama started"
+        sleep 3
+        echo "   Pulling required embedding model (nomic-embed-text)..."
+        ollama pull nomic-embed-text >> ~/.openclaw/logs/ollama.log 2>&1 &
+        echo "   [OK] nomic-embed-text pull started in background"
+    else
+        echo "   [OK] Ollama already running"
+    fi
 else
-    echo "   ✓ Ollama already running"
+    echo ""
+    echo "[2/4] Ollama not installed -- skipping (local embedding disabled)"
 fi
 
 echo ""
