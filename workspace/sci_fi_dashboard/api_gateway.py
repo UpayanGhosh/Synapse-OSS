@@ -17,6 +17,7 @@ import asyncio
 import json
 import os
 import shutil
+import socket
 import sqlite3
 import subprocess
 import sys
@@ -41,6 +42,15 @@ if CURRENT_DIR not in sys.path:
     sys.path.append(CURRENT_DIR)
 if WORKSPACE_ROOT not in sys.path:
     sys.path.append(WORKSPACE_ROOT)
+
+
+def _port_open(host: str, port: int, timeout: float = 0.5) -> bool:
+    """Return True if a TCP connection to host:port succeeds within timeout."""
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
 
 
 def _resolve_openclaw_cli_bin() -> str:
