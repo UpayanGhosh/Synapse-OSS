@@ -2,265 +2,144 @@
 chcp 65001 >nul
 setlocal EnableDelayedExpansion
 
-REM Synapse Onboard Script for Windows (Batch)
-REM This script guides a user through the initial setup and launch of Synapse.
+REM Synapse Onboard Script for Windows
+REM Run this ONCE after copying Synapse files into ~/.openclaw/
+REM (openclaw onboard must have already been completed before running this)
 
-REM Get project root early so all paths are absolute
 set "PROJECT_ROOT=%~dp0"
 set "PROJECT_ROOT=%PROJECT_ROOT:~0,-1%"
 
 echo.
 echo =======================================
-echo    Synapse Onboard - Let's Get Started!
+echo    Synapse Onboard
 echo =======================================
 echo.
-
-echo Hi there! I'm going to guide you through setting up Synapse on Windows.
-echo This will only take a few minutes.
+echo This runs once to configure Synapse.
+echo For daily use, run synapse_start.bat instead.
 echo.
 pause
 
+REM --- Step 1: Prerequisites ---
 echo.
-echo Step 1: Checking your tools...
+echo Step 1: Checking tools...
 echo.
 
-REM Check Git
-where git >nul 2>&1
-if %ERRORLEVEL% NEQ 0 (
-    echo    [X] git is NOT installed
-    set "MISSING=1"
-) else (
-    echo    [OK] git is installed
-)
-
-REM Check Python
 where python >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
-    where python3 >nul 2>&1
-    if %ERRORLEVEL% NEQ 0 (
-        echo    [X] python is NOT installed
-        set "MISSING=1"
-    ) else (
-        echo    [OK] python is installed
-    )
+    echo    [X] Python not installed. Install from https://python.org
+    set "MISSING=1"
 ) else (
-    echo    [OK] python is installed
+    echo    [OK] Python
 )
 
-REM Check Docker
 where docker >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
-    echo    [X] docker is NOT installed
+    echo    [X] Docker not installed. Install from https://docker.com
     set "MISSING=1"
 ) else (
-    echo    [OK] docker is installed
+    echo    [OK] Docker
 )
 
-REM Check Ollama (OPTIONAL -- needed for local embedding and The Vault)
-where ollama >nul 2>&1
-if %ERRORLEVEL% NEQ 0 (
-    echo    [--] ollama is NOT installed -- local embedding and The Vault will be disabled
-    echo         Install from: https://ollama.com (optional, app will run without it)
-) else (
-    echo    [OK] ollama is installed
-    set "OLLAMA_FOUND=1"
-)
-
-REM Check OpenClaw
 where openclaw >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
-    echo    [X] openclaw is NOT installed
+    echo    [X] OpenClaw not installed. Install from https://github.com/openclaw/openclaw/releases
     set "MISSING=1"
 ) else (
-    echo    [OK] openclaw is installed
+    echo    [OK] OpenClaw
+)
+
+where ollama >nul 2>&1
+if %ERRORLEVEL% NEQ 0 (
+    echo    [--] Ollama not installed -- local embedding and The Vault will be disabled
+    echo         Install from https://ollama.com (optional)
+) else (
+    echo    [OK] Ollama
 )
 
 if defined MISSING (
     echo.
-    echo ERROR: Some tools are missing.
-    echo.
-    echo Please install the missing tools from HOW_TO_RUN.md and try again.
+    echo ERROR: Install the missing tools above and run this script again.
     echo.
     pause
     exit /b 1
 )
 
-REM Check Docker Desktop is running
+REM --- Step 2: .env check ---
 echo.
-echo    - Docker Desktop Status: Checking...
-docker info >nul 2>&1
-if %ERRORLEVEL% NEQ 0 (
-    echo [X] Not responding
-    echo.
-    echo ERROR: Docker is not running. Please start Docker Desktop and wait for it
-    echo to fully initialize, then run this script again.
-    echo.
-    pause
-    exit /b 1
-) else (
-    echo [OK] Running
-)
+echo Step 2: Checking config...
+echo.
 
-REM Check .env file
 if not exist "%PROJECT_ROOT%\.env" (
+    echo [X] No .env file found.
     echo.
-    echo ERROR: No .env file found.
-    echo.
-    echo Run this first:
-    echo    copy "%PROJECT_ROOT%\.env.example" "%PROJECT_ROOT%\.env"
-    echo Then open .env and add your GEMINI_API_KEY.
+    echo     Run this first:
+    echo        copy "%PROJECT_ROOT%\.env.example" "%PROJECT_ROOT%\.env"
+    echo     Then open .env and add your GEMINI_API_KEY.
     echo.
     pause
     exit /b 1
 )
 
-REM Warn if GEMINI_API_KEY looks unset (still has placeholder)
+REM Warn if GEMINI_API_KEY is still the placeholder
 findstr /C:"GEMINI_API_KEY=\"your_gemini" "%PROJECT_ROOT%\.env" >nul 2>&1
 if %ERRORLEVEL% EQU 0 (
+    echo WARNING: GEMINI_API_KEY is still the placeholder value.
+    echo    Open .env and replace it with your real key from https://aistudio.google.com/
     echo.
-    echo WARNING: GEMINI_API_KEY in your .env still has the placeholder value.
-    echo    Open .env and replace: GEMINI_API_KEY="your_gemini_api_key_here"
-    echo    with your real key from https://aistudio.google.com/
-    echo.
-    echo Press any key to continue anyway ^(Synapse will start but LLM calls will fail^)...
+    echo Press any key to continue anyway ^(LLM calls will fail until you fix this^)...
     pause >nul
-)
-
-REM Step 2: Set up Python environment
-echo.
-echo Step 2: Setting up Python...
-echo.
-
-if not exist "%PROJECT_ROOT%\.venv\Scripts\python.exe" (
-    echo Creating virtual environment...
-    python -m venv "%PROJECT_ROOT%\.venv"
-    echo Installing dependencies...
-    call "%PROJECT_ROOT%\.venv\Scripts\pip.exe" install -r "%PROJECT_ROOT%\requirements.txt"
-    echo [OK] Virtual environment ready.
 ) else (
-    echo [OK] Virtual environment already exists.
+    echo [OK] .env looks good.
 )
 
-REM Install Playwright browser binaries (Windows only -- replaces crawl4ai)
-echo Installing Playwright browser binaries (Chromium)...
-call "%PROJECT_ROOT%\.venv\Scripts\python.exe" -m playwright install chromium
-if %ERRORLEVEL% NEQ 0 (
-    echo [--] Playwright browser install failed -- /browse tool will not work
-    echo      Try manually: python -m playwright install chromium
-) else (
-    echo [OK] Playwright Chromium ready.
-)
-
-REM Step 3: Set up Docker
+REM --- Step 3: Phone number ---
 echo.
-echo Step 3: Setting up Docker...
+echo Step 3: Your phone number...
 echo.
-
-docker start antigravity_qdrant >nul 2>&1
-if %ERRORLEVEL% NEQ 0 (
-    docker run -d --name antigravity_qdrant -p 6333:6333 -p 6334:6334 qdrant/qdrant >nul 2>&1
-    echo [OK] Created and started Qdrant container.
-) else (
-    echo [OK] Started Qdrant container.
-)
-
-REM Step 4: Get phone number BEFORE WhatsApp scan
-REM (must happen before openclaw runs — openclaw can close stdin on Windows)
-echo.
-echo Step 4: Your phone number...
-echo.
-echo This lets Synapse know it is YOU messaging it.
-echo Enter your number with country code (e.g., +15551234567)
+echo Synapse uses this to know it is YOU messaging it.
+echo Enter your number with country code, e.g. +15551234567
 echo.
 
 :phone_input
 set /p PHONE_NUMBER="Your phone number: "
 
-REM Validate phone number format (use PowerShell — findstr CRLF issues break regex on piped input)
 powershell -Command "if ('%PHONE_NUMBER%' -match '^\+[0-9]{10,15}$') { exit 0 } else { exit 1 }" >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
     echo.
-    echo ERROR: Invalid format. Use E.164 format, e.g. +15551234567
-    echo   - Start with +, include country code, digits only after the +
-    echo   - US: +15551234567
-    echo   - India: +919836939194
-    echo   - UK: +447912345678
+    echo Invalid format. Use E.164 format starting with + and country code.
+    echo   India: +919836939194   US: +15551234567   UK: +447912345678
     echo.
     goto phone_input
 )
 
-echo [OK] Got it: %PHONE_NUMBER%
+echo [OK] %PHONE_NUMBER%
 
-REM Step 5: Link WhatsApp
+REM --- Step 4: Configure OpenClaw ---
 echo.
-echo Step 5: Linking WhatsApp...
-echo.
-echo    1. Open WhatsApp on your phone
-echo    2. Go to Settings - Linked Devices
-echo    3. Tap 'Link a Device'
-echo    4. Scan the QR code below
-echo.
-pause
-
-echo.
-echo Scanning QR code now...
-echo.
-openclaw channels login --channel whatsapp --verbose
-if %ERRORLEVEL% NEQ 0 (
-    echo.
-    echo Note: WhatsApp login returned an error. This is normal if already linked.
-    echo Continuing with setup...
-    echo.
-)
-
-echo.
-echo [OK] WhatsApp linked!
-echo.
-
-REM Step 6: Save phone number and configure workspace
-echo.
-echo Step 6: Saving config...
+echo Step 4: Saving config to OpenClaw...
 echo.
 
 openclaw config set channels.whatsapp.allowFrom "[\"%PHONE_NUMBER%\"]" --json >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
     openclaw config set channels.whatsapp.allowFrom "[\"%PHONE_NUMBER%\"]" >nul 2>&1
 )
-echo [OK] Phone number saved: %PHONE_NUMBER%
+echo [OK] Phone whitelist set: %PHONE_NUMBER%
 
-set "SYNAPSE_WORKSPACE=%PROJECT_ROOT%\workspace"
+openclaw config set agents.defaults.workspace "%PROJECT_ROOT%\workspace" >nul 2>&1
+echo [OK] Workspace set: %PROJECT_ROOT%\workspace
 
-openclaw config set agents.defaults.workspace "%SYNAPSE_WORKSPACE%" >nul 2>&1
-echo [OK] Workspace set to: %SYNAPSE_WORKSPACE%
-
-REM Step 7: Start services
+REM --- Step 5: Start everything ---
 echo.
-echo Step 7: Starting All Synapse Services...
+echo Step 5: Starting Synapse...
 echo.
 
 call "%PROJECT_ROOT%\synapse_start.bat"
 
-REM Pull Ollama embedding model only if Ollama is installed
-if defined OLLAMA_FOUND (
-    echo.
-    echo Pulling Ollama embedding model ^(nomic-embed-text^) in background...
-    start /B ollama pull nomic-embed-text >nul 2>&1
-    echo [OK] Pull started. ^(First run may take a few minutes in the background.^)
-)
-
 echo.
 echo ========================================
-echo [OK] Synapse is running!
+echo [OK] Onboarding complete!
 echo ========================================
 echo.
-echo How to Chat with Synapse:
-echo.
-echo    1. Open WhatsApp on your phone
-echo    2. Find 'Message yourself' at the top of your chat list
-echo    3. Send a message to start the conversation!
-echo.
-echo Try sending: Hello or What is up?
-echo.
-echo Synapse will reply. Have fun!
+echo Next time, just run synapse_start.bat
 echo.
 pause

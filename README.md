@@ -162,15 +162,17 @@ copy %USERPROFILE%\.openclaw\.env.example %USERPROFILE%\.openclaw\.env
 cp ~/.openclaw/.env.example ~/.openclaw/.env
 ```
 
-**5. Run `synapse_start.bat` — you're live**
+**5. Run `synapse_onboard.bat` — first-time setup**
 
 ```bash
 # Windows — double-click or run:
-%USERPROFILE%\.openclaw\synapse_start.bat
-
-# macOS/Linux
-~/.openclaw/synapse_start.sh
+%USERPROFILE%\.openclaw\synapse_onboard.bat
 ```
+
+This asks for your phone number, saves it to OpenClaw so Synapse knows it's you,
+sets the workspace path, and starts all services.
+
+> **After first setup:** use `synapse_start.bat` for daily use — no config needed again.
 
 Open WhatsApp → **Message Yourself** → say hello to Synapse.
 
