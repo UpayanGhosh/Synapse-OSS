@@ -55,3 +55,6 @@ workspace/*.gz
 LEARN_SYSTEM_DESIGN*.md
 CLAUDE.md
 GEMINI.md
+
+# GSD planning docs — local only, not for public GitHub
+.planning/
