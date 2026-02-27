@@ -34,6 +34,7 @@ db/*.gz
 *.json
 !workspace/sci_fi_dashboard/entities.json
 !.planning/config.json
+!extensions/**/openclaw.plugin.json
 *.bak
 *.gz
 db/memory.db*

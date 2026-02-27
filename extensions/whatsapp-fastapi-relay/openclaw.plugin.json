@@ -1,0 +1,13 @@
+{
+  "name": "whatsapp-fastapi-relay",
+  "version": "1.0.0",
+  "description": "Relays incoming WhatsApp messages to the Synapse FastAPI gateway via async enqueue endpoint",
+  "main": "index.js",
+  "type": "module",
+  "config": {
+    "endpoint": "http://127.0.0.1:8000/whatsapp/enqueue",
+    "timeoutMs": 8000,
+    "ttlMs": 30000,
+    "bridgeToken": ""
+  }
+}
