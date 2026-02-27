@@ -141,6 +141,16 @@ if not exist "%PROJECT_ROOT%\.venv\Scripts\python.exe" (
     echo [OK] Virtual environment already exists.
 )
 
+REM Install Playwright browser binaries (Windows only -- replaces crawl4ai)
+echo Installing Playwright browser binaries (Chromium)...
+call "%PROJECT_ROOT%\.venv\Scripts\python.exe" -m playwright install chromium
+if %ERRORLEVEL% NEQ 0 (
+    echo [--] Playwright browser install failed -- /browse tool will not work
+    echo      Try manually: python -m playwright install chromium
+) else (
+    echo [OK] Playwright Chromium ready.
+)
+
 REM Step 3: Set up Docker
 echo.
 echo Step 3: Setting up Docker...
