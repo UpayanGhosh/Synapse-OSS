@@ -56,7 +56,11 @@ Plans:
   2. Calling the /browse endpoint on Windows returns a valid HTML response via the Playwright backend
   3. Calling the /browse endpoint on Mac or Linux returns a valid HTML response via the Crawl4AI backend unchanged
   4. synapse_onboard.bat runs `python -m playwright install chromium` so Playwright browser binaries are present on Windows
-**Plans**: TBD
+**Plans**: 2 plans
+
+Plans:
+- [ ] 03-01-PLAN.md -- Add PEP 508 markers to requirements.txt + playwright binary install in synapse_onboard.bat (BRW-01, BRW-02, BRW-03)
+- [ ] 03-02-PLAN.md -- Rewrite tools.py with platform-aware dispatch + guard scrape_threads.py (BRW-04)
 
 ### Phase 4: Startup Validation
 **Goal**: Users see a clear feature availability summary at startup and receive actionable messages for any missing configuration
@@ -77,5 +81,5 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4
 |-------|----------------|--------|-----------|
 | 1. Unicode Source Fix | 1/1 | Complete    | 2026-02-27 |
 | 2. Optional Ollama | 2/2 | Complete   | 2026-02-27 |
-| 3. Platform-Aware Browser Backend | 0/TBD | Not started | - |
+| 3. Platform-Aware Browser Backend | 0/2 | Not started | - |
 | 4. Startup Validation | 0/TBD | Not started | - |
