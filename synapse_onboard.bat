@@ -176,14 +176,15 @@ echo.
 :phone_input
 set /p PHONE_NUMBER="Your phone number: "
 
-REM Validate phone number format
-echo %PHONE_NUMBER% | findstr /R "^+[0-9][0-9]*$" >nul
+REM Validate phone number format (use PowerShell — findstr CRLF issues break regex on piped input)
+powershell -Command "if ('%PHONE_NUMBER%' -match '^\+[0-9]{10,15}$') { exit 0 } else { exit 1 }" >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
     echo.
     echo ERROR: Invalid format. Use E.164 format, e.g. +15551234567
-    echo   - Start with +
-    echo   - Include country code
-    echo   - Digits only after the +
+    echo   - Start with +, include country code, digits only after the +
+    echo   - US: +15551234567
+    echo   - India: +919836939194
+    echo   - UK: +447912345678
     echo.
     goto phone_input
 )
