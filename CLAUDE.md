@@ -13,6 +13,13 @@ synapse_onboard.bat         # Windows (double-click or run from cmd)
 # Start all services (Qdrant, Ollama, API Gateway, OpenClaw)
 ./synapse_start.sh          # Mac/Linux
 synapse_start.bat           # Windows (double-click or run from cmd)
+
+# Stop all services
+./synapse_stop.sh           # Mac/Linux
+synapse_stop.bat            # Windows
+
+# Health check
+./synapse_health.sh         # Mac/Linux
 ```
 
 ### Run the API server directly

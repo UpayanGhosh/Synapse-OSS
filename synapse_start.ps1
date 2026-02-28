@@ -15,11 +15,11 @@ $projectRoot = $PSScriptRoot
 $venvPython = Join-Path $projectRoot ".venv\Scripts\python.exe"
 $workspaceDir = Join-Path $projectRoot "workspace"
 
-# Ensure OpenClaw workspace is configured and directories exist
-$openclawWorkspace = "$HOME/.openclaw/workspace"
-New-Item -Path (Join-Path $openclawWorkspace "db") -ItemType Directory -Force | Out-Null
-New-Item -Path "$HOME/.openclaw/logs" -ItemType Directory -Force | Out-Null
-openclaw config set workspaceDir $openclawWorkspace 2>$null
+# Ensure directories exist and workspace config is set
+New-Item -Path (Join-Path $workspaceDir "db") -ItemType Directory -Force | Out-Null
+New-Item -Path (Join-Path $HOME ".openclaw" "logs") -ItemType Directory -Force | Out-Null
+# Re-apply workspace config in case it was reset
+openclaw config set agents.defaults.workspace $workspaceDir 2>$null
 
 # 1. Start Docker Container
 Write-Host -NoNewline "[1/4] Starting Qdrant..."
@@ -32,12 +32,16 @@ if ($LASTEXITCODE -eq 0) {
 
 # 2. Start Ollama
 Write-Host -NoNewline "[2/4] Starting Ollama..."
-$ollama_process = Get-Process -Name "ollama" -ErrorAction SilentlyContinue
-if (-not $ollama_process) {
-    Start-Process -FilePath "ollama" -ArgumentList "serve" -WindowStyle Hidden
-    Write-Host "[OK] Started."
+if (Get-Command "ollama" -ErrorAction SilentlyContinue) {
+    $ollama_process = Get-Process -Name "ollama" -ErrorAction SilentlyContinue
+    if (-not $ollama_process) {
+        Start-Process -FilePath "ollama" -ArgumentList "serve" -WindowStyle Hidden
+        Write-Host "[OK] Started."
+    } else {
+        Write-Host "[OK] Already running."
+    }
 } else {
-    Write-Host "[OK] Already running."
+    Write-Host "[--] Not installed (local embedding disabled)."
 }
 
 # 3. Start API Gateway
