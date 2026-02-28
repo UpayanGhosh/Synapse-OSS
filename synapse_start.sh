@@ -14,14 +14,18 @@ echo "[1/4] Starting Qdrant..."
 docker start antigravity_qdrant 2>/dev/null && echo "   [OK] Started" || echo "   [OK] Already running or not found"
 
 echo "[2/4] Starting Ollama..."
-if ! pgrep -f "ollama serve" > /dev/null; then
-    export OLLAMA_KEEP_ALIVE=0
-    export OLLAMA_MAX_LOADED_MODELS=1
-    export OLLAMA_NUM_PARALLEL=1
-    nohup ollama serve > ~/.openclaw/logs/ollama.log 2>&1 &
-    echo "   [OK] Started"
+if command -v ollama > /dev/null 2>&1; then
+    if ! pgrep -f "ollama serve" > /dev/null; then
+        export OLLAMA_KEEP_ALIVE=0
+        export OLLAMA_MAX_LOADED_MODELS=1
+        export OLLAMA_NUM_PARALLEL=1
+        nohup ollama serve > ~/.openclaw/logs/ollama.log 2>&1 &
+        echo "   [OK] Started"
+    else
+        echo "   [OK] Already running"
+    fi
 else
-    echo "   [OK] Already running"
+    echo "   [--] Ollama not installed -- local embedding and The Vault will be disabled"
 fi
 
 echo "[3/4] Starting API Gateway..."

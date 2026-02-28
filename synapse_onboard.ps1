@@ -45,6 +45,34 @@ if (-not (Check-Tool "python")) {
 if (-not (Check-Tool "docker")) { $all_good = $false }
 if (-not (Check-Tool "openclaw")) { $all_good = $false }
 
+# Ollama: required for embedding and The Vault -- auto-install if missing
+if (-not (Get-Command "ollama" -ErrorAction SilentlyContinue)) {
+    Write-Host "   Ollama not found. Installing automatically..."
+    $ollamaInstaller = Join-Path $env:TEMP "OllamaSetup.exe"
+    try {
+        Invoke-WebRequest -Uri "https://ollama.com/download/OllamaSetup.exe" `
+            -OutFile $ollamaInstaller -UseBasicParsing
+        Start-Process -FilePath $ollamaInstaller -ArgumentList "/S" -Wait
+        Start-Sleep -Seconds 5
+        # Refresh PATH so ollama is visible in this session
+        $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" +
+                    [System.Environment]::GetEnvironmentVariable("Path", "User")
+        if (Get-Command "ollama" -ErrorAction SilentlyContinue) {
+            Write-Host "   ✓ Ollama installed successfully"
+        } else {
+            Write-Host "   ✗ Ollama install completed but 'ollama' not found in PATH." -ForegroundColor Red
+            Write-Host "     Please restart this script after installing from https://ollama.com" -ForegroundColor Red
+            $all_good = $false
+        }
+    } catch {
+        Write-Host "   ✗ Failed to download or install Ollama: $_" -ForegroundColor Red
+        Write-Host "     Install manually from https://ollama.com then run this script again." -ForegroundColor Red
+        $all_good = $false
+    }
+} else {
+    Write-Host "   ✓ ollama is installed"
+}
+
 if (-not $all_good) {
     Write-Host ""
     Write-Host "❌ Oops! Some tools are missing."
@@ -181,13 +209,12 @@ Write-Host ""
 Write-Host "Scan the QR code now! I'll wait..."
 Write-Host ""
 
-openclaw channels login
+openclaw channels login --channel whatsapp
 if ($LASTEXITCODE -ne 0) {
     Write-Host ""
-    Write-Host "❌ WhatsApp login failed or was cancelled." -ForegroundColor Red
-    Write-Host "Please re-run this script and scan the QR code when prompted."
-    Read-Host -Prompt "Press Enter to exit"
-    exit 1
+    Write-Host "⚠️  Note: 'openclaw channels login' returned an error." -ForegroundColor Yellow
+    Write-Host "   This is normal if WhatsApp is already linked."
+    Write-Host "   Continuing with setup..."
 }
 
 Write-Host ""
@@ -237,23 +264,19 @@ Write-Host ""
 # ---- Workspace Configuration ----
 Write-Host "🔧 Configuring OpenClaw workspace..."
 
-# Use a DIFFERENT variable name to avoid clobbering $workspaceDir (the repo path)
-# PowerShell variable names are case-insensitive, so $WorkspaceDir == $workspaceDir
-$openclawWorkspace = "$HOME/.openclaw/workspace"
-
-# Tell OpenClaw where Jarvis lives
-openclaw config set workspaceDir $openclawWorkspace 2>$null
+# Tell OpenClaw where Synapse's workspace lives (the repo's workspace/ folder)
+openclaw config set agents.defaults.workspace $workspaceDir 2>$null
 if ($LASTEXITCODE -ne 0) {
-    openclaw config set workspaceDir $openclawWorkspace
+    openclaw config set agents.defaults.workspace $workspaceDir
 }
-Write-Host "   ✓ Workspace: $openclawWorkspace"
+Write-Host "   ✓ Workspace: $workspaceDir"
 
 # Create required directories for databases, logs, and persona data
 $dirsToCreate = @(
-    (Join-Path $openclawWorkspace "db"),
-    (Join-Path $openclawWorkspace "sci_fi_dashboard" "synapse_data" "the_creator" "profiles" "current"),
-    (Join-Path $openclawWorkspace "sci_fi_dashboard" "synapse_data" "the_partner" "profiles" "current"),
-    "$HOME/.openclaw/logs"
+    (Join-Path $workspaceDir "db"),
+    (Join-Path $workspaceDir "sci_fi_dashboard" "synapse_data" "the_creator" "profiles" "current"),
+    (Join-Path $workspaceDir "sci_fi_dashboard" "synapse_data" "the_partner" "profiles" "current"),
+    (Join-Path $HOME ".openclaw" "logs")
 )
 foreach ($dir in $dirsToCreate) {
     New-Item -Path $dir -ItemType Directory -Force | Out-Null
@@ -262,7 +285,7 @@ Write-Host "   ✓ Directories created"
 
 # Verify the workspace is configured
 try {
-    $configuredDir = openclaw config get workspaceDir 2>$null
+    $configuredDir = openclaw config get agents.defaults.workspace 2>$null
     if ($configuredDir) {
         Write-Host "   ✓ Verified: $configuredDir"
     } else {
@@ -309,14 +332,15 @@ Write-Host "[2/4] Starting Ollama..."
 $ollama_process = Get-Process -Name "ollama" -ErrorAction SilentlyContinue
 if (-not $ollama_process) {
     Start-Process -FilePath "ollama" -ArgumentList "serve" -WindowStyle Hidden
-    Write-Host "   ✓ Ollama started in background."
+    Write-Host "   ✓ Ollama started"
     Start-Sleep -Seconds 3
-    Write-Host "   Pulling required embedding model (nomic-embed-text)..."
-    Start-Process -FilePath "ollama" -ArgumentList "pull nomic-embed-text" -WindowStyle Hidden
-    Write-Host "   ✓ nomic-embed-text pull started in background."
 } else {
-    Write-Host "   ✓ Ollama already running."
+    Write-Host "   ✓ Ollama already running"
 }
+Write-Host "   Pulling required embedding model (nomic-embed-text)..."
+Write-Host "   (This downloads ~900 MB on first run — please wait)" -ForegroundColor DarkCyan
+& ollama pull nomic-embed-text
+Write-Host "   ✓ nomic-embed-text ready"
 
 # 3. API Gateway
 Write-Host ""

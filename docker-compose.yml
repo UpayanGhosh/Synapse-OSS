@@ -5,6 +5,7 @@ services:
       - "6333:6333"
     volumes:
       - qdrant_data:/qdrant/storage
+    restart: unless-stopped
 
   synapse:
     build: .
@@ -15,6 +16,10 @@ services:
     depends_on:
       - qdrant
     restart: unless-stopped
+    volumes:
+      # Persist databases and logs across container restarts
+      - synapse_data:/root/.openclaw
 
 volumes:
   qdrant_data:
+  synapse_data:

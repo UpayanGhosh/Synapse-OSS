@@ -3,8 +3,7 @@ chcp 65001 >nul
 setlocal EnableDelayedExpansion
 
 REM Synapse Onboard Script for Windows
-REM Run this ONCE after copying Synapse files into ~/.openclaw/
-REM (openclaw onboard must have already been completed before running this)
+REM Run this ONCE to configure Synapse, link WhatsApp, and start all services.
 
 set "PROJECT_ROOT=%~dp0"
 set "PROJECT_ROOT=%PROJECT_ROOT:~0,-1%"
@@ -50,8 +49,28 @@ if %ERRORLEVEL% NEQ 0 (
 
 where ollama >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
-    echo    [--] Ollama not installed -- local embedding and The Vault will be disabled
-    echo         Install from https://ollama.com (optional)
+    echo    Ollama not found. Installing automatically...
+    echo    Downloading installer (this may take a moment)...
+    curl -L -o "%TEMP%\OllamaSetup.exe" "https://ollama.com/download/OllamaSetup.exe"
+    if %ERRORLEVEL% NEQ 0 (
+        echo    [X] Failed to download Ollama installer.
+        echo        Install manually from https://ollama.com then run this script again.
+        set "MISSING=1"
+    ) else (
+        echo    Running Ollama installer silently...
+        "%TEMP%\OllamaSetup.exe" /S
+        timeout /t 15 /nobreak >nul
+        REM Refresh PATH in this session so ollama.exe is visible without restart
+        for /f "usebackq tokens=2,*" %%A in (`reg query "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v Path 2^>nul`) do set "SYSTEM_PATH=%%B"
+        set "PATH=%PATH%;%SYSTEM_PATH%"
+        where ollama >nul 2>&1
+        if %ERRORLEVEL% NEQ 0 (
+            echo    [X] Ollama install did not complete. Install manually from https://ollama.com
+            set "MISSING=1"
+        ) else (
+            echo    [OK] Ollama installed successfully
+        )
+    )
 ) else (
     echo    [OK] Ollama
 )
@@ -92,9 +111,29 @@ if %ERRORLEVEL% EQU 0 (
     echo [OK] .env looks good.
 )
 
-REM --- Step 3: Phone number ---
+REM --- Step 3: Link WhatsApp ---
 echo.
-echo Step 3: Your phone number...
+echo Step 3: Linking WhatsApp...
+echo.
+echo A QR code will appear. Open WhatsApp on your phone:
+echo   1. Go to Settings -^> Linked Devices
+echo   2. Tap Link a Device
+echo   3. Scan the QR code
+echo.
+pause
+
+openclaw channels login --channel whatsapp
+if %ERRORLEVEL% NEQ 0 (
+    echo.
+    echo Note: openclaw channels login returned an error.
+    echo This is normal if WhatsApp is already linked. Continuing...
+    echo.
+)
+echo [OK] WhatsApp step complete.
+
+REM --- Step 4: Phone number ---
+echo.
+echo Step 4: Your phone number...
 echo.
 echo Synapse uses this to know it is YOU messaging it.
 echo Enter your number with country code, e.g. +15551234567
@@ -114,9 +153,9 @@ if %ERRORLEVEL% NEQ 0 (
 
 echo [OK] %PHONE_NUMBER%
 
-REM --- Step 4: Configure OpenClaw ---
+REM --- Step 5: Configure OpenClaw ---
 echo.
-echo Step 4: Saving config to OpenClaw...
+echo Step 5: Saving config to OpenClaw...
 echo.
 
 openclaw config set channels.whatsapp.allowFrom "[\"%PHONE_NUMBER%\"]" --json >nul 2>&1
@@ -128,12 +167,19 @@ echo [OK] Phone whitelist set: %PHONE_NUMBER%
 openclaw config set agents.defaults.workspace "%PROJECT_ROOT%\workspace" >nul 2>&1
 echo [OK] Workspace set: %PROJECT_ROOT%\workspace
 
-REM --- Step 5: Start everything ---
+REM --- Step 6: Start everything ---
 echo.
-echo Step 5: Starting Synapse...
+echo Step 6: Starting Synapse...
 echo.
 
 call "%PROJECT_ROOT%\synapse_start.bat"
+
+REM Pull the required embedding model synchronously so it is ready before first use
+echo.
+echo Pulling required embedding model (nomic-embed-text)...
+echo This downloads ~900 MB on first run. Please wait...
+ollama pull nomic-embed-text
+echo [OK] nomic-embed-text ready
 
 echo.
 echo ========================================
