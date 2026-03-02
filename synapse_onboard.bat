@@ -39,13 +39,14 @@ if %ERRORLEVEL% NEQ 0 (
     echo    [OK] Docker
 )
 
-where openclaw >nul 2>&1
-if %ERRORLEVEL% NEQ 0 (
-    echo    [X] OpenClaw not installed. Install from https://github.com/openclaw/openclaw/releases
-    set "MISSING=1"
-) else (
-    echo    [OK] OpenClaw
-)
+REM TODO Phase 7: openclaw binary check removed — system runs without openclaw
+REM where openclaw >nul 2>&1
+REM if %ERRORLEVEL% NEQ 0 (
+REM     echo    [X] OpenClaw not installed. Install from https://github.com/openclaw/openclaw/releases
+REM     set "MISSING=1"
+REM ) else (
+REM     echo    [OK] OpenClaw
+REM )
 
 where ollama >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
@@ -83,53 +84,37 @@ if defined MISSING (
     exit /b 1
 )
 
-REM --- Step 2: .env check ---
+REM --- Step 2: .env setup ---
 echo.
 echo Step 2: Checking config...
 echo.
 
 if not exist "%PROJECT_ROOT%\.env" (
-    echo [X] No .env file found.
-    echo.
-    echo     Run this first:
-    echo        copy "%PROJECT_ROOT%\.env.example" "%PROJECT_ROOT%\.env"
-    echo     Then open .env and add your GEMINI_API_KEY.
-    echo.
-    pause
-    exit /b 1
-)
-
-REM Warn if GEMINI_API_KEY is still the placeholder
-findstr /C:"GEMINI_API_KEY=\"your_gemini" "%PROJECT_ROOT%\.env" >nul 2>&1
-if %ERRORLEVEL% EQU 0 (
-    echo WARNING: GEMINI_API_KEY is still the placeholder value.
-    echo    Open .env and replace it with your real key from https://aistudio.google.com/
-    echo.
-    echo Press any key to continue anyway ^(LLM calls will fail until you fix this^)...
-    pause >nul
-) else (
-    echo [OK] .env looks good.
+    if exist "%PROJECT_ROOT%\.env.example" (
+        copy "%PROJECT_ROOT%\.env.example" "%PROJECT_ROOT%\.env" >nul
+        echo [OK] Created .env from .env.example
+    ) else (
+        type nul > "%PROJECT_ROOT%\.env"
+        echo [OK] Created empty .env
+    )
 )
 
 REM --- Step 3: Link WhatsApp ---
 echo.
 echo Step 3: Linking WhatsApp...
 echo.
-echo A QR code will appear. Open WhatsApp on your phone:
-echo   1. Go to Settings -^> Linked Devices
-echo   2. Tap Link a Device
-echo   3. Scan the QR code
+echo WhatsApp link step deferred. Phase 4 will implement Baileys bridge QR code flow.
 echo.
-pause
 
-openclaw channels login --channel whatsapp
-if %ERRORLEVEL% NEQ 0 (
-    echo.
-    echo Note: openclaw channels login returned an error.
-    echo This is normal if WhatsApp is already linked. Continuing...
-    echo.
-)
-echo [OK] WhatsApp step complete.
+REM TODO Phase 4: WhatsApp login replaced by Baileys bridge QR code flow
+REM openclaw channels login --channel whatsapp
+REM if %ERRORLEVEL% NEQ 0 (
+REM     echo.
+REM     echo Note: openclaw channels login returned an error.
+REM     echo This is normal if WhatsApp is already linked. Continuing...
+REM     echo.
+REM )
+echo [OK] WhatsApp step noted (deferred to Phase 4).
 
 REM --- Step 4: Phone number ---
 echo.
@@ -153,23 +138,52 @@ if %ERRORLEVEL% NEQ 0 (
 
 echo [OK] %PHONE_NUMBER%
 
-REM --- Step 5: Configure OpenClaw ---
+REM --- Step 5: Configure Synapse ---
 echo.
-echo Step 5: Saving config to OpenClaw...
+echo Step 5: Saving config...
 echo.
 
-openclaw config set channels.whatsapp.allowFrom "[\"%PHONE_NUMBER%\"]" --json >nul 2>&1
-if %ERRORLEVEL% NEQ 0 (
-    openclaw config set channels.whatsapp.allowFrom "[\"%PHONE_NUMBER%\"]" >nul 2>&1
+REM TODO Phase 4: phone allowlist moved to synapse.json
+REM openclaw config set channels.whatsapp.allowFrom "[\"%PHONE_NUMBER%\"]" --json >nul 2>&1
+REM if %ERRORLEVEL% NEQ 0 (
+REM     openclaw config set channels.whatsapp.allowFrom "[\"%PHONE_NUMBER%\"]" >nul 2>&1
+REM )
+echo [OK] Phone number noted: %PHONE_NUMBER%
+echo     Configure in %%USERPROFILE%%\.synapse\synapse.json once Phase 4 Baileys bridge is installed.
+
+REM TODO Phase 1: workspace path now read from SYNAPSE_HOME / SynapseConfig
+REM openclaw config set agents.defaults.workspace "%PROJECT_ROOT%\workspace" >nul 2>&1
+echo [OK] Workspace: %PROJECT_ROOT%\workspace (read from SynapseConfig)
+
+REM --- Step 6: Configure LLM access ---
+echo.
+echo Step 6: Configuring LLM access...
+echo.
+
+REM TODO Phase 2: provider token moved to synapse.json
+REM set "GW_TOKEN="
+REM for /f "tokens=*" %%T in ('openclaw config get gateway.auth.token 2^>nul') do set "GW_TOKEN=%%T"
+REM if defined GW_TOKEN (
+REM     ...openclaw gateway token block removed...
+REM )
+
+REM Check for direct Gemini key
+findstr /B /C:"GEMINI_API_KEY=" "%PROJECT_ROOT%\.env" >nul 2>&1
+if %ERRORLEVEL% EQU 0 (
+    echo [OK] GEMINI_API_KEY found in .env -- Synapse will call Gemini directly
+) else (
+    echo.
+    echo WARNING: No LLM configured. Synapse will start but replies will fail.
+    echo    Fix: add to .env --
+    echo       GEMINI_API_KEY=your_key        (free at aistudio.google.com)
+    echo.
 )
-echo [OK] Phone whitelist set: %PHONE_NUMBER%
 
-openclaw config set agents.defaults.workspace "%PROJECT_ROOT%\workspace" >nul 2>&1
-echo [OK] Workspace set: %PROJECT_ROOT%\workspace
+:llm_done
 
-REM --- Step 6: Start everything ---
+REM --- Step 7: Start everything ---
 echo.
-echo Step 6: Starting Synapse...
+echo Step 7: Starting Synapse...
 echo.
 
 call "%PROJECT_ROOT%\synapse_start.bat"
