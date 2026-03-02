@@ -85,7 +85,8 @@ else
         fi
     fi
 fi
-check_tool openclaw  || all_good=false
+# TODO Phase 7: openclaw binary check removed — system runs without openclaw
+# check_tool openclaw  || all_good=false
 
 if [ "$all_good" = false ]; then
     echo ""
@@ -97,23 +98,15 @@ if [ "$all_good" = false ]; then
     exit 1
 fi
 
-# Check .env file exists and has an API key set
+# Auto-create .env from .env.example if not present — no manual step needed
 if [ ! -f "$SCRIPT_DIR/.env" ]; then
-    echo ""
-    echo "❌ No .env file found."
-    echo ""
-    echo "Run this first:"
-    echo "   cp .env.example .env"
-    echo "Then open .env and add your GEMINI_API_KEY (at minimum)."
-    echo ""
-    exit 1
-fi
-
-if ! grep -qE "GEMINI_API_KEY=.{20,}" "$SCRIPT_DIR/.env" 2>/dev/null; then
-    echo ""
-    echo "⚠️  Warning: GEMINI_API_KEY does not appear to be set in your .env file."
-    echo "   Synapse will start but LLM calls will fail until you add an API key."
-    echo ""
+    if [ -f "$SCRIPT_DIR/.env.example" ]; then
+        cp "$SCRIPT_DIR/.env.example" "$SCRIPT_DIR/.env"
+        echo "   ✓ Created .env from .env.example"
+    else
+        touch "$SCRIPT_DIR/.env"
+        echo "   ✓ Created empty .env"
+    fi
 fi
 
 # Check Python virtual environment
@@ -185,7 +178,7 @@ while true; do
     esac
 done
 
-# Collect phone number BEFORE running openclaw (openclaw can close stdin)
+# Collect phone number BEFORE running bridge setup
 echo ""
 echo "📞 Enter your phone number first..."
 echo ""
@@ -232,46 +225,51 @@ echo ""
 echo "Scan the QR code now! I'll wait..."
 echo ""
 
-if ! openclaw channels login --channel whatsapp; then
-    echo ""
-    echo "⚠️  Note: 'openclaw channels login' returned an error."
-    echo "   This is normal if WhatsApp is already linked."
-    echo "   Continuing with setup..."
-fi
+# TODO Phase 4: WhatsApp login replaced by Baileys bridge QR code flow
+# if ! openclaw channels login --channel whatsapp; then
+#     echo ""
+#     echo "⚠️  Note: 'openclaw channels login' returned an error."
+#     echo "   This is normal if WhatsApp is already linked."
+#     echo "   Continuing with setup..."
+# fi
+echo "   (WhatsApp link step deferred — Phase 4 will implement Baileys bridge QR flow)"
 
 echo ""
 echo "✓ WhatsApp linked!"
 echo ""
 
 echo ""
-echo "Saving phone number to OpenClaw config..."
+echo "Saving phone number to Synapse config..."
 echo ""
 
-openclaw config set channels.whatsapp.allowFrom "[\"$phone_number\"]" --json 2>/dev/null || \
-    openclaw config set channels.whatsapp.allowFrom "[\"$phone_number\"]"
+# TODO Phase 4: phone allowlist moved to ~/.synapse/synapse.json
+# openclaw config set channels.whatsapp.allowFrom "[\"$phone_number\"]" --json 2>/dev/null || \
+#     openclaw config set channels.whatsapp.allowFrom "[\"$phone_number\"]"
 
 echo "✓ Phone number saved: $phone_number"
+echo "  (Configure in ~/.synapse/synapse.json once Phase 4 Baileys bridge is installed)"
 echo ""
 
 # ---- Workspace Configuration ----
-echo "🔧 Configuring OpenClaw workspace..."
+echo "🔧 Configuring Synapse workspace..."
 
 SYNAPSE_WORKSPACE="$SCRIPT_DIR/workspace"
 
-# Tell OpenClaw where Synapse lives
-openclaw config set agents.defaults.workspace "$SYNAPSE_WORKSPACE" 2>/dev/null || \
-    openclaw config set agents.defaults.workspace "$SYNAPSE_WORKSPACE"
+# TODO Phase 1: workspace path now read from SYNAPSE_HOME / SynapseConfig
+# openclaw config set agents.defaults.workspace "$SYNAPSE_WORKSPACE" 2>/dev/null || \
+#     openclaw config set agents.defaults.workspace "$SYNAPSE_WORKSPACE"
 echo "   ✓ Workspace: $SYNAPSE_WORKSPACE"
 
 # Create required directories for databases, logs, and persona data
 mkdir -p "$SYNAPSE_WORKSPACE/db"
 mkdir -p "$SYNAPSE_WORKSPACE/sci_fi_dashboard/synapse_data/the_creator/profiles/current"
 mkdir -p "$SYNAPSE_WORKSPACE/sci_fi_dashboard/synapse_data/the_partner/profiles/current"
-mkdir -p "$HOME/.openclaw/logs"
+mkdir -p "$HOME/.synapse/logs"
 echo "   ✓ Directories created"
 
 # Verify the workspace is configured
-CONFIGURED_DIR=$(openclaw config get agents.defaults.workspace 2>/dev/null || echo "")
+# TODO Phase 1: workspace path now read from SYNAPSE_HOME / SynapseConfig
+CONFIGURED_DIR="${SYNAPSE_HOME:-$HOME/.synapse}/workspace"
 if [ -n "$CONFIGURED_DIR" ]; then
     echo "   ✓ Verified: $CONFIGURED_DIR"
 else
@@ -279,8 +277,39 @@ else
 fi
 
 echo ""
+echo "🔑 Step 3: Configuring LLM access..."
+echo ""
+
+# TODO Phase 2: provider credentials moved to ~/.synapse/synapse.json
+# GATEWAY_TOKEN=$(openclaw config get gateway.auth.token 2>/dev/null | tr -d '[:space:]"')
+# if [ -n "$GATEWAY_TOKEN" ] && [ "$GATEWAY_TOKEN" != "null" ] && [ "$GATEWAY_TOKEN" != "undefined" ] && [ ${#GATEWAY_TOKEN} -ge 8 ]; then
+#     if grep -q "^OPENCLAW_GATEWAY_TOKEN=.\{8,\}" "$SCRIPT_DIR/.env" 2>/dev/null; then
+#         echo "   ✓ OpenClaw gateway token already configured in .env"
+#     else
+#         grep -v "^OPENCLAW_GATEWAY_TOKEN=" "$SCRIPT_DIR/.env" > "$SCRIPT_DIR/.env.tmp" 2>/dev/null \
+#             && mv "$SCRIPT_DIR/.env.tmp" "$SCRIPT_DIR/.env"
+#         printf "\nOPENCLAW_GATEWAY_TOKEN=%s\n" "$GATEWAY_TOKEN" >> "$SCRIPT_DIR/.env"
+#         echo "   ✓ OpenClaw gateway token written to .env automatically"
+#         echo "     Synapse will use the LLM you chose during 'openclaw onboard'"
+#     fi
+# else
+#     echo "   ℹ  OpenClaw gateway token not found (openclaw config get gateway.auth.token returned nothing)."
+# fi
+
+# Check if a direct Gemini key is present
+if grep -qE "^GEMINI_API_KEY=.{20,}" "$SCRIPT_DIR/.env" 2>/dev/null; then
+    echo "   ✓ GEMINI_API_KEY found in .env — Synapse will call Gemini directly"
+else
+    echo ""
+    echo "   ⚠  No LLM configured yet. Synapse will start but replies will fail."
+    echo "   Fix by adding to .env:"
+    echo "      GEMINI_API_KEY=<key>           (free at aistudio.google.com)"
+    echo ""
+fi
+
+echo ""
 echo "🚀 ======================================="
-echo "   Step 3: Starting All Synapse Services"
+echo "   Step 4: Starting All Synapse Services"
 echo "=========================================="
 echo ""
 
@@ -288,7 +317,7 @@ echo "Starting all services..."
 echo ""
 
 # Ensure log directory exists before any nohup redirects
-mkdir -p ~/.openclaw/logs
+mkdir -p ~/.synapse/logs
 
 echo "[1/4] Starting Docker services (Qdrant)..."
 if ! docker info > /dev/null 2>&1; then
@@ -313,7 +342,7 @@ export OLLAMA_KEEP_ALIVE=0
 export OLLAMA_MAX_LOADED_MODELS=1
 export OLLAMA_NUM_PARALLEL=1
 if ! pgrep -f "ollama serve" > /dev/null; then
-    nohup ollama serve > ~/.openclaw/logs/ollama.log 2>&1 &
+    nohup ollama serve > ~/.synapse/logs/ollama.log 2>&1 &
     echo "   ✓ Ollama started"
     sleep 3
 else
@@ -331,7 +360,7 @@ if ! pgrep -f "uvicorn.*api_gateway" > /dev/null; then
     nohup "$VENV_UVICORN" sci_fi_dashboard.api_gateway:app \
         --host 0.0.0.0 --port 8000 \
         --workers 1 \
-        > ~/.openclaw/logs/gateway.log 2>&1 &
+        > ~/.synapse/logs/gateway.log 2>&1 &
     cd "$SCRIPT_DIR"
     echo "   ✓ API Gateway started"
 else
@@ -339,13 +368,16 @@ else
 fi
 
 echo ""
-echo "[4/4] Starting OpenClaw Gateway (WhatsApp bridge)..."
-if ! pgrep -f "openclaw.*gateway" > /dev/null; then
-    nohup openclaw gateway > ~/.openclaw/logs/openclaw_gateway.log 2>&1 &
-    echo "   ✓ OpenClaw Gateway started"
-else
-    echo "   ✓ OpenClaw Gateway already running"
-fi
+echo "[4/4] WhatsApp bridge..."
+# TODO Phase 7: openclaw gateway check removed
+# TODO Phase 4: WhatsApp bridge replaced by Baileys HTTP bridge
+# if ! pgrep -f "openclaw.*gateway" > /dev/null; then
+#     nohup openclaw gateway > ~/.synapse/logs/openclaw_gateway.log 2>&1 &
+#     echo "   ✓ OpenClaw Gateway started"
+# else
+#     echo "   ✓ OpenClaw Gateway already running"
+# fi
+echo "   (WhatsApp bridge deferred — Phase 4 will implement Baileys bridge)"
 
 echo ""
 echo "⏳ Waiting for services to initialize..."
@@ -367,36 +399,36 @@ done
 if $gateway_up; then
     echo "✓ Running"
 else
-    echo "⚠ No response after 15s — check ~/.openclaw/logs/gateway.log"
+    echo "⚠ No response after 15s — check ~/.synapse/logs/gateway.log"
     services_ok=false
 fi
 
-echo -n "   - OpenClaw Gateway: "
-oc_up=false
-for i in 1 2 3 4 5; do
-    if curl -s http://127.0.0.1:18789/health > /dev/null 2>&1; then
-        oc_up=true
-        break
-    fi
-    if pgrep -f "openclaw.*gateway" > /dev/null; then
-        oc_up=true
-        break
-    fi
-    sleep 3
-done
-if $oc_up; then
-    echo "✓ Running"
-else
-    echo "⚠ Not detected — check ~/.openclaw/logs/openclaw_gateway.log"
-    services_ok=false
-fi
+# TODO Phase 7: openclaw gateway check removed
+# echo -n "   - OpenClaw Gateway: "
+# oc_up=false
+# for i in 1 2 3 4 5; do
+#     if curl -s http://127.0.0.1:18789/health > /dev/null 2>&1; then
+#         oc_up=true
+#         break
+#     fi
+#     if pgrep -f "openclaw.*gateway" > /dev/null; then
+#         oc_up=true
+#         break
+#     fi
+#     sleep 3
+# done
+# if $oc_up; then
+#     echo "✓ Running"
+# else
+#     echo "⚠ Not detected — check ~/.synapse/logs/openclaw_gateway.log"
+#     services_ok=false
+# fi
 
 echo ""
 if [ "$services_ok" = true ]; then
     echo "✅ All services are running!"
 else
-    echo "⚠️  Some services may need more time. Check with: openclaw status"
-    echo "   Logs are in: ~/.openclaw/logs/"
+    echo "⚠️  Some services may need more time. Check logs in: ~/.synapse/logs/"
 fi
 
 echo ""
@@ -405,7 +437,7 @@ echo ""
 
 echo ""
 echo "💬 ======================================="
-echo "   Step 4: How to Chat with Synapse"
+echo "   Step 5: How to Chat with Synapse"
 echo "=========================================="
 echo ""
 
