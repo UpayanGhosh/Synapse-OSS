@@ -75,10 +75,10 @@
 
 ### Slack Channel
 
-- [ ] **SLK-01**: Slack channel uses slack-bolt async with Socket Mode by default (no public URL required for self-hosters)
-- [ ] **SLK-02**: Inbound DMs and app mentions in channels are handled
-- [ ] **SLK-03**: Outbound text send works correctly
-- [ ] **SLK-04**: Bot token and app-level token stored in synapse.json under `channels.slack`
+- [x] **SLK-01**: Slack channel uses slack-bolt async with Socket Mode by default (no public URL required for self-hosters)
+- [x] **SLK-02**: Inbound DMs and app mentions in channels are handled
+- [x] **SLK-03**: Outbound text send works correctly
+- [x] **SLK-04**: Bot token and app-level token stored in synapse.json under `channels.slack`
 
 ### Onboarding Wizard
 
@@ -201,10 +201,10 @@
 | DIS-02 | Phase 5: Core Channels — Telegram, Discord, Slack | Complete |
 | DIS-03 | Phase 5: Core Channels — Telegram, Discord, Slack | Complete |
 | DIS-04 | Phase 5: Core Channels — Telegram, Discord, Slack | Complete |
-| SLK-01 | Phase 5: Core Channels — Telegram, Discord, Slack | Pending |
-| SLK-02 | Phase 5: Core Channels — Telegram, Discord, Slack | Pending |
-| SLK-03 | Phase 5: Core Channels — Telegram, Discord, Slack | Pending |
-| SLK-04 | Phase 5: Core Channels — Telegram, Discord, Slack | Pending |
+| SLK-01 | Phase 5: Core Channels — Telegram, Discord, Slack | Complete |
+| SLK-02 | Phase 5: Core Channels — Telegram, Discord, Slack | Complete |
+| SLK-03 | Phase 5: Core Channels — Telegram, Discord, Slack | Complete |
+| SLK-04 | Phase 5: Core Channels — Telegram, Discord, Slack | Complete |
 | ONB-01 | Phase 6: Onboarding Wizard | Pending |
 | ONB-02 | Phase 6: Onboarding Wizard | Pending |
 | ONB-03 | Phase 6: Onboarding Wizard | Pending |

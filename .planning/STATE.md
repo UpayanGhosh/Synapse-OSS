@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-03-02T18:11:48.844Z"
+last_updated: "2026-03-02T18:13:14.403Z"
 progress:
   total_phases: 5
   completed_phases: 4
   total_plans: 22
-  completed_plans: 19
+  completed_plans: 20
 ---
 
 ---
@@ -111,6 +111,7 @@ Progress: [████████████████████] 18/18 p
 | Phase 04-whatsapp-baileys-bridge P03 | 10 | 2 tasks | 2 files |
 | Phase 04-whatsapp-baileys-bridge P04 | 10 | 2 tasks | 1 files |
 | Phase 05 P02 | 4 | 2 tasks | 2 files |
+| Phase 05-core-channels-telegram-discord-slack P03 | 4 | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -170,6 +171,9 @@ Recent decisions affecting current work:
 - [Phase 04-04]: WhatsAppSender removed from api_gateway.py — WhatsAppChannel via ChannelRegistry is the sole dispatch path for 'whatsapp' channel
 - [Phase 04-04]: GET /health changed to async def — channel health_check() awaited per-channel wrapped in try/except; /health always responds
 - [Phase 05-02]: discord.py 2.7.0 installed; await client.start() pattern used (never client.run()) for uvicorn event-loop compatibility; SIM102+F401+F841 ruff violations auto-fixed
+- [Phase 05-core-channels-telegram-discord-slack]: connect_async() used in SlackChannel.start() instead of await handler.start_async() — start_async() parks internally and would block ChannelRegistry.start_all() forever
+- [Phase 05-core-channels-telegram-discord-slack]: SlackChannel send_typing() is no-op — Slack Web API typing indicators unreliable for bots; mark_read() is no-op — no read-status endpoint for bots
+- [Phase 05-core-channels-telegram-discord-slack]: @app.event('message') in SlackChannel restricted to channel_type=='im' — prevents double-dispatch when channel @mention triggers both message and app_mention events
 
 ### Pending Todos
 
