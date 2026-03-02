@@ -4,26 +4,27 @@ import contextlib
 
 class WhatsAppSender:
     """
-    Sends messages via OpenClaw CLI.
+    Sends messages via CLI subprocess.
 
-    Adapted from the project's existing send_via_cli pattern.
     Wraps subprocess calls in asyncio for non-blocking execution.
+    Phase 4 will replace this with a Baileys HTTP bridge client.
     """
 
-    def __init__(self, cli_command: str = "openclaw"):
+    def __init__(self, cli_command: str = ""):
         """
         Args:
-            cli_command: Base CLI command. Could be "openclaw" or
-                        full path like "/usr/local/bin/openclaw"
+            cli_command: Base CLI command for WhatsApp send. Deprecated — will be replaced by
+                Baileys HTTP bridge in Phase 4. Pass empty string to disable CLI send path.
         """
         self.cli = cli_command
         self._send_lock = asyncio.Lock()  # Serialize CLI calls
 
     async def send_text(self, target: str, message: str, quote_id: str = None) -> bool:
         """
-        Send a text message via OpenClaw CLI.
+        Send a text message via CLI subprocess.
         Uses asyncio.create_subprocess_exec so it doesn't block
         the event loop while the CLI runs.
+        Phase 4 will replace this with a Baileys HTTP bridge call.
         """
         args = [
             self.cli,
@@ -45,7 +46,7 @@ class WhatsAppSender:
 
     async def send_typing(self, target: str):
         """
-        Send typing indicator if OpenClaw CLI supports it.
+        Send typing indicator if CLI supports it.
         """
         args = [
             self.cli,
@@ -64,7 +65,7 @@ class WhatsAppSender:
 
     async def send_seen(self, target: str, message_id: str):
         """
-        Mark message as read if CLI supports it.
+        Mark message as read if the CLI supports it.
         """
         args = [
             self.cli,
@@ -158,7 +159,7 @@ class WhatsAppSender:
             except FileNotFoundError:
                 print(
                     f"[SENDER] FATAL: CLI command '{self.cli}' not found. "
-                    f"Is OpenClaw installed and in PATH?"
+                    f"Phase 4 will replace CLI send with Baileys HTTP bridge."
                 )
                 return False
             except Exception as e:
