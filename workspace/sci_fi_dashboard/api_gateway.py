@@ -276,6 +276,75 @@ from sci_fi_dashboard.llm_router import SynapseLLMRouter  # noqa: E402
 _synapse_cfg = SynapseConfig.load()
 synapse_llm_router = SynapseLLMRouter(_synapse_cfg)
 
+# --- Phase 5: Telegram, Discord, Slack — opt-in channel registration ---
+# Each channel is registered only if its token(s) are present in synapse.json.
+# Missing token = INFO log + skip (never raises at startup).
+# Lazy imports inside each if-block prevent ImportError if SDK is not installed.
+import logging as _logging  # noqa: E402
+
+_ch_logger = _logging.getLogger(__name__)
+_ch_cfg = _synapse_cfg.channels  # dict[str, dict] from synapse.json "channels" key
+
+_tg_token = _ch_cfg.get("telegram", {}).get("token", "").strip()
+if _tg_token:
+    try:
+        from channels.telegram import TelegramChannel  # noqa: E402
+
+        channel_registry.register(TelegramChannel(token=_tg_token, enqueue_fn=task_queue.enqueue))
+        _ch_logger.info("Telegram channel registered")
+    except ImportError:
+        _ch_logger.warning(
+            "Telegram token configured but python-telegram-bot not installed. "
+            "Run: pip install python-telegram-bot>=22.0"
+        )
+else:
+    _ch_logger.info(
+        "Telegram channel not configured — skipping "
+        "(add channels.telegram.token to synapse.json to enable)"
+    )
+
+_ds_token = _ch_cfg.get("discord", {}).get("token", "").strip()
+if _ds_token:
+    try:
+        from channels.discord_channel import DiscordChannel  # noqa: E402
+
+        _ds_allowed = [int(x) for x in _ch_cfg.get("discord", {}).get("allowed_channel_ids", [])]
+        channel_registry.register(
+            DiscordChannel(token=_ds_token, allowed_channel_ids=_ds_allowed)
+        )
+        _ch_logger.info("Discord channel registered")
+    except ImportError:
+        _ch_logger.warning(
+            "Discord token configured but discord.py not installed. "
+            "Run: pip install discord.py>=2.4.0"
+        )
+else:
+    _ch_logger.info(
+        "Discord channel not configured — skipping "
+        "(add channels.discord.token to synapse.json to enable)"
+    )
+
+_slk_bot = _ch_cfg.get("slack", {}).get("bot_token", "").strip()
+_slk_app = _ch_cfg.get("slack", {}).get("app_token", "").strip()
+if _slk_bot and _slk_app:
+    try:
+        from channels.slack import SlackChannel  # noqa: E402
+
+        channel_registry.register(SlackChannel(bot_token=_slk_bot, app_token=_slk_app))
+        _ch_logger.info("Slack channel registered")
+    except ImportError:
+        _ch_logger.warning(
+            "Slack tokens configured but slack-bolt not installed. "
+            "Run: pip install slack-bolt>=1.18.0"
+        )
+    except ValueError as exc:
+        _ch_logger.error("Slack channel configuration error — channel disabled: %s", exc)
+else:
+    _ch_logger.info(
+        "Slack channel not configured — skipping "
+        "(add channels.slack.bot_token and channels.slack.app_token to synapse.json to enable)"
+    )
+
 _model_mappings = _synapse_cfg.model_mappings
 _llm_arch = f"litellm/SynapseLLMRouter ({len(_model_mappings)} roles configured)"
 print(
@@ -827,14 +896,19 @@ def root():
 
 @app.get("/health")
 async def health():
-    # Gather channel health (WhatsApp bridge status)
-    whatsapp_health: dict = {"status": "unknown"}
-    wa_channel = channel_registry.get("whatsapp")
-    if wa_channel is not None:
-        try:
-            whatsapp_health = await wa_channel.health_check()
-        except Exception as e:
-            whatsapp_health = {"status": "error", "error": str(e)}
+    # Gather health for ALL registered channels (generic — no hardcoded channel names)
+    channels_health: dict[str, dict] = {}
+    for cid in channel_registry.list_ids():
+        ch = channel_registry.get(cid)
+        if ch is not None:
+            try:
+                channels_health[cid] = await ch.health_check()
+            except Exception as exc:
+                channels_health[cid] = {
+                    "status": "error",
+                    "channel": cid,
+                    "error": str(exc),
+                }
 
     return {
         "graph_nodes": brain.number_of_nodes(),
@@ -851,9 +925,7 @@ async def health():
             "analysis": SynapseConfig.load().model_mappings.get("analysis", {}).get("model", "unset"),
             "review": SynapseConfig.load().model_mappings.get("review", {}).get("model", "unset"),
         },
-        "channels": {
-            "whatsapp": whatsapp_health,
-        },
+        "channels": channels_health,
     }
 
 
