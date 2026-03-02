@@ -35,6 +35,9 @@ db/*.gz
 !workspace/sci_fi_dashboard/entities.json
 !.planning/config.json
 !extensions/**/openclaw.plugin.json
+# baileys-bridge Node.js project files — must be committed
+!baileys-bridge/package.json
+!baileys-bridge/package-lock.json
 *.bak
 *.gz
 db/memory.db*
