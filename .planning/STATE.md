@@ -3,6 +3,19 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
+last_updated: "2026-03-02T19:57:47.471Z"
+progress:
+  total_phases: 6
+  completed_phases: 5
+  total_plans: 27
+  completed_plans: 25
+---
+
+---
+gsd_state_version: 1.0
+milestone: v1.0
+milestone_name: milestone
+status: unknown
 last_updated: "2026-03-02T19:56:22.785Z"
 progress:
   total_phases: 6
@@ -141,6 +154,8 @@ Progress: [████████████████████░░░
 | Phase 05-core-channels-telegram-discord-slack P01 | 9 | 2 tasks | 4 files |
 | Phase 05 P04 | 16 | 2 tasks | 3 files |
 | Phase 06-onboarding-wizard P01 | 2 | 2 tasks | 4 files |
+| Phase 06-onboarding-wizard P02 | 3 | 2 tasks | 1 files |
+| Phase 06-onboarding-wizard P03 | 3 | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -210,6 +225,12 @@ Recent decisions affecting current work:
 - [Phase 05-04]: GET /health uses channel_registry.list_ids() loop — generic N-channel health, no hardcoded channel names
 - [Phase 05-04]: enqueue_fn=task_queue.enqueue injected at TelegramChannel registration — decouples channel from pipeline
 - [Phase 06-onboarding-wizard]: synapse_cli.py delegates to main.py named functions via lazy imports in command bodies — avoids modifying main.py; onboard uses lazy import of cli.onboard.run_wizard so CLI is importable before wizard exists
+- [Phase 06-onboarding-wizard]: RateLimitError treated as ok=True (error='quota_exceeded') — key is valid; quota will reset; user gets warning not rejection
+- [Phase 06-onboarding-wizard]: validate_provider() is synchronous (asyncio.run wrapper) — wizard shell is sync CLI context, not FastAPI event loop
+- [Phase 06-onboarding-wizard]: _KEY_MAP in provider_steps.py deliberately duplicates llm_router.py — keeps module self-contained and independently testable
+- [Phase 06-onboarding-wizard]: qrcode import at module level (not lazy) — plan spec requires it; already in requirements.txt
+- [Phase 06-onboarding-wizard]: validate_slack_tokens() fail-fast prefix check before network call — rejects wrong format without touching Slack API
+- [Phase 06-onboarding-wizard]: setup_whatsapp() non-interactive returns config dict immediately — QR cannot be automated, user pairs at runtime
 
 ### Pending Todos
 

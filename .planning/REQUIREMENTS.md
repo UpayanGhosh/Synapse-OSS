@@ -83,15 +83,15 @@
 ### Onboarding Wizard
 
 - [x] **ONB-01**: `synapse onboard` CLI command launches an interactive setup wizard (typer + questionary + rich)
-- [ ] **ONB-02**: Wizard presents all 25 supported LLM providers grouped by category; user selects one or more
-- [ ] **ONB-03**: For each selected provider, wizard prompts for API key (masked input), then makes a live `max_tokens=1` validation call before accepting
-- [ ] **ONB-04**: Wizard presents all supported channels; user selects which to enable
-- [ ] **ONB-05**: For each enabled channel, wizard collects required credentials and validates connectivity
-- [ ] **ONB-06**: For WhatsApp, wizard triggers QR code display and waits for scan confirmation
+- [x] **ONB-02**: Wizard presents all 25 supported LLM providers grouped by category; user selects one or more
+- [x] **ONB-03**: For each selected provider, wizard prompts for API key (masked input), then makes a live `max_tokens=1` validation call before accepting
+- [x] **ONB-04**: Wizard presents all supported channels; user selects which to enable
+- [x] **ONB-05**: For each enabled channel, wizard collects required credentials and validates connectivity
+- [x] **ONB-06**: For WhatsApp, wizard triggers QR code display and waits for scan confirmation
 - [x] **ONB-07**: Wizard writes completed config to `~/.synapse/synapse.json` with `chmod 600`
 - [ ] **ONB-08**: Wizard detects existing `~/.openclaw/` data and offers to run migration script
 - [ ] **ONB-09**: `synapse onboard --non-interactive` supports automation via env vars or flags (CI/Docker use case)
-- [ ] **ONB-10**: GitHub Copilot uses OAuth device flow in the wizard (open browser → user enters code → wizard polls for token)
+- [x] **ONB-10**: GitHub Copilot uses OAuth device flow in the wizard (open browser → user enters code → wizard polls for token)
 
 ### Session Metrics & Health
 
@@ -206,15 +206,15 @@
 | SLK-03 | Phase 5: Core Channels — Telegram, Discord, Slack | Complete |
 | SLK-04 | Phase 5: Core Channels — Telegram, Discord, Slack | Complete |
 | ONB-01 | Phase 6: Onboarding Wizard | Complete |
-| ONB-02 | Phase 6: Onboarding Wizard | Pending |
-| ONB-03 | Phase 6: Onboarding Wizard | Pending |
-| ONB-04 | Phase 6: Onboarding Wizard | Pending |
-| ONB-05 | Phase 6: Onboarding Wizard | Pending |
-| ONB-06 | Phase 6: Onboarding Wizard | Pending |
+| ONB-02 | Phase 6: Onboarding Wizard | Complete |
+| ONB-03 | Phase 6: Onboarding Wizard | Complete |
+| ONB-04 | Phase 6: Onboarding Wizard | Complete |
+| ONB-05 | Phase 6: Onboarding Wizard | Complete |
+| ONB-06 | Phase 6: Onboarding Wizard | Complete |
 | ONB-07 | Phase 6: Onboarding Wizard | Complete |
 | ONB-08 | Phase 6: Onboarding Wizard | Pending |
 | ONB-09 | Phase 6: Onboarding Wizard | Pending |
-| ONB-10 | Phase 6: Onboarding Wizard | Pending |
+| ONB-10 | Phase 6: Onboarding Wizard | Complete |
 | SESS-01 | Phase 7: Session Metrics, Health & Cleanup | Pending |
 | SESS-02 | Phase 7: Session Metrics, Health & Cleanup | Pending |
 | SESS-03 | Phase 7: Session Metrics, Health & Cleanup | Pending |
