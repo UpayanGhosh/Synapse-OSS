@@ -1,0 +1,9 @@
+# Node.js dependencies — installed locally via npm install
+node_modules/
+
+# Baileys auth state — contains WhatsApp session credentials (NEVER commit)
+auth_state/
+auth_state.bak/
+
+# package-lock.json IS committed (exact transitive dep pins for reproducible installs)
+# Do NOT add package-lock.json here
