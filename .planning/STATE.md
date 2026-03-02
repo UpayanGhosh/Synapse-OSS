@@ -2,6 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
+status: unknown
+last_updated: "2026-03-02T16:34:16.740Z"
+progress:
+  total_phases: 4
+  completed_phases: 3
+  total_plans: 18
+  completed_plans: 15
+---
+
+---
+gsd_state_version: 1.0
+milestone: v1.0
+milestone_name: milestone
 status: in_progress
 last_updated: "2026-03-02T12:17:37Z"
 progress:
@@ -18,21 +31,21 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-02)
 
 **Core value:** A user can run Synapse-OSS on any machine, connect to their messaging apps and LLM providers, and have a fully working AI assistant — with zero dependency on any external binary or bridge service.
-**Current focus:** Phase 3 — Channel Abstraction Layer
+**Current focus:** Phase 4 — WhatsApp Baileys Bridge
 
 ## Current Position
 
-Phase: 3 of 7 (Channel Abstraction Layer) — Complete
-Plan: 4 of 4 complete in current phase
-Status: Phase 3 complete — ready for Phase 4 (Baileys bridge)
-Last activity: 2026-03-02 — Plan 03-04 complete: MessageWorker generalized to dispatch via ChannelRegistry; no WA-specific branching; CHAN-07 GREEN; _split_long_message helper; queue _safe_task_done() guard
+Phase: 4 of 7 (WhatsApp Baileys Bridge) — In Progress
+Plan: 2 of 4 complete in current phase
+Status: Plan 04-02 complete — baileys-bridge/ Node.js microservice created; ready for Plan 04-03 (WhatsAppChannel Python class)
+Last activity: 2026-03-02 — Plan 04-02 complete: baileys-bridge/index.js + package.json + .gitignore; @whiskeysockets/baileys@6.7.21 CJS bridge with atomic auth writes, cachedGroupMetadata, DisconnectReason guard, 5 REST endpoints (WA-01/03/04/05/07 satisfied)
 
-Progress: [████████████████████] 100% (14/14 plans complete — Phase 3 done)
+Progress: [████████████░░░░░░░░] 15/18 plans complete (Phase 4 in progress)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 14
+- Total plans completed: 15
 - Average duration: 8.5 min
 - Total execution time: 1.99 hours
 
@@ -43,6 +56,7 @@ Progress: [████████████████████] 100% (1
 | 01-foundation-config | 6/6 | 57 min | 9.5 min |
 | 02-llm-provider-layer | 4/4 | 33 min | 8.3 min |
 | 03-channel-abstraction-layer | 4/4 | 31 min | 7.8 min |
+| 04-whatsapp-baileys-bridge | 2/4 | 3 min | — |
 
 **Recent Trend:**
 - Last 5 plans: [3min, 2min, 25min, 8min, 11min, 10min]
@@ -53,6 +67,7 @@ Progress: [████████████████████] 100% (1
 | Phase 03-channel-abstraction-layer P02 | 2 | 1 tasks | 1 files |
 | Phase 03-channel-abstraction-layer P01 | 6 | 3 tasks | 4 files |
 | Phase 03-channel-abstraction-layer P04 | 9 | 1 tasks | 3 files |
+| Phase 04-whatsapp-baileys-bridge PP02 | 3 | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -101,6 +116,9 @@ Recent decisions affecting current work:
 - [Phase 03-04]: sender kept as Optional[WhatsAppSender] fallback alongside channel_registry; Phase 4 removes it when Baileys bridge ships
 - [Phase 03-04]: _safe_task_done() wraps task_done() in try/except ValueError — allows _handle_task direct-call test patterns without enqueue/dequeue
 - [Phase 03-04]: _split_long_message() is module-level helper — reusable by any dispatch path without importing MessageWorker
+- [Phase 04-whatsapp-baileys-bridge]: baileys@6.7.21 pinned exactly (not semver range) — API surface changes between patch releases; exact pin + committed package-lock.json ensures reproducible installs
+- [Phase 04-whatsapp-baileys-bridge]: No 'type: module' in baileys-bridge/package.json — baileys@6.7.21 is CommonJS; adding type=module breaks all require() calls
+- [Phase 04-whatsapp-baileys-bridge]: Built-in Node 18+ fetch() used instead of node-fetch npm — WA-08 validates >=18 so built-in always available; removes one dependency
 
 ### Pending Todos
 
@@ -108,11 +126,11 @@ None yet.
 
 ### Blockers/Concerns
 
-- Phase 4 (Baileys bridge): verify current @whiskeysockets/baileys API for useMultiFileAuthState() and cachedGroupMetadata before writing bridge JS — Baileys API surface changes between releases
+- Phase 4 (Baileys bridge — Plan 04-03): WhatsAppChannel Python class (BaseChannel subclass) needed; subprocess supervisor, httpx send client, Node.js version validation
 - Phase 2 (litellm streaming): stream=False enforced in Plan 02; streaming not used in Phase 2 — blocker removed
 
 ## Session Continuity
 
-Last session: 2026-03-02T12:17:37Z
-Stopped at: Completed 03-04-PLAN.md — MessageWorker generalized via ChannelRegistry: no WA branching, CHAN-07 GREEN, _split_long_message helper, queue _safe_task_done(); 1 task, 3 files modified. Phase 3 complete.
+Last session: 2026-03-02T16:32:42Z
+Stopped at: Completed 04-02-PLAN.md — baileys-bridge/index.js + package.json + .gitignore created; Baileys Express CJS microservice with atomic auth writes, cachedGroupMetadata, DisconnectReason guard, 5 REST endpoints; WA-01/03/04/05/07 satisfied; 3 tasks, 4 files
 Resume file: None
