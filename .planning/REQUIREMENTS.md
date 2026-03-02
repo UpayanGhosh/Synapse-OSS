@@ -51,13 +51,13 @@
 ### WhatsApp Channel (Baileys Bridge)
 
 - [x] **WA-01**: Synapse ships a `baileys-bridge/index.js` (~150 lines) Node.js Express microservice in the repo
-- [ ] **WA-02**: FastAPI lifespan starts/stops the Baileys bridge as a managed subprocess (`asyncio.create_subprocess_exec`)
+- [x] **WA-02**: FastAPI lifespan starts/stops the Baileys bridge as a managed subprocess (`asyncio.create_subprocess_exec`)
 - [x] **WA-03**: Bridge exposes HTTP endpoints: `POST /send`, `POST /typing`, `POST /seen`, `GET /health`, `GET /qr`
 - [x] **WA-04**: Bridge implements atomic writes for Baileys auth state files (prevents session corruption on unclean shutdown)
 - [x] **WA-05**: Bridge uses `cachedGroupMetadata` to avoid triggering WhatsApp rate limits on group messages
-- [ ] **WA-06**: Bridge auto-restarts on crash with a Python supervisor loop (exponential backoff, max 5 retries)
+- [x] **WA-06**: Bridge auto-restarts on crash with a Python supervisor loop (exponential backoff, max 5 retries)
 - [x] **WA-07**: QR code for WhatsApp auth is accessible via `GET /qr` and printed to the onboarding wizard terminal
-- [ ] **WA-08**: Node.js 18+ on host PATH is validated at startup; clear error message if missing
+- [x] **WA-08**: Node.js 18+ on host PATH is validated at startup; clear error message if missing
 
 ### Telegram Channel
 
@@ -186,13 +186,13 @@
 | CHAN-06 | Phase 3: Channel Abstraction Layer | Complete |
 | CHAN-07 | Phase 3: Channel Abstraction Layer | Complete |
 | WA-01 | Phase 4: WhatsApp — Baileys Bridge | Complete |
-| WA-02 | Phase 4: WhatsApp — Baileys Bridge | Pending |
+| WA-02 | Phase 4: WhatsApp — Baileys Bridge | Complete |
 | WA-03 | Phase 4: WhatsApp — Baileys Bridge | Complete |
 | WA-04 | Phase 4: WhatsApp — Baileys Bridge | Complete |
 | WA-05 | Phase 4: WhatsApp — Baileys Bridge | Complete |
-| WA-06 | Phase 4: WhatsApp — Baileys Bridge | Pending |
+| WA-06 | Phase 4: WhatsApp — Baileys Bridge | Complete |
 | WA-07 | Phase 4: WhatsApp — Baileys Bridge | Complete |
-| WA-08 | Phase 4: WhatsApp — Baileys Bridge | Pending |
+| WA-08 | Phase 4: WhatsApp — Baileys Bridge | Complete |
 | TEL-01 | Phase 5: Core Channels — Telegram, Discord, Slack | Pending |
 | TEL-02 | Phase 5: Core Channels — Telegram, Discord, Slack | Pending |
 | TEL-03 | Phase 5: Core Channels — Telegram, Discord, Slack | Pending |
