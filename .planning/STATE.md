@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-03-02T17:24:00.420Z"
+last_updated: "2026-03-02T18:11:48.844Z"
 progress:
-  total_phases: 4
+  total_phases: 5
   completed_phases: 4
-  total_plans: 18
-  completed_plans: 18
+  total_plans: 22
+  completed_plans: 19
 ---
 
 ---
@@ -110,6 +110,7 @@ Progress: [████████████████████] 18/18 p
 | Phase 04-whatsapp-baileys-bridge P01 | 8 | 1 tasks | 1 files |
 | Phase 04-whatsapp-baileys-bridge P03 | 10 | 2 tasks | 2 files |
 | Phase 04-whatsapp-baileys-bridge P04 | 10 | 2 tasks | 1 files |
+| Phase 05 P02 | 4 | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -168,6 +169,7 @@ Recent decisions affecting current work:
 - [Phase 04-03]: per-request httpx.AsyncClient in async-with — avoids shared mutable connection state in async supervisor context
 - [Phase 04-04]: WhatsAppSender removed from api_gateway.py — WhatsAppChannel via ChannelRegistry is the sole dispatch path for 'whatsapp' channel
 - [Phase 04-04]: GET /health changed to async def — channel health_check() awaited per-channel wrapped in try/except; /health always responds
+- [Phase 05-02]: discord.py 2.7.0 installed; await client.start() pattern used (never client.run()) for uvicorn event-loop compatibility; SIM102+F401+F841 ruff violations auto-fixed
 
 ### Pending Todos
 

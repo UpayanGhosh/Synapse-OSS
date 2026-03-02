@@ -68,10 +68,10 @@
 
 ### Discord Channel
 
-- [ ] **DIS-01**: Discord channel uses discord.py v2.4+ with the async `on_message` event coroutine (not blocking runner)
-- [ ] **DIS-02**: Inbound DMs and server messages (when bot is mentioned or in designated channels) are handled
-- [ ] **DIS-03**: Outbound text send and typing indicator work correctly
-- [ ] **DIS-04**: Bot token and allowed channel/server IDs stored in synapse.json under `channels.discord`
+- [x] **DIS-01**: Discord channel uses discord.py v2.4+ with the async `on_message` event coroutine (not blocking runner)
+- [x] **DIS-02**: Inbound DMs and server messages (when bot is mentioned or in designated channels) are handled
+- [x] **DIS-03**: Outbound text send and typing indicator work correctly
+- [x] **DIS-04**: Bot token and allowed channel/server IDs stored in synapse.json under `channels.discord`
 
 ### Slack Channel
 
@@ -197,10 +197,10 @@
 | TEL-02 | Phase 5: Core Channels — Telegram, Discord, Slack | Pending |
 | TEL-03 | Phase 5: Core Channels — Telegram, Discord, Slack | Pending |
 | TEL-04 | Phase 5: Core Channels — Telegram, Discord, Slack | Pending |
-| DIS-01 | Phase 5: Core Channels — Telegram, Discord, Slack | Pending |
-| DIS-02 | Phase 5: Core Channels — Telegram, Discord, Slack | Pending |
-| DIS-03 | Phase 5: Core Channels — Telegram, Discord, Slack | Pending |
-| DIS-04 | Phase 5: Core Channels — Telegram, Discord, Slack | Pending |
+| DIS-01 | Phase 5: Core Channels — Telegram, Discord, Slack | Complete |
+| DIS-02 | Phase 5: Core Channels — Telegram, Discord, Slack | Complete |
+| DIS-03 | Phase 5: Core Channels — Telegram, Discord, Slack | Complete |
+| DIS-04 | Phase 5: Core Channels — Telegram, Discord, Slack | Complete |
 | SLK-01 | Phase 5: Core Channels — Telegram, Discord, Slack | Pending |
 | SLK-02 | Phase 5: Core Channels — Telegram, Discord, Slack | Pending |
 | SLK-03 | Phase 5: Core Channels — Telegram, Discord, Slack | Pending |
