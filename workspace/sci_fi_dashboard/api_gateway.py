@@ -176,11 +176,19 @@ from gateway.flood import FloodGate  # noqa: E402
 from gateway.queue import MessageTask, TaskQueue  # noqa: E402
 from gateway.sender import WhatsAppSender  # noqa: E402
 from gateway.worker import MessageWorker  # noqa: E402
+from channels.base import ChannelMessage  # noqa: E402
+from channels.registry import ChannelRegistry  # noqa: E402
+from channels.stub import StubChannel  # noqa: E402
 
 task_queue = TaskQueue(max_size=100)
 sender = WhatsAppSender()
 dedup = MessageDeduplicator(window_seconds=300)
 flood = FloodGate(batch_window_seconds=3.0)
+
+# Channel registry — all adapters register here; lifespan calls start_all()
+channel_registry = ChannelRegistry()
+channel_registry.register(StubChannel(channel_id="whatsapp"))  # placeholder until Phase 4 WhatsApp bridge
+channel_registry.register(StubChannel(channel_id="stub"))      # test/demo channel
 
 # --- Sentinel (File Governance) ---
 from sbs.sentinel.tools import init_sentinel  # noqa: E402
@@ -614,6 +622,7 @@ async def on_batch_ready(chat_id: str, combined_message: str, metadata: dict):
         user_message=combined_message,
         message_id=metadata.get("message_id", ""),
         sender_name=metadata.get("sender_name", ""),
+        channel_id=metadata.get("channel_id", "whatsapp"),   # NEW: propagate channel_id
     )
     await task_queue.enqueue(task)
 
@@ -762,6 +771,9 @@ async def lifespan(app: FastAPI):
     ensure_bridge_db()
     worker_task = asyncio.create_task(gentle_worker_loop())
 
+    # Start channel adapters — all within uvicorn's event loop (asyncio.create_task inside)
+    await channel_registry.start_all()
+
     app.state.worker = MessageWorker(
         queue=task_queue,
         sender=sender,
@@ -772,9 +784,11 @@ async def lifespan(app: FastAPI):
     print("[INFO] Async Gateway Pipeline started.")
 
     yield
+
     print("[STOP] Shutting down...")
     brain.save_graph()
     worker_task.cancel()
+    await channel_registry.stop_all()   # NEW: stop all channels before worker
     if hasattr(app.state, "worker"):
         await app.state.worker.stop()
     with suppress(asyncio.CancelledError):
@@ -825,9 +839,54 @@ def health():
     }
 
 
+# --- Channel Abstraction Layer Routes ---
+
+
+@app.post("/channels/{channel_id}/webhook")
+async def unified_webhook(channel_id: str, request: Request):
+    """
+    CHAN-04: Unified inbound webhook for all channels.
+    Validates channel is registered, normalizes payload to ChannelMessage,
+    feeds FloodGate pipeline with channel_id in metadata.
+    """
+    channel = channel_registry.get(channel_id)
+    if channel is None:
+        raise HTTPException(status_code=404, detail=f"Channel '{channel_id}' not registered")
+
+    try:
+        raw = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON payload")
+
+    msg: ChannelMessage = await channel.receive(raw)
+
+    if dedup.is_duplicate(msg.message_id or raw.get("message_id", "")):
+        return {"status": "skipped", "reason": "duplicate", "accepted": True}
+
+    await flood.incoming(
+        chat_id=msg.chat_id,
+        message=msg.text,
+        metadata={
+            "message_id": msg.message_id,
+            "sender_name": msg.sender_name,
+            "channel_id": msg.channel_id,    # CRITICAL: must be in metadata for on_batch_ready
+        },
+    )
+    return {"status": "queued", "accepted": True, "task_queue_depth": task_queue.pending_count}
+
+
+@app.post("/whatsapp/enqueue")
+async def whatsapp_enqueue_shim(request: Request):
+    """
+    CHAN-05: Backwards-compatible shim. Delegates to unified_webhook with channel_id='whatsapp'.
+    Existing webhook configurations do NOT need to change.
+    """
+    return await unified_webhook("whatsapp", request)
+
+
 # --- WhatsApp Async Bridge ---
-# NOTE: /whatsapp/enqueue endpoint disabled - bridge_queue (Celery) removed
-# Messages now handled by FloodGate + TaskQueue in gateway/
+# NOTE: /whatsapp/enqueue replaces the previously disabled Celery-based endpoint.
+# Messages now handled by FloodGate + TaskQueue in gateway/ via unified_webhook above.
 
 
 @app.get("/whatsapp/jobs/{message_id}")
