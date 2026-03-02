@@ -41,9 +41,16 @@ playwright>=1.20.0 ; sys_platform == 'win32' # Windows browser automation -- rep
 # --- Audio Transcription ---
 groq>=0.4.0                      # Groq Whisper API (voice message transcription)
 
+# --- Configuration ---
+PyYAML>=6.0                      # personas.yaml + language_patterns.yaml parsing
+
 # --- Background Workers ---
 schedule>=1.2.0                  # GentleWorker task scheduling
 filelock>=3.12.0                 # File locking for SBS audit and profile writes
+
+# --- Slack Integration (Optional — requires Slack app with Socket Mode enabled) ---
+slack-bolt>=1.18.0               # Slack bolt async app + Socket Mode handler
+slack-sdk>=3.26.0                # Slack Web API client (AsyncWebClient)
 
 # --- Google APIs (Optional — Gmail/Calendar integration) ---
 # google-auth>=2.23.0
