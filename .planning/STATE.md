@@ -8,7 +8,7 @@ progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 6
-  completed_plans: 2
+  completed_plans: 3
 ---
 
 # Project State
@@ -23,11 +23,11 @@ See: .planning/PROJECT.md (updated 2026-03-02)
 ## Current Position
 
 Phase: 1 of 7 (Foundation & Config)
-Plan: 2 of 6 complete in current phase
+Plan: 3 of 6 complete in current phase
 Status: In progress
-Last activity: 2026-03-02 — Plan 01-02 complete: Wired four DB modules to SynapseConfig
+Last activity: 2026-03-02 — Plan 01-03 complete: Removed openclaw dependency from api_gateway, sender, onboard scripts
 
-Progress: [██░░░░░░░░] 4% (2/6 plans in phase 1)
+Progress: [███░░░░░░░] 6% (3/6 plans in phase 1)
 
 ## Performance Metrics
 
@@ -40,10 +40,10 @@ Progress: [██░░░░░░░░] 4% (2/6 plans in phase 1)
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 01-foundation-config | 2/6 | 5 min | 2.5 min |
+| 01-foundation-config | 3/6 | 30 min | 10 min |
 
 **Recent Trend:**
-- Last 5 plans: [3min, 2min]
+- Last 5 plans: [3min, 2min, 25min]
 - Trend: stable
 
 *Updated after each plan completion*
@@ -62,6 +62,8 @@ Recent decisions affecting current work:
 - [Phase 01-foundation-config]: SynapseConfig placed in workspace/synapse_config.py — distinct from workspace/config.py (tools-server at port 8989)
 - [Phase 01-foundation-config]: Derived paths (db_dir, sbs_dir, log_dir) always computed from data_root at load time — never read from synapse.json to prevent path drift
 - [Phase 01-foundation-config]: DB_PATH resolved via _get_db_path() lazy-import pattern — allows test monkeypatching of SYNAPSE_HOME before path is evaluated
+- [Phase 01-foundation-config]: whatsapp_loop_test returns HTTP 501 (Phase 4 Baileys bridge placeholder)
+- [Phase 01-foundation-config]: validate_api_key() uses GEMINI_API_KEY for auth instead of OPENCLAW_GATEWAY_TOKEN
 
 ### Pending Todos
 
@@ -74,6 +76,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-02T09:13:09Z
-Stopped at: Completed 01-foundation-config-02-PLAN.md — wire DB modules to SynapseConfig
+Last session: 2026-03-02T10:00:00Z
+Stopped at: Completed 01-foundation-config-03-PLAN.md — remove openclaw dependency from gateway
 Resume file: None
