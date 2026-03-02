@@ -2,11 +2,19 @@ import json
 import os
 import random
 
+try:
+    from synapse_config import SynapseConfig  # noqa: PLC0415
+except ImportError:
+    import sys as _sys
+    import os as _os
+    _sys.path.insert(0, _os.path.abspath(_os.path.join(_os.path.dirname(__file__), "..")))
+    from synapse_config import SynapseConfig
+
 
 class PersonaManager:
     def __init__(self, workspace_root=None):
         if workspace_root is None:
-            workspace_root = os.path.expanduser("~/.openclaw")
+            workspace_root = str(SynapseConfig.load().data_root)
         self.root = workspace_root
         self.workspace = os.path.join(self.root, "workspace")
         self.dict_path = os.path.join(self.workspace, "skills/language/banglish_dict.json")

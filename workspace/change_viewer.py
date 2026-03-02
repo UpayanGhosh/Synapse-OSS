@@ -22,9 +22,10 @@ from rich.panel import Panel
 from rich.text import Text
 from rich.syntax import Syntax
 from rich import box
+from synapse_config import SynapseConfig
 
 console = Console()
-WORKSPACE = os.path.join(os.path.expanduser("~/.openclaw"), "workspace")
+WORKSPACE = str(SynapseConfig.load().data_root / "workspace")
 
 
 def git(*args) -> str:

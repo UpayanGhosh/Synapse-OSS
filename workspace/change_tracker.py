@@ -33,12 +33,13 @@ from datetime import datetime
 from threading import Timer, Lock
 from watchdog.observers import Observer
 from watchdog.events import RegexMatchingEventHandler
+from synapse_config import SynapseConfig
 
 # ===========================================
 #  CONFIGURATION
 # ===========================================
 
-WORKSPACE = os.path.expanduser("~/.openclaw")
+WORKSPACE = str(SynapseConfig.load().data_root)
 BRANCH = "synapse-auto-updates"
 DEFAULT_DEBOUNCE = 30.0  # seconds of silence before commit
 PAUSE_FILE = os.path.join(WORKSPACE, ".pause_tracking")
@@ -126,7 +127,7 @@ CATEGORY_MAP = {
         "build_persona.py",
     ],
     "gateway": ["api_gateway.py", "retriever.py", "server.py"],
-    "config": ["openclaw.json", "config.py", ".gitignore", ".openclawignore"],
+    "config": ["synapse.json", "config.py", ".gitignore", ".openclawignore"],
     "monitor": ["monitor.py", "change_tracker.py", "change_viewer.py"],
     "skills": [],  # Anything under skills/
     "memory": [],  # Anything under memory/

@@ -1,8 +1,9 @@
 import sqlite3
 import os
 import sqlite_vec  # This is the key for Mac
+from synapse_config import SynapseConfig
 
-DB_PATH = os.path.expanduser("~/.openclaw/workspace/db/memory.db")
+DB_PATH = str(SynapseConfig.load().db_dir / "memory.db")
 TRASH_PATTERNS = [
     "%Phase 2: The Chameleon%",
     "%multi-modal safety classifiers%",

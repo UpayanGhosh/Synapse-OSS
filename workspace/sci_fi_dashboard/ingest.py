@@ -7,7 +7,15 @@ import struct
 from sci_fi_dashboard.db import get_db_connection
 from sci_fi_dashboard.retriever import get_embedding
 
-SOURCE_DIR = os.path.expanduser("~/.openclaw/workspace/memory")
+try:
+    from synapse_config import SynapseConfig  # noqa: PLC0415
+except ImportError:
+    import sys as _sys
+    import os as _os
+    _sys.path.insert(0, _os.path.abspath(_os.path.join(_os.path.dirname(__file__), "..")))
+    from synapse_config import SynapseConfig
+
+SOURCE_DIR = str(SynapseConfig.load().data_root / "workspace" / "memory")
 
 
 def ensure_schema_migration():

@@ -4,8 +4,9 @@ import struct
 import json
 import urllib.request
 from tqdm import tqdm
+from synapse_config import SynapseConfig
 
-DB_PATH = os.path.expanduser("~/.openclaw/workspace/db/memory.db")
+DB_PATH = str(SynapseConfig.load().db_dir / "memory.db")
 
 
 def finish_facts():

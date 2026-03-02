@@ -18,13 +18,14 @@ from rich.style import Style
 from rich.align import Align
 from rich.progress_bar import ProgressBar
 from rich.columns import Columns
+from synapse_config import SynapseConfig
 
 console = Console()
 
-# Configuration -- use system temp dir so this works on Windows and Mac/Linux
-LOG_DIR = os.path.join(tempfile.gettempdir(), "openclaw")
-OPENCLAW_HOME = os.path.expanduser("~/.openclaw")
-SESSIONS_FILE = os.path.join(OPENCLAW_HOME, "agents", "main", "sessions", "sessions.json")
+# Configuration
+LOG_DIR = str(SynapseConfig.load().log_dir)
+SYNAPSE_HOME = str(SynapseConfig.load().data_root)
+SESSIONS_FILE = os.path.join(SYNAPSE_HOME, "agents", "main", "sessions", "sessions.json")
 
 # ===========================================
 #  Tool Label Map -- Technical -> Human Readable

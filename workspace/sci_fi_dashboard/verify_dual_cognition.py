@@ -2,10 +2,18 @@ import asyncio
 import os
 import sys
 
+try:
+    from synapse_config import SynapseConfig  # noqa: PLC0415
+except ImportError:
+    import sys as _sys
+    import os as _os
+    _sys.path.insert(0, _os.path.abspath(_os.path.join(_os.path.dirname(__file__), "..")))
+    from synapse_config import SynapseConfig
+
 # Add workspace to path
-_openclaw_home = os.path.expanduser("~/.openclaw")
-sys.path.insert(0, os.path.join(_openclaw_home, "workspace", "sci_fi_dashboard"))
-sys.path.insert(0, os.path.join(_openclaw_home, "workspace"))
+_synapse_home = str(SynapseConfig.load().data_root)
+sys.path.insert(0, os.path.join(_synapse_home, "workspace", "sci_fi_dashboard"))
+sys.path.insert(0, os.path.join(_synapse_home, "workspace"))
 
 from dual_cognition import DualCognitionEngine  # noqa: E402
 

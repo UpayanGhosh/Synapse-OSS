@@ -1,5 +1,3 @@
-import json
-import subprocess
 import time
 from dataclasses import dataclass
 
@@ -83,17 +81,15 @@ class DashboardState:
 
         # Fetch real API usage
         try:
-            result = subprocess.run(
-                ["openclaw", "sessions", "list", "--json"], capture_output=True, text=True
-            )
-            if result.returncode == 0:
-                data = json.loads(result.stdout)
-                sessions = data.get("sessions", [])
-                self.active_sessions = len(sessions)
-                self.total_tokens_in = sum(s.get("inputTokens", 0) for s in sessions)
-                self.total_tokens_out = sum(s.get("outputTokens", 0) for s in sessions)
-                if sessions:
-                    self.context_limit = sessions[0].get("contextTokens", 1048576)
+            # TODO Phase 7: openclaw sessions list replaced by internal SQLite sessions endpoint
+            # sessions_raw = subprocess.run(["openclaw", "sessions", "list", "--json"], ...)
+            sessions_data: list = []  # Placeholder — Phase 7 populates from memory.db sessions table
+            sessions = sessions_data
+            self.active_sessions = len(sessions)
+            self.total_tokens_in = sum(s.get("inputTokens", 0) for s in sessions)
+            self.total_tokens_out = sum(s.get("outputTokens", 0) for s in sessions)
+            if sessions:
+                self.context_limit = sessions[0].get("contextTokens", 1048576)
         except Exception:
             pass
 
