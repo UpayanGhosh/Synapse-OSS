@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-03-02T18:13:14.403Z"
+last_updated: "2026-03-02T18:18:24.314Z"
 progress:
   total_phases: 5
   completed_phases: 4
   total_plans: 22
-  completed_plans: 20
+  completed_plans: 21
 ---
 
 ---
@@ -70,16 +70,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-02)
 
 **Core value:** A user can run Synapse-OSS on any machine, connect to their messaging apps and LLM providers, and have a fully working AI assistant — with zero dependency on any external binary or bridge service.
-**Current focus:** Phase 4 complete — WhatsApp Baileys Bridge DONE; ready for Phase 5
+**Current focus:** Phase 5 in progress — TelegramChannel complete (05-01), DiscordChannel complete (05-02), SlackChannel complete (05-03); Plan 05-04 api_gateway wiring remaining
 
 ## Current Position
 
-Phase: 4 of 7 (WhatsApp Baileys Bridge) — COMPLETE
-Plan: 4 of 4 complete in current phase (04-01 test scaffold + 04-02 Baileys bridge + 04-03 WhatsAppChannel + 04-04 api_gateway wiring)
-Status: All 4 Phase 4 plans complete — 18/18 plans complete across all 4 phases; WhatsAppChannel wired into api_gateway.py; GET /health async with bridge status; all 170 tests GREEN
-Last activity: 2026-03-02 — Plan 04-04 complete: WhatsAppChannel registered in api_gateway.py; WhatsAppSender removed; async /health with 'channels' key; 2 tasks, 1 file
+Phase: 5 of 7 (Core Channels: Telegram, Discord, Slack) — IN PROGRESS
+Plan: 3 of 4 complete in current phase (05-01 TelegramChannel + 05-02 DiscordChannel + 05-03 SlackChannel; 05-04 api_gateway wiring remaining)
+Status: 3/4 Phase 5 plans complete — 21/22 plans complete across all 5 phases; TelegramChannel/DiscordChannel/SlackChannel implemented; 22 TEL tests GREEN
+Last activity: 2026-03-02 — Plan 05-01 complete: TelegramChannel PTB v22 long polling adapter; delete_webhook conflict prevention; 22 unit tests; 2 tasks, 4 files
 
-Progress: [████████████████████] 18/18 plans complete (Phase 4 DONE)
+Progress: [████████████████████] 21/22 plans complete (Phase 5 in progress)
 
 ## Performance Metrics
 
@@ -112,6 +112,7 @@ Progress: [████████████████████] 18/18 p
 | Phase 04-whatsapp-baileys-bridge P04 | 10 | 2 tasks | 1 files |
 | Phase 05 P02 | 4 | 2 tasks | 2 files |
 | Phase 05-core-channels-telegram-discord-slack P03 | 4 | 2 tasks | 4 files |
+| Phase 05-core-channels-telegram-discord-slack P01 | 9 | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -174,6 +175,9 @@ Recent decisions affecting current work:
 - [Phase 05-core-channels-telegram-discord-slack]: connect_async() used in SlackChannel.start() instead of await handler.start_async() — start_async() parks internally and would block ChannelRegistry.start_all() forever
 - [Phase 05-core-channels-telegram-discord-slack]: SlackChannel send_typing() is no-op — Slack Web API typing indicators unreliable for bots; mark_read() is no-op — no read-status endpoint for bots
 - [Phase 05-core-channels-telegram-discord-slack]: @app.event('message') in SlackChannel restricted to channel_type=='im' — prevents double-dispatch when channel @mention triggers both message and app_mention events
+- [Phase 05-core-channels-telegram-discord-slack]: ChatAction imported from telegram.constants (moved in PTB v22); auto-fixed at Task 1
+- [Phase 05-core-channels-telegram-discord-slack]: enqueue_fn=None default in TelegramChannel constructor — decouples channel from api_gateway import; injected at registration
+- [Phase 05-core-channels-telegram-discord-slack]: PTB v22 manual lifecycle: ApplicationBuilder().updater(None) + Updater(app.bot, update_queue) — delete_webhook before start_polling prevents 409 Conflict
 
 ### Pending Todos
 
@@ -186,6 +190,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-02T22:25:28Z
-Stopped at: Completed 04-04-PLAN.md — WhatsAppChannel wired into api_gateway.py; WhatsAppSender fallback removed; GET /health async with bridge status; all 170 tests GREEN; 2 tasks, 1 file
+Last session: 2026-03-02T18:15:46Z
+Stopped at: Completed 05-01-PLAN.md — TelegramChannel implemented with PTB v22 lifecycle; delete_webhook conflict prevention; 22 TEL tests GREEN; 2 tasks, 4 files
 Resume file: None

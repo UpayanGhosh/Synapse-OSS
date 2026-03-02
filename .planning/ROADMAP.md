@@ -179,6 +179,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | 2. LLM Provider Layer | 4/4 | Complete    | 2026-03-02 |
 | 3. Channel Abstraction Layer | 4/4 | Complete   | 2026-03-02 |
 | 4. WhatsApp — Baileys Bridge | 4/4 | Complete   | 2026-03-02 |
-| 5. Core Channels — Telegram, Discord, Slack | 2/4 | In Progress|  |
+| 5. Core Channels — Telegram, Discord, Slack | 3/4 | In Progress|  |
 | 6. Onboarding Wizard | 0/TBD | Not started | - |
 | 7. Session Metrics, Health & Cleanup | 0/TBD | Not started | - |

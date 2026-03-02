@@ -61,10 +61,10 @@
 
 ### Telegram Channel
 
-- [ ] **TEL-01**: Telegram channel uses python-telegram-bot v22+ in async Application mode (coroutine API, not `run_polling()`)
-- [ ] **TEL-02**: Inbound DMs and group messages (when bot is mentioned) are handled
-- [ ] **TEL-03**: Outbound text send, typing action, and message reply work correctly
-- [ ] **TEL-04**: Bot token is stored in synapse.json under `channels.telegram.token`
+- [x] **TEL-01**: Telegram channel uses python-telegram-bot v22+ in async Application mode (coroutine API, not `run_polling()`)
+- [x] **TEL-02**: Inbound DMs and group messages (when bot is mentioned) are handled
+- [x] **TEL-03**: Outbound text send, typing action, and message reply work correctly
+- [x] **TEL-04**: Bot token is stored in synapse.json under `channels.telegram.token`
 
 ### Discord Channel
 
@@ -193,10 +193,10 @@
 | WA-06 | Phase 4: WhatsApp — Baileys Bridge | Complete |
 | WA-07 | Phase 4: WhatsApp — Baileys Bridge | Complete |
 | WA-08 | Phase 4: WhatsApp — Baileys Bridge | Complete |
-| TEL-01 | Phase 5: Core Channels — Telegram, Discord, Slack | Pending |
-| TEL-02 | Phase 5: Core Channels — Telegram, Discord, Slack | Pending |
-| TEL-03 | Phase 5: Core Channels — Telegram, Discord, Slack | Pending |
-| TEL-04 | Phase 5: Core Channels — Telegram, Discord, Slack | Pending |
+| TEL-01 | Phase 5: Core Channels — Telegram, Discord, Slack | Complete |
+| TEL-02 | Phase 5: Core Channels — Telegram, Discord, Slack | Complete |
+| TEL-03 | Phase 5: Core Channels — Telegram, Discord, Slack | Complete |
+| TEL-04 | Phase 5: Core Channels — Telegram, Discord, Slack | Complete |
 | DIS-01 | Phase 5: Core Channels — Telegram, Discord, Slack | Complete |
 | DIS-02 | Phase 5: Core Channels — Telegram, Discord, Slack | Complete |
 | DIS-03 | Phase 5: Core Channels — Telegram, Discord, Slack | Complete |
