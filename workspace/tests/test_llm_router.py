@@ -285,6 +285,7 @@ def test_no_hardcoded_models():
         r"ollama_chat/",
         r"openai/gpt",
         r"openrouter/",
+        r"meta-llama/",
     ]
     files_to_check = [
         "sci_fi_dashboard/api_gateway.py",

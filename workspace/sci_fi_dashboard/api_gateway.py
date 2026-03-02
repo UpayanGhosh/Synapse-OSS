@@ -24,7 +24,6 @@ from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 from typing import Any
 
-import httpx
 import psutil
 import uvicorn
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
@@ -366,32 +365,17 @@ async def call_ag_review(messages: list) -> str:
 
 async def translate_banglish(text: str) -> str:
     """
-    Translate Banglish -> English using OpenRouter (Llama 3).
+    Translate Banglish -> English via SynapseLLMRouter (translate role → Llama 3 via OpenRouter).
     """
-    headers = {
-        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-        "Content-Type": "application/json",
-        "HTTP-Referer": "http://localhost:8000",
-    }
-    payload = {
-        "model": "meta-llama/llama-3.3-70b-instruct",
-        "messages": [
-            {
-                "role": "system",
-                "content": "You are a translator. Translate Romanized Bengali (Banglish) to English. OUTPUT ONLY ENGLISH.",
-            },
-            {"role": "user", "content": text},
-        ],
-    }
+    messages = [
+        {
+            "role": "system",
+            "content": "You are a translator. Translate Romanized Bengali (Banglish) to English. OUTPUT ONLY ENGLISH.",
+        },
+        {"role": "user", "content": text},
+    ]
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.post(
-                "https://openrouter.ai/api/v1/chat/completions",
-                json=payload,
-                headers=headers,
-            )
-            resp.raise_for_status()
-            return resp.json()["choices"][0]["message"]["content"].strip()
+        return await synapse_llm_router.call("translate", messages)
     except Exception as e:
         print(f"[WARN] Translation failed: {e}")
         return text
