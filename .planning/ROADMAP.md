@@ -39,7 +39,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: 6 plans
 
 Plans:
-- [ ] 01-01-PLAN.md — Create workspace/synapse_config.py (SynapseConfig dataclass) + test_config.py
+- [x] 01-01-PLAN.md — Create workspace/synapse_config.py (SynapseConfig dataclass) + test_config.py
 - [ ] 01-02-PLAN.md — Wire db.py, sqlite_graph.py, emotional_trajectory.py, memory_engine.py to SynapseConfig
 - [ ] 01-03-PLAN.md — Remove openclaw from api_gateway.py + sender.py default + comment out openclaw calls in onboard scripts
 - [ ] 01-04-PLAN.md — Create migration script (migrate_openclaw.py) + test_migration.py
@@ -151,7 +151,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation & Config | 0/6 | Not started | - |
+| 1. Foundation & Config | 1/6 | In progress | - |
 | 2. LLM Provider Layer | 0/TBD | Not started | - |
 | 3. Channel Abstraction Layer | 0/TBD | Not started | - |
 | 4. WhatsApp — Baileys Bridge | 0/TBD | Not started | - |
