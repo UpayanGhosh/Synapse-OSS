@@ -48,6 +48,9 @@ PyYAML>=6.0                      # personas.yaml + language_patterns.yaml parsin
 schedule>=1.2.0                  # GentleWorker task scheduling
 filelock>=3.12.0                 # File locking for SBS audit and profile writes
 
+# --- Telegram Integration (Optional — requires Telegram bot token from @BotFather) ---
+python-telegram-bot>=22.0        # PTB async bot framework (long polling, v22+ manual lifecycle)
+
 # --- Slack Integration (Optional — requires Slack app with Socket Mode enabled) ---
 slack-bolt>=1.18.0               # Slack bolt async app + Socket Mode handler
 slack-sdk>=3.26.0                # Slack Web API client (AsyncWebClient)

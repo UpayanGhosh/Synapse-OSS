@@ -19,16 +19,20 @@ Example usage in FastAPI lifespan:
 """
 
 from .base import BaseChannel, ChannelMessage
+from .discord_channel import DiscordChannel
 from .registry import ChannelRegistry
 from .slack import SlackChannel
 from .stub import StubChannel
+from .telegram import TelegramChannel
 from .whatsapp import WhatsAppChannel
 
 __all__ = [
     "BaseChannel",
     "ChannelMessage",
     "ChannelRegistry",
+    "DiscordChannel",
     "SlackChannel",
     "StubChannel",
+    "TelegramChannel",
     "WhatsAppChannel",
 ]
