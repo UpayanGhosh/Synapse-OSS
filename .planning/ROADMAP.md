@@ -43,7 +43,7 @@ Plans:
 - [ ] 01-02-PLAN.md — Wire db.py, sqlite_graph.py, emotional_trajectory.py, memory_engine.py to SynapseConfig
 - [ ] 01-03-PLAN.md — Remove openclaw from api_gateway.py + sender.py default + comment out openclaw calls in onboard scripts
 - [ ] 01-04-PLAN.md — Create migration script (migrate_openclaw.py) + test_migration.py
-- [ ] 01-05-PLAN.md — Sweep workspace/ root + sci_fi_dashboard/ files (11 files): replace ~/.openclaw/ with SynapseConfig
+- [x] 01-05-PLAN.md — Sweep workspace/ root + sci_fi_dashboard/ files (11 files): replace ~/.openclaw/ with SynapseConfig
 - [ ] 01-06-PLAN.md — Sweep workspace/scripts/ + workspace/skills/ files (19 files): replace ~/.openclaw/ with SynapseConfig
 
 ### Phase 2: LLM Provider Layer
@@ -151,7 +151,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation & Config | 2/6 | In Progress|  |
+| 1. Foundation & Config | 5/6 | In Progress|  |
 | 2. LLM Provider Layer | 0/TBD | Not started | - |
 | 3. Channel Abstraction Layer | 0/TBD | Not started | - |
 | 4. WhatsApp — Baileys Bridge | 0/TBD | Not started | - |

@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: in_progress
-last_updated: "2026-03-02T09:13:09Z"
+last_updated: "2026-03-02T10:18:00Z"
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 6
-  completed_plans: 3
+  completed_plans: 5
 ---
 
 # Project State
@@ -23,11 +23,11 @@ See: .planning/PROJECT.md (updated 2026-03-02)
 ## Current Position
 
 Phase: 1 of 7 (Foundation & Config)
-Plan: 3 of 6 complete in current phase
+Plan: 5 of 6 complete in current phase
 Status: In progress
-Last activity: 2026-03-02 — Plan 01-03 complete: Removed openclaw dependency from api_gateway, sender, onboard scripts
+Last activity: 2026-03-02 — Plan 01-05 complete: Swept openclaw paths in workspace root (5 files) and sci_fi_dashboard (6 files); 10 files modified, 1 skipped (smart_entity.py had no path refs)
 
-Progress: [███░░░░░░░] 6% (3/6 plans in phase 1)
+Progress: [█████░░░░░] 11% (5/6 plans in phase 1)
 
 ## Performance Metrics
 
@@ -40,10 +40,10 @@ Progress: [███░░░░░░░] 6% (3/6 plans in phase 1)
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 01-foundation-config | 3/6 | 30 min | 10 min |
+| 01-foundation-config | 5/6 | 46 min | 9.2 min |
 
 **Recent Trend:**
-- Last 5 plans: [3min, 2min, 25min]
+- Last 5 plans: [3min, 2min, 25min, 8min]
 - Trend: stable
 
 *Updated after each plan completion*
@@ -64,6 +64,11 @@ Recent decisions affecting current work:
 - [Phase 01-foundation-config]: DB_PATH resolved via _get_db_path() lazy-import pattern — allows test monkeypatching of SYNAPSE_HOME before path is evaluated
 - [Phase 01-foundation-config]: whatsapp_loop_test returns HTTP 501 (Phase 4 Baileys bridge placeholder)
 - [Phase 01-foundation-config]: validate_api_key() uses GEMINI_API_KEY for auth instead of OPENCLAW_GATEWAY_TOKEN
+- [Phase 01-foundation-config]: migrate() Steps 3-9 all inside TemporaryDirectory with-block — staging always valid; manifest write (Step 10) outside with-block after dest files confirmed written
+- [Phase 01-foundation-config]: Source data never deleted — migrate() is purely additive; dry_run returns early inside with-block before any dest writes
+- [Phase 01-05]: smart_entity.py had no openclaw path references — skipped without modification
+- [Phase 01-05]: state.py json import removed after subprocess block stubbed (no longer used); sessions_data placeholder returns empty list for downstream compatibility
+- [Phase 01-05]: monitor.py OPENCLAW_HOME renamed to SYNAPSE_HOME using SynapseConfig.load().data_root
 
 ### Pending Todos
 
@@ -76,6 +81,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-02T10:00:00Z
-Stopped at: Completed 01-foundation-config-03-PLAN.md — remove openclaw dependency from gateway
+Last session: 2026-03-02T10:30:00Z
+Stopped at: Completed 01-05-PLAN.md — sweep openclaw paths in workspace root and sci_fi_dashboard
 Resume file: None
