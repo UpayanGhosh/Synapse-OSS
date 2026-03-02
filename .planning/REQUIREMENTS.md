@@ -89,8 +89,8 @@
 - [x] **ONB-05**: For each enabled channel, wizard collects required credentials and validates connectivity
 - [x] **ONB-06**: For WhatsApp, wizard triggers QR code display and waits for scan confirmation
 - [x] **ONB-07**: Wizard writes completed config to `~/.synapse/synapse.json` with `chmod 600`
-- [ ] **ONB-08**: Wizard detects existing `~/.openclaw/` data and offers to run migration script
-- [ ] **ONB-09**: `synapse onboard --non-interactive` supports automation via env vars or flags (CI/Docker use case)
+- [x] **ONB-08**: Wizard detects existing `~/.openclaw/` data and offers to run migration script
+- [x] **ONB-09**: `synapse onboard --non-interactive` supports automation via env vars or flags (CI/Docker use case)
 - [x] **ONB-10**: GitHub Copilot uses OAuth device flow in the wizard (open browser → user enters code → wizard polls for token)
 
 ### Session Metrics & Health
@@ -212,8 +212,8 @@
 | ONB-05 | Phase 6: Onboarding Wizard | Complete |
 | ONB-06 | Phase 6: Onboarding Wizard | Complete |
 | ONB-07 | Phase 6: Onboarding Wizard | Complete |
-| ONB-08 | Phase 6: Onboarding Wizard | Pending |
-| ONB-09 | Phase 6: Onboarding Wizard | Pending |
+| ONB-08 | Phase 6: Onboarding Wizard | Complete |
+| ONB-09 | Phase 6: Onboarding Wizard | Complete |
 | ONB-10 | Phase 6: Onboarding Wizard | Complete |
 | SESS-01 | Phase 7: Session Metrics, Health & Cleanup | Pending |
 | SESS-02 | Phase 7: Session Metrics, Health & Cleanup | Pending |

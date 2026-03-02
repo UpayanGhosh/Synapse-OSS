@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-03-02T19:57:47.471Z"
+last_updated: "2026-03-02T20:06:05.249Z"
 progress:
   total_phases: 6
   completed_phases: 5
   total_plans: 27
-  completed_plans: 25
+  completed_plans: 26
 ---
 
 ---
@@ -156,6 +156,7 @@ Progress: [████████████████████░░░
 | Phase 06-onboarding-wizard P01 | 2 | 2 tasks | 4 files |
 | Phase 06-onboarding-wizard P02 | 3 | 2 tasks | 1 files |
 | Phase 06-onboarding-wizard P03 | 3 | 2 tasks | 1 files |
+| Phase 06-onboarding-wizard P04 | 5 | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -231,6 +232,9 @@ Recent decisions affecting current work:
 - [Phase 06-onboarding-wizard]: qrcode import at module level (not lazy) — plan spec requires it; already in requirements.txt
 - [Phase 06-onboarding-wizard]: validate_slack_tokens() fail-fast prefix check before network call — rejects wrong format without touching Slack API
 - [Phase 06-onboarding-wizard]: setup_whatsapp() non-interactive returns config dict immediately — QR cannot be automated, user pairs at runtime
+- [Phase 06-onboarding-wizard]: run_wizard() accepts force_interactive=False — tests call _run_interactive() with mocked questionary without needing a TTY
+- [Phase 06-onboarding-wizard]: _check_for_openclaw() defined as named top-level function — tests import directly and inject fake openclaw_root for isolation
+- [Phase 06-onboarding-wizard]: _run_migration() calls mod.migrate(source_root=openclaw_root, dest_root=dest_root) — keyword args match actual migrate() signature exactly
 
 ### Pending Todos
 
