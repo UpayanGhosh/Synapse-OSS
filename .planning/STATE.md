@@ -3,6 +3,19 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
+last_updated: "2026-03-02T16:38:48.154Z"
+progress:
+  total_phases: 4
+  completed_phases: 3
+  total_plans: 18
+  completed_plans: 16
+---
+
+---
+gsd_state_version: 1.0
+milestone: v1.0
+milestone_name: milestone
+status: unknown
 last_updated: "2026-03-02T16:34:16.740Z"
 progress:
   total_phases: 4
@@ -36,9 +49,9 @@ See: .planning/PROJECT.md (updated 2026-03-02)
 ## Current Position
 
 Phase: 4 of 7 (WhatsApp Baileys Bridge) — In Progress
-Plan: 2 of 4 complete in current phase
-Status: Plan 04-02 complete — baileys-bridge/ Node.js microservice created; ready for Plan 04-03 (WhatsAppChannel Python class)
-Last activity: 2026-03-02 — Plan 04-02 complete: baileys-bridge/index.js + package.json + .gitignore; @whiskeysockets/baileys@6.7.21 CJS bridge with atomic auth writes, cachedGroupMetadata, DisconnectReason guard, 5 REST endpoints (WA-01/03/04/05/07 satisfied)
+Plan: 2 of 4 complete in current phase (04-01 test scaffold + 04-02 Baileys bridge)
+Status: Plans 04-01 and 04-02 complete — test scaffold (8 RED WA tests) + Baileys bridge microservice; ready for Plan 04-03 (WhatsAppChannel Python class)
+Last activity: 2026-03-02 — Plan 04-01 complete: 8 RED tests for WA-01 through WA-08 in test_whatsapp_channel.py; all SKIP (WA_AVAILABLE=False); WA_AVAILABLE guard + _make_mock_process() factory; 1 task, 1 file
 
 Progress: [████████████░░░░░░░░] 15/18 plans complete (Phase 4 in progress)
 
@@ -68,6 +81,7 @@ Progress: [████████████░░░░░░░░] 15/18 p
 | Phase 03-channel-abstraction-layer P01 | 6 | 3 tasks | 4 files |
 | Phase 03-channel-abstraction-layer P04 | 9 | 1 tasks | 3 files |
 | Phase 04-whatsapp-baileys-bridge PP02 | 3 | 3 tasks | 4 files |
+| Phase 04-whatsapp-baileys-bridge P01 | 8 | 1 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -119,6 +133,8 @@ Recent decisions affecting current work:
 - [Phase 04-whatsapp-baileys-bridge]: baileys@6.7.21 pinned exactly (not semver range) — API surface changes between patch releases; exact pin + committed package-lock.json ensures reproducible installs
 - [Phase 04-whatsapp-baileys-bridge]: No 'type: module' in baileys-bridge/package.json — baileys@6.7.21 is CommonJS; adding type=module breaks all require() calls
 - [Phase 04-whatsapp-baileys-bridge]: Built-in Node 18+ fetch() used instead of node-fetch npm — WA-08 validates >=18 so built-in always available; removes one dependency
+- [Phase 04-whatsapp-baileys-bridge]: pytestmark skipif WA_AVAILABLE guard applied module-wide — 8 tests SKIP until whatsapp.py exists; mirrors test_channels.py pattern
+- [Phase 04-whatsapp-baileys-bridge]: _make_mock_process() two-mode factory (returncode=None for running, returncode=N for crash) — reused across WA-02 and WA-06 supervisor tests
 
 ### Pending Todos
 
@@ -131,6 +147,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-02T16:32:42Z
-Stopped at: Completed 04-02-PLAN.md — baileys-bridge/index.js + package.json + .gitignore created; Baileys Express CJS microservice with atomic auth writes, cachedGroupMetadata, DisconnectReason guard, 5 REST endpoints; WA-01/03/04/05/07 satisfied; 3 tasks, 4 files
+Last session: 2026-03-02T16:37:33Z
+Stopped at: Completed 04-01-PLAN.md — WhatsApp Baileys Bridge test scaffold: 8 RED tests covering WA-01 through WA-08 in test_whatsapp_channel.py; WA_AVAILABLE guard + _make_mock_process() AsyncMock factory; all SKIP (correct RED state); 1 task, 1 file
 Resume file: None
