@@ -9,7 +9,7 @@
 
 ### Foundation & Configuration
 
-- [ ] **CONF-01**: User can run Synapse-OSS without the openclaw binary installed or running
+- [x] **CONF-01**: User can run Synapse-OSS without the openclaw binary installed or running
 - [x] **CONF-02**: System reads provider credentials and channel configs from `~/.synapse/synapse.json`
 - [x] **CONF-03**: `SYNAPSE_HOME` env var overrides the default `~/.synapse/` data root
 - [x] **CONF-04**: `SynapseConfig.load()` enforces precedence: env vars > synapse.json > defaults
@@ -153,7 +153,7 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CONF-01 | Phase 1: Foundation & Config | Pending |
+| CONF-01 | Phase 1: Foundation & Config | Complete |
 | CONF-02 | Phase 1: Foundation & Config | Complete |
 | CONF-03 | Phase 1: Foundation & Config | Complete |
 | CONF-04 | Phase 1: Foundation & Config | Complete |
