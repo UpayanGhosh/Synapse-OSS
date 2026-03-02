@@ -3,6 +3,19 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
+last_updated: "2026-03-02T19:56:22.785Z"
+progress:
+  total_phases: 6
+  completed_phases: 5
+  total_plans: 27
+  completed_plans: 23
+---
+
+---
+gsd_state_version: 1.0
+milestone: v1.0
+milestone_name: milestone
+status: unknown
 last_updated: "2026-03-02T18:39:11.773Z"
 progress:
   total_phases: 5
@@ -83,16 +96,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-02)
 
 **Core value:** A user can run Synapse-OSS on any machine, connect to their messaging apps and LLM providers, and have a fully working AI assistant — with zero dependency on any external binary or bridge service.
-**Current focus:** Phase 5 COMPLETE — all 4 plans done; Telegram+Discord+Slack wired into api_gateway; 250 tests GREEN; ready for Phase 6
+**Current focus:** Phase 6 IN PROGRESS — Plan 01 done; Typer CLI scaffold + pyproject.toml [project.scripts]; ready for Plan 02
 
 ## Current Position
 
-Phase: 5 of 5 (Core Channels: Telegram, Discord, Slack) — COMPLETE
-Plan: 4 of 4 complete in current phase (05-01 TelegramChannel + 05-02 DiscordChannel + 05-03 SlackChannel + 05-04 api_gateway wiring)
-Status: ALL 22/22 plans complete across all 5 phases; all channel adapters implemented and wired into api_gateway; 250 tests GREEN
-Last activity: 2026-03-02 — Plan 05-04 complete: Telegram/Discord/Slack opt-in registration in api_gateway; /health refactored to generic list_ids() loop; 2 tasks, 3 files
+Phase: 6 of 6 (Onboarding Wizard) — IN PROGRESS
+Plan: 1 of 5 complete in current phase (06-01 CLI entry-point scaffold)
+Status: 23/27 plans complete across all 6 phases; CLI scaffold done; workspace/synapse_cli.py + workspace/cli/__init__.py created
+Last activity: 2026-03-02 — Plan 06-01 complete: Typer root app with onboard/chat/ingest/vacuum/verify; [project.scripts] in pyproject.toml; typer/questionary/qrcode deps added; 2 tasks, 4 files
 
-Progress: [████████████████████] 22/22 plans complete (Phase 5 COMPLETE)
+Progress: [████████████████████░░░░] 23/27 plans complete (Phase 6 Plan 1/5)
 
 ## Performance Metrics
 
@@ -127,6 +140,7 @@ Progress: [████████████████████] 22/22 p
 | Phase 05-core-channels-telegram-discord-slack P03 | 4 | 2 tasks | 4 files |
 | Phase 05-core-channels-telegram-discord-slack P01 | 9 | 2 tasks | 4 files |
 | Phase 05 P04 | 16 | 2 tasks | 3 files |
+| Phase 06-onboarding-wizard P01 | 2 | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -195,6 +209,7 @@ Recent decisions affecting current work:
 - [Phase 05-04]: Lazy imports inside channel if-blocks prevent ImportError when SDK not installed
 - [Phase 05-04]: GET /health uses channel_registry.list_ids() loop — generic N-channel health, no hardcoded channel names
 - [Phase 05-04]: enqueue_fn=task_queue.enqueue injected at TelegramChannel registration — decouples channel from pipeline
+- [Phase 06-onboarding-wizard]: synapse_cli.py delegates to main.py named functions via lazy imports in command bodies — avoids modifying main.py; onboard uses lazy import of cli.onboard.run_wizard so CLI is importable before wizard exists
 
 ### Pending Todos
 
@@ -207,6 +222,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-02T18:37:00Z
-Stopped at: Completed 05-04-PLAN.md — Telegram/Discord/Slack wired into api_gateway; /health refactored to generic list_ids() loop; 250 tests GREEN; 2 tasks, 3 files
+Last session: 2026-03-02T19:54:58Z
+Stopped at: Completed 06-01-PLAN.md — CLI entry-point scaffold: Typer app with 5 subcommands, pyproject.toml [project.scripts], typer/questionary/qrcode deps; 2 tasks, 4 files
 Resume file: None
