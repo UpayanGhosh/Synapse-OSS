@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: in_progress
-last_updated: "2026-03-02T12:04:37Z"
+last_updated: "2026-03-02T12:17:37Z"
 progress:
   total_phases: 7
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 14
-  completed_plans: 13
+  completed_plans: 14
 ---
 
 # Project State
@@ -22,19 +22,19 @@ See: .planning/PROJECT.md (updated 2026-03-02)
 
 ## Current Position
 
-Phase: 3 of 7 (Channel Abstraction Layer) — In progress
-Plan: 3 of 4 complete in current phase
-Status: Phase 3 in progress
-Last activity: 2026-03-02 — Plan 03-03 complete: ChannelRegistry wired into api_gateway.py with unified POST /channels/{channel_id}/webhook route, /whatsapp/enqueue shim, MessageTask.channel_id field, and lifespan start/stop integration
+Phase: 3 of 7 (Channel Abstraction Layer) — Complete
+Plan: 4 of 4 complete in current phase
+Status: Phase 3 complete — ready for Phase 4 (Baileys bridge)
+Last activity: 2026-03-02 — Plan 03-04 complete: MessageWorker generalized to dispatch via ChannelRegistry; no WA-specific branching; CHAN-07 GREEN; _split_long_message helper; queue _safe_task_done() guard
 
-Progress: [████████████████████] 75% (3/4 plans in phase 3 — phase in progress)
+Progress: [████████████████████] 100% (14/14 plans complete — Phase 3 done)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 13
+- Total plans completed: 14
 - Average duration: 8.5 min
-- Total execution time: 1.84 hours
+- Total execution time: 1.99 hours
 
 **By Phase:**
 
@@ -42,7 +42,7 @@ Progress: [████████████████████] 75% (3/
 |-------|-------|-------|----------|
 | 01-foundation-config | 6/6 | 57 min | 9.5 min |
 | 02-llm-provider-layer | 4/4 | 33 min | 8.3 min |
-| 03-channel-abstraction-layer | 3/4 | 22 min | 7.3 min |
+| 03-channel-abstraction-layer | 4/4 | 31 min | 7.8 min |
 
 **Recent Trend:**
 - Last 5 plans: [3min, 2min, 25min, 8min, 11min, 10min]
@@ -52,6 +52,7 @@ Progress: [████████████████████] 75% (3/
 | Phase 03-channel-abstraction-layer P03 | 10 | 2 tasks | 2 files |
 | Phase 03-channel-abstraction-layer P02 | 2 | 1 tasks | 1 files |
 | Phase 03-channel-abstraction-layer P01 | 6 | 3 tasks | 4 files |
+| Phase 03-channel-abstraction-layer P04 | 9 | 1 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -97,6 +98,9 @@ Recent decisions affecting current work:
 - [Phase 03-03]: StubChannel used for 'whatsapp' channel in Phase 3 — real WhatsApp bridge in Phase 4; registry slot already reserved
 - [Phase 03-03]: channel_registry initialized at module scope (not in lifespan) — ChannelRegistry does no I/O at init; consistent with task_queue/flood/dedup singletons
 - [Phase 03-03]: CHAN-04/05 tests remain xfail in dev env — api_gateway requires sqlite_vec which is not in the lightweight test environment; xfail(strict=False) is correct; routes are code-verified
+- [Phase 03-04]: sender kept as Optional[WhatsAppSender] fallback alongside channel_registry; Phase 4 removes it when Baileys bridge ships
+- [Phase 03-04]: _safe_task_done() wraps task_done() in try/except ValueError — allows _handle_task direct-call test patterns without enqueue/dequeue
+- [Phase 03-04]: _split_long_message() is module-level helper — reusable by any dispatch path without importing MessageWorker
 
 ### Pending Todos
 
@@ -109,6 +113,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-02T12:04:37Z
-Stopped at: Completed 03-03-PLAN.md — ChannelRegistry wired into api_gateway.py: unified webhook route, /whatsapp/enqueue shim, MessageTask.channel_id field, lifespan start/stop integration; 2 tasks, 2 files modified
+Last session: 2026-03-02T12:17:37Z
+Stopped at: Completed 03-04-PLAN.md — MessageWorker generalized via ChannelRegistry: no WA branching, CHAN-07 GREEN, _split_long_message helper, queue _safe_task_done(); 1 task, 3 files modified. Phase 3 complete.
 Resume file: None
