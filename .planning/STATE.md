@@ -2,26 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: unknown
-last_updated: "2026-03-02T11:51:25.832Z"
-progress:
-  total_phases: 3
-  completed_phases: 2
-  total_plans: 14
-  completed_plans: 12
----
-
----
-gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: milestone
 status: in_progress
-last_updated: "2026-03-02T10:52:00Z"
+last_updated: "2026-03-02T12:04:37Z"
 progress:
   total_phases: 7
   completed_phases: 1
-  total_plans: 7
-  completed_plans: 7
+  total_plans: 14
+  completed_plans: 13
 ---
 
 # Project State
@@ -36,18 +23,18 @@ See: .planning/PROJECT.md (updated 2026-03-02)
 ## Current Position
 
 Phase: 3 of 7 (Channel Abstraction Layer) — In progress
-Plan: 1 of 4 complete in current phase
+Plan: 3 of 4 complete in current phase
 Status: Phase 3 in progress
-Last activity: 2026-03-02 — Plan 03-01 complete: channels/ subpackage created with BaseChannel ABC, ChannelMessage dataclass, ChannelRegistry (asyncio.create_task lifecycle), StubChannel; all CHAN-01/02/03/06 criteria met
+Last activity: 2026-03-02 — Plan 03-03 complete: ChannelRegistry wired into api_gateway.py with unified POST /channels/{channel_id}/webhook route, /whatsapp/enqueue shim, MessageTask.channel_id field, and lifespan start/stop integration
 
-Progress: [████████████████] 57% (1/4 plans in phase 3 — phase in progress)
+Progress: [████████████████████] 75% (3/4 plans in phase 3 — phase in progress)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 3
-- Average duration: 2.7 min
-- Total execution time: 0.09 hours
+- Total plans completed: 13
+- Average duration: 8.5 min
+- Total execution time: 1.84 hours
 
 **By Phase:**
 
@@ -55,13 +42,14 @@ Progress: [████████████████] 57% (1/4 plans in p
 |-------|-------|-------|----------|
 | 01-foundation-config | 6/6 | 57 min | 9.5 min |
 | 02-llm-provider-layer | 4/4 | 33 min | 8.3 min |
-| 03-channel-abstraction-layer | 1/4 | 6 min | 6 min |
+| 03-channel-abstraction-layer | 3/4 | 22 min | 7.3 min |
 
 **Recent Trend:**
-- Last 5 plans: [18min, 3min, 2min, 25min, 8min, 11min]
+- Last 5 plans: [3min, 2min, 25min, 8min, 11min, 10min]
 - Trend: stable
 
 *Updated after each plan completion*
+| Phase 03-channel-abstraction-layer P03 | 10 | 2 tasks | 2 files |
 | Phase 03-channel-abstraction-layer P02 | 2 | 1 tasks | 1 files |
 | Phase 03-channel-abstraction-layer P01 | 6 | 3 tasks | 4 files |
 
@@ -106,6 +94,9 @@ Recent decisions affecting current work:
 - [Phase 03-channel-abstraction-layer]: asyncio.create_task() wraps channel.start() in start_all() — NEVER asyncio.run() — uvicorn already owns event loop
 - [Phase 03-channel-abstraction-layer]: ChannelRegistry is an instance (not module-level singleton) — tests create independent registries without global state reset
 - [Phase 03-channel-abstraction-layer]: StubChannel.start() returns immediately — callers asserting _started after start_all() must yield with await asyncio.sleep(0)
+- [Phase 03-03]: StubChannel used for 'whatsapp' channel in Phase 3 — real WhatsApp bridge in Phase 4; registry slot already reserved
+- [Phase 03-03]: channel_registry initialized at module scope (not in lifespan) — ChannelRegistry does no I/O at init; consistent with task_queue/flood/dedup singletons
+- [Phase 03-03]: CHAN-04/05 tests remain xfail in dev env — api_gateway requires sqlite_vec which is not in the lightweight test environment; xfail(strict=False) is correct; routes are code-verified
 
 ### Pending Todos
 
@@ -118,6 +109,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-02T11:50:07Z
-Stopped at: Completed 03-01-PLAN.md — channels/ subpackage created: BaseChannel ABC, ChannelMessage dataclass (field(default_factory=dict) for raw), ChannelRegistry with asyncio.create_task lifecycle, StubChannel; all success criteria met; 3 tasks, 4 files created
+Last session: 2026-03-02T12:04:37Z
+Stopped at: Completed 03-03-PLAN.md — ChannelRegistry wired into api_gateway.py: unified webhook route, /whatsapp/enqueue shim, MessageTask.channel_id field, lifespan start/stop integration; 2 tasks, 2 files modified
 Resume file: None
