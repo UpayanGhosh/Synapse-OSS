@@ -16,10 +16,8 @@ Routes:
 import asyncio
 import json
 import os
-import shutil
 import socket
 import sqlite3
-import subprocess
 import sys
 import time
 from contextlib import asynccontextmanager, suppress
@@ -54,15 +52,16 @@ def _port_open(host: str, port: int, timeout: float = 0.5) -> bool:
 
 
 def validate_env() -> None:
-    """Validate required and optional env keys. Hard-fail only on missing GEMINI_API_KEY."""
-    # --- Required ---
+    """Validate required and optional env keys. Uses SynapseConfig for path resolution."""
+    from synapse_config import SynapseConfig  # noqa: PLC0415
+
+    cfg = SynapseConfig.load()
+    print(f"[INFO] Synapse data root: {cfg.data_root}")
+
     gemini_key = os.environ.get("GEMINI_API_KEY", "").strip()
     if not gemini_key:
-        print("[ERROR] GEMINI_API_KEY is not set -- Synapse cannot call any LLM.")
-        print("[ERROR] Add GEMINI_API_KEY to your .env file and restart.")
-        sys.exit(1)
+        print("[WARN] GEMINI_API_KEY not set — direct Gemini routing disabled (configure in synapse.json for Phase 2)")
 
-    # --- Optional keys: warn only ---
     if not os.environ.get("GROQ_API_KEY", "").strip():
         print("[WARN] GROQ_API_KEY not set -- voice transcription disabled")
     if not os.environ.get("OPENROUTER_API_KEY", "").strip():
@@ -70,7 +69,6 @@ def validate_env() -> None:
     if not os.environ.get("WHATSAPP_BRIDGE_TOKEN", "").strip():
         print("[WARN] WHATSAPP_BRIDGE_TOKEN not set -- WhatsApp bridge unauthenticated")
 
-    # --- Feature availability block ---
     ollama_on = _port_open("localhost", 11434)
     qdrant_on = _port_open("localhost", 6333)
     groq_on = bool(os.environ.get("GROQ_API_KEY", "").strip())
@@ -83,11 +81,6 @@ def validate_env() -> None:
     print(f"   Groq           {'[ON]' if groq_on else '[--]'}  voice transcription")
     print(f"   OpenRouter     {'[ON]' if openrouter_on else '[--]'}  fallback model routing")
     print(f"   WhatsApp       {'[ON]' if whatsapp_on else '[--]'}  bridge authentication")
-
-
-def _resolve_openclaw_cli_bin() -> str:
-    configured = os.environ.get("OPENCLAW_CLI_BIN", "").strip()
-    return configured or shutil.which("openclaw") or "openclaw"
 
 
 def _extract_cli_send_route(raw_stdout: str) -> str:
@@ -105,45 +98,7 @@ def _extract_cli_send_route(raw_stdout: str) -> str:
     )
 
 
-def send_via_cli(target: str, message: str):
-    """
-    Send a message via the OpenClaw CLI proactively.
-    Used for multi-part messages or async notifications.
-    """
-    try:
-        # Normalize target
-        clean_target = "".join(filter(str.isdigit, target))
-        if not clean_target:
-            print(f"[WARN] Invalid target for CLI send: {target}")
-            return
-
-        # Ensure country code (prefix + if missing)
-        if not target.startswith("+"):
-            target = f"+{clean_target}"
-
-        print(f"[INFO] [CLI] Sending async message to {target}...")
-        cli_bin = _resolve_openclaw_cli_bin()
-        cmd = [
-            cli_bin,
-            "message",
-            "send",
-            "--channel",
-            "whatsapp",
-            "--target",
-            target,
-            "--message",
-            message,
-            "--json",
-        ]
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-        if result.returncode == 0:
-            route = _extract_cli_send_route(result.stdout) or "gateway"
-            print(f"[OK] [CLI] Sent via {route}: {message[:50]}...")
-        else:
-            err = (result.stderr or result.stdout or "").strip()
-            print(f"[ERROR] [CLI] Failed: {err}")
-    except Exception as e:
-        print(f"[ERROR] [CLI] Exception: {e}")
+# send_via_cli() removed — Phase 4 replaces with Baileys HTTP bridge
 
 
 async def continue_conversation(target: str, messages: list[dict], last_reply: str):
@@ -176,8 +131,9 @@ async def continue_conversation(target: str, messages: list[dict], last_reply: s
         # 4. Clean up (sometimes models repeat the last sentence)
         # For now, just send it.
 
-        # 5. Send via CLI
-        send_via_cli(target, continuation)
+        # 5. Send continuation — Phase 4 will implement Baileys HTTP bridge here
+        print(f"[AUTO-CONTINUE] Continuation ready ({len(continuation)} chars). "
+              "WhatsApp send skipped until Phase 4 Baileys bridge is implemented.")
 
         # 6. Recursive Check? (If this one is ALSO cut off?)
         # For now, let's limit to one continuation to avoid infinite loops.
@@ -223,7 +179,7 @@ from gateway.sender import WhatsAppSender  # noqa: E402
 from gateway.worker import MessageWorker  # noqa: E402
 
 task_queue = TaskQueue(max_size=100)
-sender = WhatsAppSender(cli_command="openclaw")
+sender = WhatsAppSender()
 dedup = MessageDeduplicator(window_seconds=300)
 flood = FloodGate(batch_window_seconds=3.0)
 
@@ -234,20 +190,63 @@ init_sentinel(project_root=Path(__file__).parent)  # noqa: E402
 
 # --- SBS Orchestrator (Phase 1) ---
 SBS_DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "synapse_data")
-sbs_the_creator = (
-    SBSOrchestrator(os.path.join(SBS_DATA_DIR, "the_creator"))
-    if os.path.exists(os.path.dirname(os.path.abspath(__file__)))
-    else None
-)
-sbs_the_partner = (
-    SBSOrchestrator(os.path.join(SBS_DATA_DIR, "the_partner"))
-    if os.path.exists(os.path.dirname(os.path.abspath(__file__)))
-    else None
-)
+
+
+def _load_personas_config() -> dict:
+    """Load persona definitions from workspace/personas.yaml, with a built-in fallback."""
+    cfg_path = Path(WORKSPACE_ROOT) / "personas.yaml"
+    if cfg_path.exists():
+        try:
+            import yaml
+
+            with open(cfg_path, encoding="utf-8") as fh:
+                data = yaml.safe_load(fh)
+            if isinstance(data, dict) and "personas" in data:
+                return data
+        except Exception as exc:
+            print(f"[WARN] Could not load personas.yaml: {exc}. Using built-in defaults.")
+    # Fallback: two default personas
+    return {
+        "personas": [
+            {
+                "id": "the_creator",
+                "display_name": "Primary User",
+                "description": "Chat as Synapse -> primary user (Bro Mode)",
+                "whatsapp_phones": [],
+                "whatsapp_keywords": [],
+            },
+            {
+                "id": "the_partner",
+                "display_name": "Partner",
+                "description": "Chat as Synapse -> partner (Caring PA Mode)",
+                "whatsapp_phones": [],
+                "whatsapp_keywords": [],
+            },
+        ],
+        "default_persona": "the_creator",
+    }
+
+
+PERSONAS_CONFIG = _load_personas_config()
+sbs_registry: dict[str, SBSOrchestrator] = {
+    p["id"]: SBSOrchestrator(os.path.join(SBS_DATA_DIR, p["id"]))
+    for p in PERSONAS_CONFIG["personas"]
+}
+
+
+def _resolve_target(raw_target: str) -> str:
+    """Map a raw chat_id / phone number / keyword to a persona ID."""
+    t = raw_target.lower()
+    for p in PERSONAS_CONFIG["personas"]:
+        if any(phone in t for phone in p.get("whatsapp_phones", [])):
+            return p["id"]
+        if any(kw in t for kw in p.get("whatsapp_keywords", [])):
+            return p["id"]
+    return PERSONAS_CONFIG.get("default_persona", "the_creator")
 
 
 def get_sbs_for_target(target: str) -> SBSOrchestrator:
-    return sbs_the_partner if target.lower() == "the_partner" else sbs_the_creator
+    return sbs_registry.get(target, sbs_registry[PERSONAS_CONFIG["default_persona"]])
 
 
 # --- Environment ---
@@ -257,10 +256,8 @@ load_env_file(anchor=Path(__file__))  # noqa: E402
 validate_env()  # ENV-01, ENV-02, ENV-03 -- hard-fail or warn before singletons
 
 # --- LLM Client ---
-# Primary path: OpenClaw Antigravity Proxy (OAuth) at localhost:8080
-# Fallback path: Direct Gemini REST API using GEMINI_API_KEY
-OPENCLAW_GATEWAY_URL = "http://localhost:8080/v1/messages"
-OPENCLAW_GATEWAY_TOKEN = os.environ.get("OPENCLAW_GATEWAY_TOKEN", "")
+# Direct Gemini REST API using GEMINI_API_KEY
+# Phase 2 will replace this with litellm.acompletion() routing
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
 
@@ -282,7 +279,7 @@ async def call_gemini_direct(
     temperature: float = 0.7,
     max_tokens: int = 1000,
 ) -> str:
-    """Direct Gemini REST API call using GEMINI_API_KEY (no OpenClaw proxy needed)."""
+    """Direct Gemini REST API call using GEMINI_API_KEY."""
     if not GEMINI_API_KEY:
         return "Error: GEMINI_API_KEY is not set. Add it to your .env file."
 
@@ -329,52 +326,9 @@ async def call_gateway_model(
     temperature: float = 0.7,
     max_tokens: int = 1000,
 ) -> str:
-    """Route to OpenClaw Antigravity Proxy if token is set, else direct Gemini API."""
-    if not OPENCLAW_GATEWAY_TOKEN:
-        return await call_gemini_direct(model_id, input_messages, temperature, max_tokens)
-
-    headers = {
-        "x-api-key": OPENCLAW_GATEWAY_TOKEN,
-        "anthropic-version": "2023-06-01",
-        "Content-Type": "application/json",
-    }
-
-    # Extract system prompt
-    system_prompt = None
-    messages = []
-    for msg in input_messages:
-        if msg["role"] == "system":
-            system_prompt = msg["content"]
-        else:
-            messages.append(msg)
-
-    payload = {"model": model_id, "messages": messages, "max_tokens": max_tokens}
-    if system_prompt:
-        payload["system"] = system_prompt
-    if temperature is not None:
-        payload["temperature"] = temperature
-
-    async with httpx.AsyncClient(timeout=60.0) as client:
-        resp = await client.post(OPENCLAW_GATEWAY_URL, json=payload, headers=headers)
-        if resp.status_code != 200:
-            print(f"[WARN] Gateway Error ({resp.status_code}): {resp.text}")
-            return f"Error: {resp.text}"
-
-        data = resp.json()
-        full_text = ""
-        thinking_content = ""
-        for block in data.get("content", []):
-            if block.get("type") == "text":
-                full_text += block.get("text", "")
-            elif block.get("type") == "thinking":
-                thinking = block.get("thinking", "")
-                thinking_content += thinking + "\n"
-                print(f"[MEM] [Thinking]: {thinking[:50]}...")
-
-        # Prepend thinking to text output for context
-        if thinking_content:
-            return f"[THINKING]\n{thinking_content}\n[/THINKING]\n{full_text}"
-        return full_text if full_text else "(No text output)"
+    """Route to direct Gemini API. Phase 2 will replace this with litellm.acompletion() routing."""
+    # Phase 2 will replace this with litellm.acompletion() routing
+    return await call_gemini_direct(model_id, input_messages, temperature, max_tokens)
 
 
 # --- Model Constants ---
@@ -383,11 +337,7 @@ MODEL_CODING = "gemini-3-flash"  # Placeholder
 MODEL_ANALYSIS = "gemini-3-pro-high"
 MODEL_REVIEW = "gemini-3-pro-high"  # Placeholder
 
-_llm_arch = (
-    "OAuth (OpenClaw Proxy)"
-    if OPENCLAW_GATEWAY_TOKEN
-    else f"Direct Gemini API ({'key set' if GEMINI_API_KEY else 'KEY MISSING -- add GEMINI_API_KEY to .env'})"
-)
+_llm_arch = f"Direct Gemini API ({'key set' if GEMINI_API_KEY else 'KEY MISSING -- add GEMINI_API_KEY to .env'})"
 print(
     f"[BOT] LLM Architecture ({_llm_arch}): \n"
     f"   Casual: {MODEL_CASUAL}\n   Coding: {MODEL_CODING}\n"
@@ -781,16 +731,7 @@ async def persona_chat(
 
 
 async def process_message_pipeline(user_msg: str, chat_id: str) -> str:
-    target = chat_id
-    target_lower = target.lower()
-    clean_id = "".join(filter(str.isdigit, target))
-    phone_map = {}
-    if clean_id in phone_map:
-        target = phone_map[clean_id]
-    elif any(s in target_lower for s in ["the_partner", "the_partner_nickname"]):
-        target = "the_partner"
-    else:
-        target = "the_creator"
+    target = _resolve_target(chat_id)
 
     chat_req = ChatRequest(
         message=user_msg,
@@ -859,7 +800,7 @@ def validate_bridge_token(request: Request) -> None:
 
 def validate_api_key(request: Request) -> None:
     """Validates the API key for protected endpoints."""
-    api_key = os.environ.get("OPENCLAW_GATEWAY_TOKEN")
+    api_key = os.environ.get("GEMINI_API_KEY")
     if api_key:
         provided = request.headers.get("x-api-key")
         if provided != api_key:
@@ -1035,7 +976,8 @@ def whatsapp_job_status(message_id: str):
 @app.post("/whatsapp/loop-test")
 async def whatsapp_loop_test(payload: WhatsAppLoopTestRequest, request: Request):
     """
-    Validate outbound loop path from Python -> local OpenClaw Node Gateway -> WhatsApp.
+    Validate outbound loop path from Python -> WhatsApp bridge.
+    Phase 4 will implement Baileys bridge. Currently returns 501.
     Uses --dry-run by default to avoid sending real messages.
     """
     validate_bridge_token(request)
@@ -1044,59 +986,10 @@ async def whatsapp_loop_test(payload: WhatsAppLoopTestRequest, request: Request)
     if not target:
         raise HTTPException(status_code=400, detail="target is required")
 
-    message = (payload.message or "").strip() or "local-loop-test"
-    timeout_sec = max(1.0, min(float(payload.timeout_sec), 60.0))
-    cli_bin = _resolve_openclaw_cli_bin()
-    if not os.path.exists(cli_bin):
-        raise HTTPException(status_code=500, detail=f"openclaw_cli_not_found:{cli_bin}")
-
-    cmd = [
-        cli_bin,
-        "message",
-        "send",
-        "--channel",
-        "whatsapp",
-        "--target",
-        f"+{target}",
-        "--message",
-        message,
-        "--json",
-    ]
-    if payload.dry_run:
-        cmd.append("--dry-run")
-
-    started_at = time.time()
-    try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=timeout_sec,
-        )
-    except subprocess.TimeoutExpired:
-        raise HTTPException(status_code=504, detail=f"loop_test_timeout:{timeout_sec}s") from None
-
-    duration_ms = int((time.time() - started_at) * 1000)
-    route = _extract_cli_send_route(result.stdout)
-    stdout_raw = (result.stdout or "").strip()
-    stderr_raw = (result.stderr or "").strip()
-    try:
-        stdout_json = json.loads(stdout_raw) if stdout_raw else None
-    except json.JSONDecodeError:
-        stdout_json = None
-
-    ok = result.returncode == 0
-    return {
-        "ok": ok,
-        "local_loop_confirmed": bool(ok and route == "gateway"),
-        "route": route or None,
-        "dry_run": bool(payload.dry_run),
-        "target": f"+{target}",
-        "duration_ms": duration_ms,
-        "return_code": result.returncode,
-        "stdout_json": stdout_json,
-        "stderr": stderr_raw[:500] if stderr_raw else None,
-    }
+    raise HTTPException(
+        status_code=501,
+        detail="WhatsApp send via CLI not available — Phase 4 will implement Baileys bridge",
+    )
 
 
 # --- OpenAI Compatibility Layer ---
@@ -1172,25 +1065,27 @@ async def chat_webhook(request: Request):
     }
 
 
-# --- Persona Chat Endpoints ---
+# --- Persona Chat Endpoints (dynamically registered from personas.yaml) ---
 
 
-@app.post("/chat/the_creator")
-async def chat_the_creator(
-    request: ChatRequest, background_tasks: BackgroundTasks, http_request: Request
-):
-    """Chat as Synapse -> primary_user (Bro Mode [FIST])"""
-    validate_api_key(http_request)
-    return await persona_chat(request, "the_creator", background_tasks)
+def _make_persona_handler(persona_id: str):
+    async def handler(
+        request: ChatRequest, background_tasks: BackgroundTasks, http_request: Request
+    ):
+        validate_api_key(http_request)
+        return await persona_chat(request, persona_id, background_tasks)
+
+    handler.__name__ = f"chat_{persona_id}"
+    return handler
 
 
-@app.post("/chat/the_partner")
-async def chat_the_partner(
-    request: ChatRequest, background_tasks: BackgroundTasks, http_request: Request
-):
-    """Chat as Synapse -> partner_user (Caring PA Mode [ROSE])"""
-    validate_api_key(http_request)
-    return await persona_chat(request, "the_partner", background_tasks)
+for _p in PERSONAS_CONFIG["personas"]:
+    app.add_api_route(
+        f"/chat/{_p['id']}",
+        _make_persona_handler(_p["id"]),
+        methods=["POST"],
+        summary=_p.get("description", f"Chat as {_p['id']}"),
+    )
 
 
 @app.get("/gateway/status")
@@ -1207,12 +1102,12 @@ async def gateway_status():
 
 @app.post("/persona/rebuild")
 async def rebuild_personas(request: Request):
-    """Rebuild persona using SBS (Phase 1)."""
+    """Rebuild all persona profiles using SBS."""
     validate_api_key(request)
     try:
-        sbs_the_creator.force_batch(full_rebuild=True)
-        sbs_the_partner.force_batch(full_rebuild=True)
-        return {"status": "rebuilt"}
+        for sbs in sbs_registry.values():
+            sbs.force_batch(full_rebuild=True)
+        return {"status": "rebuilt", "personas": list(sbs_registry.keys())}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from None
 
@@ -1220,11 +1115,7 @@ async def rebuild_personas(request: Request):
 @app.get("/persona/status")
 def persona_status():
     """Show current persona profile stats from SBS."""
-    stats = {
-        "the_creator": sbs_the_creator.get_profile_summary() if sbs_the_creator else None,
-        "the_partner": sbs_the_partner.get_profile_summary() if sbs_the_partner else None,
-    }
-
+    stats = {pid: sbs.get_profile_summary() for pid, sbs in sbs_registry.items()}
     db = get_db_stats()
     return {"profiles": stats, "memory_db": db}
 
@@ -1232,10 +1123,7 @@ def persona_status():
 @app.get("/sbs/status")
 def sbs_status():
     """Show live SBS stats for sci-fi dashboard."""
-    stats = {
-        "the_creator": sbs_the_creator.get_profile_summary() if sbs_the_creator else None,
-        "the_partner": sbs_the_partner.get_profile_summary() if sbs_the_partner else None,
-    }
+    stats = {pid: sbs.get_profile_summary() for pid, sbs in sbs_registry.items()}
     return {"profiles": stats}
 
 
