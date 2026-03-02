@@ -7,7 +7,11 @@ import os
 import sqlite3
 import time
 
-DB_PATH = os.path.expanduser("~/.openclaw/workspace/db/emotional_trajectory.db")
+def _get_db_path() -> str:
+    from synapse_config import SynapseConfig  # noqa: PLC0415
+    return str(SynapseConfig.load().db_dir / "emotional_trajectory.db")
+
+DB_PATH = _get_db_path()
 
 
 class EmotionalTrajectory:

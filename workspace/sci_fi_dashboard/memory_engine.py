@@ -9,6 +9,14 @@ from functools import lru_cache, wraps
 
 from flashrank import Ranker, RerankRequest
 
+try:
+    from synapse_config import SynapseConfig
+except ImportError:
+    import sys as _sys
+    import os as _os
+    _sys.path.insert(0, _os.path.abspath(_os.path.join(_os.path.dirname(__file__), "..")))
+    from synapse_config import SynapseConfig
+
 # Import centralized DB module
 try:
     from .db import get_db_connection
@@ -73,7 +81,13 @@ except ImportError:
 EMBEDDING_MODEL = "nomic-embed-text"
 OLLAMA_KEEP_ALIVE = "0"  # CRITICAL: zero persistence
 RERANK_MODEL_NAME = "ms-marco-TinyBERT-L-2-v2"
-DB_PATH = os.path.join(WORKSPACE_ROOT, "db", "memory.db")
+
+
+def _get_db_path() -> str:
+    from synapse_config import SynapseConfig  # noqa: PLC0415
+    return str(SynapseConfig.load().db_dir / "memory.db")
+
+DB_PATH = _get_db_path()
 BACKUP_FILE = os.path.join(WORKSPACE_ROOT, "_archived_memories", "persistent_log.jsonl")
 
 
@@ -136,7 +150,7 @@ class MemoryEngine:
                 if self._ranker is None:
                     self._ranker = Ranker(
                         model_name=RERANK_MODEL_NAME,
-                        cache_dir=os.path.join(os.path.expanduser("~/.openclaw"), "models"),
+                        cache_dir=str(SynapseConfig.load().data_root / "models"),
                     )
         return self._ranker
 

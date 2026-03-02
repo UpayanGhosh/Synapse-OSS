@@ -4,7 +4,12 @@ import sqlite3
 import sqlite_vec
 
 # Constants
-DB_PATH = os.path.expanduser("~/.openclaw/workspace/db/memory.db")
+def _get_db_path() -> str:
+    # Import here (not at module top) to allow test monkeypatching of SYNAPSE_HOME
+    from synapse_config import SynapseConfig  # noqa: PLC0415
+    return str(SynapseConfig.load().db_dir / "memory.db")
+
+DB_PATH = _get_db_path()
 MAX_DB_SIZE_MB = 100
 
 
