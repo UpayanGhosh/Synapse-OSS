@@ -13,7 +13,7 @@ This milestone cuts all three hard OpenClaw dependencies from Synapse-OSS: the L
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Foundation & Config** - Replace ~/.openclaw/ data root with ~/.synapse/, provide safe migration, eliminate openclaw path dependency (completed 2026-03-02)
-- [x] **Phase 2: LLM Provider Layer** - Replace openclaw proxy at port 8080 with litellm.acompletion() — all 25+ providers routable without openclaw running (completed 2026-03-02)
+- [x] **Phase 2: LLM Provider Layer** - Replace openclaw proxy at port 8080 with litellm.acompletion() — all 25+ providers routable without openclaw running (completed 2026-03-02)
 - [ ] **Phase 3: Channel Abstraction Layer** - Establish BaseChannel ABC, ChannelRegistry, and unified webhook router before any channel is implemented
 - [ ] **Phase 4: WhatsApp — Baileys Bridge** - Replace openclaw message send CLI with a self-managed Baileys Node.js microservice
 - [ ] **Phase 5: Core Channels — Telegram, Discord, Slack** - Add the three most widely used chat platforms as native channel integrations
@@ -67,7 +67,7 @@ Plans:
 - [x] 02-01-PLAN.md — TDD scaffold: extend SynapseConfig.model_mappings + create test_llm_router.py (RED phase) + mock_acompletion fixture
 - [x] 02-02-PLAN.md — Create workspace/sci_fi_dashboard/llm_router.py (SynapseLLMRouter + build_router + _inject_provider_keys) + pin litellm in pyproject.toml
 - [x] 02-03-PLAN.md — Rewrite workspace/skills/llm_router.py: replace _call_antigravity() with SynapseLLMRouter; preserve generate()/embed() interface
-- [ ] 02-04-PLAN.md — Rewrite api_gateway.py LLM section: replace call_gemini_direct/call_gateway_model/MODEL_* with SynapseLLMRouter.call(); turn test_no_hardcoded_models GREEN
+- [x] 02-04-PLAN.md — Rewrite api_gateway.py LLM section: replace call_gemini_direct/call_gateway_model/MODEL_* with SynapseLLMRouter.call(); turn test_no_hardcoded_models GREEN
 
 ### Phase 3: Channel Abstraction Layer
 **Goal**: A single unified channel infrastructure exists that any chat platform adapter can plug into — the asyncio coroutine pattern is established so all future channels share the FastAPI event loop
@@ -81,7 +81,13 @@ Plans:
 **Key Risks**:
   - M5 (critical): discord.py client.run() and PTB application.run_polling() both call asyncio.run() and block — must establish the asyncio.create_task() coroutine pattern in THIS phase before any real channel adapter is written
   - No channel-specific if/elif branching allowed in worker.py — registry dispatch only
-**Plans**: TBD
+**Plans**: 4 plans
+
+Plans:
+- [ ] 03-01-PLAN.md — Create channels/ subpackage (BaseChannel ABC, ChannelRegistry, ChannelMessage, StubChannel)
+- [ ] 03-02-PLAN.md — TDD scaffold: write test_channels.py covering all CHAN requirements (RED phase for 04/05/07)
+- [ ] 03-03-PLAN.md — Wire ChannelRegistry into api_gateway.py: unified webhook, /whatsapp/enqueue shim, channel_id in MessageTask
+- [ ] 03-04-PLAN.md — Generalize worker.py: dispatch outbound via ChannelRegistry.get(task.channel_id).send()
 
 ### Phase 4: WhatsApp — Baileys Bridge
 **Goal**: WhatsApp inbound and outbound works end-to-end via a self-managed Baileys Node.js microservice that Synapse starts, stops, and restarts — no openclaw binary involved at any stage
@@ -158,8 +164,8 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation & Config | 6/6 | Complete   | 2026-03-02 |
-| 2. LLM Provider Layer | 4/4 | Complete   | 2026-03-02 |
-| 3. Channel Abstraction Layer | 0/TBD | Not started | - |
+| 2. LLM Provider Layer | 4/4 | Complete    | 2026-03-02 |
+| 3. Channel Abstraction Layer | 0/4 | Not started | - |
 | 4. WhatsApp — Baileys Bridge | 0/TBD | Not started | - |
 | 5. Core Channels — Telegram, Discord, Slack | 0/TBD | Not started | - |
 | 6. Onboarding Wizard | 0/TBD | Not started | - |
