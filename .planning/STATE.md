@@ -3,6 +3,19 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
+last_updated: "2026-03-02T17:06:47.347Z"
+progress:
+  total_phases: 4
+  completed_phases: 4
+  total_plans: 18
+  completed_plans: 18
+---
+
+---
+gsd_state_version: 1.0
+milestone: v1.0
+milestone_name: milestone
+status: unknown
 last_updated: "2026-03-02T16:38:48.154Z"
 progress:
   total_phases: 4
@@ -44,16 +57,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-02)
 
 **Core value:** A user can run Synapse-OSS on any machine, connect to their messaging apps and LLM providers, and have a fully working AI assistant — with zero dependency on any external binary or bridge service.
-**Current focus:** Phase 4 — WhatsApp Baileys Bridge
+**Current focus:** Phase 4 complete — WhatsApp Baileys Bridge DONE; ready for Phase 5
 
 ## Current Position
 
-Phase: 4 of 7 (WhatsApp Baileys Bridge) — In Progress
-Plan: 3 of 4 complete in current phase (04-01 test scaffold + 04-02 Baileys bridge + 04-03 WhatsAppChannel)
-Status: Plans 04-01, 04-02, 04-03 complete — all 8 WA tests GREEN; WhatsAppChannel(BaseChannel) with supervisor+httpx; ready for Plan 04-04 (wire into api_gateway)
-Last activity: 2026-03-02 — Plan 04-03 complete: WhatsAppChannel in channels/whatsapp.py + __init__.py export; all 8 WA tests GREEN (WA-01 through WA-08); 2 tasks, 2 files
+Phase: 4 of 7 (WhatsApp Baileys Bridge) — COMPLETE
+Plan: 4 of 4 complete in current phase (04-01 test scaffold + 04-02 Baileys bridge + 04-03 WhatsAppChannel + 04-04 api_gateway wiring)
+Status: All 4 Phase 4 plans complete — 18/18 plans complete across all 4 phases; WhatsAppChannel wired into api_gateway.py; GET /health async with bridge status; all 170 tests GREEN
+Last activity: 2026-03-02 — Plan 04-04 complete: WhatsAppChannel registered in api_gateway.py; WhatsAppSender removed; async /health with 'channels' key; 2 tasks, 1 file
 
-Progress: [█████████████░░░░░░░] 16/18 plans complete (Phase 4 in progress)
+Progress: [████████████████████] 18/18 plans complete (Phase 4 DONE)
 
 ## Performance Metrics
 
@@ -69,7 +82,7 @@ Progress: [█████████████░░░░░░░] 16/18 p
 | 01-foundation-config | 6/6 | 57 min | 9.5 min |
 | 02-llm-provider-layer | 4/4 | 33 min | 8.3 min |
 | 03-channel-abstraction-layer | 4/4 | 31 min | 7.8 min |
-| 04-whatsapp-baileys-bridge | 3/4 | 13 min | — |
+| 04-whatsapp-baileys-bridge | 4/4 | 23 min | 5.8 min |
 
 **Recent Trend:**
 - Last 5 plans: [10min, 3min, 2min, 25min, 8min, 11min]
@@ -83,6 +96,7 @@ Progress: [█████████████░░░░░░░] 16/18 p
 | Phase 04-whatsapp-baileys-bridge PP02 | 3 | 3 tasks | 4 files |
 | Phase 04-whatsapp-baileys-bridge P01 | 8 | 1 tasks | 1 files |
 | Phase 04-whatsapp-baileys-bridge P03 | 10 | 2 tasks | 2 files |
+| Phase 04-whatsapp-baileys-bridge P04 | 10 | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -139,6 +153,8 @@ Recent decisions affecting current work:
 - [Phase 04-03]: INITIAL_BACKOFF=0.0 — first restart immediate; subsequent: max(backoff*2,1.0) gives 1→2→4→8→…→60s; enables WA-06 test to assert restart within 10 asyncio.sleep(0) yields
 - [Phase 04-03]: asyncio.TimeoutError → builtin TimeoutError in stop() — ruff UP041; Python 3.11+ builtin is correct alias
 - [Phase 04-03]: per-request httpx.AsyncClient in async-with — avoids shared mutable connection state in async supervisor context
+- [Phase 04-04]: WhatsAppSender removed from api_gateway.py — WhatsAppChannel via ChannelRegistry is the sole dispatch path for 'whatsapp' channel
+- [Phase 04-04]: GET /health changed to async def — channel health_check() awaited per-channel wrapped in try/except; /health always responds
 
 ### Pending Todos
 
@@ -147,10 +163,10 @@ None yet.
 ### Blockers/Concerns
 
 - Phase 2 (litellm streaming): stream=False enforced in Plan 02; streaming not used in Phase 2 — blocker removed
-- None active: Phase 4 Plan 04-03 complete; ready for 04-04 (wire WhatsAppChannel into api_gateway)
+- None active: Phase 4 complete (all 4 plans done); ready for Phase 5
 
 ## Session Continuity
 
-Last session: 2026-03-02T16:51:46Z
-Stopped at: Completed 04-03-PLAN.md — WhatsAppChannel(BaseChannel): subprocess supervisor, Node.js 18+ validation, httpx HTTP client; all 8 WA tests GREEN; channels/__init__.py updated; 2 tasks, 2 files
+Last session: 2026-03-02T22:25:28Z
+Stopped at: Completed 04-04-PLAN.md — WhatsAppChannel wired into api_gateway.py; WhatsAppSender fallback removed; GET /health async with bridge status; all 170 tests GREEN; 2 tasks, 1 file
 Resume file: None
