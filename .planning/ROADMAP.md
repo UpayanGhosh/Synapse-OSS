@@ -151,7 +151,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation & Config | 1/6 | In progress | - |
+| 1. Foundation & Config | 2/6 | In Progress|  |
 | 2. LLM Provider Layer | 0/TBD | Not started | - |
 | 3. Channel Abstraction Layer | 0/TBD | Not started | - |
 | 4. WhatsApp — Baileys Bridge | 0/TBD | Not started | - |
