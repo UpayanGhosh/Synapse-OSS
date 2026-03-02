@@ -826,7 +826,16 @@ def root():
 
 
 @app.get("/health")
-def health():
+async def health():
+    # Gather channel health (WhatsApp bridge status)
+    whatsapp_health: dict = {"status": "unknown"}
+    wa_channel = channel_registry.get("whatsapp")
+    if wa_channel is not None:
+        try:
+            whatsapp_health = await wa_channel.health_check()
+        except Exception as e:
+            whatsapp_health = {"status": "error", "error": str(e)}
+
     return {
         "graph_nodes": brain.number_of_nodes(),
         "graph_edges": brain.number_of_edges(),
@@ -841,6 +850,9 @@ def health():
             "code": SynapseConfig.load().model_mappings.get("code", {}).get("model", "unset"),
             "analysis": SynapseConfig.load().model_mappings.get("analysis", {}).get("model", "unset"),
             "review": SynapseConfig.load().model_mappings.get("review", {}).get("model", "unset"),
+        },
+        "channels": {
+            "whatsapp": whatsapp_health,
         },
     }
 
