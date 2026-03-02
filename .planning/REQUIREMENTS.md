@@ -19,23 +19,23 @@
 
 ### LLM Provider Layer
 
-- [ ] **LLM-01**: `llm_router.py` routes all LLM calls via `litellm.acompletion()` (no openclaw proxy)
-- [ ] **LLM-02**: System supports Anthropic Claude (claude-opus-4-6, claude-sonnet-4-6, claude-haiku-4-5)
-- [ ] **LLM-03**: System supports OpenAI GPT (gpt-4o, gpt-4o-mini, gpt-4-turbo)
-- [ ] **LLM-04**: System supports Google Gemini (gemini/gemini-2.0-flash, gemini/gemini-2.0-pro)
-- [ ] **LLM-05**: System supports Groq (groq/llama-3.3-70b-versatile, groq/mixtral-8x7b-32768)
-- [ ] **LLM-06**: System supports Ollama local models (ollama_chat/llama3.3, etc.)
-- [ ] **LLM-07**: System supports OpenRouter (openrouter/auto, openrouter/mistralai/mixtral-8x7b)
-- [ ] **LLM-08**: System supports Mistral AI (mistral/mistral-large-latest)
-- [ ] **LLM-09**: System supports Together AI (together_ai/meta-llama/Llama-3-70b-chat-hf)
-- [ ] **LLM-10**: System supports xAI Grok (xai/grok-2-latest, xai/grok-3)
-- [ ] **LLM-11**: System supports Bedrock Claude (bedrock/anthropic.claude-3-5-sonnet-20241022-v2:0)
-- [ ] **LLM-12**: System supports Chinese providers: MiniMax (minimax/abab6.5s-chat), Moonshot/Kimi (moonshot/moonshot-v1-128k), Zhipu Z.AI (zai/glm-4-plus — note: zai/ prefix, NOT zhipu/)
-- [ ] **LLM-13**: System supports Volcano Engine/BytePlus (volcengine/doubao-pro-4k), Baidu Qianfan (qianfan/ERNIE-4.0)
-- [ ] **LLM-14**: System supports self-hosted vLLM (openai/<model> + api_base override), HuggingFace Inference Endpoints, NVIDIA NIM
-- [ ] **LLM-15**: System supports GitHub Copilot (copilot/<model> via OAuth device flow)
-- [ ] **LLM-16**: Provider model string mapping table is defined in `synapse.json` — no hardcoded strings scattered across codebase
-- [ ] **LLM-17**: LLM call errors (rate limits, auth failures, timeouts) are handled per-provider with appropriate retry/fallback logic
+- [x] **LLM-01**: `llm_router.py` routes all LLM calls via `litellm.acompletion()` (no openclaw proxy)
+- [x] **LLM-02**: System supports Anthropic Claude (claude-opus-4-6, claude-sonnet-4-6, claude-haiku-4-5)
+- [x] **LLM-03**: System supports OpenAI GPT (gpt-4o, gpt-4o-mini, gpt-4-turbo)
+- [x] **LLM-04**: System supports Google Gemini (gemini/gemini-2.0-flash, gemini/gemini-2.0-pro)
+- [x] **LLM-05**: System supports Groq (groq/llama-3.3-70b-versatile, groq/mixtral-8x7b-32768)
+- [x] **LLM-06**: System supports Ollama local models (ollama_chat/llama3.3, etc.)
+- [x] **LLM-07**: System supports OpenRouter (openrouter/auto, openrouter/mistralai/mixtral-8x7b)
+- [x] **LLM-08**: System supports Mistral AI (mistral/mistral-large-latest)
+- [x] **LLM-09**: System supports Together AI (together_ai/meta-llama/Llama-3-70b-chat-hf)
+- [x] **LLM-10**: System supports xAI Grok (xai/grok-2-latest, xai/grok-3)
+- [x] **LLM-11**: System supports Bedrock Claude (bedrock/anthropic.claude-3-5-sonnet-20241022-v2:0)
+- [x] **LLM-12**: System supports Chinese providers: MiniMax (minimax/abab6.5s-chat), Moonshot/Kimi (moonshot/moonshot-v1-128k), Zhipu Z.AI (zai/glm-4-plus — note: zai/ prefix, NOT zhipu/)
+- [x] **LLM-13**: System supports Volcano Engine/BytePlus (volcengine/doubao-pro-4k), Baidu Qianfan (qianfan/ERNIE-4.0)
+- [x] **LLM-14**: System supports self-hosted vLLM (openai/<model> + api_base override), HuggingFace Inference Endpoints, NVIDIA NIM
+- [x] **LLM-15**: System supports GitHub Copilot (copilot/<model> via OAuth device flow)
+- [x] **LLM-16**: Provider model string mapping table is defined in `synapse.json` — no hardcoded strings scattered across codebase
+- [x] **LLM-17**: LLM call errors (rate limits, auth failures, timeouts) are handled per-provider with appropriate retry/fallback logic
 - [ ] **LLM-18**: Existing mixture-of-agents routing logic (casual → Gemini Flash, code → Claude Sonnet, etc.) continues to work via new provider layer
 
 ### Channel Abstraction Layer
@@ -160,23 +160,23 @@
 | CONF-05 | Phase 1: Foundation & Config | Complete |
 | CONF-06 | Phase 1: Foundation & Config | Complete |
 | CONF-07 | Phase 1: Foundation & Config | Complete |
-| LLM-01 | Phase 2: LLM Provider Layer | Pending |
-| LLM-02 | Phase 2: LLM Provider Layer | Pending |
-| LLM-03 | Phase 2: LLM Provider Layer | Pending |
-| LLM-04 | Phase 2: LLM Provider Layer | Pending |
-| LLM-05 | Phase 2: LLM Provider Layer | Pending |
-| LLM-06 | Phase 2: LLM Provider Layer | Pending |
-| LLM-07 | Phase 2: LLM Provider Layer | Pending |
-| LLM-08 | Phase 2: LLM Provider Layer | Pending |
-| LLM-09 | Phase 2: LLM Provider Layer | Pending |
-| LLM-10 | Phase 2: LLM Provider Layer | Pending |
-| LLM-11 | Phase 2: LLM Provider Layer | Pending |
-| LLM-12 | Phase 2: LLM Provider Layer | Pending |
-| LLM-13 | Phase 2: LLM Provider Layer | Pending |
-| LLM-14 | Phase 2: LLM Provider Layer | Pending |
-| LLM-15 | Phase 2: LLM Provider Layer | Pending |
-| LLM-16 | Phase 2: LLM Provider Layer | Pending |
-| LLM-17 | Phase 2: LLM Provider Layer | Pending |
+| LLM-01 | Phase 2: LLM Provider Layer | Complete (02-02) |
+| LLM-02 | Phase 2: LLM Provider Layer | Complete (02-02) |
+| LLM-03 | Phase 2: LLM Provider Layer | Complete (02-02) |
+| LLM-04 | Phase 2: LLM Provider Layer | Complete (02-02) |
+| LLM-05 | Phase 2: LLM Provider Layer | Complete (02-02) |
+| LLM-06 | Phase 2: LLM Provider Layer | Complete (02-02) |
+| LLM-07 | Phase 2: LLM Provider Layer | Complete (02-02) |
+| LLM-08 | Phase 2: LLM Provider Layer | Complete (02-02) |
+| LLM-09 | Phase 2: LLM Provider Layer | Complete (02-02) |
+| LLM-10 | Phase 2: LLM Provider Layer | Complete (02-02) |
+| LLM-11 | Phase 2: LLM Provider Layer | Complete (02-02) |
+| LLM-12 | Phase 2: LLM Provider Layer | Complete (02-02) |
+| LLM-13 | Phase 2: LLM Provider Layer | Complete (02-02) |
+| LLM-14 | Phase 2: LLM Provider Layer | Complete (02-02) |
+| LLM-15 | Phase 2: LLM Provider Layer | Complete (02-02) |
+| LLM-16 | Phase 2: LLM Provider Layer | Complete (02-02) |
+| LLM-17 | Phase 2: LLM Provider Layer | Complete (02-02) |
 | LLM-18 | Phase 2: LLM Provider Layer | Pending |
 | CHAN-01 | Phase 3: Channel Abstraction Layer | Pending |
 | CHAN-02 | Phase 3: Channel Abstraction Layer | Pending |

@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: in_progress
-last_updated: "2026-03-02T10:14:20Z"
+last_updated: "2026-03-02T10:36:27Z"
 progress:
   total_phases: 7
   completed_phases: 1
@@ -23,11 +23,11 @@ See: .planning/PROJECT.md (updated 2026-03-02)
 ## Current Position
 
 Phase: 2 of 7 (LLM Provider Layer) — In progress
-Plan: 1 of 4 complete in current phase
+Plan: 2 of 4 complete in current phase
 Status: In progress
-Last activity: 2026-03-02 — Plan 02-01 complete: TDD RED phase scaffold for LLM-01 through LLM-18; SynapseConfig.model_mappings field added; 20 tests skipped (ROUTER_AVAILABLE=False)
+Last activity: 2026-03-02 — Plan 02-02 complete: SynapseLLMRouter implemented with litellm.Router; 19 tests GREEN, test_no_hardcoded_models XFAIL; litellm pinned in pyproject.toml
 
-Progress: [████████░░] 18% (1/4 plans in phase 2)
+Progress: [████████████░░] 32% (2/4 plans in phase 2)
 
 ## Performance Metrics
 
@@ -41,10 +41,10 @@ Progress: [████████░░] 18% (1/4 plans in phase 2)
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-foundation-config | 6/6 | 57 min | 9.5 min |
-| 02-llm-provider-layer | 1/4 | 3 min | 3 min |
+| 02-llm-provider-layer | 2/4 | 21 min | 10.5 min |
 
 **Recent Trend:**
-- Last 5 plans: [3min, 2min, 25min, 8min, 11min, 3min]
+- Last 5 plans: [18min, 3min, 2min, 25min, 8min, 11min]
 - Trend: stable
 
 *Updated after each plan completion*
@@ -76,6 +76,9 @@ Recent decisions affecting current work:
 - [Phase 02-01]: Tests use pytestmark skipif (ROUTER_AVAILABLE=False) rather than per-function marks — single guard makes RED->GREEN transition a one-line edit when Plan 02 ships the router
 - [Phase 02-01]: LLM-16 (no hardcoded models) marked xfail strict=False — naturally passes after Plan 04 sweeps call sites, no test rewrite needed
 - [Phase 02-01]: model_mappings defaults to empty dict {} same as providers/channels — consistent three-layer precedence
+- [Phase 02-02]: num_retries=0 in litellm.Router — fallback chain handles redundancy; retrying same model on RateLimitError consumes quota without benefit
+- [Phase 02-02]: _inject_provider_keys() respects env var precedence — only injects if env var not already set (env Layer 1 > synapse.json Layer 2)
+- [Phase 02-02]: github_copilot_fake_auth autouse fixture in conftest.py — prevents OAuth device-code flow during unit tests for github_copilot/ Router entries
 
 ### Pending Todos
 
@@ -84,10 +87,10 @@ None yet.
 ### Blockers/Concerns
 
 - Phase 4 (Baileys bridge): verify current @whiskeysockets/baileys API for useMultiFileAuthState() and cachedGroupMetadata before writing bridge JS — Baileys API surface changes between releases
-- Phase 2 (litellm): verify whether finish_reason and fallback_continuation streaming bugs are patched in pinned version before implementing streaming logic
+- Phase 2 (litellm streaming): stream=False enforced in Plan 02; streaming not used in Phase 2 — blocker removed
 
 ## Session Continuity
 
-Last session: 2026-03-02T10:14:20Z
-Stopped at: Completed 02-01-PLAN.md — TDD RED phase scaffold for LLM-01 through LLM-18; SynapseConfig.model_mappings added
+Last session: 2026-03-02T10:36:27Z
+Stopped at: Completed 02-02-PLAN.md — SynapseLLMRouter with litellm.Router; 19 tests GREEN; litellm pinned in pyproject.toml
 Resume file: None

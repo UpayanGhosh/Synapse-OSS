@@ -65,7 +65,7 @@ Plans:
 
 Plans:
 - [x] 02-01-PLAN.md — TDD scaffold: extend SynapseConfig.model_mappings + create test_llm_router.py (RED phase) + mock_acompletion fixture
-- [ ] 02-02-PLAN.md — Create workspace/sci_fi_dashboard/llm_router.py (SynapseLLMRouter + build_router + _inject_provider_keys) + pin litellm in pyproject.toml
+- [x] 02-02-PLAN.md — Create workspace/sci_fi_dashboard/llm_router.py (SynapseLLMRouter + build_router + _inject_provider_keys) + pin litellm in pyproject.toml
 - [ ] 02-03-PLAN.md — Rewrite workspace/skills/llm_router.py: replace _call_antigravity() with SynapseLLMRouter; preserve generate()/embed() interface
 - [ ] 02-04-PLAN.md — Rewrite api_gateway.py LLM section: replace call_gemini_direct/call_gateway_model/MODEL_* with SynapseLLMRouter.call(); turn test_no_hardcoded_models GREEN
 
