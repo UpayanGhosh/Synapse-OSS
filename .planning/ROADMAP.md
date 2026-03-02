@@ -16,7 +16,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 2: LLM Provider Layer** - Replace openclaw proxy at port 8080 with litellm.acompletion() — all 25+ providers routable without openclaw running (completed 2026-03-02)
 - [x] **Phase 3: Channel Abstraction Layer** - Establish BaseChannel ABC, ChannelRegistry, and unified webhook router before any channel is implemented (completed 2026-03-02)
 - [x] **Phase 4: WhatsApp — Baileys Bridge** - Replace openclaw message send CLI with a self-managed Baileys Node.js microservice (completed 2026-03-02)
-- [x] **Phase 5: Core Channels — Telegram, Discord, Slack** - Add the three most widely used chat platforms as native channel integrations (completed 2026-03-02)
+- [x] **Phase 5: Core Channels — Telegram, Discord, Slack** - Add the three most widely used chat platforms as native channel integrations (completed 2026-03-02)
 - [ ] **Phase 6: Onboarding Wizard** - A user with zero prior Synapse experience can run synapse onboard and have a fully configured system in one session
 - [ ] **Phase 7: Session Metrics, Health & Cleanup** - Remove all remaining openclaw CLI calls; zero openclaw references in codebase
 
@@ -151,7 +151,14 @@ Plans:
   - m1: structure all async validation as standalone coroutines, not asyncio.run() inside typer commands — avoids event loop conflict in tests
   - m6: regex-validate API key format before making any live call; enforce 5s minimum delay between retries to avoid rate-limit hammering
   - GitHub Copilot OAuth device flow requires opening a browser and polling — must handle timeout gracefully with clear retry instructions
-**Plans**: TBD
+**Plans**: 5 plans
+
+Plans:
+- [ ] 06-01-PLAN.md — Add typer/questionary/qrcode deps + create workspace/cli/__init__.py + workspace/synapse_cli.py entry point
+- [ ] 06-02-PLAN.md — Create workspace/cli/provider_steps.py: 25-provider catalog, validate_provider(), validate_ollama(), github_copilot_device_flow()
+- [ ] 06-03-PLAN.md — Create workspace/cli/channel_steps.py: per-channel credential collection + validation (Telegram/Discord/Slack/WhatsApp QR)
+- [ ] 06-04-PLAN.md — Create workspace/cli/onboard.py: full wizard orchestration, interactive + non-interactive paths, migration detection, config write
+- [ ] 06-05-PLAN.md — Create workspace/tests/test_onboard.py: full test suite covering all 10 ONB requirements
 
 ### Phase 7: Session Metrics, Health & Cleanup
 **Goal**: All remaining openclaw CLI calls are removed from the codebase — session metrics come from internal SQLite, health checks call the internal health endpoint, start/stop scripts have no openclaw references
@@ -180,5 +187,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | 3. Channel Abstraction Layer | 4/4 | Complete   | 2026-03-02 |
 | 4. WhatsApp — Baileys Bridge | 4/4 | Complete   | 2026-03-02 |
 | 5. Core Channels — Telegram, Discord, Slack | 4/4 | Complete   | 2026-03-02 |
-| 6. Onboarding Wizard | 0/TBD | Not started | - |
+| 6. Onboarding Wizard | 0/5 | Not started | - |
 | 7. Session Metrics, Health & Cleanup | 0/TBD | Not started | - |
