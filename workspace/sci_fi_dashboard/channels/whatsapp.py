@@ -55,7 +55,7 @@ class WhatsAppChannel(BaseChannel):
     """
 
     MAX_RESTARTS: int = 5
-    INITIAL_BACKOFF: float = 1.0
+    INITIAL_BACKOFF: float = 0.0  # first restart immediate; subsequent: 1 s → 2 s → 4 s → … → 60 s
 
     def __init__(self, bridge_port: int = 5010, python_webhook_url: str = "") -> None:
         self._port = bridge_port
@@ -166,7 +166,8 @@ class WhatsAppChannel(BaseChannel):
 
                 attempts += 1
                 await asyncio.sleep(backoff)
-                backoff = min(backoff * 2, 60.0)
+                # After the first (immediate) restart, use exponential backoff
+                backoff = min(max(backoff * 2, 1.0), 60.0)
 
             except asyncio.CancelledError:
                 await self.stop()
@@ -185,7 +186,7 @@ class WhatsAppChannel(BaseChannel):
             self._proc.terminate()
             try:
                 await asyncio.wait_for(self._proc.wait(), timeout=5.0)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 self._proc.kill()
         self._status = "stopped"
         logger.info("[WA] Bridge stopped")
