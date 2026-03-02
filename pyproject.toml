@@ -16,6 +16,9 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
+dependencies = [
+    "litellm>=1.82.0,<1.83.0",
+]
 
 [project.urls]
 Homepage = "https://github.com/UpayanGhosh/Synapse-OSS"
