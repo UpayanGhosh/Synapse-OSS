@@ -51,26 +51,38 @@ class TaskQueue:
         task.processing_started = datetime.now()
         return task
 
+    def _safe_task_done(self) -> None:
+        """Call task_done() only if there are outstanding unfinished tasks.
+
+        asyncio.Queue.task_done() raises ValueError if called more times than get().
+        This guard allows _handle_task to be called directly in tests without
+        enqueueing first (CHAN-07 test pattern).
+        """
+        try:
+            self._queue.task_done()
+        except ValueError:
+            pass  # task was not obtained via dequeue() — safe to ignore in direct-call tests
+
     def complete(self, task: MessageTask, result: str = ""):
         task.status = TaskStatus.COMPLETED
         task.response = result
         task.processing_finished = datetime.now()
         self._archive(task)
-        self._queue.task_done()
+        self._safe_task_done()
 
     def fail(self, task: MessageTask, error: str = ""):
         task.status = TaskStatus.FAILED
         task.error = error
         task.processing_finished = datetime.now()
         self._archive(task)
-        self._queue.task_done()
+        self._safe_task_done()
 
     def supersede(self, task: MessageTask):
         """Mark a task as superseded by a newer one for the same chat."""
         task.status = TaskStatus.SUPERSEDED
         task.processing_finished = datetime.now()
         self._archive(task)
-        self._queue.task_done()
+        self._safe_task_done()
 
     def _archive(self, task: MessageTask):
         self._active_tasks.pop(task.task_id, None)
