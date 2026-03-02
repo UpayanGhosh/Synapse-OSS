@@ -255,94 +255,28 @@ from utils.env_loader import load_env_file  # noqa: E402
 load_env_file(anchor=Path(__file__))  # noqa: E402
 validate_env()  # ENV-01, ENV-02, ENV-03 -- hard-fail or warn before singletons
 
-# --- LLM Client ---
-# Direct Gemini REST API using GEMINI_API_KEY
-# Phase 2 will replace this with litellm.acompletion() routing
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
-GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
+from synapse_config import SynapseConfig  # noqa: E402
+from sci_fi_dashboard.llm_router import SynapseLLMRouter  # noqa: E402
 
-# Map internal model IDs to Gemini REST API model names
-GEMINI_MODEL_MAP = {
-    "gemini-3-flash": "gemini-2.0-flash",
-    "gemini-3-pro-high": "gemini-1.5-pro",
-}
+# --- LLM Client (Phase 2: litellm via SynapseLLMRouter) ---
+# Model strings come from synapse.json model_mappings — no hardcoded strings here.
+_synapse_cfg = SynapseConfig.load()
+synapse_llm_router = SynapseLLMRouter(_synapse_cfg)
+
+_model_mappings = _synapse_cfg.model_mappings
+_llm_arch = f"litellm/SynapseLLMRouter ({len(_model_mappings)} roles configured)"
+print(
+    f"[BOT] LLM Architecture ({_llm_arch}): \n"
+    + "\n".join(
+        f"   {role}: {cfg.get('model', '?')} (fallback: {cfg.get('fallback', 'none')})"
+        for role, cfg in _model_mappings.items()
+    )
+)
 
 # REDIS_URL removed -- no Redis dependency
 BRIDGE_DB_PATH = Path(__file__).resolve().with_name("whatsapp_bridge.db")
 # bridge_queue REMOVED -- Celery no longer needed
 # WhatsApp messages handled by gateway.worker.MessageWorker (async)
-
-
-async def call_gemini_direct(
-    model_id: str,
-    input_messages: list,
-    temperature: float = 0.7,
-    max_tokens: int = 1000,
-) -> str:
-    """Direct Gemini REST API call using GEMINI_API_KEY."""
-    if not GEMINI_API_KEY:
-        return "Error: GEMINI_API_KEY is not set. Add it to your .env file."
-
-    gemini_model = GEMINI_MODEL_MAP.get(model_id, "gemini-2.0-flash")
-
-    system_parts = []
-    contents = []
-    for msg in input_messages:
-        role = msg.get("role", "user")
-        content = msg.get("content", "")
-        if role == "system":
-            system_parts.append({"text": content})
-        else:
-            gemini_role = "model" if role == "assistant" else "user"
-            contents.append({"role": gemini_role, "parts": [{"text": content}]})
-
-    if not contents:
-        contents = [{"role": "user", "parts": [{"text": "Hello"}]}]
-
-    payload: dict = {
-        "contents": contents,
-        "generationConfig": {"temperature": temperature, "maxOutputTokens": max_tokens},
-    }
-    if system_parts:
-        payload["system_instruction"] = {"parts": system_parts}
-
-    url = f"{GEMINI_API_BASE}/{gemini_model}:generateContent?key={GEMINI_API_KEY}"
-    async with httpx.AsyncClient(timeout=60.0) as client:
-        resp = await client.post(url, json=payload)
-        if resp.status_code != 200:
-            print(f"[WARN] Gemini Direct Error ({resp.status_code}): {resp.text[:200]}")
-            return f"Error: Gemini API returned {resp.status_code}"
-        data = resp.json()
-        candidates = data.get("candidates", [])
-        if not candidates:
-            return "(No response from Gemini)"
-        parts = candidates[0].get("content", {}).get("parts", [])
-        return "".join(p.get("text", "") for p in parts)
-
-
-async def call_gateway_model(
-    model_id: str,
-    input_messages: list,
-    temperature: float = 0.7,
-    max_tokens: int = 1000,
-) -> str:
-    """Route to direct Gemini API. Phase 2 will replace this with litellm.acompletion() routing."""
-    # Phase 2 will replace this with litellm.acompletion() routing
-    return await call_gemini_direct(model_id, input_messages, temperature, max_tokens)
-
-
-# --- Model Constants ---
-MODEL_CASUAL = "gemini-3-flash"
-MODEL_CODING = "gemini-3-flash"  # Placeholder
-MODEL_ANALYSIS = "gemini-3-pro-high"
-MODEL_REVIEW = "gemini-3-pro-high"  # Placeholder
-
-_llm_arch = f"Direct Gemini API ({'key set' if GEMINI_API_KEY else 'KEY MISSING -- add GEMINI_API_KEY to .env'})"
-print(
-    f"[BOT] LLM Architecture ({_llm_arch}): \n"
-    f"   Casual: {MODEL_CASUAL}\n   Coding: {MODEL_CODING}\n"
-    f"   Analysis: {MODEL_ANALYSIS}\n   Review: {MODEL_REVIEW}"
-)
 
 # --- Persona Profiles Layer Migrated to SBS ---
 # SBS handles loading persona profiles natively internally.
@@ -391,96 +325,43 @@ class WhatsAppLoopTestRequest(BaseModel):
 
 WINDOWS_PC_IP = os.environ.get("WINDOWS_PC_IP", "")
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
-PROXY_URL = "http://localhost:8080"  # Antigravity proxy for Claude/GPT/Gemini-Pro
 
 
 async def call_local_spicy(prompt: str) -> str:
-    """
-    LOCAL_SPICY: Ollama on Windows PC (fluffy/l3-8b-stheno-v3.2:latest)
-    The Vault. Zero-cloud leakage.
-    15.0s connection timeout. Raises httpx.TimeoutException if offline.
-    """
-    print(f"[HOT] Calling LOCAL_SPICY (The Vault) at {WINDOWS_PC_IP}...")
-    async with httpx.AsyncClient(timeout=httpx.Timeout(15.0, connect=15.0)) as client:
-        payload = {
-            "model": "fluffy/l3-8b-stheno-v3.2:latest",
-            "prompt": prompt,
-            "stream": False,
-        }
-        url = f"http://{WINDOWS_PC_IP}:11434/api/generate"
-        response = await client.post(url, json=payload)
-        response.raise_for_status()
-        data = response.json()
-        return data["response"]
+    """LOCAL_SPICY (The Vault): routes to 'vault' role in model_mappings."""
+    print("[HOT] Calling LOCAL_SPICY (The Vault) via SynapseLLMRouter 'vault' role...")
+    messages = [{"role": "user", "content": prompt}]
+    return await synapse_llm_router.call("vault", messages, temperature=0.8, max_tokens=2000)
 
 
 async def call_or_fallback(prompt: str) -> str:
-    """
-    OR_FALLBACK: OpenRouter API (gryphe/mythomax-l2-13b)
-    """
-    print("[REFRESH] Calling OR_FALLBACK...")
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        payload = {
-            "model": "gryphe/mythomax-l2-13b",
-            "messages": [{"role": "user", "content": prompt}],
-        }
-        headers = {
-            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-            "Content-Type": "application/json",
-            "HTTP-Referer": "http://localhost:8000",
-        }
-        response = await client.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            json=payload,
-            headers=headers,
-        )
-        response.raise_for_status()
-        data = response.json()
-        return data["choices"][0]["message"]["content"]
+    """OR_FALLBACK: casual role via SynapseLLMRouter (openrouter fallback handled by Router)."""
+    print("[REFRESH] Calling OR_FALLBACK via SynapseLLMRouter...")
+    messages = [{"role": "user", "content": prompt}]
+    return await synapse_llm_router.call("casual", messages)
 
 
-async def call_gemini_flash(input_messages, temperature=0.7, max_tokens=500) -> str:
-    """
-    AG_CASUAL / TRAFFIC COP: Gemini 3 Flash (via Proxy)
-    Used for routing and casual chat.
-    """
-    # Direct pass-through; call_gateway_model handles system prompt extraction
-    return await call_gateway_model(MODEL_CASUAL, input_messages, temperature, max_tokens)
+async def call_gemini_flash(input_messages: list, temperature: float = 0.7, max_tokens: int = 500) -> str:
+    """AG_CASUAL / TRAFFIC COP: routes to 'casual' role in model_mappings."""
+    return await synapse_llm_router.call("casual", input_messages, temperature, max_tokens)
 
 
 async def call_ag_code(messages: list) -> str:
-    """
-    AG_CODE (The Hacker): Claude Sonnet 4.5 Thinking (Placeholder: Gemini Flash)
-    """
-    print("[CMD] Routing to THE HACKER (Claude Sonnet 4.5 via OAuth)...")
-    # Placeholder: Routing to Gemini Flash but using Coding Model ID if credits allowed,
-    # OR forcefully use Gemini Flash ID but *logically* treat as coding.
-    # User said "All models should route through google-antigravity".
-    # User said "I'll use Claude models once credits back".
-    # So we use Gemini Flash ID for now to save credits, as requested.
-    print("[WARN] CREDIT_SAVER: Routing Coding Task to Gemini Flash (Placeholder)")
-    return await call_gemini_flash(messages, temperature=0.2, max_tokens=1000)
+    """AG_CODE (The Hacker): routes to 'code' role in model_mappings."""
+    print("[CMD] Routing to THE HACKER (code role)...")
+    return await synapse_llm_router.call("code", messages, temperature=0.2, max_tokens=1000)
 
 
 async def call_ag_oracle(messages: list) -> str:
-    """
-    AG_ORACLE (The Architect): Google Antigravity Gemini 3 Pro
-    """
-    print("[BLDG] Calling The Architect (Gemini 3 Pro)...")
-    print("[BLDG] Calling The Architect (Gemini 3 Pro via OAuth)...")
-    # But usually better to format cleanly.
-    # Re-using logic:
-    return await call_gateway_model(MODEL_ANALYSIS, messages, temperature=0.7, max_tokens=1500)
+    """AG_ORACLE (The Architect): routes to 'analysis' role in model_mappings."""
+    print("[BLDG] Calling The Architect (analysis role)...")
+    return await synapse_llm_router.call("analysis", messages, temperature=0.7, max_tokens=1500)
 
 
 async def call_ag_review(messages: list) -> str:
-    """
-    AG_REVIEW (The Philosopher): Claude Opus 4.6 Thinking
-    """
-    print("[THINK] Calling The Philosopher (Claude Opus 4.6)...")
-    # Placeholder: Routing to Gemini Pro to save Claude credits
-    print("[WARN] CREDIT_SAVER: Routing Review Task to Gemini 3 Pro (Placeholder)")
-    return await call_ag_oracle(messages)
+    """AG_REVIEW (The Philosopher): routes to 'review' role in model_mappings."""
+    print("[THINK] Calling The Philosopher (review role)...")
+    return await synapse_llm_router.call("review", messages, temperature=0.7, max_tokens=1500)
 
 
 async def translate_banglish(text: str) -> str:
@@ -950,12 +831,12 @@ def health():
         "pending_conflicts": len(
             [c for c in conflicts.pending_conflicts if c["status"] == "pending"]
         ),
-        "model": MODEL_CASUAL,
+        "model": SynapseConfig.load().model_mappings.get("casual", {}).get("model", "unset"),
         "architecture": {
-            "casual": MODEL_CASUAL,
-            "coding": MODEL_CODING,
-            "analysis": MODEL_ANALYSIS,
-            "review": MODEL_REVIEW,
+            "casual": SynapseConfig.load().model_mappings.get("casual", {}).get("model", "unset"),
+            "code": SynapseConfig.load().model_mappings.get("code", {}).get("model", "unset"),
+            "analysis": SynapseConfig.load().model_mappings.get("analysis", {}).get("model", "unset"),
+            "review": SynapseConfig.load().model_mappings.get("review", {}).get("model", "unset"),
         },
     }
 
