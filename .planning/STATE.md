@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: in_progress
-last_updated: "2026-03-02T09:35:19Z"
+last_updated: "2026-03-02T10:14:20Z"
 progress:
   total_phases: 7
   completed_phases: 1
-  total_plans: 6
-  completed_plans: 6
+  total_plans: 7
+  completed_plans: 7
 ---
 
 # Project State
@@ -18,32 +18,33 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-02)
 
 **Core value:** A user can run Synapse-OSS on any machine, connect to their messaging apps and LLM providers, and have a fully working AI assistant — with zero dependency on any external binary or bridge service.
-**Current focus:** Phase 1 — Foundation & Config
+**Current focus:** Phase 2 — LLM Provider Layer
 
 ## Current Position
 
-Phase: 1 of 7 (Foundation & Config) — COMPLETE
-Plan: 6 of 6 complete in current phase
+Phase: 2 of 7 (LLM Provider Layer) — In progress
+Plan: 1 of 4 complete in current phase
 Status: In progress
-Last activity: 2026-03-02 — Plan 01-06 complete: Swept openclaw paths in workspace/scripts (15 files) and workspace/skills (2 files); 19 files modified; v2_migration files annotated as migration sources; llm_router.py auth stubbed with TODO Phase 2
+Last activity: 2026-03-02 — Plan 02-01 complete: TDD RED phase scaffold for LLM-01 through LLM-18; SynapseConfig.model_mappings field added; 20 tests skipped (ROUTER_AVAILABLE=False)
 
-Progress: [██████░░░░] 14% (6/6 plans in phase 1, phase 1 complete)
+Progress: [████████░░] 18% (1/4 plans in phase 2)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 2
-- Average duration: 2.5 min
-- Total execution time: 0.08 hours
+- Total plans completed: 3
+- Average duration: 2.7 min
+- Total execution time: 0.09 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-foundation-config | 6/6 | 57 min | 9.5 min |
+| 02-llm-provider-layer | 1/4 | 3 min | 3 min |
 
 **Recent Trend:**
-- Last 5 plans: [3min, 2min, 25min, 8min, 11min]
+- Last 5 plans: [3min, 2min, 25min, 8min, 11min, 3min]
 - Trend: stable
 
 *Updated after each plan completion*
@@ -72,6 +73,9 @@ Recent decisions affecting current work:
 - [Phase 01-06]: v2_migration source path refs (~/.openclaw/) intentionally preserved — annotated with NOTE comment
 - [Phase 01-06]: llm_router.py _load_gateway_config() stubbed to return (None, None) — downstream falls through to Ollama backup; full replacement in Phase 2
 - [Phase 01-06]: sentinel.py process/service refs updated to synapse equivalents eagerly (pgrep synapse, ai.synapse.memory launchctl ID)
+- [Phase 02-01]: Tests use pytestmark skipif (ROUTER_AVAILABLE=False) rather than per-function marks — single guard makes RED->GREEN transition a one-line edit when Plan 02 ships the router
+- [Phase 02-01]: LLM-16 (no hardcoded models) marked xfail strict=False — naturally passes after Plan 04 sweeps call sites, no test rewrite needed
+- [Phase 02-01]: model_mappings defaults to empty dict {} same as providers/channels — consistent three-layer precedence
 
 ### Pending Todos
 
@@ -84,6 +88,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-02T09:35:19Z
-Stopped at: Completed 01-06-PLAN.md — sweep openclaw paths in workspace/scripts and workspace/skills; Phase 1 complete
+Last session: 2026-03-02T10:14:20Z
+Stopped at: Completed 02-01-PLAN.md — TDD RED phase scaffold for LLM-01 through LLM-18; SynapseConfig.model_mappings added
 Resume file: None
