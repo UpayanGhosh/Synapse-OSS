@@ -53,7 +53,7 @@ if __name__ == "__main__":
     gate = EntityGate()
 
     test_sentences = [
-        "I need to fix the py script for openclaw.",
+        "I need to fix the py script for synapse.",
         "Is SOTE worth playing?",
         "Configure the vector db for me.",
     ]

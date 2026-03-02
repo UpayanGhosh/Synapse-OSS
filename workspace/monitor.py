@@ -107,7 +107,7 @@ class BrainDashboard:
 
     def connect_log(self):
         try:
-            log_files = glob.glob(os.path.join(LOG_DIR, "openclaw-*.log"))
+            log_files = glob.glob(os.path.join(LOG_DIR, "synapse-*.log"))
             if log_files:
                 new_file = max(log_files, key=os.path.getmtime)
                 if new_file != self.log_file:
