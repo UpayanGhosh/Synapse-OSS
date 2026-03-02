@@ -15,7 +15,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: Foundation & Config** - Replace ~/.openclaw/ data root with ~/.synapse/, provide safe migration, eliminate openclaw path dependency (completed 2026-03-02)
 - [x] **Phase 2: LLM Provider Layer** - Replace openclaw proxy at port 8080 with litellm.acompletion() — all 25+ providers routable without openclaw running (completed 2026-03-02)
 - [x] **Phase 3: Channel Abstraction Layer** - Establish BaseChannel ABC, ChannelRegistry, and unified webhook router before any channel is implemented (completed 2026-03-02)
-- [x] **Phase 4: WhatsApp — Baileys Bridge** - Replace openclaw message send CLI with a self-managed Baileys Node.js microservice (completed 2026-03-02)
+- [x] **Phase 4: WhatsApp — Baileys Bridge** - Replace openclaw message send CLI with a self-managed Baileys Node.js microservice (completed 2026-03-02)
 - [ ] **Phase 5: Core Channels — Telegram, Discord, Slack** - Add the three most widely used chat platforms as native channel integrations
 - [ ] **Phase 6: Onboarding Wizard** - A user with zero prior Synapse experience can run synapse onboard and have a fully configured system in one session
 - [ ] **Phase 7: Session Metrics, Health & Cleanup** - Remove all remaining openclaw CLI calls; zero openclaw references in codebase
@@ -128,7 +128,13 @@ Plans:
   - M2 (Discord): validate MESSAGE_CONTENT privileged intent on first message — log CRITICAL and disable adapter if content is empty; document in onboarding that the intent must be enabled in the Discord developer portal
   - M6 (Slack): require both xapp- and xoxb- tokens; validate prefix format at startup with clear error before attempting Socket Mode connection
   - All three channels are independent and can be built in parallel
-**Plans**: TBD
+**Plans**: 4 plans
+
+Plans:
+- [ ] 05-01-PLAN.md — TelegramChannel(BaseChannel) in channels/telegram.py + test_telegram_channel.py
+- [ ] 05-02-PLAN.md — DiscordChannel(BaseChannel) in channels/discord_channel.py + test_discord_channel.py
+- [ ] 05-03-PLAN.md — SlackChannel(BaseChannel) in channels/slack.py + test_slack_channel.py
+- [ ] 05-04-PLAN.md — Wire all three channels into api_gateway.py + channels/__init__.py + requirements.txt; refactor GET /health to iterate channel_registry.list_ids()
 
 ### Phase 6: Onboarding Wizard
 **Goal**: A user with zero prior Synapse experience can run synapse onboard and complete full system configuration — LLM providers validated, channels configured, data migrated if needed — in a single terminal session
@@ -173,6 +179,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | 2. LLM Provider Layer | 4/4 | Complete    | 2026-03-02 |
 | 3. Channel Abstraction Layer | 4/4 | Complete   | 2026-03-02 |
 | 4. WhatsApp — Baileys Bridge | 4/4 | Complete   | 2026-03-02 |
-| 5. Core Channels — Telegram, Discord, Slack | 0/TBD | Not started | - |
+| 5. Core Channels — Telegram, Discord, Slack | 0/4 | Not started | - |
 | 6. Onboarding Wizard | 0/TBD | Not started | - |
 | 7. Session Metrics, Health & Cleanup | 0/TBD | Not started | - |
