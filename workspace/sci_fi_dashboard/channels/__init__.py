@@ -21,5 +21,6 @@ Example usage in FastAPI lifespan:
 from .base import BaseChannel, ChannelMessage
 from .registry import ChannelRegistry
 from .stub import StubChannel
+from .whatsapp import WhatsAppChannel
 
-__all__ = ["BaseChannel", "ChannelMessage", "ChannelRegistry", "StubChannel"]
+__all__ = ["BaseChannel", "ChannelMessage", "ChannelRegistry", "StubChannel", "WhatsAppChannel"]
