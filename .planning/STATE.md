@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: in_progress
-last_updated: "2026-03-02T10:36:27Z"
+last_updated: "2026-03-02T10:44:46Z"
 progress:
   total_phases: 7
   completed_phases: 1
@@ -23,11 +23,11 @@ See: .planning/PROJECT.md (updated 2026-03-02)
 ## Current Position
 
 Phase: 2 of 7 (LLM Provider Layer) — In progress
-Plan: 2 of 4 complete in current phase
+Plan: 3 of 4 complete in current phase
 Status: In progress
-Last activity: 2026-03-02 — Plan 02-02 complete: SynapseLLMRouter implemented with litellm.Router; 19 tests GREEN, test_no_hardcoded_models XFAIL; litellm pinned in pyproject.toml
+Last activity: 2026-03-02 — Plan 02-03 complete: skills/llm_router.py rewritten to use SynapseLLMRouter; _call_antigravity() removed; all urllib.request/openclaw refs gone; 19 tests GREEN
 
-Progress: [████████████░░] 32% (2/4 plans in phase 2)
+Progress: [█████████████░] 48% (3/4 plans in phase 2)
 
 ## Performance Metrics
 
@@ -41,7 +41,7 @@ Progress: [████████████░░] 32% (2/4 plans in phase 2
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-foundation-config | 6/6 | 57 min | 9.5 min |
-| 02-llm-provider-layer | 2/4 | 21 min | 10.5 min |
+| 02-llm-provider-layer | 3/4 | 23 min | 7.7 min |
 
 **Recent Trend:**
 - Last 5 plans: [18min, 3min, 2min, 25min, 8min, 11min]
@@ -79,6 +79,9 @@ Recent decisions affecting current work:
 - [Phase 02-02]: num_retries=0 in litellm.Router — fallback chain handles redundancy; retrying same model on RateLimitError consumes quota without benefit
 - [Phase 02-02]: _inject_provider_keys() respects env var precedence — only injects if env var not already set (env Layer 1 > synapse.json Layer 2)
 - [Phase 02-02]: github_copilot_fake_auth autouse fixture in conftest.py — prevents OAuth device-code flow during unit tests for github_copilot/ Router entries
+- [Phase 02-03]: _run_async() uses ThreadPoolExecutor not nest_asyncio — avoids patching asyncio internals; works in both sync (db/tools.py) and async (FastAPI handlers) contexts
+- [Phase 02-03]: cloud_models defaults to ["casual"] not ["google-antigravity/gemini-3-flash"] — "casual" is a valid synapse role name for role-based routing
+- [Phase 02-03]: force_kimi preserved in generate() signature for backward compat but ignored — role-based routing replaces old Kimi/NVIDIA path
 
 ### Pending Todos
 
@@ -91,6 +94,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-02T10:36:27Z
-Stopped at: Completed 02-02-PLAN.md — SynapseLLMRouter with litellm.Router; 19 tests GREEN; litellm pinned in pyproject.toml
+Last session: 2026-03-02T10:44:46Z
+Stopped at: Completed 02-03-PLAN.md — skills/llm_router.py rewritten with SynapseLLMRouter; _run_async() sync wrapper; all urllib.request/openclaw refs removed
 Resume file: None

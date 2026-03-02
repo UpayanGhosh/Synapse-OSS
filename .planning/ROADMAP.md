@@ -66,7 +66,7 @@ Plans:
 Plans:
 - [x] 02-01-PLAN.md — TDD scaffold: extend SynapseConfig.model_mappings + create test_llm_router.py (RED phase) + mock_acompletion fixture
 - [x] 02-02-PLAN.md — Create workspace/sci_fi_dashboard/llm_router.py (SynapseLLMRouter + build_router + _inject_provider_keys) + pin litellm in pyproject.toml
-- [ ] 02-03-PLAN.md — Rewrite workspace/skills/llm_router.py: replace _call_antigravity() with SynapseLLMRouter; preserve generate()/embed() interface
+- [x] 02-03-PLAN.md — Rewrite workspace/skills/llm_router.py: replace _call_antigravity() with SynapseLLMRouter; preserve generate()/embed() interface
 - [ ] 02-04-PLAN.md — Rewrite api_gateway.py LLM section: replace call_gemini_direct/call_gateway_model/MODEL_* with SynapseLLMRouter.call(); turn test_no_hardcoded_models GREEN
 
 ### Phase 3: Channel Abstraction Layer
@@ -158,7 +158,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation & Config | 6/6 | Complete   | 2026-03-02 |
-| 2. LLM Provider Layer | 1/4 | In progress | - |
+| 2. LLM Provider Layer | 3/4 | In progress | - |
 | 3. Channel Abstraction Layer | 0/TBD | Not started | - |
 | 4. WhatsApp — Baileys Bridge | 0/TBD | Not started | - |
 | 5. Core Channels — Telegram, Discord, Slack | 0/TBD | Not started | - |

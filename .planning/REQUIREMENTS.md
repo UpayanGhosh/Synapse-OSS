@@ -36,7 +36,7 @@
 - [x] **LLM-15**: System supports GitHub Copilot (copilot/<model> via OAuth device flow)
 - [x] **LLM-16**: Provider model string mapping table is defined in `synapse.json` — no hardcoded strings scattered across codebase
 - [x] **LLM-17**: LLM call errors (rate limits, auth failures, timeouts) are handled per-provider with appropriate retry/fallback logic
-- [ ] **LLM-18**: Existing mixture-of-agents routing logic (casual → Gemini Flash, code → Claude Sonnet, etc.) continues to work via new provider layer
+- [x] **LLM-18**: Existing mixture-of-agents routing logic (casual → Gemini Flash, code → Claude Sonnet, etc.) continues to work via new provider layer
 
 ### Channel Abstraction Layer
 
