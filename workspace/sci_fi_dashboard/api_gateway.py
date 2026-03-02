@@ -776,7 +776,8 @@ async def lifespan(app: FastAPI):
 
     app.state.worker = MessageWorker(
         queue=task_queue,
-        sender=sender,
+        sender=sender,              # kept as fallback during Phase 3; Phase 4 removes it
+        channel_registry=channel_registry,  # NEW: primary dispatch path (CHAN-07)
         process_fn=process_message_pipeline,
         num_workers=2,
     )
