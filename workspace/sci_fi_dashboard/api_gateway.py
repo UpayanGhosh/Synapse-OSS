@@ -174,20 +174,26 @@ import uuid  # noqa: E402
 from gateway.dedup import MessageDeduplicator  # noqa: E402
 from gateway.flood import FloodGate  # noqa: E402
 from gateway.queue import MessageTask, TaskQueue  # noqa: E402
-from gateway.sender import WhatsAppSender  # noqa: E402
 from gateway.worker import MessageWorker  # noqa: E402
 from channels.base import ChannelMessage  # noqa: E402
 from channels.registry import ChannelRegistry  # noqa: E402
 from channels.stub import StubChannel  # noqa: E402
+from channels.whatsapp import WhatsAppChannel  # noqa: E402
 
 task_queue = TaskQueue(max_size=100)
-sender = WhatsAppSender()
 dedup = MessageDeduplicator(window_seconds=300)
 flood = FloodGate(batch_window_seconds=3.0)
 
 # Channel registry — all adapters register here; lifespan calls start_all()
 channel_registry = ChannelRegistry()
-channel_registry.register(StubChannel(channel_id="whatsapp"))  # placeholder until Phase 4 WhatsApp bridge
+# Phase 4: Real WhatsApp bridge via Baileys Node.js microservice (WA-02)
+channel_registry.register(WhatsAppChannel(
+    bridge_port=int(os.environ.get("BRIDGE_PORT", "5010")),
+    python_webhook_url=os.environ.get(
+        "PYTHON_WEBHOOK_URL",
+        "http://127.0.0.1:8000/channels/whatsapp/webhook",
+    ),
+))
 channel_registry.register(StubChannel(channel_id="stub"))      # test/demo channel
 
 # --- Sentinel (File Governance) ---
@@ -776,8 +782,7 @@ async def lifespan(app: FastAPI):
 
     app.state.worker = MessageWorker(
         queue=task_queue,
-        sender=sender,              # kept as fallback during Phase 3; Phase 4 removes it
-        channel_registry=channel_registry,  # NEW: primary dispatch path (CHAN-07)
+        channel_registry=channel_registry,  # WA-02: WhatsAppChannel handles all dispatch
         process_fn=process_message_pipeline,
         num_workers=2,
     )
