@@ -49,11 +49,11 @@ See: .planning/PROJECT.md (updated 2026-03-02)
 ## Current Position
 
 Phase: 4 of 7 (WhatsApp Baileys Bridge) — In Progress
-Plan: 2 of 4 complete in current phase (04-01 test scaffold + 04-02 Baileys bridge)
-Status: Plans 04-01 and 04-02 complete — test scaffold (8 RED WA tests) + Baileys bridge microservice; ready for Plan 04-03 (WhatsAppChannel Python class)
-Last activity: 2026-03-02 — Plan 04-01 complete: 8 RED tests for WA-01 through WA-08 in test_whatsapp_channel.py; all SKIP (WA_AVAILABLE=False); WA_AVAILABLE guard + _make_mock_process() factory; 1 task, 1 file
+Plan: 3 of 4 complete in current phase (04-01 test scaffold + 04-02 Baileys bridge + 04-03 WhatsAppChannel)
+Status: Plans 04-01, 04-02, 04-03 complete — all 8 WA tests GREEN; WhatsAppChannel(BaseChannel) with supervisor+httpx; ready for Plan 04-04 (wire into api_gateway)
+Last activity: 2026-03-02 — Plan 04-03 complete: WhatsAppChannel in channels/whatsapp.py + __init__.py export; all 8 WA tests GREEN (WA-01 through WA-08); 2 tasks, 2 files
 
-Progress: [████████████░░░░░░░░] 15/18 plans complete (Phase 4 in progress)
+Progress: [█████████████░░░░░░░] 16/18 plans complete (Phase 4 in progress)
 
 ## Performance Metrics
 
@@ -69,10 +69,10 @@ Progress: [████████████░░░░░░░░] 15/18 p
 | 01-foundation-config | 6/6 | 57 min | 9.5 min |
 | 02-llm-provider-layer | 4/4 | 33 min | 8.3 min |
 | 03-channel-abstraction-layer | 4/4 | 31 min | 7.8 min |
-| 04-whatsapp-baileys-bridge | 2/4 | 3 min | — |
+| 04-whatsapp-baileys-bridge | 3/4 | 13 min | — |
 
 **Recent Trend:**
-- Last 5 plans: [3min, 2min, 25min, 8min, 11min, 10min]
+- Last 5 plans: [10min, 3min, 2min, 25min, 8min, 11min]
 - Trend: stable
 
 *Updated after each plan completion*
@@ -82,6 +82,7 @@ Progress: [████████████░░░░░░░░] 15/18 p
 | Phase 03-channel-abstraction-layer P04 | 9 | 1 tasks | 3 files |
 | Phase 04-whatsapp-baileys-bridge PP02 | 3 | 3 tasks | 4 files |
 | Phase 04-whatsapp-baileys-bridge P01 | 8 | 1 tasks | 1 files |
+| Phase 04-whatsapp-baileys-bridge P03 | 10 | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -135,6 +136,9 @@ Recent decisions affecting current work:
 - [Phase 04-whatsapp-baileys-bridge]: Built-in Node 18+ fetch() used instead of node-fetch npm — WA-08 validates >=18 so built-in always available; removes one dependency
 - [Phase 04-whatsapp-baileys-bridge]: pytestmark skipif WA_AVAILABLE guard applied module-wide — 8 tests SKIP until whatsapp.py exists; mirrors test_channels.py pattern
 - [Phase 04-whatsapp-baileys-bridge]: _make_mock_process() two-mode factory (returncode=None for running, returncode=N for crash) — reused across WA-02 and WA-06 supervisor tests
+- [Phase 04-03]: INITIAL_BACKOFF=0.0 — first restart immediate; subsequent: max(backoff*2,1.0) gives 1→2→4→8→…→60s; enables WA-06 test to assert restart within 10 asyncio.sleep(0) yields
+- [Phase 04-03]: asyncio.TimeoutError → builtin TimeoutError in stop() — ruff UP041; Python 3.11+ builtin is correct alias
+- [Phase 04-03]: per-request httpx.AsyncClient in async-with — avoids shared mutable connection state in async supervisor context
 
 ### Pending Todos
 
@@ -142,11 +146,11 @@ None yet.
 
 ### Blockers/Concerns
 
-- Phase 4 (Baileys bridge — Plan 04-03): WhatsAppChannel Python class (BaseChannel subclass) needed; subprocess supervisor, httpx send client, Node.js version validation
 - Phase 2 (litellm streaming): stream=False enforced in Plan 02; streaming not used in Phase 2 — blocker removed
+- None active: Phase 4 Plan 04-03 complete; ready for 04-04 (wire WhatsAppChannel into api_gateway)
 
 ## Session Continuity
 
-Last session: 2026-03-02T16:37:33Z
-Stopped at: Completed 04-01-PLAN.md — WhatsApp Baileys Bridge test scaffold: 8 RED tests covering WA-01 through WA-08 in test_whatsapp_channel.py; WA_AVAILABLE guard + _make_mock_process() AsyncMock factory; all SKIP (correct RED state); 1 task, 1 file
+Last session: 2026-03-02T16:51:46Z
+Stopped at: Completed 04-03-PLAN.md — WhatsAppChannel(BaseChannel): subprocess supervisor, Node.js 18+ validation, httpx HTTP client; all 8 WA tests GREEN; channels/__init__.py updated; 2 tasks, 2 files
 Resume file: None
