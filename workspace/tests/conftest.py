@@ -10,6 +10,7 @@ import sys
 import os
 import tempfile
 import shutil
+import unittest.mock
 
 # Add workspace to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -67,6 +68,25 @@ def sample_task():
         message_id="wa_001",
         sender_name="Test User",
     )
+
+
+@pytest.fixture
+def mock_acompletion():
+    """Patch litellm.acompletion with an AsyncMock that returns a valid response.
+
+    Used by test_llm_router.py to test LLM routing logic without real API calls.
+    All tests that request this fixture get a pre-configured AsyncMock that simulates
+    a successful litellm completion response.
+    """
+    mock_response = unittest.mock.MagicMock()
+    mock_response.choices = [unittest.mock.MagicMock()]
+    mock_response.choices[0].message.content = "Hello from mock LLM"
+    mock_response.choices[0].message.role = "assistant"
+    mock_response.choices[0].finish_reason = "stop"
+
+    with unittest.mock.patch("litellm.acompletion", new_callable=unittest.mock.AsyncMock) as mock:
+        mock.return_value = mock_response
+        yield mock
 
 
 # Configure pytest
