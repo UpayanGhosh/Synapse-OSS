@@ -2,6 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
+status: unknown
+last_updated: "2026-03-02T11:47:10.529Z"
+progress:
+  total_phases: 3
+  completed_phases: 2
+  total_plans: 14
+  completed_plans: 11
+---
+
+---
+gsd_state_version: 1.0
+milestone: v1.0
+milestone_name: milestone
 status: in_progress
 last_updated: "2026-03-02T10:52:00Z"
 progress:
@@ -48,6 +61,7 @@ Progress: [██████████████] 57% (4/4 plans in phase 2
 - Trend: stable
 
 *Updated after each plan completion*
+| Phase 03-channel-abstraction-layer P02 | 2 | 1 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -85,6 +99,8 @@ Recent decisions affecting current work:
 - [Phase 02-04]: test_no_hardcoded_models changed from grep -r directory scan to inline file parser checking specific files — avoids false positives in llm_router.py docstrings that explain model string format
 - [Phase 02-04]: synapse_llm_router initialized at module scope (not in lifespan) — SynapseLLMRouter does no I/O at init time; consistent with other module-level singletons in api_gateway.py
 - [Phase 02-04]: httpx retained in api_gateway.py — translate_banglish() still uses httpx.AsyncClient for OpenRouter REST calls directly; will be addressed in a later phase
+- [Phase 03-channel-abstraction-layer]: Per-method _channels_skip decorator (not pytestmark) — non-channel test classes stay independent of channels/ availability
+- [Phase 03-channel-abstraction-layer]: xfail strict=False for CHAN-04/05/07 — tests auto-turn GREEN when 03-03/03-04 ship without test rewrites
 
 ### Pending Todos
 

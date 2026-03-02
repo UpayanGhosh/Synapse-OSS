@@ -40,13 +40,13 @@
 
 ### Channel Abstraction Layer
 
-- [ ] **CHAN-01**: `BaseChannel` ABC defines the interface all channel implementations must satisfy: `receive()`, `send()`, `send_typing()`, `mark_read()`, `health_check()`
-- [ ] **CHAN-02**: `ChannelRegistry` singleton manages channel lifecycle: register, start, stop, restart on crash
-- [ ] **CHAN-03**: All channels normalize inbound messages to a unified `ChannelMessage` dataclass (channel_id, user_id, chat_id, text, timestamp, is_group, raw)
-- [ ] **CHAN-04**: Unified FastAPI router at `POST /channels/{channel_id}/webhook` replaces channel-specific endpoints
-- [ ] **CHAN-05**: `POST /whatsapp/enqueue` is kept as a backwards-compatibility shim that delegates to the unified handler
-- [ ] **CHAN-06**: Channel adapters use the asyncio coroutine pattern (not blocking `.run()` / `.run_polling()` calls) so all channels share the FastAPI event loop
-- [ ] **CHAN-07**: `sender.py` is generalized from WhatsApp-only to route outbound messages to the correct channel via ChannelRegistry
+- [x] **CHAN-01**: `BaseChannel` ABC defines the interface all channel implementations must satisfy: `receive()`, `send()`, `send_typing()`, `mark_read()`, `health_check()`
+- [x] **CHAN-02**: `ChannelRegistry` singleton manages channel lifecycle: register, start, stop, restart on crash
+- [x] **CHAN-03**: All channels normalize inbound messages to a unified `ChannelMessage` dataclass (channel_id, user_id, chat_id, text, timestamp, is_group, raw)
+- [x] **CHAN-04**: Unified FastAPI router at `POST /channels/{channel_id}/webhook` replaces channel-specific endpoints
+- [x] **CHAN-05**: `POST /whatsapp/enqueue` is kept as a backwards-compatibility shim that delegates to the unified handler
+- [x] **CHAN-06**: Channel adapters use the asyncio coroutine pattern (not blocking `.run()` / `.run_polling()` calls) so all channels share the FastAPI event loop
+- [x] **CHAN-07**: `sender.py` is generalized from WhatsApp-only to route outbound messages to the correct channel via ChannelRegistry
 
 ### WhatsApp Channel (Baileys Bridge)
 
@@ -177,14 +177,14 @@
 | LLM-15 | Phase 2: LLM Provider Layer | Complete (02-02) |
 | LLM-16 | Phase 2: LLM Provider Layer | Complete (02-02) |
 | LLM-17 | Phase 2: LLM Provider Layer | Complete (02-02) |
-| LLM-18 | Phase 2: LLM Provider Layer | Pending |
-| CHAN-01 | Phase 3: Channel Abstraction Layer | Pending |
-| CHAN-02 | Phase 3: Channel Abstraction Layer | Pending |
-| CHAN-03 | Phase 3: Channel Abstraction Layer | Pending |
-| CHAN-04 | Phase 3: Channel Abstraction Layer | Pending |
-| CHAN-05 | Phase 3: Channel Abstraction Layer | Pending |
-| CHAN-06 | Phase 3: Channel Abstraction Layer | Pending |
-| CHAN-07 | Phase 3: Channel Abstraction Layer | Pending |
+| LLM-18 | Phase 2: LLM Provider Layer | Complete |
+| CHAN-01 | Phase 3: Channel Abstraction Layer | Complete |
+| CHAN-02 | Phase 3: Channel Abstraction Layer | Complete |
+| CHAN-03 | Phase 3: Channel Abstraction Layer | Complete |
+| CHAN-04 | Phase 3: Channel Abstraction Layer | Complete |
+| CHAN-05 | Phase 3: Channel Abstraction Layer | Complete |
+| CHAN-06 | Phase 3: Channel Abstraction Layer | Complete |
+| CHAN-07 | Phase 3: Channel Abstraction Layer | Complete |
 | WA-01 | Phase 4: WhatsApp — Baileys Bridge | Pending |
 | WA-02 | Phase 4: WhatsApp — Baileys Bridge | Pending |
 | WA-03 | Phase 4: WhatsApp — Baileys Bridge | Pending |
