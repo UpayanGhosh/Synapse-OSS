@@ -14,7 +14,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Foundation & Config** - Replace ~/.openclaw/ data root with ~/.synapse/, provide safe migration, eliminate openclaw path dependency (completed 2026-03-02)
 - [x] **Phase 2: LLM Provider Layer** - Replace openclaw proxy at port 8080 with litellm.acompletion() — all 25+ providers routable without openclaw running (completed 2026-03-02)
-- [x] **Phase 3: Channel Abstraction Layer** - Establish BaseChannel ABC, ChannelRegistry, and unified webhook router before any channel is implemented (completed 2026-03-02)
+- [x] **Phase 3: Channel Abstraction Layer** - Establish BaseChannel ABC, ChannelRegistry, and unified webhook router before any channel is implemented (completed 2026-03-02)
 - [ ] **Phase 4: WhatsApp — Baileys Bridge** - Replace openclaw message send CLI with a self-managed Baileys Node.js microservice
 - [ ] **Phase 5: Core Channels — Telegram, Discord, Slack** - Add the three most widely used chat platforms as native channel integrations
 - [ ] **Phase 6: Onboarding Wizard** - A user with zero prior Synapse experience can run synapse onboard and have a fully configured system in one session
@@ -40,11 +40,11 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 Plans:
 - [x] 01-01-PLAN.md — Create workspace/synapse_config.py (SynapseConfig dataclass) + test_config.py
-- [ ] 01-02-PLAN.md — Wire db.py, sqlite_graph.py, emotional_trajectory.py, memory_engine.py to SynapseConfig
-- [ ] 01-03-PLAN.md — Remove openclaw from api_gateway.py + sender.py default + comment out openclaw calls in onboard scripts
-- [ ] 01-04-PLAN.md — Create migration script (migrate_openclaw.py) + test_migration.py
+- [x] 01-02-PLAN.md — Wire db.py, sqlite_graph.py, emotional_trajectory.py, memory_engine.py to SynapseConfig
+- [x] 01-03-PLAN.md — Remove openclaw from api_gateway.py + sender.py default + comment out openclaw calls in onboard scripts
+- [x] 01-04-PLAN.md — Create migration script (migrate_openclaw.py) + test_migration.py
 - [x] 01-05-PLAN.md — Sweep workspace/ root + sci_fi_dashboard/ files (11 files): replace ~/.openclaw/ with SynapseConfig
-- [ ] 01-06-PLAN.md — Sweep workspace/scripts/ + workspace/skills/ files (19 files): replace ~/.openclaw/ with SynapseConfig
+- [x] 01-06-PLAN.md — Sweep workspace/scripts/ + workspace/skills/ files (19 files): replace ~/.openclaw/ with SynapseConfig
 
 ### Phase 2: LLM Provider Layer
 **Goal**: All LLM calls route through litellm.acompletion() with zero calls to the openclaw proxy at port 8080 — all 25 OpenClaw providers work, existing mixture-of-agents routing logic is preserved
@@ -84,10 +84,10 @@ Plans:
 **Plans**: 4 plans
 
 Plans:
-- [ ] 03-01-PLAN.md — Create channels/ subpackage (BaseChannel ABC, ChannelRegistry, ChannelMessage, StubChannel)
-- [ ] 03-02-PLAN.md — TDD scaffold: write test_channels.py covering all CHAN requirements (RED phase for 04/05/07)
-- [ ] 03-03-PLAN.md — Wire ChannelRegistry into api_gateway.py: unified webhook, /whatsapp/enqueue shim, channel_id in MessageTask
-- [ ] 03-04-PLAN.md — Generalize worker.py: dispatch outbound via ChannelRegistry.get(task.channel_id).send()
+- [x] 03-01-PLAN.md — Create channels/ subpackage (BaseChannel ABC, ChannelRegistry, ChannelMessage, StubChannel)
+- [x] 03-02-PLAN.md — TDD scaffold: write test_channels.py covering all CHAN requirements (RED phase for 04/05/07)
+- [x] 03-03-PLAN.md — Wire ChannelRegistry into api_gateway.py: unified webhook, /whatsapp/enqueue shim, channel_id in MessageTask
+- [x] 03-04-PLAN.md — Generalize worker.py: dispatch outbound via ChannelRegistry.get(task.channel_id).send()
 
 ### Phase 4: WhatsApp — Baileys Bridge
 **Goal**: WhatsApp inbound and outbound works end-to-end via a self-managed Baileys Node.js microservice that Synapse starts, stops, and restarts — no openclaw binary involved at any stage
@@ -105,7 +105,13 @@ Plans:
   - C6: use HTTP webhook for bridge-to-Python communication, not stdout pipe — eliminates pipe buffer deadlock entirely
   - Pin exact @whiskeysockets/baileys version and commit package-lock.json on day one; verify current API for useMultiFileAuthState() and cachedGroupMetadata before writing bridge JS
   - Node.js 18+ validation must happen at Python startup, not after first message attempt
-**Plans**: TBD
+**Plans**: 4 plans
+
+Plans:
+- [ ] 04-01-PLAN.md — TDD scaffold: write test_whatsapp_channel.py with 8 RED tests covering WA-01 through WA-08
+- [ ] 04-02-PLAN.md — Create baileys-bridge/ Node.js project (index.js + package.json + .gitignore)
+- [ ] 04-03-PLAN.md — Implement WhatsAppChannel(BaseChannel) in channels/whatsapp.py + export from __init__.py
+- [ ] 04-04-PLAN.md — Wire WhatsAppChannel into api_gateway.py + extend GET /health with bridge status
 
 ### Phase 5: Core Channels — Telegram, Discord, Slack
 **Goal**: Users on Telegram, Discord, and Slack can interact with Synapse using the same message pipeline as WhatsApp — each channel is independently operational and health-monitored
@@ -166,7 +172,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | 1. Foundation & Config | 6/6 | Complete   | 2026-03-02 |
 | 2. LLM Provider Layer | 4/4 | Complete    | 2026-03-02 |
 | 3. Channel Abstraction Layer | 4/4 | Complete   | 2026-03-02 |
-| 4. WhatsApp — Baileys Bridge | 0/TBD | Not started | - |
+| 4. WhatsApp — Baileys Bridge | 0/4 | In progress | - |
 | 5. Core Channels — Telegram, Discord, Slack | 0/TBD | Not started | - |
 | 6. Onboarding Wizard | 0/TBD | Not started | - |
 | 7. Session Metrics, Health & Cleanup | 0/TBD | Not started | - |
