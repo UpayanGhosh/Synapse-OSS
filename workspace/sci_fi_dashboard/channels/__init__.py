@@ -19,12 +19,25 @@ Example usage in FastAPI lifespan:
 """
 
 from .base import BaseChannel, ChannelMessage
-from .discord_channel import DiscordChannel
 from .registry import ChannelRegistry
-from .slack import SlackChannel
 from .stub import StubChannel
-from .telegram import TelegramChannel
 from .whatsapp import WhatsAppChannel
+
+# Optional channel adapters — only importable if their SDK is installed
+try:
+    from .telegram import TelegramChannel
+except ImportError:
+    TelegramChannel = None  # type: ignore[assignment, misc]
+
+try:
+    from .discord_channel import DiscordChannel
+except ImportError:
+    DiscordChannel = None  # type: ignore[assignment, misc]
+
+try:
+    from .slack import SlackChannel
+except ImportError:
+    SlackChannel = None  # type: ignore[assignment, misc]
 
 __all__ = [
     "BaseChannel",
