@@ -15,6 +15,9 @@ psutil>=5.9.0
 
 # --- Terminal UI ---
 rich>=13.0.0
+typer[all]>=0.24.0              # CLI framework (onboarding wizard + synapse entry point)
+questionary>=2.1.0              # Interactive prompts: text, password, select, checkbox, confirm
+qrcode>=8.0                     # ASCII QR code rendering (WhatsApp QR in terminal)
 
 # --- Database & Vector Search ---
 sqlite-vec>=0.1.1

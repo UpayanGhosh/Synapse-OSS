@@ -18,12 +18,18 @@ classifiers = [
 ]
 dependencies = [
     "litellm>=1.82.0,<1.83.0",
+    "typer[all]>=0.24.0",
+    "questionary>=2.1.0",
+    "qrcode>=8.0",
 ]
 
 [project.urls]
 Homepage = "https://github.com/UpayanGhosh/Synapse-OSS"
 Repository = "https://github.com/UpayanGhosh/Synapse-OSS"
 Issues = "https://github.com/UpayanGhosh/Synapse-OSS/issues"
+
+[project.scripts]
+synapse = "synapse_cli:app"
 
 [build-system]
 requires = ["setuptools>=68.0", "wheel"]
