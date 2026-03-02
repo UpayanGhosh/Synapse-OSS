@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: in_progress
-last_updated: "2026-03-02T10:44:46Z"
+last_updated: "2026-03-02T10:52:00Z"
 progress:
   total_phases: 7
   completed_phases: 1
@@ -23,11 +23,11 @@ See: .planning/PROJECT.md (updated 2026-03-02)
 ## Current Position
 
 Phase: 2 of 7 (LLM Provider Layer) — In progress
-Plan: 3 of 4 complete in current phase
-Status: In progress
-Last activity: 2026-03-02 — Plan 02-03 complete: skills/llm_router.py rewritten to use SynapseLLMRouter; _call_antigravity() removed; all urllib.request/openclaw refs gone; 19 tests GREEN
+Plan: 4 of 4 complete in current phase
+Status: Phase 2 complete
+Last activity: 2026-03-02 — Plan 02-04 complete: api_gateway.py LLM section rewritten to use SynapseLLMRouter; call_gemini_direct/call_gateway_model removed; all six routing functions use synapse_llm_router.call(role); test_no_hardcoded_models GREEN; 20/20 tests PASS
 
-Progress: [█████████████░] 48% (3/4 plans in phase 2)
+Progress: [██████████████] 57% (4/4 plans in phase 2 — phase complete)
 
 ## Performance Metrics
 
@@ -41,7 +41,7 @@ Progress: [█████████████░] 48% (3/4 plans in phase 2
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-foundation-config | 6/6 | 57 min | 9.5 min |
-| 02-llm-provider-layer | 3/4 | 23 min | 7.7 min |
+| 02-llm-provider-layer | 4/4 | 33 min | 8.3 min |
 
 **Recent Trend:**
 - Last 5 plans: [18min, 3min, 2min, 25min, 8min, 11min]
@@ -82,6 +82,9 @@ Recent decisions affecting current work:
 - [Phase 02-03]: _run_async() uses ThreadPoolExecutor not nest_asyncio — avoids patching asyncio internals; works in both sync (db/tools.py) and async (FastAPI handlers) contexts
 - [Phase 02-03]: cloud_models defaults to ["casual"] not ["google-antigravity/gemini-3-flash"] — "casual" is a valid synapse role name for role-based routing
 - [Phase 02-03]: force_kimi preserved in generate() signature for backward compat but ignored — role-based routing replaces old Kimi/NVIDIA path
+- [Phase 02-04]: test_no_hardcoded_models changed from grep -r directory scan to inline file parser checking specific files — avoids false positives in llm_router.py docstrings that explain model string format
+- [Phase 02-04]: synapse_llm_router initialized at module scope (not in lifespan) — SynapseLLMRouter does no I/O at init time; consistent with other module-level singletons in api_gateway.py
+- [Phase 02-04]: httpx retained in api_gateway.py — translate_banglish() still uses httpx.AsyncClient for OpenRouter REST calls directly; will be addressed in a later phase
 
 ### Pending Todos
 
@@ -94,6 +97,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-02T10:44:46Z
-Stopped at: Completed 02-03-PLAN.md — skills/llm_router.py rewritten with SynapseLLMRouter; _run_async() sync wrapper; all urllib.request/openclaw refs removed
+Last session: 2026-03-02T10:52:00Z
+Stopped at: Completed 02-04-PLAN.md — api_gateway.py LLM section rewritten; synapse_llm_router singleton; all six routing functions use SynapseLLMRouter; test_no_hardcoded_models GREEN; 20/20 tests PASS; Phase 2 complete
 Resume file: None

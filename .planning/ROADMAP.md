@@ -13,7 +13,7 @@ This milestone cuts all three hard OpenClaw dependencies from Synapse-OSS: the L
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Foundation & Config** - Replace ~/.openclaw/ data root with ~/.synapse/, provide safe migration, eliminate openclaw path dependency (completed 2026-03-02)
-- [ ] **Phase 2: LLM Provider Layer** - Replace openclaw proxy at port 8080 with litellm.acompletion() — all 25+ providers routable without openclaw running
+- [x] **Phase 2: LLM Provider Layer** - Replace openclaw proxy at port 8080 with litellm.acompletion() — all 25+ providers routable without openclaw running (completed 2026-03-02)
 - [ ] **Phase 3: Channel Abstraction Layer** - Establish BaseChannel ABC, ChannelRegistry, and unified webhook router before any channel is implemented
 - [ ] **Phase 4: WhatsApp — Baileys Bridge** - Replace openclaw message send CLI with a self-managed Baileys Node.js microservice
 - [ ] **Phase 5: Core Channels — Telegram, Discord, Slack** - Add the three most widely used chat platforms as native channel integrations
@@ -158,7 +158,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation & Config | 6/6 | Complete   | 2026-03-02 |
-| 2. LLM Provider Layer | 3/4 | In progress | - |
+| 2. LLM Provider Layer | 4/4 | Complete   | 2026-03-02 |
 | 3. Channel Abstraction Layer | 0/TBD | Not started | - |
 | 4. WhatsApp — Baileys Bridge | 0/TBD | Not started | - |
 | 5. Core Channels — Telegram, Discord, Slack | 0/TBD | Not started | - |
