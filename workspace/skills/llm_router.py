@@ -1,13 +1,32 @@
-import os as _os, sys as _sys
-_sys.path.insert(0, _os.path.abspath(_os.path.join(_os.path.dirname(__file__), "..")))
-from synapse_config import SynapseConfig
+"""
+LLMRouter — sync wrapper around SynapseLLMRouter (litellm backend).
 
-import os
+Preserves the existing public interface:
+    llm = LLMRouter()
+    text = llm.generate(prompt, system_prompt, force_kimi)
+    vecs = llm.embed(text)
+
+Dispatches through SynapseLLMRouter.call() from sync context via a thread-pool executor
+(avoids RuntimeError: This event loop is already running when called from async
+contexts such as FastAPI request handlers).
+
+If SynapseLLMRouter is unavailable (no synapse.json, missing litellm), falls
+back to local Ollama automatically.
+"""
+
+import asyncio
+import concurrent.futures
 import logging
+import os
 import re
-import json
-import urllib.error
-import urllib.request
+import sys
+
+# Ensure workspace root is on the path so synapse_config and sci_fi_dashboard
+# are importable regardless of how this module is invoked.
+_DIR = os.path.abspath(os.path.dirname(__file__))
+_ROOT = os.path.abspath(os.path.join(_DIR, ".."))
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
 
 try:
     import ollama
@@ -16,211 +35,134 @@ try:
 except ImportError:
     HAS_OLLAMA = False
 
-# Configure Logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("LLMRouter")
 
-# NSFW Safety Overrides (configurable via LLM_SAFETY_LEVEL env var)
-SAFETY_LEVEL = os.environ.get("LLM_SAFETY_LEVEL", "BLOCK_NONE")
-SAFETY_SETTINGS = [
-    {"category": "HARM_CATEGORY_HARASSMENT", "threshold": SAFETY_LEVEL},
-    {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": SAFETY_LEVEL},
-    {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": SAFETY_LEVEL},
-    {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": SAFETY_LEVEL},
-]
+
+# ---------------------------------------------------------------------------
+# Async helper — runs a coroutine from sync *or* async contexts safely.
+# ---------------------------------------------------------------------------
+
+
+def _run_async(coro):
+    """Run an async coroutine from any context without blocking the event loop.
+
+    - Sync context (e.g. db/tools.py): no running loop → asyncio.run() works.
+    - Async context (e.g. FastAPI handler): running loop present → spawn a
+      ThreadPoolExecutor and run asyncio.run() on the worker thread (which has
+      its own fresh event loop).
+    """
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+
+    if loop and loop.is_running():
+        # We are inside an async context; can't call asyncio.run() here.
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(asyncio.run, coro)
+            return future.result()
+    else:
+        return asyncio.run(coro)
+
+
+# ---------------------------------------------------------------------------
+# LLMRouter
+# ---------------------------------------------------------------------------
 
 
 class LLMRouter:
+    """Sync LLM router backed by SynapseLLMRouter (litellm).
+
+    Public interface (unchanged from original):
+        generate(prompt, system_prompt, force_kimi) -> str
+        embed(text, model) -> list[float]
+        kimi_model  # backward-compat attribute
+    """
+
     def __init__(self, cloud_models=None, backup_model="llama3.2:3b"):
-        # Keep google-antigravity naming for backward compatibility (Phase 2: move to synapse.json).
-        self.cloud_models = cloud_models or ["google-antigravity/gemini-3-flash"]
+        self.cloud_models = cloud_models or ["casual"]
         self.backup_model = backup_model
         # Backward-compatible attribute used by db/server.py status payload.
         self.kimi_model = self.cloud_models[0]
 
-        self.gateway_url, self.gateway_token = self._load_gateway_config()
-        if not self.gateway_token:
-            logger.warning("OpenClaw gateway token missing; cloud route disabled.")
+        try:
+            from synapse_config import SynapseConfig  # noqa: PLC0415
 
-    def _load_gateway_config(self):
-        # TODO Phase 2: openclaw.json gateway auth replaced by synapse.json providers config
-        # (original function body commented out below)
-        # def _load_gateway_config(self):
-        #     """
-        #     Resolve OpenClaw local gateway auth from env or openclaw.json.
-        #     Priority:
-        #       1) OPENCLAW_GATEWAY_URL / OPENCLAW_GATEWAY_TOKEN
-        #       2) openclaw.json gateway.port + gateway.auth.token
-        #     """
-        #     env_url = os.getenv("OPENCLAW_GATEWAY_URL")
-        #     env_token = os.getenv("OPENCLAW_GATEWAY_TOKEN")
-        #     if env_url and env_token:
-        #         return env_url, env_token
-        #
-        #     root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-        #     # TODO Phase 2: OPENCLAW_CONFIG_PATH replaced by SYNAPSE_HOME / synapse.json
-        #     # OPENCLAW_CONFIG_PATH = os.environ.get("OPENCLAW_CONFIG_PATH", "")
-        #     config_path = os.getenv("OPENCLAW_CONFIG_PATH") or os.path.join(root_dir, "openclaw.json")
-        #
-        #     try:
-        #         with open(config_path, "r", encoding="utf-8") as f:
-        #             cfg = json.load(f)
-        #         gateway_cfg = cfg.get("gateway", {})
-        #         port = gateway_cfg.get("port", 18789)
-        #         token = gateway_cfg.get("auth", {}).get("token")
-        #         bind = gateway_cfg.get("bind", "loopback")
-        #         host = "127.0.0.1" if bind == "loopback" else "localhost"
-        #         return f"http://{host}:{port}/v1/messages", token
-        #     except Exception as e:
-        #         logger.warning("Failed to read OpenClaw gateway config: %s", str(e))
-        #         return os.getenv("OPENCLAW_GATEWAY_URL"), os.getenv("OPENCLAW_GATEWAY_TOKEN")
-        """Stub — Phase 2 will read from SynapseConfig.load().providers."""
-        return None, None  # Phase 2: will read from SynapseConfig.load().providers
+            self._synapse_config = SynapseConfig.load()
+            from sci_fi_dashboard.llm_router import SynapseLLMRouter  # noqa: PLC0415
 
-    def _normalize_google_model(self, model_name: str) -> str:
-        """
-        Convert provider-qualified names to model IDs expected by the local
-        OpenClaw gateway oauth route.
-        """
-        if not model_name:
-            return "gemini-3-flash"
-        if model_name.startswith("google-antigravity/"):
-            return model_name.split("/", 1)[1]
-        if model_name.startswith("google/"):
-            return model_name.split("/", 1)[1]
-        return model_name
+            self._synapse_router = SynapseLLMRouter(self._synapse_config)
+            logger.info("LLMRouter: SynapseLLMRouter initialized (litellm backend)")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "LLMRouter: SynapseLLMRouter unavailable (%s) — Ollama only", exc
+            )
+            self._synapse_config = None
+            self._synapse_router = None
 
-    def generate(self, prompt, system_prompt="You are a helpful assistant.", force_kimi=False):
-        """
-        Attempts generation with OpenClaw local gateway (google-antigravity OAuth).
-        Legacy arg `force_kimi` is ignored to prevent external NVAPI/Kimi routing.
-        """
+    def generate(
+        self,
+        prompt,
+        system_prompt="You are a helpful assistant.",
+        force_kimi=False,  # noqa: ARG002 — preserved for backward compat, ignored
+    ) -> str:
+        """Route prompt through SynapseLLMRouter (litellm) with Ollama fallback.
 
-        # 1. PRIMARY: local gateway via google-antigravity OAuth.
-        for model_name in self.cloud_models:
+        force_kimi is preserved in the signature for backward compatibility but
+        is intentionally ignored — role-based routing replaces the old Kimi path.
+        """
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": prompt},
+        ]
+
+        # Determine role from cloud_models (first entry) or default to "casual".
+        # If cloud_models[0] is a synapse role name (present in model_mappings),
+        # use it directly; otherwise fall back to the "casual" role.
+        role = "casual"
+        if self._synapse_router is not None and self.cloud_models:
+            candidate = self.cloud_models[0]
+            cfg = (
+                self._synapse_config.model_mappings
+                if self._synapse_config is not None
+                else {}
+            )
+            if candidate in cfg:
+                role = candidate
+
+        if self._synapse_router is not None:
             try:
-                text = self._call_antigravity(prompt, system_prompt, model_name)
+                text = _run_async(
+                    self._synapse_router.call(role, messages, max_tokens=1024)
+                )
                 if text:
                     return self._sanitize(text)
-            except Exception as e:
-                logger.warning("Gateway model %s failed: %s", model_name, str(e))
-                continue
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "SynapseLLMRouter failed for role '%s': %s", role, exc
+                )
 
-        # 2. Local fallback only (no NVAPI/OpenAI credit route).
+        # Ollama fallback
         return self._sanitize(self._call_ollama(prompt, system_prompt))
 
-    def _call_antigravity(self, prompt, system_prompt, model_name):
-        if not self.gateway_url or not self.gateway_token:
-            return None
-
-        # Try normalized model first, then raw provider-qualified fallback.
-        candidates = []
-        normalized = self._normalize_google_model(model_name)
-        if normalized:
-            candidates.append(normalized)
-        if model_name not in candidates:
-            candidates.append(model_name)
-
-        headers = {
-            "x-api-key": self.gateway_token,
-            "anthropic-version": "2023-06-01",
-            "Content-Type": "application/json",
-        }
-
-        for candidate_model in candidates:
-            payload = {
-                "model": candidate_model,
-                "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": 1024,
-            }
-            if system_prompt:
-                payload["system"] = system_prompt
-
-            req = urllib.request.Request(
-                self.gateway_url,
-                data=json.dumps(payload).encode("utf-8"),
-                headers=headers,
-                method="POST",
-            )
-
-            try:
-                with urllib.request.urlopen(req, timeout=60) as resp:
-                    body = resp.read().decode("utf-8", errors="replace")
-                data = json.loads(body)
-                text = self._extract_gateway_text(data)
-                if text:
-                    self.kimi_model = model_name
-                    return text
-            except urllib.error.HTTPError as e:
-                err_body = e.read().decode("utf-8", errors="replace")
-                logger.warning(
-                    "Gateway rejected model %s (%s): %s",
-                    candidate_model,
-                    e.code,
-                    err_body[:200],
-                )
-                continue
-            except Exception as e:
-                logger.warning("Gateway call failed for model %s: %s", candidate_model, str(e))
-                continue
-
-        return None
-
-    def _extract_gateway_text(self, data):
-        # Anthropic-style responses.
-        content = data.get("content")
-        if isinstance(content, list):
-            text_chunks = []
-            for block in content:
-                if not isinstance(block, dict):
-                    continue
-                if block.get("type") == "text" and block.get("text"):
-                    text_chunks.append(block["text"])
-            if text_chunks:
-                return "".join(text_chunks)
-
-        # OpenAI-style responses.
-        choices = data.get("choices")
-        if isinstance(choices, list) and choices:
-            msg = choices[0].get("message", {})
-            content_text = msg.get("content")
-            if isinstance(content_text, str):
-                return content_text
-
-        # Generic fallback field.
-        if isinstance(data.get("output_text"), str):
-            return data["output_text"]
-
-        return None
-
     def _sanitize(self, text: str) -> str:
-        """
-        Strips internal reasoning blocks like <think>...</think> and
-        metadata tags like <final>...</final> before sending to the user.
-        """
+        """Strip internal reasoning blocks before returning to caller."""
         if not text:
             return ""
         # 1. Remove <think> blocks completely
         text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL | re.IGNORECASE)
         # 2. Extract content from <final> tags if they exist
-        text = re.sub(r"<final>(.*?)</final>", r"\1", text, flags=re.DOTALL | re.IGNORECASE)
+        text = re.sub(
+            r"<final>(.*?)</final>", r"\1", text, flags=re.DOTALL | re.IGNORECASE
+        )
         # 3. Clean up generic thought headers
         text = re.sub(r"^Thought for\b.*$", "", text, flags=re.MULTILINE | re.IGNORECASE)
         # 4. Clean up any leftover thinking content (non-greedy)
         text = re.sub(r"\n+Thinking\n+.*?\n+", "\n\n", text, flags=re.IGNORECASE)
-
         return text.strip()
 
-    def _call_kimi(self, prompt, system_prompt):
-        """
-        Backward-compat shim. External Kimi/NVIDIA path is intentionally disabled.
-        """
-        logger.warning("Legacy Kimi/NVIDIA route disabled; using google-antigravity OAuth route.")
-        return self._call_antigravity(prompt, system_prompt, self.kimi_model) or self._call_ollama(
-            prompt, system_prompt
-        )
-
-    def _call_ollama(self, prompt, system_prompt):
+    def _call_ollama(self, prompt, system_prompt) -> str:
         if HAS_OLLAMA:
             try:
                 response = ollama.chat(
@@ -231,15 +173,16 @@ class LLMRouter:
                     ],
                 )
                 return response["message"]["content"]
-            except Exception:
+            except Exception:  # noqa: BLE001
                 pass
         return "Error: All backends failed."
 
-    def embed(self, text, model="text-embedding-004"):
+    def embed(self, text, model="text-embedding-004") -> list:  # noqa: ARG002
+        """Return embedding vector for text using local Ollama nomic-embed-text."""
         if HAS_OLLAMA:
             return ollama.embeddings(model="nomic-embed-text", prompt=text)["embedding"]
         return []
 
 
-# Singleton Instance
+# Module-level singleton — all callers use `from skills.llm_router import llm`
 llm = LLMRouter()
