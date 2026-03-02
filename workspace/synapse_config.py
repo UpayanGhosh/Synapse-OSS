@@ -41,14 +41,15 @@ class SynapseConfig:
     log_dir: Path
     providers: dict = field(default_factory=dict)
     channels: dict = field(default_factory=dict)
+    model_mappings: dict = field(default_factory=dict)
 
     @classmethod
     def load(cls) -> "SynapseConfig":
         """Build a SynapseConfig using three-layer precedence:
 
         Layer 1 (highest priority): SYNAPSE_HOME env var → data_root
-        Layer 2: synapse.json in data_root → providers, channels
-        Layer 3 (defaults): empty dicts for providers/channels
+        Layer 2: synapse.json in data_root → providers, channels, model_mappings
+        Layer 3 (defaults): empty dicts for providers/channels/model_mappings
 
         Returns a frozen dataclass.  Calling load() twice with different env vars
         returns different configs — this method is NOT cached.
@@ -64,6 +65,7 @@ class SynapseConfig:
         # Layer 2 / Layer 3: read synapse.json if present; else defaults
         providers: dict[str, Any] = {}
         channels: dict[str, Any] = {}
+        model_mappings: dict[str, Any] = {}
 
         config_file = data_root / "synapse.json"
         if config_file.exists():
@@ -72,6 +74,7 @@ class SynapseConfig:
                 raw = json.load(fh)
             providers = raw.get("providers", {})
             channels = raw.get("channels", {})
+            model_mappings = raw.get("model_mappings", {})
 
         return cls(
             data_root=data_root,
@@ -80,6 +83,7 @@ class SynapseConfig:
             log_dir=log_dir,
             providers=providers,
             channels=channels,
+            model_mappings=model_mappings,
         )
 
 
