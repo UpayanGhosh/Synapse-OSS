@@ -4,13 +4,16 @@ Pytest Configuration and Fixtures
 Shared fixtures and configuration for all tests.
 """
 
-import pytest
-import asyncio
-import sys
+import json
 import os
-import tempfile
 import shutil
+import sys
+import tempfile
+import time
 import unittest.mock
+
+import asyncio
+import pytest
 
 # Add workspace to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -42,6 +45,42 @@ def temp_db(temp_dir):
 def temp_conflicts_file(temp_dir):
     """Create a temporary conflicts file path."""
     return os.path.join(temp_dir, "conflicts.json")
+
+
+@pytest.fixture(autouse=True)
+def github_copilot_fake_auth(tmp_path):
+    """Autouse fixture: create a fake GitHub Copilot token so litellm.Router can be
+    initialized with 'github_copilot/' model entries during unit tests without
+    triggering the real OAuth device-code flow.
+
+    litellm reads the token from GITHUB_COPILOT_TOKEN_DIR/api-key.json.
+    We write a fake entry with a far-future expiry and redirect the env var to tmp_path.
+    Cleaned up automatically by pytest tmp_path fixture.
+    """
+    token_dir = tmp_path / "github_copilot"
+    token_dir.mkdir(parents=True, exist_ok=True)
+    api_key_file = token_dir / "api-key.json"
+    api_key_file.write_text(
+        json.dumps(
+            {
+                "token": "ghs_fake_token_for_unit_tests",
+                "expires_at": time.time() + 3600,  # 1 hour from now
+                "endpoints": {
+                    "api": "https://api.githubcopilot.com",
+                    "proxy": "https://copilot-proxy.githubusercontent.com",
+                    "origin-tracker": "https://origin-tracker.githubusercontent.com",
+                    "telemetry": "https://telemetry.individual.githubcopilot.com",
+                },
+            }
+        )
+    )
+    old_token_dir = os.environ.get("GITHUB_COPILOT_TOKEN_DIR")
+    os.environ["GITHUB_COPILOT_TOKEN_DIR"] = str(token_dir)
+    yield
+    if old_token_dir is None:
+        os.environ.pop("GITHUB_COPILOT_TOKEN_DIR", None)
+    else:
+        os.environ["GITHUB_COPILOT_TOKEN_DIR"] = old_token_dir
 
 
 @pytest.fixture

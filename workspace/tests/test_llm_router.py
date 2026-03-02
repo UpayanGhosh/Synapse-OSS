@@ -34,7 +34,10 @@ from pathlib import Path
 
 import pytest
 
-from synapse_config import SynapseConfig
+# Ensure workspace/ is on the import path regardless of cwd (mirrors test_config.py)
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from synapse_config import SynapseConfig  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Conditional import: RED phase guard
