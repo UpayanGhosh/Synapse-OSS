@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-03-02T20:06:05.249Z"
+last_updated: "2026-03-02T20:28:28.017Z"
 progress:
   total_phases: 6
-  completed_phases: 5
+  completed_phases: 6
   total_plans: 27
-  completed_plans: 26
+  completed_plans: 27
 ---
 
 ---
@@ -109,16 +109,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-02)
 
 **Core value:** A user can run Synapse-OSS on any machine, connect to their messaging apps and LLM providers, and have a fully working AI assistant — with zero dependency on any external binary or bridge service.
-**Current focus:** Phase 6 IN PROGRESS — Plan 01 done; Typer CLI scaffold + pyproject.toml [project.scripts]; ready for Plan 02
+**Current focus:** Phase 6 COMPLETE — All 5 plans done; milestone v1.0 achieved; 27/27 plans complete across all 6 phases
 
 ## Current Position
 
-Phase: 6 of 6 (Onboarding Wizard) — IN PROGRESS
-Plan: 1 of 5 complete in current phase (06-01 CLI entry-point scaffold)
-Status: 23/27 plans complete across all 6 phases; CLI scaffold done; workspace/synapse_cli.py + workspace/cli/__init__.py created
-Last activity: 2026-03-02 — Plan 06-01 complete: Typer root app with onboard/chat/ingest/vacuum/verify; [project.scripts] in pyproject.toml; typer/questionary/qrcode deps added; 2 tasks, 4 files
+Phase: 6 of 6 (Onboarding Wizard) — COMPLETE
+Plan: 5 of 5 complete in current phase (06-05 wizard test suite)
+Status: 27/27 plans complete across all 6 phases; milestone v1.0 achieved
+Last activity: 2026-03-02 — Plan 06-05 complete: 24-test wizard suite covering ONB-01 through ONB-10; 2 tasks, 1 file
 
-Progress: [████████████████████░░░░] 23/27 plans complete (Phase 6 Plan 1/5)
+Progress: [████████████████████████] 27/27 plans complete (Phase 6 COMPLETE)
 
 ## Performance Metrics
 
@@ -157,6 +157,8 @@ Progress: [████████████████████░░░
 | Phase 06-onboarding-wizard P02 | 3 | 2 tasks | 1 files |
 | Phase 06-onboarding-wizard P03 | 3 | 2 tasks | 1 files |
 | Phase 06-onboarding-wizard P04 | 5 | 2 tasks | 1 files |
+| Phase 06-onboarding-wizard P05 | 12 | 2 tasks | 1 files |
+| Phase 06-onboarding-wizard PP05 | 12 | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -235,6 +237,9 @@ Recent decisions affecting current work:
 - [Phase 06-onboarding-wizard]: run_wizard() accepts force_interactive=False — tests call _run_interactive() with mocked questionary without needing a TTY
 - [Phase 06-onboarding-wizard]: _check_for_openclaw() defined as named top-level function — tests import directly and inject fake openclaw_root for isolation
 - [Phase 06-onboarding-wizard]: _run_migration() calls mod.migrate(source_root=openclaw_root, dest_root=dest_root) — keyword args match actual migrate() signature exactly
+- [Phase 06-onboarding-wizard Plan 05]: CliRunner() used without mix_stderr=False — typer 0.24.1 does not support that kwarg; stderr merged into stdout; result.output used for all assertions
+- [Phase 06-onboarding-wizard Plan 05]: run_wizard(force_interactive=True) + mocked questionary exercises _run_interactive() without TTY — standard interactive path test pattern for wizard tests
+- [Phase 06-onboarding-wizard]: CliRunner without mix_stderr kwarg — typer 0.24.1 compat; stderr merged into stdout; result.output used for all assertions
 
 ### Pending Todos
 
@@ -247,6 +252,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-02T19:54:58Z
-Stopped at: Completed 06-01-PLAN.md — CLI entry-point scaffold: Typer app with 5 subcommands, pyproject.toml [project.scripts], typer/questionary/qrcode deps; 2 tasks, 4 files
+Last session: 2026-03-02T20:24:03Z
+Stopped at: Completed 06-05-PLAN.md — wizard test suite: 24 tests covering ONB-01 through ONB-10; 2 tasks, 1 file; milestone v1.0 COMPLETE
 Resume file: None
