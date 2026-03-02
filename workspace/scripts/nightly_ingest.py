@@ -1,3 +1,7 @@
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.abspath(_os.path.join(_os.path.dirname(__file__), "..")))
+from synapse_config import SynapseConfig
+
 import os
 import json
 import sqlite3
@@ -5,7 +9,6 @@ import requests
 import subprocess
 import time
 from datetime import datetime
-import sys as _sys
 
 try:
     import ollama
@@ -21,8 +24,7 @@ from qdrant_client import QdrantClient
 from qdrant_client.http import models
 
 # --- CONFIGURATION ---
-OPENCLAW_HOME = os.path.expanduser("~/.openclaw")
-DB_PATH = os.path.join(OPENCLAW_HOME, "workspace", "db", "memory.db")
+DB_PATH = str(SynapseConfig.load().db_dir / "memory.db")
 EMBEDDING_MODEL = "nomic-embed-text"
 THINK_MODEL = "llama3.2:3b"
 

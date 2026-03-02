@@ -1,3 +1,7 @@
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.abspath(_os.path.join(_os.path.dirname(__file__), "..")))
+from synapse_config import SynapseConfig
+
 import sqlite3
 import os
 import json
@@ -5,8 +9,7 @@ from datetime import datetime
 from qdrant_client import QdrantClient
 
 # Paths
-OPENCLAW_HOME = os.path.expanduser("~/.openclaw")
-DB_PATH = os.path.join(OPENCLAW_HOME, "workspace", "db", "memory.db")
+DB_PATH = str(SynapseConfig.load().db_dir / "memory.db")
 QDRANT_HOST = "localhost"
 QDRANT_PORT = 6333
 COLLECTION_NAME = "atomic_facts"

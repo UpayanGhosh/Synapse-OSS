@@ -1,3 +1,4 @@
+# NOTE: This file reads from ~/.openclaw/ as the migration source. SynapseConfig provides the dest.
 import sqlite3
 import sqlite_vec
 import os

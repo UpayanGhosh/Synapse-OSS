@@ -1,3 +1,4 @@
+# NOTE: This file reads from ~/.openclaw/ as the migration source. SynapseConfig provides the dest.
 import networkx as nx
 import json
 import gzip

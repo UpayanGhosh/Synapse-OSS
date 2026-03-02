@@ -1,3 +1,7 @@
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.abspath(_os.path.join(_os.path.dirname(__file__), "..")))
+from synapse_config import SynapseConfig
+
 import os
 import sys
 import json
@@ -7,8 +11,8 @@ from datetime import datetime, timezone
 import requests
 
 # Set up logging to the same file monitor.py reads
-LOG_DIR = "/tmp/openclaw"
-LOG_FILE = os.path.join(LOG_DIR, f"openclaw-{datetime.now().strftime('%Y-%m-%d')}.log")
+LOG_DIR = "/tmp/synapse"
+LOG_FILE = os.path.join(LOG_DIR, f"synapse-{datetime.now().strftime('%Y-%m-%d')}.log")
 
 
 def log_event(message, level="INFO"):
@@ -51,21 +55,20 @@ def transcribe_audio(file_path):
         or os.environ.get("GOOGLE_GENERATIVE_AI_API_KEY")
     )
 
-    # Fallback: Try to read from openclaw.json if still not found
-    if not api_key:
-        try:
-            config_path = os.path.join(os.path.expanduser("~/.openclaw"), "openclaw.json")
-            if os.path.exists(config_path):
-                with open(config_path, "r") as f:
-                    config = json.load(f)
-                    # Try to find a key in skills.entries (found AIza... key here previously)
-                    skills_entries = config.get("skills", {}).get("entries", {})
-                    for entry in skills_entries.values():
-                        if "apiKey" in entry and entry["apiKey"].startswith("AIza"):
-                            api_key = entry["apiKey"]
-                            break
-        except Exception:
-            pass
+    # TODO Phase 2: openclaw.json key lookup replaced by synapse.json providers config
+    # if not api_key:
+    #     try:
+    #         config_path = os.path.join(os.path.expanduser("~/.openclaw"), "openclaw.json")
+    #         if os.path.exists(config_path):
+    #             with open(config_path, "r") as f:
+    #                 config = json.load(f)
+    #                 skills_entries = config.get("skills", {}).get("entries", {})
+    #                 for entry in skills_entries.values():
+    #                     if "apiKey" in entry and entry["apiKey"].startswith("AIza"):
+    #                         api_key = entry["apiKey"]
+    #                         break
+    #     except Exception:
+    #         pass
 
     if not api_key:
         log_event("GEMINI_API_KEY not found", "ERROR")

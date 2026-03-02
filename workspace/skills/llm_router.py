@@ -1,3 +1,7 @@
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.abspath(_os.path.join(_os.path.dirname(__file__), "..")))
+from synapse_config import SynapseConfig
+
 import os
 import logging
 import re
@@ -28,7 +32,7 @@ SAFETY_SETTINGS = [
 
 class LLMRouter:
     def __init__(self, cloud_models=None, backup_model="llama3.2:3b"):
-        # Keep google-antigravity naming to match openclaw.json.
+        # Keep google-antigravity naming for backward compatibility (Phase 2: move to synapse.json).
         self.cloud_models = cloud_models or ["google-antigravity/gemini-3-flash"]
         self.backup_model = backup_model
         # Backward-compatible attribute used by db/server.py status payload.
@@ -39,32 +43,39 @@ class LLMRouter:
             logger.warning("OpenClaw gateway token missing; cloud route disabled.")
 
     def _load_gateway_config(self):
-        """
-        Resolve OpenClaw local gateway auth from env or openclaw.json.
-        Priority:
-          1) OPENCLAW_GATEWAY_URL / OPENCLAW_GATEWAY_TOKEN
-          2) openclaw.json gateway.port + gateway.auth.token
-        """
-        env_url = os.getenv("OPENCLAW_GATEWAY_URL")
-        env_token = os.getenv("OPENCLAW_GATEWAY_TOKEN")
-        if env_url and env_token:
-            return env_url, env_token
-
-        root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-        config_path = os.getenv("OPENCLAW_CONFIG_PATH") or os.path.join(root_dir, "openclaw.json")
-
-        try:
-            with open(config_path, "r", encoding="utf-8") as f:
-                cfg = json.load(f)
-            gateway_cfg = cfg.get("gateway", {})
-            port = gateway_cfg.get("port", 18789)
-            token = gateway_cfg.get("auth", {}).get("token")
-            bind = gateway_cfg.get("bind", "loopback")
-            host = "127.0.0.1" if bind == "loopback" else "localhost"
-            return f"http://{host}:{port}/v1/messages", token
-        except Exception as e:
-            logger.warning("Failed to read OpenClaw gateway config: %s", str(e))
-            return os.getenv("OPENCLAW_GATEWAY_URL"), os.getenv("OPENCLAW_GATEWAY_TOKEN")
+        # TODO Phase 2: openclaw.json gateway auth replaced by synapse.json providers config
+        # (original function body commented out below)
+        # def _load_gateway_config(self):
+        #     """
+        #     Resolve OpenClaw local gateway auth from env or openclaw.json.
+        #     Priority:
+        #       1) OPENCLAW_GATEWAY_URL / OPENCLAW_GATEWAY_TOKEN
+        #       2) openclaw.json gateway.port + gateway.auth.token
+        #     """
+        #     env_url = os.getenv("OPENCLAW_GATEWAY_URL")
+        #     env_token = os.getenv("OPENCLAW_GATEWAY_TOKEN")
+        #     if env_url and env_token:
+        #         return env_url, env_token
+        #
+        #     root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+        #     # TODO Phase 2: OPENCLAW_CONFIG_PATH replaced by SYNAPSE_HOME / synapse.json
+        #     # OPENCLAW_CONFIG_PATH = os.environ.get("OPENCLAW_CONFIG_PATH", "")
+        #     config_path = os.getenv("OPENCLAW_CONFIG_PATH") or os.path.join(root_dir, "openclaw.json")
+        #
+        #     try:
+        #         with open(config_path, "r", encoding="utf-8") as f:
+        #             cfg = json.load(f)
+        #         gateway_cfg = cfg.get("gateway", {})
+        #         port = gateway_cfg.get("port", 18789)
+        #         token = gateway_cfg.get("auth", {}).get("token")
+        #         bind = gateway_cfg.get("bind", "loopback")
+        #         host = "127.0.0.1" if bind == "loopback" else "localhost"
+        #         return f"http://{host}:{port}/v1/messages", token
+        #     except Exception as e:
+        #         logger.warning("Failed to read OpenClaw gateway config: %s", str(e))
+        #         return os.getenv("OPENCLAW_GATEWAY_URL"), os.getenv("OPENCLAW_GATEWAY_TOKEN")
+        """Stub — Phase 2 will read from SynapseConfig.load().providers."""
+        return None, None  # Phase 2: will read from SynapseConfig.load().providers
 
     def _normalize_google_model(self, model_name: str) -> str:
         """

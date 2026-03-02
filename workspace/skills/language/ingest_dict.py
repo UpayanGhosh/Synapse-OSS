@@ -1,3 +1,7 @@
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.abspath(_os.path.join(_os.path.dirname(__file__), "..", "..")))
+from synapse_config import SynapseConfig
+
 import json
 import os
 import urllib.request
@@ -6,8 +10,8 @@ import sys
 
 
 def ingest_banglish_dictionary():
-    file_path = os.path.join(
-        os.path.expanduser("~/.openclaw"), "workspace", "skills", "language", "banglish_dict.json"
+    file_path = str(
+        SynapseConfig.load().data_root / "workspace" / "skills" / "language" / "banglish_dict.json"
     )
     api_url = "http://127.0.0.1:8989/add"
 
