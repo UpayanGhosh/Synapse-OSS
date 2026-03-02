@@ -3,6 +3,19 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
+last_updated: "2026-03-02T18:39:11.773Z"
+progress:
+  total_phases: 5
+  completed_phases: 5
+  total_plans: 22
+  completed_plans: 22
+---
+
+---
+gsd_state_version: 1.0
+milestone: v1.0
+milestone_name: milestone
+status: unknown
 last_updated: "2026-03-02T18:18:24.314Z"
 progress:
   total_phases: 5
@@ -70,16 +83,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-02)
 
 **Core value:** A user can run Synapse-OSS on any machine, connect to their messaging apps and LLM providers, and have a fully working AI assistant — with zero dependency on any external binary or bridge service.
-**Current focus:** Phase 5 in progress — TelegramChannel complete (05-01), DiscordChannel complete (05-02), SlackChannel complete (05-03); Plan 05-04 api_gateway wiring remaining
+**Current focus:** Phase 5 COMPLETE — all 4 plans done; Telegram+Discord+Slack wired into api_gateway; 250 tests GREEN; ready for Phase 6
 
 ## Current Position
 
-Phase: 5 of 7 (Core Channels: Telegram, Discord, Slack) — IN PROGRESS
-Plan: 3 of 4 complete in current phase (05-01 TelegramChannel + 05-02 DiscordChannel + 05-03 SlackChannel; 05-04 api_gateway wiring remaining)
-Status: 3/4 Phase 5 plans complete — 21/22 plans complete across all 5 phases; TelegramChannel/DiscordChannel/SlackChannel implemented; 22 TEL tests GREEN
-Last activity: 2026-03-02 — Plan 05-01 complete: TelegramChannel PTB v22 long polling adapter; delete_webhook conflict prevention; 22 unit tests; 2 tasks, 4 files
+Phase: 5 of 5 (Core Channels: Telegram, Discord, Slack) — COMPLETE
+Plan: 4 of 4 complete in current phase (05-01 TelegramChannel + 05-02 DiscordChannel + 05-03 SlackChannel + 05-04 api_gateway wiring)
+Status: ALL 22/22 plans complete across all 5 phases; all channel adapters implemented and wired into api_gateway; 250 tests GREEN
+Last activity: 2026-03-02 — Plan 05-04 complete: Telegram/Discord/Slack opt-in registration in api_gateway; /health refactored to generic list_ids() loop; 2 tasks, 3 files
 
-Progress: [████████████████████] 21/22 plans complete (Phase 5 in progress)
+Progress: [████████████████████] 22/22 plans complete (Phase 5 COMPLETE)
 
 ## Performance Metrics
 
@@ -113,6 +126,7 @@ Progress: [████████████████████] 21/22 p
 | Phase 05 P02 | 4 | 2 tasks | 2 files |
 | Phase 05-core-channels-telegram-discord-slack P03 | 4 | 2 tasks | 4 files |
 | Phase 05-core-channels-telegram-discord-slack P01 | 9 | 2 tasks | 4 files |
+| Phase 05 P04 | 16 | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -178,6 +192,9 @@ Recent decisions affecting current work:
 - [Phase 05-core-channels-telegram-discord-slack]: ChatAction imported from telegram.constants (moved in PTB v22); auto-fixed at Task 1
 - [Phase 05-core-channels-telegram-discord-slack]: enqueue_fn=None default in TelegramChannel constructor — decouples channel from api_gateway import; injected at registration
 - [Phase 05-core-channels-telegram-discord-slack]: PTB v22 manual lifecycle: ApplicationBuilder().updater(None) + Updater(app.bot, update_queue) — delete_webhook before start_polling prevents 409 Conflict
+- [Phase 05-04]: Lazy imports inside channel if-blocks prevent ImportError when SDK not installed
+- [Phase 05-04]: GET /health uses channel_registry.list_ids() loop — generic N-channel health, no hardcoded channel names
+- [Phase 05-04]: enqueue_fn=task_queue.enqueue injected at TelegramChannel registration — decouples channel from pipeline
 
 ### Pending Todos
 
@@ -190,6 +207,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-02T18:15:46Z
-Stopped at: Completed 05-01-PLAN.md — TelegramChannel implemented with PTB v22 lifecycle; delete_webhook conflict prevention; 22 TEL tests GREEN; 2 tasks, 4 files
+Last session: 2026-03-02T18:37:00Z
+Stopped at: Completed 05-04-PLAN.md — Telegram/Discord/Slack wired into api_gateway; /health refactored to generic list_ids() loop; 250 tests GREEN; 2 tasks, 3 files
 Resume file: None
