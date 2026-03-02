@@ -6,6 +6,10 @@ Description: Monitors Brain (FastAPI), Body (Node), and Vitality (Disk/Swap).
              Auto-heals services and alerts on critical failures.
 """
 
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.abspath(_os.path.join(_os.path.dirname(__file__), "..")))
+from synapse_config import SynapseConfig
+
 import os
 import sys
 import time
@@ -19,9 +23,10 @@ from datetime import datetime
 
 # --- CONFIGURATION ---
 MEMORY_SERVER_URL = "http://127.0.0.1:8989/health"
-OPENCLAW_PROCESS_NAME = "openclaw gateway"
-STATE_FILE = os.path.expanduser("~/.openclaw/sentinel_state.json")
-LOG_FILE = os.path.expanduser("~/.openclaw/logs/sentinel.log")
+SYNAPSE_PROCESS_NAME = "synapse gateway"  # TODO Phase 4: update to Synapse bridge process name
+_cfg = SynapseConfig.load()
+STATE_FILE = str(_cfg.data_root / "sentinel_state.json")
+LOG_FILE = str(_cfg.log_dir / "sentinel.log")
 MAX_RETRIES = 3
 SWAP_LIMIT_MB = 4096  # 4GB
 DISK_LIMIT_PERCENT = 90
@@ -77,10 +82,11 @@ def check_brain():
 
 
 def check_body():
-    """Checks if OpenClaw process is running."""
+    """Checks if Synapse gateway process is running."""
     try:
+        # TODO Phase 4: update process name for Synapse bridge
         # pgrep returns 0 if process found, 1 if not
-        subprocess.check_call(["/usr/bin/pgrep", "-f", "openclaw"], stdout=subprocess.DEVNULL)
+        subprocess.check_call(["/usr/bin/pgrep", "-f", "synapse"], stdout=subprocess.DEVNULL)
         return True
     except subprocess.CalledProcessError:
         return False
@@ -97,7 +103,7 @@ def check_vitals(state):
         msg = f"Disk Critical: {percent_used:.1f}% used. Purging logs."
         log(msg, "CRITICAL")
         alert_macos("Disk Critical", "Disk > 90%. Purging logs.")
-        log_files = glob.glob(os.path.expanduser("~/.openclaw/logs/*.log"))
+        log_files = glob.glob(str(SynapseConfig.load().log_dir / "*.log"))
         for f in log_files:
             try:
                 os.remove(f)
@@ -187,8 +193,9 @@ def run_sentinel():
             log("Attempting Brain Transplant (Restarting Service)...", "WARN")
             # Restart via LaunchAgent
             uid = subprocess.check_output(["id", "-u"]).decode().strip()
+            # TODO Phase 4: update launchctl service ID for Synapse
             subprocess.run(
-                ["launchctl", "kickstart", "-k", f"gui/{uid}/ai.openclaw.memory"],
+                ["launchctl", "kickstart", "-k", f"gui/{uid}/ai.synapse.memory"],
                 check=False,
             )
             alert_macos("Sentinel Action", "Restarted Memory Server.")
@@ -208,14 +215,15 @@ def run_sentinel():
         log(f"Body Dead (Strike {state['body_strikes']})", "ERROR")
 
         if state["body_strikes"] <= MAX_RETRIES:
-            log("Attempting CPR (Restarting OpenClaw)...", "WARN")
+            log("Attempting CPR (Restarting Synapse Gateway)...", "WARN")
+            # TODO Phase 4: replace with Synapse bridge start command
             subprocess.run(
-                [shutil.which("openclaw") or "openclaw", "gateway", "start"], check=False
+                [shutil.which("synapse_start.sh") or "./synapse_start.sh"], check=False
             )
-            alert_macos("Sentinel Action", "Restarted OpenClaw Gateway.")
+            alert_macos("Sentinel Action", "Restarted Synapse Gateway.")
         else:
             log("Body Critical Failure. Max retries exceeded.", "CRITICAL")
-            alert_macos("CRITICAL FAILURE", "OpenClaw Gateway is dead.")
+            alert_macos("CRITICAL FAILURE", "Synapse Gateway is dead.")
         dirty = True
     else:
         if state.get("body_strikes", 0) > 0:

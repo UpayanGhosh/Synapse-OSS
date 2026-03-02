@@ -1,6 +1,10 @@
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.abspath(_os.path.join(_os.path.dirname(__file__), "..")))
+from synapse_config import SynapseConfig
+
 import os
 
-log_file = "/tmp/openclaw/openclaw-2026-02-13.log"
+log_file = str(SynapseConfig.load().log_dir / "synapse-2026-02-13.log")
 search_term = "Cloud Code"
 search_term2 = "empty response"
 

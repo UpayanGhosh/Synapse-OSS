@@ -52,7 +52,7 @@ def main():
     print("[SPARK] PROJECT SYNAPSE // GENESIS PROTOCOL")
     check_environment()
     run_onboarding()
-    print("\n[INFO] Synapse is now ready to breathe. Use 'openclaw start' to wake me.")
+    print("\n[INFO] Synapse is now ready to breathe. Use './synapse_start.sh' to wake me.")
 
 
 if __name__ == "__main__":

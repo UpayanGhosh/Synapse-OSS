@@ -1,12 +1,16 @@
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.abspath(_os.path.join(_os.path.dirname(__file__), "..")))
+from synapse_config import SynapseConfig
+
 import os
 import time
 import json
 import random
 from datetime import datetime
 
-LOG_DIR = "/tmp/openclaw"
+LOG_DIR = "/tmp/synapse"
 os.makedirs(LOG_DIR, exist_ok=True)
-log_file = os.path.join(LOG_DIR, f"openclaw-{datetime.now().strftime('%Y-%m-%d')}.log")
+log_file = os.path.join(LOG_DIR, f"synapse-{datetime.now().strftime('%Y-%m-%d')}.log")
 
 # Ensure the file exists
 if not os.path.exists(log_file):
@@ -50,7 +54,7 @@ def write_log(subsystem, message):
 # Simulate thoughts
 def write_thought():
     thought = random.choice(THOUGHTS)
-    brain_state = os.path.join(os.path.expanduser("~/.openclaw"), "brain_state.json")
+    brain_state = str(SynapseConfig.load().data_root / "brain_state.json")
     with open(brain_state, "w") as f:
         json.dump({"thought": thought}, f)
 
