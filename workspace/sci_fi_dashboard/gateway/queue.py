@@ -23,6 +23,7 @@ class MessageTask:
     message_id: str = ""
     sender_name: str = ""
     is_group: bool = False
+    channel_id: str = "whatsapp"   # which channel this task belongs to; default for backwards compat
 
     response: str | None = None
     error: str | None = None
