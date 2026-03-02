@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-03-02T11:47:10.529Z"
+last_updated: "2026-03-02T11:51:25.832Z"
 progress:
   total_phases: 3
   completed_phases: 2
   total_plans: 14
-  completed_plans: 11
+  completed_plans: 12
 ---
 
 ---
@@ -31,16 +31,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-02)
 
 **Core value:** A user can run Synapse-OSS on any machine, connect to their messaging apps and LLM providers, and have a fully working AI assistant — with zero dependency on any external binary or bridge service.
-**Current focus:** Phase 2 — LLM Provider Layer
+**Current focus:** Phase 3 — Channel Abstraction Layer
 
 ## Current Position
 
-Phase: 2 of 7 (LLM Provider Layer) — In progress
-Plan: 4 of 4 complete in current phase
-Status: Phase 2 complete
-Last activity: 2026-03-02 — Plan 02-04 complete: api_gateway.py LLM section rewritten to use SynapseLLMRouter; call_gemini_direct/call_gateway_model removed; all six routing functions use synapse_llm_router.call(role); test_no_hardcoded_models GREEN; 20/20 tests PASS
+Phase: 3 of 7 (Channel Abstraction Layer) — In progress
+Plan: 1 of 4 complete in current phase
+Status: Phase 3 in progress
+Last activity: 2026-03-02 — Plan 03-01 complete: channels/ subpackage created with BaseChannel ABC, ChannelMessage dataclass, ChannelRegistry (asyncio.create_task lifecycle), StubChannel; all CHAN-01/02/03/06 criteria met
 
-Progress: [██████████████] 57% (4/4 plans in phase 2 — phase complete)
+Progress: [████████████████] 57% (1/4 plans in phase 3 — phase in progress)
 
 ## Performance Metrics
 
@@ -55,6 +55,7 @@ Progress: [██████████████] 57% (4/4 plans in phase 2
 |-------|-------|-------|----------|
 | 01-foundation-config | 6/6 | 57 min | 9.5 min |
 | 02-llm-provider-layer | 4/4 | 33 min | 8.3 min |
+| 03-channel-abstraction-layer | 1/4 | 6 min | 6 min |
 
 **Recent Trend:**
 - Last 5 plans: [18min, 3min, 2min, 25min, 8min, 11min]
@@ -62,6 +63,7 @@ Progress: [██████████████] 57% (4/4 plans in phase 2
 
 *Updated after each plan completion*
 | Phase 03-channel-abstraction-layer P02 | 2 | 1 tasks | 1 files |
+| Phase 03-channel-abstraction-layer P01 | 6 | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -101,6 +103,9 @@ Recent decisions affecting current work:
 - [Phase 02-04]: httpx retained in api_gateway.py — translate_banglish() still uses httpx.AsyncClient for OpenRouter REST calls directly; will be addressed in a later phase
 - [Phase 03-channel-abstraction-layer]: Per-method _channels_skip decorator (not pytestmark) — non-channel test classes stay independent of channels/ availability
 - [Phase 03-channel-abstraction-layer]: xfail strict=False for CHAN-04/05/07 — tests auto-turn GREEN when 03-03/03-04 ship without test rewrites
+- [Phase 03-channel-abstraction-layer]: asyncio.create_task() wraps channel.start() in start_all() — NEVER asyncio.run() — uvicorn already owns event loop
+- [Phase 03-channel-abstraction-layer]: ChannelRegistry is an instance (not module-level singleton) — tests create independent registries without global state reset
+- [Phase 03-channel-abstraction-layer]: StubChannel.start() returns immediately — callers asserting _started after start_all() must yield with await asyncio.sleep(0)
 
 ### Pending Todos
 
@@ -113,6 +118,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-02T10:52:00Z
-Stopped at: Completed 02-04-PLAN.md — api_gateway.py LLM section rewritten; synapse_llm_router singleton; all six routing functions use SynapseLLMRouter; test_no_hardcoded_models GREEN; 20/20 tests PASS; Phase 2 complete
+Last session: 2026-03-02T11:50:07Z
+Stopped at: Completed 03-01-PLAN.md — channels/ subpackage created: BaseChannel ABC, ChannelMessage dataclass (field(default_factory=dict) for raw), ChannelRegistry with asyncio.create_task lifecycle, StubChannel; all success criteria met; 3 tasks, 4 files created
 Resume file: None
