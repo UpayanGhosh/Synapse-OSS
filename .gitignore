@@ -1,74 +1,95 @@
-# Ignore the archive so LLM doesn't read old MD files
+# ──────────────────────────────────────────────────────────────
+# Python
+# ──────────────────────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.ruff_cache/
+.pytest_cache/
+.mypy_cache/
+*.egg-info/
+dist/
+build/
+
+# ──────────────────────────────────────────────────────────────
+# Virtual environments
+# ──────────────────────────────────────────────────────────────
+.venv/
+venv/
+env/
+
+# ──────────────────────────────────────────────────────────────
+# Environment / secrets
+# ──────────────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+
+# OAuth / credential files
+workspace/skills/gog/client_secret.json
+workspace/skills/gog/token.pickle
+
+# ──────────────────────────────────────────────────────────────
+# Data files (runtime-generated, binary, or large)
+# ──────────────────────────────────────────────────────────────
+*.db
+*.db-shm
+*.db-wal
+*.db-journal
+workspace/db/
+workspace/qdrant/
+qdrant/storage/
+
+# Log files
+*.log
+logs/
+workspace/*.log
+
+# Archive / backup
+*.bak
+*.gz
+*.dat
+*.mmap
+db/backups/
 _archived_memories/
 REDUNDANCY_ARCHIVE_*/
 
-# Ignore the heavy DB files (binary data eats tokens)
-db/memory.db
-db/*.db
-
-# Ignore Python cache
-__pycache__/
-*.pyc
-
-# Claude Code session directory
-.claude/
-
-# Python virtual environment
-.venv/
-
-# Ignore Logs
-logs/
-
-# Credentials - keep secrets out of git
-workspace/skills/gog/client_secret.json
-workspace/skills/gog/token.pickle
-qdrant/storage/
-*.db-shm
-*.db-wal
-_archived_memories/
-logs/
-*.log
-*.bak
-__pycache__/
-.DS_Store
-db/backups/
-db/*.gz
-
-# Large Data Files
-*.txt
-!requirements.txt
+# ──────────────────────────────────────────────────────────────
+# JSON / text data files  (config templates are whitelisted below)
+# ──────────────────────────────────────────────────────────────
 *.json
 !workspace/sci_fi_dashboard/entities.json
-!.planning/config.json
-!extensions/**/openclaw.plugin.json
 !synapse.json.example
-# baileys-bridge Node.js project files — must be committed
 !baileys-bridge/package.json
 !baileys-bridge/package-lock.json
-*.bak
-*.gz
-db/memory.db*
-db/backups/
-qdrant/storage/
+!.planning/config.json
+!extensions/**/openclaw.plugin.json
 
-# Workspace Specific
-workspace/qdrant/
-workspace/db/
-workspace/*.log
-workspace/*.gz
-*.dat
-*.mmap
+*.txt
+!requirements.txt
 
-# Environment variables
-.env
+# ──────────────────────────────────────────────────────────────
+# OS / editor noise
+# ──────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
 
-# Learning / Teaching documents (local only)
-LEARN_SYSTEM_DESIGN*.md
-CLAUDE.md
-GEMINI.md
+# ──────────────────────────────────────────────────────────────
+# Claude Code session directory
+# ──────────────────────────────────────────────────────────────
+.claude/
 
+# ──────────────────────────────────────────────────────────────
 # GSD planning docs — local only, not for public GitHub
+# ──────────────────────────────────────────────────────────────
 .planning/
 
-# Personal notes — local only
+# ──────────────────────────────────────────────────────────────
+# Local / personal notes
+# ──────────────────────────────────────────────────────────────
 futureendevours.md
+LEARN_SYSTEM_DESIGN*.md
+GEMINI.md
