@@ -238,5 +238,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 5. Core Channels — Telegram, Discord, Slack | 4/4 | Complete   | 2026-03-02 |
 | 6. Onboarding Wizard | 5/5 | Complete   | 2026-03-02 |
 | 7. Session Metrics, Health & Cleanup | 4/4 | Complete   | 2026-03-03 |
-| 8. Fix Channel Inbound Pipeline | 0/3 | Pending | — |
+| 8. Fix Channel Inbound Pipeline | 2/3 | In Progress|  |
 | 9. Verification Backfill & LLM Cleanup | 0/3 | Pending | — |
