@@ -18,7 +18,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 4: WhatsApp — Baileys Bridge** - Replace openclaw message send CLI with a self-managed Baileys Node.js microservice (completed 2026-03-02)
 - [x] **Phase 5: Core Channels — Telegram, Discord, Slack** - Add the three most widely used chat platforms as native channel integrations (completed 2026-03-02)
 - [x] **Phase 6: Onboarding Wizard** - A user with zero prior Synapse experience can run synapse onboard and have a fully configured system in one session (completed 2026-03-02)
-- [ ] **Phase 7: Session Metrics, Health & Cleanup** - Remove all remaining openclaw CLI calls; zero openclaw references in codebase
+- [x] **Phase 7: Session Metrics, Health & Cleanup** - Remove all remaining openclaw CLI calls; zero openclaw references in codebase (completed 2026-03-03)
 
 ## Phase Details
 
@@ -194,4 +194,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | 4. WhatsApp — Baileys Bridge | 4/4 | Complete   | 2026-03-02 |
 | 5. Core Channels — Telegram, Discord, Slack | 4/4 | Complete   | 2026-03-02 |
 | 6. Onboarding Wizard | 5/5 | Complete   | 2026-03-02 |
-| 7. Session Metrics, Health & Cleanup | 3/4 | In Progress|  |
+| 7. Session Metrics, Health & Cleanup | 4/4 | Complete   | 2026-03-03 |

@@ -3,6 +3,19 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
+last_updated: "2026-03-03T08:58:13.647Z"
+progress:
+  total_phases: 7
+  completed_phases: 7
+  total_plans: 31
+  completed_plans: 31
+---
+
+---
+gsd_state_version: 1.0
+milestone: v1.0
+milestone_name: milestone
+status: unknown
 last_updated: "2026-03-03T08:38:10.491Z"
 progress:
   total_phases: 7
@@ -135,16 +148,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-02)
 
 **Core value:** A user can run Synapse-OSS on any machine, connect to their messaging apps and LLM providers, and have a fully working AI assistant — with zero dependency on any external binary or bridge service.
-**Current focus:** Phase 7 IN PROGRESS — Session metrics, health endpoint, cleanup; Plans 07-01 and 07-02 complete
+**Current focus:** Phase 7 COMPLETE — All 4 plans done; HLTH-01, SESS-01, SESS-02, SESS-03 all addressed
 
 ## Current Position
 
-Phase: 7 of 7 (Session Metrics and Health Cleanup) — IN PROGRESS
-Plan: 2 of 4 complete in current phase (07-02 GET /api/sessions + state.py SQLite read)
-Status: 29/31 plans complete across all 7 phases
-Last activity: 2026-03-03 — Plan 07-02 complete: GET /api/sessions endpoint + state.py SQLite sessions read; 2 tasks, 2 files
+Phase: 7 of 7 (Session Metrics and Health Cleanup) — COMPLETE
+Plan: 4 of 4 complete in current phase (07-04 /health extended + test_sessions.py)
+Status: 31/31 plans complete across all 7 phases
+Last activity: 2026-03-03 — Plan 07-04 complete: GET /health extended with databases+llm keys, test_sessions.py with 10 tests; Phase 7 complete
 
-Progress: [█████████████████████████░░░] 29/31 plans complete (Phase 7 In Progress)
+Progress: [█████████████████████████████] 31/31 plans complete (ALL PHASES COMPLETE)
 
 ## Performance Metrics
 
@@ -188,6 +201,7 @@ Progress: [███████████████████████
 | Phase 07-session-metrics-health-cleanup P03 | 2 | 2 tasks | 9 files |
 | Phase 07-session-metrics-health-cleanup P01 | 12 | 2 tasks | 2 files |
 | Phase 07-session-metrics-health-cleanup P02 | 10 | 2 tasks | 2 files |
+| Phase 07-session-metrics-health-cleanup P04 | 17 | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -276,6 +290,8 @@ Recent decisions affecting current work:
 - [Phase 07-session-metrics-health-cleanup]: call_model() NOT instrumented in llm_router.py — used for validation pings only; token tracking irrelevant per plan spec
 - [Phase 07-session-metrics-health-cleanup]: GET /api/sessions returns [] on any exception rather than raising — graceful degradation for dashboard consumers
 - [Phase 07-session-metrics-health-cleanup]: contextTokens hardcoded to 1048576 in /api/sessions response — sessions table has no context column; matches state.py default
+- [Phase 07-session-metrics-health-cleanup]: _check_databases() uses lazy imports for DB_PATH — preserves SYNAPSE_HOME monkeypatching; _check_llm_provider() key-presence check only — no live LLM call to avoid token cost
+- [Phase 07-session-metrics-health-cleanup]: test_no_openclaw_binary_calls_in_active_files uses subprocess/os.system/shutil.which regex patterns — prevents false positives from comments, env var names, and UI text strings
 
 ### Pending Todos
 
@@ -288,6 +304,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-03T08:37:02Z
-Stopped at: Completed 07-02-PLAN.md — GET /api/sessions endpoint + state.py SQLite read; 2 tasks, 2 files
+Last session: 2026-03-03T08:56:31Z
+Stopped at: Completed 07-04-PLAN.md — /health extended with databases+llm keys, test_sessions.py with 10 tests; Phase 7 complete; ALL 7 PHASES COMPLETE
 Resume file: None
