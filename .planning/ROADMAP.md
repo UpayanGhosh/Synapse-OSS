@@ -17,7 +17,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 3: Channel Abstraction Layer** - Establish BaseChannel ABC, ChannelRegistry, and unified webhook router before any channel is implemented (completed 2026-03-02)
 - [x] **Phase 4: WhatsApp — Baileys Bridge** - Replace openclaw message send CLI with a self-managed Baileys Node.js microservice (completed 2026-03-02)
 - [x] **Phase 5: Core Channels — Telegram, Discord, Slack** - Add the three most widely used chat platforms as native channel integrations (completed 2026-03-02)
-- [x] **Phase 6: Onboarding Wizard** - A user with zero prior Synapse experience can run synapse onboard and have a fully configured system in one session (completed 2026-03-02)
+- [x] **Phase 6: Onboarding Wizard** - A user with zero prior Synapse experience can run synapse onboard and have a fully configured system in one session (completed 2026-03-02)
 - [ ] **Phase 7: Session Metrics, Health & Cleanup** - Remove all remaining openclaw CLI calls; zero openclaw references in codebase
 
 ## Phase Details
@@ -173,7 +173,13 @@ Plans:
 **Key Risks**:
   - Audit all scripts (not just Python files) for openclaw references — shell scripts, .sh files, .bat files
   - The grep zero-result criterion is the hard acceptance test for this phase; run it before marking phase complete
-**Plans**: TBD
+**Plans**: 4 plans
+
+Plans:
+- [ ] 07-01-PLAN.md — Add sessions table to db.py + instrument llm_router.py call() with token-tracking side effect
+- [ ] 07-02-PLAN.md — Add GET /api/sessions route to api_gateway.py + replace state.py subprocess placeholder with SQLite read
+- [ ] 07-03-PLAN.md — Script cleanup: fix synapse_start.sh/.bat, synapse_stop.bat, synapse_health.sh + clean commented openclaw stubs from workspace Python files
+- [ ] 07-04-PLAN.md — Extend GET /health with databases + llm keys + create test_sessions.py covering all SESS/HLTH requirements
 
 ## Progress
 
@@ -188,4 +194,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | 4. WhatsApp — Baileys Bridge | 4/4 | Complete   | 2026-03-02 |
 | 5. Core Channels — Telegram, Discord, Slack | 4/4 | Complete   | 2026-03-02 |
 | 6. Onboarding Wizard | 5/5 | Complete   | 2026-03-02 |
-| 7. Session Metrics, Health & Cleanup | 0/TBD | Not started | - |
+| 7. Session Metrics, Health & Cleanup | 0/4 | Not started | - |
