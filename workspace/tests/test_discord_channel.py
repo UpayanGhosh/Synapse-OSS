@@ -437,3 +437,111 @@ async def test_health_check_no_user_is_down():
 
     result = await ch.health_check()
     assert result["status"] == "down"
+
+
+# ---------------------------------------------------------------------------
+# Phase 08-01: Integration tests — enqueue_fn routes via flood.incoming()
+# DIS-01, DIS-03
+# ---------------------------------------------------------------------------
+
+
+class TestDiscordFloodGateIntegration:
+    """
+    DIS-01 / DIS-03: Verify that a DiscordChannel with a flood.incoming() adapter
+    correctly routes ChannelMessage through the adapter without AttributeError.
+
+    These tests use the same _make_flood_enqueue adapter pattern as api_gateway.py.
+    They do NOT test task_queue directly — they test that the ChannelMessage
+    shape satisfies the adapter contract.
+
+    Note: The Discord on_message handler is a local closure registered inside
+    start() — it is not stored as a public method. These tests exercise the
+    full contract by calling receive() + enqueue_fn directly, matching the
+    exact call sequence that on_message() performs at runtime.
+    """
+
+    def _make_flood_adapter(self, collected):
+        """Returns an async enqueue_fn that captures calls to flood.incoming()."""
+
+        async def _enqueue(channel_msg):
+            # Mirror the _make_flood_enqueue adapter in api_gateway.py
+            collected.append({
+                "chat_id": channel_msg.chat_id,
+                "text": channel_msg.text,
+                "message_id": channel_msg.message_id,
+                "sender_name": channel_msg.sender_name,
+                "channel_id": "discord",
+            })
+
+        return _enqueue
+
+    async def test_dm_message_reaches_flood_gate(self):
+        """DIS-01: DM inbound message dispatched via enqueue_fn adapter (not dropped)."""
+        collected = []
+        ch = DiscordChannel(token="fake-token", enqueue_fn=self._make_flood_adapter(collected))
+
+        # Build a ChannelMessage as the on_message handler would via receive()
+        channel_msg = await ch.receive({
+            "content": "hello",
+            "author_id": "999888777",
+            "author_name": "TestUser",
+            "channel_discord_id": 111222333,
+            "message_id": "123456789",
+            "is_group": False,
+        })
+        # Call the adapter directly — same as on_message handler does
+        await ch._enqueue_fn(channel_msg)
+
+        assert len(collected) == 1, f"Expected 1 dispatched message, got {len(collected)}"
+        assert collected[0]["channel_id"] == "discord"
+        assert collected[0]["text"] == "hello"
+
+    async def test_server_mention_reaches_flood_gate(self):
+        """DIS-01: Server @mention dispatched via adapter."""
+        collected = []
+        ch = DiscordChannel(token="fake-token", enqueue_fn=self._make_flood_adapter(collected))
+
+        channel_msg = await ch.receive({
+            "content": "hey bot",
+            "author_id": "111",
+            "author_name": "User",
+            "channel_discord_id": 999,
+            "message_id": "42",
+            "is_group": True,
+        })
+        await ch._enqueue_fn(channel_msg)
+
+        assert len(collected) == 1
+        assert collected[0]["text"] == "hey bot"
+
+    async def test_enqueue_fn_receives_channel_message_shape(self):
+        """DIS-03: Adapter receives ChannelMessage with correct fields (no AttributeError on task_id)."""
+        from sci_fi_dashboard.channels.base import ChannelMessage
+
+        received = []
+
+        async def capture(channel_msg):
+            # Verify ChannelMessage has the fields the adapter needs
+            received.append(channel_msg)
+
+        ch = DiscordChannel(token="fake-token", enqueue_fn=capture)
+        channel_msg = await ch.receive({
+            "content": "test",
+            "author_id": "1",
+            "author_name": "Tester",
+            "channel_discord_id": 100,
+            "message_id": "99",
+            "is_group": False,
+        })
+        await ch._enqueue_fn(channel_msg)
+
+        assert len(received) == 1
+        msg = received[0]
+        assert isinstance(msg, ChannelMessage)
+        assert msg.channel_id == "discord"
+        assert hasattr(msg, "chat_id")
+        assert hasattr(msg, "text")
+        assert hasattr(msg, "message_id")
+        assert hasattr(msg, "sender_name")
+        # Confirm ChannelMessage does NOT have task_id (it's not a MessageTask)
+        assert not hasattr(msg, "task_id"), "ChannelMessage must not have task_id — use adapter pattern"

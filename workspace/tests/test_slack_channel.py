@@ -322,3 +322,80 @@ async def test_mark_read_is_noop():
     """SLK-03: mark_read() completes without raising — Slack bots cannot mark messages read."""
     ch = _make_channel()
     await ch.mark_read("C12345", "ts123")  # must not raise
+
+
+# ---------------------------------------------------------------------------
+# Phase 08-01: Integration tests — enqueue_fn routes via flood.incoming()
+# SLK-01, SLK-03
+# ---------------------------------------------------------------------------
+
+
+class TestSlackFloodGateIntegration:
+    """
+    SLK-01 / SLK-03: Verify that a SlackChannel with a flood.incoming() adapter
+    correctly routes ChannelMessage through the adapter without AttributeError.
+
+    These tests use _dispatch() directly (the public normalisation method on
+    SlackChannel) to exercise the enqueue_fn contract without needing a live
+    Slack socket connection.
+    """
+
+    def _make_flood_adapter(self, collected):
+        """Returns an async enqueue_fn that captures what the adapter would pass to flood."""
+
+        async def _enqueue(channel_msg):
+            collected.append({
+                "chat_id": channel_msg.chat_id,
+                "text": channel_msg.text,
+                "message_id": channel_msg.message_id,
+                "sender_name": channel_msg.sender_name,
+                "channel_id": "slack",
+            })
+
+        return _enqueue
+
+    async def test_slack_dm_reaches_flood_gate(self):
+        """SLK-01: Slack DM dispatched via enqueue_fn adapter — not silently dropped."""
+        collected = []
+        ch = _make_channel(enqueue_fn=self._make_flood_adapter(collected))
+
+        # Build a minimal Slack event matching what _dispatch() expects
+        event = {
+            "text": "hello slack",
+            "user": "U123",
+            "channel": "D456",
+            "ts": "1234567890.000001",
+            "channel_type": "im",
+        }
+        await ch._dispatch(event, is_group=False)
+
+        assert len(collected) == 1, f"Expected 1 call, got {len(collected)}"
+        assert collected[0]["channel_id"] == "slack"
+        assert collected[0]["text"] == "hello slack"
+
+    async def test_slack_enqueue_fn_receives_channel_message_shape(self):
+        """SLK-03: Adapter receives ChannelMessage with correct fields — no task_id crash."""
+        from sci_fi_dashboard.channels.base import ChannelMessage
+
+        received = []
+
+        async def capture(channel_msg):
+            received.append(channel_msg)
+
+        ch = _make_channel(enqueue_fn=capture)
+        event = {
+            "text": "type check",
+            "user": "U999",
+            "channel": "D001",
+            "ts": "9999.0001",
+            "channel_type": "im",
+        }
+        await ch._dispatch(event, is_group=False)
+
+        assert len(received) == 1
+        msg = received[0]
+        assert isinstance(msg, ChannelMessage)
+        assert msg.channel_id == "slack"
+        assert hasattr(msg, "chat_id")
+        assert hasattr(msg, "message_id")
+        assert not hasattr(msg, "task_id"), "ChannelMessage must not have task_id — use adapter"
