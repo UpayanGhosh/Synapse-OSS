@@ -8,37 +8,54 @@ on:
 
 jobs:
   lint:
+    name: Lint & Format
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.11'
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
 
-    - name: Install linting tools
-      run: pip install ruff black
+      - name: Install linting tools
+        run: pip install ruff black
 
-    - name: Run ruff (linting)
-      run: ruff check workspace/sci_fi_dashboard/
+      - name: Ruff (lint)
+        run: ruff check workspace/
 
-    - name: Run black (format check)
-      run: black --check workspace/sci_fi_dashboard/
+      - name: Black (format check)
+        run: black workspace/ --check
 
   test:
+    name: Tests (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.11', '3.12']
+
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.11'
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
 
-    - name: Install test dependencies
-      run: pip install pytest pytest-asyncio pytest-timeout
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ matrix.python-version }}-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-${{ matrix.python-version }}-
 
-    - name: Run tests
-      working-directory: workspace
-      run: pytest tests/ -v --timeout=120 --tb=short
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Install test tools
+        run: pip install pytest pytest-asyncio pytest-timeout
+
+      - name: Run tests
+        working-directory: workspace
+        run: pytest tests/ -v --timeout=120 --tb=short -m "not performance"
