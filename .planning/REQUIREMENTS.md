@@ -61,9 +61,9 @@
 
 ### Telegram Channel
 
-- [ ] **TEL-01**: Telegram channel uses python-telegram-bot v22+ in async Application mode (coroutine API, not `run_polling()`)
+- [x] **TEL-01**: Telegram channel uses python-telegram-bot v22+ in async Application mode (coroutine API, not `run_polling()`)
 - [x] **TEL-02**: Inbound DMs and group messages (when bot is mentioned) are handled
-- [ ] **TEL-03**: Outbound text send, typing action, and message reply work correctly
+- [x] **TEL-03**: Outbound text send, typing action, and message reply work correctly
 - [x] **TEL-04**: Bot token is stored in synapse.json under `channels.telegram.token`
 
 ### Discord Channel
