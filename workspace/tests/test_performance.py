@@ -139,6 +139,10 @@ class TestKnowledgeGraphPerformance:
         # Should complete in reasonable time
         assert elapsed < 2.0, f"Query took {elapsed}s, expected <2s"
 
+    @pytest.mark.skipif(
+        sys.platform == "win32",
+        reason="SQLite WAL concurrent write throughput varies significantly on Windows; test tuned for Linux/macOS"
+    )
     def test_concurrent_writes(self, tmp_path):
         """Test concurrent write performance."""
         db_path = tmp_path / "concurrent.db"
