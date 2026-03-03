@@ -127,7 +127,7 @@ CATEGORY_MAP = {
         "build_persona.py",
     ],
     "gateway": ["api_gateway.py", "retriever.py", "server.py"],
-    "config": ["synapse.json", "config.py", ".gitignore", ".openclawignore"],
+    "config": ["synapse.json", "config.py", ".gitignore", ".synapsenotrack"],
     "monitor": ["monitor.py", "change_tracker.py", "change_viewer.py"],
     "skills": [],  # Anything under skills/
     "memory": [],  # Anything under memory/

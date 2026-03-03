@@ -55,21 +55,6 @@ def transcribe_audio(file_path):
         or os.environ.get("GOOGLE_GENERATIVE_AI_API_KEY")
     )
 
-    # TODO Phase 2: openclaw.json key lookup replaced by synapse.json providers config
-    # if not api_key:
-    #     try:
-    #         config_path = os.path.join(os.path.expanduser("~/.openclaw"), "openclaw.json")
-    #         if os.path.exists(config_path):
-    #             with open(config_path, "r") as f:
-    #                 config = json.load(f)
-    #                 skills_entries = config.get("skills", {}).get("entries", {})
-    #                 for entry in skills_entries.values():
-    #                     if "apiKey" in entry and entry["apiKey"].startswith("AIza"):
-    #                         api_key = entry["apiKey"]
-    #                         break
-    #     except Exception:
-    #         pass
-
     if not api_key:
         log_event("GEMINI_API_KEY not found", "ERROR")
         return "Error: No Google API Key found. Please set GEMINI_API_KEY in your environment."

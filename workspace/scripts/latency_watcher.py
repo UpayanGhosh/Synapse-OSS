@@ -23,12 +23,6 @@ async def send_whatsapp(msg):
     try:
         print(f"ALARM: {msg}")
         # TODO Phase 4: replace with Synapse WhatsApp bridge (Baileys) send call
-        # Fire and forget
-        # subprocess.Popen(
-        #     ["openclaw", "message", "send", "-t", TARGET_SENDER, "-m", msg],
-        #     stdout=subprocess.DEVNULL,
-        #     stderr=subprocess.DEVNULL,
-        # )
     except Exception as e:
         print(f"Failed to send WA: {e}")
 

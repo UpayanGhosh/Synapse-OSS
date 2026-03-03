@@ -81,8 +81,6 @@ class DashboardState:
 
         # Fetch real API usage
         try:
-            # TODO Phase 7: openclaw sessions list replaced by internal SQLite sessions endpoint
-            # sessions_raw = subprocess.run(["openclaw", "sessions", "list", "--json"], ...)
             sessions_data: list = []  # Placeholder — Phase 7 populates from memory.db sessions table
             sessions = sessions_data
             self.active_sessions = len(sessions)
