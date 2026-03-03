@@ -3,6 +3,32 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
+last_updated: "2026-03-03T11:00:06.628Z"
+progress:
+  total_phases: 9
+  completed_phases: 7
+  total_plans: 34
+  completed_plans: 33
+---
+
+---
+gsd_state_version: 1.0
+milestone: v1.0
+milestone_name: milestone
+status: unknown
+last_updated: "2026-03-03T09:04:25.911Z"
+progress:
+  total_phases: 7
+  completed_phases: 7
+  total_plans: 31
+  completed_plans: 31
+---
+
+---
+gsd_state_version: 1.0
+milestone: v1.0
+milestone_name: milestone
+status: unknown
 last_updated: "2026-03-03T08:58:13.647Z"
 progress:
   total_phases: 7
@@ -148,16 +174,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-02)
 
 **Core value:** A user can run Synapse-OSS on any machine, connect to their messaging apps and LLM providers, and have a fully working AI assistant — with zero dependency on any external binary or bridge service.
-**Current focus:** Phase 7 COMPLETE — All 4 plans done; HLTH-01, SESS-01, SESS-02, SESS-03 all addressed
+**Current focus:** Phase 8 IN PROGRESS — Plan 08-01 complete; Discord+Slack flood adapter wired; DIS-01, DIS-03, SLK-01, SLK-03 closed
 
 ## Current Position
 
-Phase: 7 of 7 (Session Metrics and Health Cleanup) — COMPLETE
-Plan: 4 of 4 complete in current phase (07-04 /health extended + test_sessions.py)
-Status: 31/31 plans complete across all 7 phases
-Last activity: 2026-03-03 — Plan 07-04 complete: GET /health extended with databases+llm keys, test_sessions.py with 10 tests; Phase 7 complete
+Phase: 8 of 8 (Fix Channel Inbound Pipeline) — IN PROGRESS
+Plan: 1 of 3 complete in current phase (08-01 Discord+Slack flood adapter + 5 integration tests)
+Status: 32/34 plans complete across all 8 phases
+Last activity: 2026-03-03 — Plan 08-01 complete: _make_flood_enqueue factory added; Discord+Slack wired via flood.incoming(); 5 integration tests pass
 
-Progress: [█████████████████████████████] 31/31 plans complete (ALL PHASES COMPLETE)
+Progress: [█████████████████████████████] 32/34 plans in progress (Phase 8 active)
 
 ## Performance Metrics
 
@@ -202,6 +228,7 @@ Progress: [███████████████████████
 | Phase 07-session-metrics-health-cleanup P01 | 12 | 2 tasks | 2 files |
 | Phase 07-session-metrics-health-cleanup P02 | 10 | 2 tasks | 2 files |
 | Phase 07-session-metrics-health-cleanup P04 | 17 | 2 tasks | 2 files |
+| Phase 08-fix-channel-inbound-pipeline P02 | 4 | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -292,6 +319,13 @@ Recent decisions affecting current work:
 - [Phase 07-session-metrics-health-cleanup]: contextTokens hardcoded to 1048576 in /api/sessions response — sessions table has no context column; matches state.py default
 - [Phase 07-session-metrics-health-cleanup]: _check_databases() uses lazy imports for DB_PATH — preserves SYNAPSE_HOME monkeypatching; _check_llm_provider() key-presence check only — no live LLM call to avoid token cost
 - [Phase 07-session-metrics-health-cleanup]: test_no_openclaw_binary_calls_in_active_files uses subprocess/os.system/shutil.which regex patterns — prevents false positives from comments, env var names, and UI text strings
+- [Phase 08-fix-channel-inbound-pipeline]: _make_flood_enqueue is a sync factory (not async) — no await needed at call site; inner _enqueue is async; mirrors unified_webhook() reference pattern
+- [Phase 08-fix-channel-inbound-pipeline]: All channel adapter registrations must use _make_flood_enqueue(channel_id), never task_queue.enqueue directly — ChannelMessage has no task_id attribute
+- [Phase 08-fix-channel-inbound-pipeline]: ChannelMessage import path is sci_fi_dashboard.channels.base (not channel_message module — does not exist)
+- [Phase 08-fix-channel-inbound-pipeline]: Discord integration tests use receive()+_enqueue_fn() directly — on_message is a local closure in start(), not accessible as public method
+- [Phase 08-fix-channel-inbound-pipeline]: Slack integration tests use _dispatch() directly — real public method; canonical normalization entry point
+- [Phase 08-fix-channel-inbound-pipeline]: _make_flood_enqueue factory placed before Telegram block — Python top-to-bottom requires factory defined before first call; adff486
+- [Phase 08-fix-channel-inbound-pipeline]: _dispatch() takes PTB Update not ChannelMessage — tests use _make_mock_update() to build Update mocks; 58326e1
 
 ### Pending Todos
 
@@ -300,10 +334,10 @@ None yet.
 ### Blockers/Concerns
 
 - Phase 2 (litellm streaming): stream=False enforced in Plan 02; streaming not used in Phase 2 — blocker removed
-- None active: Phase 4 complete (all 4 plans done); ready for Phase 5
+- None active: Phase 8 plan 01 complete; ready for 08-02 and 08-03
 
 ## Session Continuity
 
-Last session: 2026-03-03T08:56:31Z
-Stopped at: Completed 07-04-PLAN.md — /health extended with databases+llm keys, test_sessions.py with 10 tests; Phase 7 complete; ALL 7 PHASES COMPLETE
+Last session: 2026-03-03T09:22:00Z
+Stopped at: Completed 08-01-PLAN.md — _make_flood_enqueue factory added; Discord+Slack wired via flood.incoming(); DIS-01, DIS-03, SLK-01, SLK-03 closed; 5 integration tests pass
 Resume file: None

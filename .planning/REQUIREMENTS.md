@@ -68,16 +68,16 @@
 
 ### Discord Channel
 
-- [ ] **DIS-01**: Discord channel uses discord.py v2.4+ with the async `on_message` event coroutine (not blocking runner)
+- [x] **DIS-01**: Discord channel uses discord.py v2.4+ with the async `on_message` event coroutine (not blocking runner)
 - [x] **DIS-02**: Inbound DMs and server messages (when bot is mentioned or in designated channels) are handled
-- [ ] **DIS-03**: Outbound text send and typing indicator work correctly
+- [x] **DIS-03**: Outbound text send and typing indicator work correctly
 - [x] **DIS-04**: Bot token and allowed channel/server IDs stored in synapse.json under `channels.discord`
 
 ### Slack Channel
 
-- [ ] **SLK-01**: Slack channel uses slack-bolt async with Socket Mode by default (no public URL required for self-hosters)
+- [x] **SLK-01**: Slack channel uses slack-bolt async with Socket Mode by default (no public URL required for self-hosters)
 - [x] **SLK-02**: Inbound DMs and app mentions in channels are handled
-- [ ] **SLK-03**: Outbound text send works correctly
+- [x] **SLK-03**: Outbound text send works correctly
 - [x] **SLK-04**: Bot token and app-level token stored in synapse.json under `channels.slack`
 
 ### Onboarding Wizard
