@@ -1,0 +1,54 @@
+{
+  "_comment": "Copy this file to ~/.synapse/synapse.json and fill in your keys.",
+
+  "providers": {
+    "anthropic": {"api_key": "YOUR_ANTHROPIC_API_KEY"},
+    "openai": {"api_key": "YOUR_OPENAI_API_KEY"},
+    "gemini": {"api_key": "YOUR_GEMINI_API_KEY"},
+    "groq": {"api_key": "YOUR_GROQ_API_KEY"},
+    "openrouter": {"api_key": "YOUR_OPENROUTER_API_KEY"},
+    "mistral": {"api_key": "YOUR_MISTRAL_API_KEY"},
+    "together_ai": {"api_key": "YOUR_TOGETHER_AI_API_KEY"},
+    "xai": {"api_key": "YOUR_XAI_API_KEY"}
+  },
+
+  "channels": {
+    "telegram": {"token": "YOUR_TELEGRAM_BOT_TOKEN"},
+    "discord": {
+      "token": "YOUR_DISCORD_BOT_TOKEN",
+      "allowed_channel_ids": []
+    },
+    "slack": {
+      "bot_token": "xoxb-YOUR_BOT_TOKEN",
+      "app_token": "xapp-YOUR_APP_TOKEN"
+    },
+    "whatsapp": {}
+  },
+
+  "model_mappings": {
+    "casual": {
+      "model": "gemini/gemini-2.0-flash",
+      "fallback": "groq/llama-3.3-70b-versatile"
+    },
+    "code": {
+      "model": "anthropic/claude-sonnet-4-6",
+      "fallback": "openai/gpt-4o"
+    },
+    "analysis": {
+      "model": "gemini/gemini-2.0-pro",
+      "fallback": "anthropic/claude-sonnet-4-6"
+    },
+    "review": {
+      "model": "anthropic/claude-opus-4-6",
+      "fallback": "anthropic/claude-sonnet-4-6"
+    },
+    "vault": {
+      "model": "ollama_chat/llama3.3",
+      "fallback": null
+    },
+    "translate": {
+      "model": "openrouter/meta-llama/llama-3.3-70b-instruct",
+      "fallback": "groq/llama-3.3-70b-versatile"
+    }
+  }
+}
