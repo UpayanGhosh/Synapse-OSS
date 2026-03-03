@@ -61,23 +61,23 @@
 
 ### Telegram Channel
 
-- [x] **TEL-01**: Telegram channel uses python-telegram-bot v22+ in async Application mode (coroutine API, not `run_polling()`)
+- [ ] **TEL-01**: Telegram channel uses python-telegram-bot v22+ in async Application mode (coroutine API, not `run_polling()`)
 - [x] **TEL-02**: Inbound DMs and group messages (when bot is mentioned) are handled
-- [x] **TEL-03**: Outbound text send, typing action, and message reply work correctly
+- [ ] **TEL-03**: Outbound text send, typing action, and message reply work correctly
 - [x] **TEL-04**: Bot token is stored in synapse.json under `channels.telegram.token`
 
 ### Discord Channel
 
-- [x] **DIS-01**: Discord channel uses discord.py v2.4+ with the async `on_message` event coroutine (not blocking runner)
+- [ ] **DIS-01**: Discord channel uses discord.py v2.4+ with the async `on_message` event coroutine (not blocking runner)
 - [x] **DIS-02**: Inbound DMs and server messages (when bot is mentioned or in designated channels) are handled
-- [x] **DIS-03**: Outbound text send and typing indicator work correctly
+- [ ] **DIS-03**: Outbound text send and typing indicator work correctly
 - [x] **DIS-04**: Bot token and allowed channel/server IDs stored in synapse.json under `channels.discord`
 
 ### Slack Channel
 
-- [x] **SLK-01**: Slack channel uses slack-bolt async with Socket Mode by default (no public URL required for self-hosters)
+- [ ] **SLK-01**: Slack channel uses slack-bolt async with Socket Mode by default (no public URL required for self-hosters)
 - [x] **SLK-02**: Inbound DMs and app mentions in channels are handled
-- [x] **SLK-03**: Outbound text send works correctly
+- [ ] **SLK-03**: Outbound text send works correctly
 - [x] **SLK-04**: Bot token and app-level token stored in synapse.json under `channels.slack`
 
 ### Onboarding Wizard
@@ -98,7 +98,7 @@
 - [x] **SESS-01**: System tracks per-session token usage (input, output, total) in SQLite `sessions` table in `memory.db`
 - [x] **SESS-02**: `GET /api/sessions` endpoint returns JSON matching the schema previously returned by `openclaw sessions list --json`
 - [x] **SESS-03**: `state.py` reads session metrics from internal SQLite instead of shelling out to `openclaw sessions list`
-- [ ] **HLTH-01**: `GET /health` reports status of: LLM provider connectivity, each active channel, Baileys bridge subprocess, SQLite databases
+- [x] **HLTH-01**: `GET /health` reports status of: LLM provider connectivity, each active channel, Baileys bridge subprocess, SQLite databases
 - [x] **HLTH-02**: `synapse_health.sh` is updated to check internal health endpoint instead of openclaw process
 - [x] **HLTH-03**: `synapse_start.sh` / `synapse_stop.sh` no longer reference or depend on the openclaw binary
 
@@ -153,14 +153,14 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CONF-01 | Phase 1: Foundation & Config | Complete |
-| CONF-02 | Phase 1: Foundation & Config | Complete |
-| CONF-03 | Phase 1: Foundation & Config | Complete |
-| CONF-04 | Phase 1: Foundation & Config | Complete |
-| CONF-05 | Phase 1: Foundation & Config | Complete |
-| CONF-06 | Phase 1: Foundation & Config | Complete |
-| CONF-07 | Phase 1: Foundation & Config | Complete |
-| LLM-01 | Phase 2: LLM Provider Layer | Complete (02-02) |
+| CONF-01 | Phase 1 → Phase 9 (verification) | Partial — code correct, VERIFICATION.md missing |
+| CONF-02 | Phase 1 → Phase 9 (verification) | Partial — code correct, VERIFICATION.md missing |
+| CONF-03 | Phase 1 → Phase 9 (verification) | Partial — code correct, VERIFICATION.md missing |
+| CONF-04 | Phase 1 → Phase 9 (verification) | Partial — code correct, VERIFICATION.md missing |
+| CONF-05 | Phase 1 → Phase 9 (verification) | Partial — code correct, VERIFICATION.md missing |
+| CONF-06 | Phase 1 → Phase 9 (verification) | Partial — code correct, VERIFICATION.md missing |
+| CONF-07 | Phase 1 → Phase 9 (verification) | Partial — code correct, VERIFICATION.md missing |
+| LLM-01 | Phase 2 → Phase 9 (cleanup) | Partial — translate_banglish() bypass; fix in Phase 9 |
 | LLM-02 | Phase 2: LLM Provider Layer | Complete (02-02) |
 | LLM-03 | Phase 2: LLM Provider Layer | Complete (02-02) |
 | LLM-04 | Phase 2: LLM Provider Layer | Complete (02-02) |
@@ -175,7 +175,7 @@
 | LLM-13 | Phase 2: LLM Provider Layer | Complete (02-02) |
 | LLM-14 | Phase 2: LLM Provider Layer | Complete (02-02) |
 | LLM-15 | Phase 2: LLM Provider Layer | Complete (02-02) |
-| LLM-16 | Phase 2: LLM Provider Layer | Complete (02-02) |
+| LLM-16 | Phase 2 → Phase 9 (cleanup) | Partial — meta-llama/ not in test patterns; fix in Phase 9 |
 | LLM-17 | Phase 2: LLM Provider Layer | Complete (02-02) |
 | LLM-18 | Phase 2: LLM Provider Layer | Complete |
 | CHAN-01 | Phase 3: Channel Abstraction Layer | Complete |
@@ -191,19 +191,19 @@
 | WA-04 | Phase 4: WhatsApp — Baileys Bridge | Complete |
 | WA-05 | Phase 4: WhatsApp — Baileys Bridge | Complete |
 | WA-06 | Phase 4: WhatsApp — Baileys Bridge | Complete |
-| WA-07 | Phase 4: WhatsApp — Baileys Bridge | Complete |
+| WA-07 | Phase 4 → Phase 9 (cleanup) | Partial — no HTTP /qr route on gateway; fix in Phase 9 |
 | WA-08 | Phase 4: WhatsApp — Baileys Bridge | Complete |
-| TEL-01 | Phase 5: Core Channels — Telegram, Discord, Slack | Complete |
+| TEL-01 | Phase 5 → Phase 8 (gap fix) | Pending — ChannelMessage/MessageTask type mismatch breaks inbound |
 | TEL-02 | Phase 5: Core Channels — Telegram, Discord, Slack | Complete |
-| TEL-03 | Phase 5: Core Channels — Telegram, Discord, Slack | Complete |
+| TEL-03 | Phase 5 → Phase 8 (gap fix) | Pending — same root cause as TEL-01 |
 | TEL-04 | Phase 5: Core Channels — Telegram, Discord, Slack | Complete |
-| DIS-01 | Phase 5: Core Channels — Telegram, Discord, Slack | Complete |
+| DIS-01 | Phase 5 → Phase 8 (gap fix) | Pending — enqueue_fn not passed at registration |
 | DIS-02 | Phase 5: Core Channels — Telegram, Discord, Slack | Complete |
-| DIS-03 | Phase 5: Core Channels — Telegram, Discord, Slack | Complete |
+| DIS-03 | Phase 5 → Phase 8 (gap fix) | Pending — same root cause as DIS-01 |
 | DIS-04 | Phase 5: Core Channels — Telegram, Discord, Slack | Complete |
-| SLK-01 | Phase 5: Core Channels — Telegram, Discord, Slack | Complete |
+| SLK-01 | Phase 5 → Phase 8 (gap fix) | Pending — enqueue_fn not passed at registration |
 | SLK-02 | Phase 5: Core Channels — Telegram, Discord, Slack | Complete |
-| SLK-03 | Phase 5: Core Channels — Telegram, Discord, Slack | Complete |
+| SLK-03 | Phase 5 → Phase 8 (gap fix) | Pending — same root cause as SLK-01 |
 | SLK-04 | Phase 5: Core Channels — Telegram, Discord, Slack | Complete |
 | ONB-01 | Phase 6: Onboarding Wizard | Complete |
 | ONB-02 | Phase 6: Onboarding Wizard | Complete |
@@ -218,14 +218,26 @@
 | SESS-01 | Phase 7: Session Metrics, Health & Cleanup | Complete |
 | SESS-02 | Phase 7: Session Metrics, Health & Cleanup | Complete |
 | SESS-03 | Phase 7: Session Metrics, Health & Cleanup | Complete |
-| HLTH-01 | Phase 7: Session Metrics, Health & Cleanup | Pending |
+| HLTH-01 | Phase 7: Session Metrics, Health & Cleanup | Complete |
 | HLTH-02 | Phase 7: Session Metrics, Health & Cleanup | Complete |
 | HLTH-03 | Phase 7: Session Metrics, Health & Cleanup | Complete |
+| TEL-01 (gap) | Phase 8: Fix Channel Inbound Pipeline | Pending |
+| TEL-03 (gap) | Phase 8: Fix Channel Inbound Pipeline | Pending |
+| DIS-01 (gap) | Phase 8: Fix Channel Inbound Pipeline | Pending |
+| DIS-03 (gap) | Phase 8: Fix Channel Inbound Pipeline | Pending |
+| SLK-01 (gap) | Phase 8: Fix Channel Inbound Pipeline | Pending |
+| SLK-03 (gap) | Phase 8: Fix Channel Inbound Pipeline | Pending |
+| CONF-01–07 (gap) | Phase 9: Verification Backfill & LLM Cleanup | Pending |
+| LLM-01 (gap) | Phase 9: Verification Backfill & LLM Cleanup | Pending |
+| LLM-16 (gap) | Phase 9: Verification Backfill & LLM Cleanup | Pending |
+| WA-07 (gap) | Phase 9: Verification Backfill & LLM Cleanup | Pending |
 
 **Coverage:**
 - v1 requirements: 71 total
 - Mapped to phases: 71
-- Unmapped: 0 (verified 2026-03-02)
+- Satisfied: 54 | Partial: 11 | Pending (gap closure): 6 | Unmapped: 0
+- Gap closure phases: Phase 8 (TEL-01, TEL-03, DIS-01, DIS-03, SLK-01, SLK-03), Phase 9 (CONF-01–07, LLM-01, LLM-16, WA-07)
+- Updated: 2026-03-03 (post audit v1.0-MILESTONE-AUDIT.md)
 
 ---
 *Requirements defined: 2026-03-02*

@@ -18,7 +18,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 4: WhatsApp — Baileys Bridge** - Replace openclaw message send CLI with a self-managed Baileys Node.js microservice (completed 2026-03-02)
 - [x] **Phase 5: Core Channels — Telegram, Discord, Slack** - Add the three most widely used chat platforms as native channel integrations (completed 2026-03-02)
 - [x] **Phase 6: Onboarding Wizard** - A user with zero prior Synapse experience can run synapse onboard and have a fully configured system in one session (completed 2026-03-02)
-- [x] **Phase 7: Session Metrics, Health & Cleanup** - Remove all remaining openclaw CLI calls; zero openclaw references in codebase (completed 2026-03-03)
+- [x] **Phase 7: Session Metrics, Health & Cleanup** - Remove all remaining openclaw CLI calls; zero openclaw references in codebase
+ (completed 2026-03-03)
 
 ## Phase Details
 
@@ -176,15 +177,57 @@ Plans:
 **Plans**: 4 plans
 
 Plans:
-- [ ] 07-01-PLAN.md — Add sessions table to db.py + instrument llm_router.py call() with token-tracking side effect
-- [ ] 07-02-PLAN.md — Add GET /api/sessions route to api_gateway.py + replace state.py subprocess placeholder with SQLite read
-- [ ] 07-03-PLAN.md — Script cleanup: fix synapse_start.sh/.bat, synapse_stop.bat, synapse_health.sh + clean commented openclaw stubs from workspace Python files
-- [ ] 07-04-PLAN.md — Extend GET /health with databases + llm keys + create test_sessions.py covering all SESS/HLTH requirements
+- [x] 07-01-PLAN.md — Add sessions table to db.py + instrument llm_router.py call() with token-tracking side effect
+- [x] 07-02-PLAN.md — Add GET /api/sessions route to api_gateway.py + replace state.py subprocess placeholder with SQLite read
+- [x] 07-03-PLAN.md — Script cleanup: fix synapse_start.sh/.bat, synapse_stop.bat, synapse_health.sh + clean commented openclaw stubs from workspace Python files
+- [x] 07-04-PLAN.md — Extend GET /health with databases + llm keys + create test_sessions.py covering all SESS/HLTH requirements
+
+### Phase 8: Fix Channel Inbound Pipeline
+**Goal**: All three non-WhatsApp channels (Telegram, Discord, Slack) can receive messages and route them into the Synapse processing pipeline — inbound messages flow from channel adapter to FloodGate to MessageWorker to LLM response
+**Depends on**: Phase 7
+**Gap Closure**: Closes audit gaps from v1.0-MILESTONE-AUDIT.md
+**Requirements**: DIS-01, DIS-03, SLK-01, SLK-03, TEL-01, TEL-03
+**Success Criteria** (what must be TRUE):
+  1. A Discord DM sent to the bot produces an LLM response — confirmed by tracing the log: message received → FloodGate → MessageTask → Worker → DiscordChannel.send()
+  2. A Slack DM or @mention produces an LLM response — same log trace confirmation
+  3. A Telegram DM produces an LLM response — message flows through flood.incoming() → on_batch_ready() → MessageTask → Worker → TelegramChannel.send()
+  4. All three channels appear healthy in GET /health and their inbound messages do NOT produce AttributeError or silent drops in the gateway logs
+  5. Existing WhatsApp flow is unaffected — regression test confirms POST /whatsapp/enqueue still works
+**Key Risks**:
+  - Telegram dispatch fix must route through flood.incoming() to preserve FloodGate batching and dedup semantics — do not bypass the pipeline with a shortcut MessageTask factory
+  - Discord/Slack fix is two lines but must be paired with integration tests that confirm the enqueue_fn is called with correct type
+  - Test isolation: mock task_queue.enqueue at the integration boundary, not deep inside the channel
+**Plans**: 3 plans
+
+Plans:
+- [ ] 08-01-PLAN.md — Fix Discord + Slack inbound pipeline: add _make_flood_enqueue adapter closures in api_gateway.py; extend test_discord_channel.py + test_slack_channel.py
+- [ ] 08-02-PLAN.md — Fix Telegram inbound pipeline: replace enqueue_fn=task_queue.enqueue with _make_flood_enqueue adapter closure in api_gateway.py; extend test_telegram_channel.py
+- [ ] 08-03-PLAN.md — Integration test suite: create test_channel_pipeline.py with real FloodGate+TaskQueue covering DIS-01, DIS-03, SLK-01, SLK-03, TEL-01, TEL-03 + WhatsApp regression
+
+### Phase 9: Verification Backfill & LLM Cleanup
+**Goal**: Phase 01 has a formal verification document, translate_banglish() routes through SynapseLLMRouter, and the WhatsApp QR code is accessible via the gateway HTTP endpoint
+**Depends on**: Phase 8
+**Gap Closure**: Closes audit gaps from v1.0-MILESTONE-AUDIT.md
+**Requirements**: CONF-01, CONF-02, CONF-03, CONF-04, CONF-05, CONF-06, CONF-07, LLM-01, LLM-16, WA-07
+**Success Criteria** (what must be TRUE):
+  1. .planning/phases/01-foundation-config/01-VERIFICATION.md exists and verifies CONF-01 through CONF-07 with evidence from the codebase
+  2. translate_banglish() in api_gateway.py calls synapse_llm_router.call("translate", messages) — no direct httpx call to openrouter.ai in the function body
+  3. test_no_hardcoded_models passes with "meta-llama/" added to its pattern list
+  4. GET /qr on the gateway (port 8000) returns the QR string from the live Baileys bridge — responds with 503 when bridge is not running
+**Key Risks**:
+  - translate_banglish() must add a "translate" role to model_mappings in synapse.json — update SynapseConfig default AND the example synapse.json
+  - Verification document must match observable codebase truths — read and grep the actual files, do not copy from SUMMARY claims
+**Plans**: 3 plans
+
+Plans:
+- [ ] 09-01-PLAN.md — Create 01-VERIFICATION.md for Phase 01: grep codebase evidence for each CONF requirement
+- [ ] 09-02-PLAN.md — Route translate_banglish() through SynapseLLMRouter: add "translate" role to model_mappings, update api_gateway.py, add test coverage
+- [ ] 09-03-PLAN.md — Add GET /qr route to api_gateway.py delegating to WhatsAppChannel.get_qr(); add "meta-llama/" to test_no_hardcoded_models patterns
 
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
+Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -195,3 +238,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | 5. Core Channels — Telegram, Discord, Slack | 4/4 | Complete   | 2026-03-02 |
 | 6. Onboarding Wizard | 5/5 | Complete   | 2026-03-02 |
 | 7. Session Metrics, Health & Cleanup | 4/4 | Complete   | 2026-03-03 |
+| 8. Fix Channel Inbound Pipeline | 0/3 | Pending | — |
+| 9. Verification Backfill & LLM Cleanup | 0/3 | Pending | — |
