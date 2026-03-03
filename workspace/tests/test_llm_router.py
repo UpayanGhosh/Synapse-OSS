@@ -287,9 +287,10 @@ def test_no_hardcoded_models():
         r"openrouter/",
         r"meta-llama/",
     ]
+    _workspace = Path(__file__).resolve().parent.parent  # workspace/tests/ -> workspace/
     files_to_check = [
-        "sci_fi_dashboard/api_gateway.py",
-        "skills/llm_router.py",
+        _workspace / "sci_fi_dashboard" / "api_gateway.py",
+        _workspace / "sci_fi_dashboard" / "llm_router.py",
     ]
     for filepath in files_to_check:
         with open(filepath, encoding="utf-8") as f:
