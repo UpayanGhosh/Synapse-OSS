@@ -1011,6 +1011,25 @@ async def health():
     }
 
 
+@app.get("/qr")
+async def get_qr():
+    """
+    WA-07: Proxy the QR code from the Baileys bridge for WhatsApp authentication.
+    Returns {"qr": "<qr_string>"} on success.
+    Returns 503 if WhatsApp channel not registered, bridge not running, or already authenticated.
+    """
+    wa_channel = channel_registry.get("whatsapp")
+    if not isinstance(wa_channel, WhatsAppChannel):
+        raise HTTPException(status_code=503, detail="WhatsApp channel not registered")
+    qr = await wa_channel.get_qr()
+    if qr is None:
+        raise HTTPException(
+            status_code=503,
+            detail="QR not available — bridge may be down or already authenticated",
+        )
+    return {"qr": qr}
+
+
 @app.get("/api/sessions")
 def get_sessions():
     """
