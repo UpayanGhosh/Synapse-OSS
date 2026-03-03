@@ -10,6 +10,12 @@ db/*.db
 __pycache__/
 *.pyc
 
+# Claude Code session directory
+.claude/
+
+# Python virtual environment
+.venv/
+
 # Ignore Logs
 logs/
 
@@ -35,6 +41,7 @@ db/*.gz
 !workspace/sci_fi_dashboard/entities.json
 !.planning/config.json
 !extensions/**/openclaw.plugin.json
+!synapse.json.example
 # baileys-bridge Node.js project files — must be committed
 !baileys-bridge/package.json
 !baileys-bridge/package-lock.json

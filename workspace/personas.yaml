@@ -1,0 +1,18 @@
+# Synapse persona configuration
+# Each persona gets: a route, an SBS data directory, and optional phone mappings.
+
+personas:
+  - id: the_creator
+    display_name: "Primary User"
+    description: "Chat as Synapse -> primary user (Bro Mode)"
+    whatsapp_phones: []       # e.g. ["919XXXXXXXXX", "9XXXXXXXXXX"]
+    whatsapp_keywords: []     # e.g. ["creator", "bro"]
+
+  - id: the_partner
+    display_name: "Partner"
+    description: "Chat as Synapse -> partner (Caring PA Mode)"
+    whatsapp_phones: []       # e.g. ["919XXXXXXXXX"]
+    whatsapp_keywords: []     # e.g. ["partner", "partner_name"]
+
+# Persona used when no match is found
+default_persona: the_creator
