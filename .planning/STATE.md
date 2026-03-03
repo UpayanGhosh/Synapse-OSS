@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-03-03T12:10:42.175Z"
+last_updated: "2026-03-03T12:11:59.299Z"
 progress:
   total_phases: 9
-  completed_phases: 8
+  completed_phases: 9
   total_plans: 37
-  completed_plans: 36
+  completed_plans: 37
 ---
 
 ---
@@ -245,6 +245,7 @@ Progress: [███████████████████████
 | Phase 08-fix-channel-inbound-pipeline P03 | 8 | 1 tasks | 1 files |
 | Phase 09 P02 | 8 | 2 tasks | 2 files |
 | Phase 09-verification-backfill-llm-cleanup P01 | 3 | 2 tasks | 1 files |
+| Phase 09-verification-backfill-llm-cleanup P03 | 3 | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -346,6 +347,9 @@ Recent decisions affecting current work:
 - [Phase 08-03]: sys.path.insert(0, str(Path(__file__).parent.parent)) in test_channel_pipeline.py — consistent with all other test files; workspace/ must be on path
 - [Phase 09-verification-backfill-llm-cleanup]: Line numbers updated by re-grepping live files: api_gateway.py grew to 1380 lines across Phase 2-8; all evidence re-verified for 01-VERIFICATION.md
 - [Phase 09-02]: synapse.json.example placed in repo root — canonical reference location discoverable by new users; translate role uses openrouter/meta-llama/llama-3.3-70b-instruct (not hardcoded in Python, satisfies LLM-16); new translate tests use try/except ImportError + pytest.skip() consistent with test_sessions.py pattern for test envs without sqlite_vec
+- [Phase 09-verification-backfill-llm-cleanup]: GET /qr returns 503 (not 404) in all failure cases — WA-07 spec; 503 semantically correct for bridge-unavailable
+- [Phase 09-verification-backfill-llm-cleanup]: isinstance(wa_channel, WhatsAppChannel) guard before get_qr() — prevents AttributeError when StubChannel occupies registry slot
+- [Phase 09-verification-backfill-llm-cleanup]: New GET /qr gateway tests use try/except pytest.skip() for api_gateway import — matches established pattern from test_sessions.py
 
 ### Pending Todos
 
