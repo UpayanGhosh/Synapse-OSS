@@ -447,3 +447,59 @@ def unittest_mock_make_response():
     resp.choices[0].message.role = "assistant"
     resp.choices[0].finish_reason = "stop"
     return resp
+
+
+# ---------------------------------------------------------------------------
+# LLM-01: translate_banglish() routes through synapse_llm_router.call()
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.skipif(not ROUTER_AVAILABLE, reason="SynapseLLMRouter not available")
+async def test_translate_banglish_uses_router(monkeypatch):
+    """LLM-01: translate_banglish() must route through synapse_llm_router.call(),
+    not through a direct httpx call to openrouter.ai.
+    """
+    try:
+        import sci_fi_dashboard.api_gateway as gw
+    except (ImportError, Exception):
+        pytest.skip("api_gateway not importable in test environment (sqlite_vec/qdrant_client absent)")
+
+    calls = []
+
+    async def _fake_call(role, messages, **kwargs):
+        calls.append(role)
+        return "hello"
+
+    monkeypatch.setattr(gw.synapse_llm_router, "call", _fake_call)
+
+    result = await gw.translate_banglish("ami bhalo achi")
+
+    assert calls == ["translate"], (
+        f"translate_banglish() did not call synapse_llm_router.call('translate', ...). "
+        f"Calls recorded: {calls!r}"
+    )
+    assert result == "hello"
+
+
+@pytest.mark.skipif(not ROUTER_AVAILABLE, reason="SynapseLLMRouter not available")
+async def test_translate_banglish_graceful_degradation(monkeypatch):
+    """LLM-01: translate_banglish() returns original text when router raises
+    (e.g. 'translate' role absent from model_mappings).
+    """
+    try:
+        import sci_fi_dashboard.api_gateway as gw
+    except (ImportError, Exception):
+        pytest.skip("api_gateway not importable in test environment (sqlite_vec/qdrant_client absent)")
+
+    async def _failing_call(role, messages, **kwargs):
+        raise KeyError(f"Role {role!r} not found in model_mappings")
+
+    monkeypatch.setattr(gw.synapse_llm_router, "call", _failing_call)
+
+    original = "ami bhalo achi"
+    result = await gw.translate_banglish(original)
+
+    assert result == original, (
+        f"translate_banglish() should return original text on router failure, "
+        f"got: {result!r}"
+    )
