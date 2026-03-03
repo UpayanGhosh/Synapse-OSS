@@ -7,7 +7,9 @@ from synapse.json model_mappings. No hardcoded model strings in this file.
 """
 import logging
 import os
+import sqlite3
 import sys
+import uuid
 
 # Ensure workspace root on path for SynapseConfig import
 _DIR = os.path.dirname(os.path.abspath(__file__))
@@ -145,6 +147,35 @@ def build_router(model_mappings: dict, providers: dict) -> Router:
     )
 
 
+# --- Session tracking ---
+
+def _write_session(role: str, model: str, usage) -> None:
+    """
+    Write one row to the sessions table in memory.db.
+    Non-fatal: caller must wrap in try/except.
+
+    Args:
+        role:  The router role name (e.g., 'casual', 'vault').
+        model: The actual model string returned by the provider.
+        usage: litellm.Usage object or None.
+    """
+    from sci_fi_dashboard.db import DB_PATH  # noqa: PLC0415
+
+    input_tokens: int = getattr(usage, "prompt_tokens", 0) or 0
+    output_tokens: int = getattr(usage, "completion_tokens", 0) or 0
+    total_tokens: int = getattr(usage, "total_tokens", 0) or 0
+
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute(
+            """
+            INSERT INTO sessions (session_id, role, model, input_tokens, output_tokens, total_tokens)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (str(uuid.uuid4()), role, model, input_tokens, output_tokens, total_tokens),
+        )
+        conn.commit()
+
+
 # --- SynapseLLMRouter ---
 
 class SynapseLLMRouter:
@@ -194,7 +225,17 @@ class SynapseLLMRouter:
                 logger.warning(
                     "Unexpected finish_reason '%s' for role '%s'", finish_reason, role
                 )
-            return choice.message.content or ""
+            text = choice.message.content or ""
+            # SESS-01: Write token usage to sessions table (non-fatal side effect)
+            try:
+                _write_session(
+                    role=role,
+                    model=response.model or role,
+                    usage=getattr(response, "usage", None),
+                )
+            except Exception as session_exc:
+                logger.debug("Session write failed (non-fatal): %s", session_exc)
+            return text
         except AuthenticationError as exc:
             logger.error("Auth failed for role '%s': %s", role, exc)
             raise
