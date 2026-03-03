@@ -17,7 +17,7 @@
 
 > **New here?** Jump to [Quick Start](#quick-start) or read [HOW_TO_RUN.md](HOW_TO_RUN.md) for full setup instructions.
 >
-> **Want the story behind the engineering?** Read [MANIFESTO.md](MANIFESTO.md).
+> **Want the story behind the engineering?** See the [Key Engineering Decisions](#key-engineering-decisions) section below.
 
 > **Platform Note:** Developed on macOS (Apple Silicon). Windows 11 fully supported.
 > Linux should work but is less tested. If you hit issues, please
@@ -74,7 +74,7 @@ These are not theoretical capabilities. This system processes real messages, fro
 
 ### Architecture Overview
 
-![Architecture Diagram](./architecture_diagram.svg)
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the full system diagram with Mermaid source.
 
 ---
 
@@ -505,6 +505,5 @@ I believe in using every tool available to build things that work.
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Full system architecture with Mermaid diagrams |
 | [HOW_TO_RUN.md](HOW_TO_RUN.md) | Complete setup and deployment guide |
 | [SETUP_PERSONA.md](SETUP_PERSONA.md) | Persona customization guide |
-| [MANIFESTO.md](MANIFESTO.md) | The in-character design philosophy deep-dive |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | Contribution guidelines |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Dev setup, test commands, and PR guidelines |
 | [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) | Community code of conduct |
