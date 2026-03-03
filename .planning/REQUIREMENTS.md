@@ -191,7 +191,7 @@
 | WA-04 | Phase 4: WhatsApp — Baileys Bridge | Complete |
 | WA-05 | Phase 4: WhatsApp — Baileys Bridge | Complete |
 | WA-06 | Phase 4: WhatsApp — Baileys Bridge | Complete |
-| WA-07 | Phase 4 → Phase 9 (cleanup) | Partial — no HTTP /qr route on gateway; fix in Phase 9 |
+| WA-07 | Phase 4 → Phase 9 (cleanup) | Complete — GET /qr route added to api_gateway.py (09-03) |
 | WA-08 | Phase 4: WhatsApp — Baileys Bridge | Complete |
 | TEL-01 | Phase 5 → Phase 8 (gap fix) | Complete — flood adapter wired; type mismatch fixed; integration test passing |
 | TEL-02 | Phase 5: Core Channels — Telegram, Discord, Slack | Complete |
@@ -230,14 +230,14 @@
 | CONF-01–07 (gap) | Phase 9: Verification Backfill & LLM Cleanup | Pending |
 | LLM-01 (gap) | Phase 9: Verification Backfill & LLM Cleanup | Complete — test_translate_banglish_uses_router added (09-02) |
 | LLM-16 (gap) | Phase 9: Verification Backfill & LLM Cleanup | Complete — synapse.json.example with translate role (09-02) |
-| WA-07 (gap) | Phase 9: Verification Backfill & LLM Cleanup | Pending |
+| WA-07 (gap) | Phase 9: Verification Backfill & LLM Cleanup | Complete — GET /qr route added to api_gateway.py (09-03) |
 
 **Coverage:**
 - v1 requirements: 71 total
 - Mapped to phases: 71
-- Satisfied: 60 | Partial: 5 | Pending (gap closure): 0 | Unmapped: 0
-- Gap closure phases: Phase 8 (TEL-01, TEL-03, DIS-01, DIS-03, SLK-01, SLK-03) — COMPLETE; Phase 9 (CONF-01–07 — pending; LLM-01, LLM-16 — COMPLETE via 09-02; WA-07 — pending)
-- Updated: 2026-03-03 (Phase 9 Plan 02 complete — LLM-01 and LLM-16 gaps closed)
+- Satisfied: 61 | Partial: 4 | Pending (gap closure): 0 | Unmapped: 0
+- Gap closure phases: Phase 8 (TEL-01, TEL-03, DIS-01, DIS-03, SLK-01, SLK-03) — COMPLETE; Phase 9 (CONF-01–07 — pending; LLM-01, LLM-16 — COMPLETE via 09-02; WA-07 — COMPLETE via 09-03)
+- Updated: 2026-03-03 (Phase 9 Plan 03 complete — WA-07 gap closed)
 
 ---
 *Requirements defined: 2026-03-02*
