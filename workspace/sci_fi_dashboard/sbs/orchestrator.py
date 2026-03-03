@@ -89,19 +89,19 @@ class SBSOrchestrator:
         rt_results["msg_id"] = message.msg_id
 
         # Check for implicit feedback (user messages only)
-        # if role == "user":
-        #     # Simple retrieval of last assistant message for context
-        #     # (In production, you'd fetch this from the actual chat history/DB)
-        #     last_asst_msg = getattr(self, "_last_assistant_message", "")
-        #     feedback_signal = self.feedback.analyze(content, last_asst_msg)
-        #
-        #     if feedback_signal:
-        #         self.feedback.apply_feedback(feedback_signal)
-        #         print(f"[FEEDBACK] Detected: {feedback_signal['type']}")
-        #
-        # elif role == "assistant":
-        #     # Keep track of last assistant message for feedback context
-        #     self._last_assistant_message = content
+        if role == "user":
+            # Simple retrieval of last assistant message for context
+            # (In production, you'd fetch this from the actual chat history/DB)
+            last_asst_msg = getattr(self, "_last_assistant_message", "")
+            feedback_signal = self.feedback.analyze(content, last_asst_msg)
+
+            if feedback_signal:
+                self.feedback.apply_feedback(feedback_signal)
+                print(f"[FEEDBACK] Detected: {feedback_signal['type']}")
+
+        elif role == "assistant":
+            # Keep track of last assistant message for feedback context
+            self._last_assistant_message = content
 
         # Trigger batch processing logic
         self._unbatched_count += 1
@@ -138,7 +138,7 @@ class SBSOrchestrator:
         return {
             "current_mood": profile["emotional_state"]["current_dominant_mood"],
             "sentiment": profile["emotional_state"]["current_sentiment_avg"],
-            "banglish_ratio": profile["linguistic"].get("current_style", {}).get("banglish_ratio"),
+            "primary_language_ratio": profile["linguistic"].get("current_style", {}).get("primary_language_ratio"),
             "vocab_size": profile["vocabulary"].get("total_unique_words", 0),
             "profile_version": profile["meta"].get("current_version", 0),
             "total_messages": profile["meta"].get("total_messages_processed", 0),

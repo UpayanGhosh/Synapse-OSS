@@ -1,7 +1,45 @@
 import re
+from pathlib import Path
 from typing import Any
 
 from ..profile.manager import ProfileManager
+
+# Built-in fallback patterns (English only) used when language_patterns.yaml is absent.
+_DEFAULT_PATTERNS: dict[str, list[str]] = {
+    "correction_formal": [
+        r"why (are you|so) formal",
+        r"stop being (formal|robotic)",
+        r"sound[s]? like a robot",
+    ],
+    "correction_casual": [r"too casual", r"be serious", r"professional"],
+    "correction_length": [
+        r"too long",
+        r"keep it short",
+        r"tl;dr",
+        r"stop yapping",
+        r"too much text",
+    ],
+    "correction_short": [r"elaborate", r"explain more", r"too short"],
+    "praise": [r"good (boy|job)", r"perfect", r"exactly", r"love this tone"],
+    "rejection": [r"no that'?s wrong", r"not what i meant", r"shut up"],
+}
+
+
+def _load_patterns() -> dict[str, list[str]]:
+    """Load feedback patterns from language_patterns.yaml, falling back to built-ins."""
+    yaml_path = Path(__file__).parent / "language_patterns.yaml"
+    if yaml_path.exists():
+        try:
+            import yaml  # PyYAML — listed in requirements
+
+            with open(yaml_path, encoding="utf-8") as fh:
+                data = yaml.safe_load(fh)
+            if isinstance(data, dict):
+                # Strip comment-only keys and keep non-empty lists
+                return {k: v for k, v in data.items() if isinstance(v, list) and v}
+        except Exception as exc:  # pragma: no cover
+            print(f"[WARN] Could not load language_patterns.yaml: {exc}. Using built-ins.")
+    return _DEFAULT_PATTERNS
 
 
 class ImplicitFeedbackDetector:
@@ -11,53 +49,20 @@ class ImplicitFeedbackDetector:
 
     This is NOT for explicit commands (e.g., "Change your name").
     This is for natural conversational feedback (e.g., "Why are you so formal today?")
-    """
 
-    # Heuristic patterns for feedback detection
-    FEEDBACK_PATTERNS = {
-        "correction_formal": [
-            r"why (are you|so) formal",
-            r"stop being (formal|robotic)",
-            r"sound[s]? like a robot",
-            r"banglish e bolo",
-            r"bengali te kotha bolo",
-        ],
-        "correction_casual": [r"too casual", r"be serious", r"serious hou", r"professional"],
-        "correction_length": [
-            r"too long",
-            r"keep it short",
-            r"short e bolo",
-            r"tl;dr",
-            r"stop yapping",
-            r"too much text",
-        ],
-        "correction_short": [r"elaborate", r"explain more", r"details dao", r"too short"],
-        "praise": [
-            r"good boy",
-            r"good job",
-            r"perfect",
-            r"exactly",
-            r"love this tone",
-            r"darun bolecho",
-            r"sheraa",
-        ],
-        "rejection": [
-            r"no that'?s wrong",
-            r"vul",
-            r"bhul",
-            r"not what i meant",
-            r"shut up",
-            r"off ja",
-        ],
-    }
+    Patterns are loaded from ``language_patterns.yaml`` (next to this file).
+    If the file is missing, built-in English-only defaults are used instead.
+    Add your own language-specific phrases to the YAML to customise detection.
+    """
 
     def __init__(self, profile_manager: ProfileManager):
         self.profile_mgr = profile_manager
 
-        # Compile regexes once
+        # Load patterns from YAML (or built-in defaults) and compile once
+        raw_patterns = _load_patterns()
         self.compiled_patterns = {
             category: [re.compile(p, re.IGNORECASE) for p in patterns]
-            for category, patterns in self.FEEDBACK_PATTERNS.items()
+            for category, patterns in raw_patterns.items()
         }
 
     def analyze(self, user_text: str, last_assistant_text: str = "") -> dict[str, Any] | None:
@@ -104,15 +109,15 @@ class ImplicitFeedbackDetector:
         style = linguistic.get("current_style", {})
 
         if signal_type == "correction_formal":
-            # Increase Banglish ratio, reduce average length slightly
-            current_ratio = style.get("banglish_ratio", 0.3)
-            style["banglish_ratio"] = min(1.0, current_ratio + 0.2)
+            # Increase primary language ratio, reduce average length slightly
+            current_ratio = style.get("primary_language_ratio", 0.3)
+            style["primary_language_ratio"] = min(1.0, current_ratio + 0.2)
             needs_linguistic_update = True
 
         elif signal_type == "correction_casual":
-            # Decrease Banglish ratio
-            current_ratio = style.get("banglish_ratio", 0.3)
-            style["banglish_ratio"] = max(0.0, current_ratio - 0.2)
+            # Decrease primary language ratio
+            current_ratio = style.get("primary_language_ratio", 0.3)
+            style["primary_language_ratio"] = max(0.0, current_ratio - 0.2)
             needs_linguistic_update = True
 
         elif signal_type == "correction_length":
