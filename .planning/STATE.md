@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-03-03T11:00:06.628Z"
+last_updated: "2026-03-03T11:10:00Z"
 progress:
   total_phases: 9
-  completed_phases: 7
+  completed_phases: 8
   total_plans: 34
-  completed_plans: 33
+  completed_plans: 34
 ---
 
 ---
@@ -174,16 +174,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-02)
 
 **Core value:** A user can run Synapse-OSS on any machine, connect to their messaging apps and LLM providers, and have a fully working AI assistant — with zero dependency on any external binary or bridge service.
-**Current focus:** Phase 8 IN PROGRESS — Plan 08-01 complete; Discord+Slack flood adapter wired; DIS-01, DIS-03, SLK-01, SLK-03 closed
+**Current focus:** Phase 8 COMPLETE — All 3 plans done; 6 gap requirements closed; 87 channel tests passing
 
 ## Current Position
 
-Phase: 8 of 8 (Fix Channel Inbound Pipeline) — IN PROGRESS
-Plan: 1 of 3 complete in current phase (08-01 Discord+Slack flood adapter + 5 integration tests)
-Status: 32/34 plans complete across all 8 phases
-Last activity: 2026-03-03 — Plan 08-01 complete: _make_flood_enqueue factory added; Discord+Slack wired via flood.incoming(); 5 integration tests pass
+Phase: 8 of 8 (Fix Channel Inbound Pipeline) — COMPLETE
+Plan: 3 of 3 complete in current phase (08-03 cross-channel integration suite — 12 tests)
+Status: 34/34 plans complete across all 8 phases
+Last activity: 2026-03-03 — Plan 08-03 complete: test_channel_pipeline.py created; DIS-01/03, SLK-01/03, TEL-01/03 all verified; 87 channel tests passing
 
-Progress: [█████████████████████████████] 32/34 plans in progress (Phase 8 active)
+Progress: [█████████████████████████████] 34/34 plans complete (v1.0 milestone DONE)
 
 ## Performance Metrics
 
@@ -229,6 +229,7 @@ Progress: [███████████████████████
 | Phase 07-session-metrics-health-cleanup P02 | 10 | 2 tasks | 2 files |
 | Phase 07-session-metrics-health-cleanup P04 | 17 | 2 tasks | 2 files |
 | Phase 08-fix-channel-inbound-pipeline P02 | 4 | 2 tasks | 2 files |
+| Phase 08-fix-channel-inbound-pipeline P03 | 8 | 1 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -326,6 +327,8 @@ Recent decisions affecting current work:
 - [Phase 08-fix-channel-inbound-pipeline]: Slack integration tests use _dispatch() directly — real public method; canonical normalization entry point
 - [Phase 08-fix-channel-inbound-pipeline]: _make_flood_enqueue factory placed before Telegram block — Python top-to-bottom requires factory defined before first call; adff486
 - [Phase 08-fix-channel-inbound-pipeline]: _dispatch() takes PTB Update not ChannelMessage — tests use _make_mock_update() to build Update mocks; 58326e1
+- [Phase 08-03]: collected_tasks list in on_batch_ready callback — avoids asyncio.Queue.get() blocking; direct assertions on collected list
+- [Phase 08-03]: sys.path.insert(0, str(Path(__file__).parent.parent)) in test_channel_pipeline.py — consistent with all other test files; workspace/ must be on path
 
 ### Pending Todos
 
@@ -338,6 +341,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-03T09:22:00Z
-Stopped at: Completed 08-01-PLAN.md — _make_flood_enqueue factory added; Discord+Slack wired via flood.incoming(); DIS-01, DIS-03, SLK-01, SLK-03 closed; 5 integration tests pass
+Last session: 2026-03-03T11:10:00Z
+Stopped at: Completed 08-03-PLAN.md — test_channel_pipeline.py created; 12 tests pass; DIS-01, DIS-03, SLK-01, SLK-03, TEL-01, TEL-03 all verified; Phase 8 COMPLETE; v1.0 milestone DONE
 Resume file: None
