@@ -224,10 +224,19 @@ Plans:
 - [ ] 09-02-PLAN.md — Route translate_banglish() through SynapseLLMRouter: add "translate" role to model_mappings, update api_gateway.py, add test coverage
 - [ ] 09-03-PLAN.md — Add GET /qr route to api_gateway.py delegating to WhatsAppChannel.get_qr(); add "meta-llama/" to test_no_hardcoded_models patterns
 
+### Standalone Verification — Gap Closure
+**Goal**: Close 2 UAT gaps (tests 11 and 12) — add DEPRECATED headers to 6 legacy shell scripts that still reference openclaw, satisfying the "clean or deprecate" gap.missing items from standalone-UAT.md
+**Depends on**: Phase 9
+**Gap Closure**: Closes gaps from standalone-UAT.md tests 11 and 12
+**Plans**: 1 plan
+
+Plans:
+- [ ] standalone-01-PLAN.md — Add DEPRECATED block headers to 6 legacy shell scripts (metabolism_master.sh, revive_jarvis.sh, rollback.sh, sentinel_heal.sh, test.sh, synapse_manager.sh)
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9
+Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → standalone-verification
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -240,3 +249,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 7. Session Metrics, Health & Cleanup | 4/4 | Complete   | 2026-03-03 |
 | 8. Fix Channel Inbound Pipeline | 3/3 | Complete   | 2026-03-03 |
 | 9. Verification Backfill & LLM Cleanup | 3/3 | Complete   | 2026-03-03 |
+| standalone-verification (gap closure) | 0/1 | In Progress | — |
