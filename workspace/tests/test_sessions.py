@@ -7,7 +7,7 @@ Covers:
   SESS-03: state.py update_stats() reads from SQLite, no subprocess calls
   HLTH-01: GET /health includes 'databases' and 'llm' keys
 """
-import importlib
+
 import os
 import sqlite3
 import sys
@@ -34,9 +34,9 @@ def test_sessions_table_created(tmp_path, monkeypatch):
     db_mod.DatabaseManager._ensure_db()
 
     conn = sqlite3.connect(db_mod.DB_PATH)
-    tables = [r[0] for r in conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='table'"
-    ).fetchall()]
+    tables = [
+        r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+    ]
     cols = [r[1] for r in conn.execute("PRAGMA table_info(sessions)").fetchall()]
     conn.close()
 
@@ -137,12 +137,21 @@ def test_get_sessions_returns_camel_case(tmp_path, monkeypatch):
 
         result = gw.get_sessions()
     except Exception:
-        pytest.skip("api_gateway.get_sessions() not importable in test environment (sqlite_vec absent)")
+        pytest.skip(
+            "api_gateway.get_sessions() not importable in test environment (sqlite_vec absent)"
+        )
 
     assert isinstance(result, list), f"Expected list, got {type(result)}"
     if result:
         item = result[0]
-        for key in ("sessionId", "model", "inputTokens", "outputTokens", "totalTokens", "contextTokens"):
+        for key in (
+            "sessionId",
+            "model",
+            "inputTokens",
+            "outputTokens",
+            "totalTokens",
+            "contextTokens",
+        ):
             assert key in item, f"Missing camelCase key {key!r}; got {list(item.keys())}"
         assert "input_tokens" not in item, "snake_case key leaked into response"
 
@@ -208,9 +217,8 @@ def test_state_reads_from_sqlite(tmp_path, monkeypatch):
 
 def test_state_no_subprocess_calls(monkeypatch):
     """SESS-03: state.py must not call subprocess.run or os.popen with 'openclaw'."""
-    src = open(
-        os.path.join(os.path.dirname(__file__), "..", "sci_fi_dashboard", "state.py")
-    ).read()
+    with open(os.path.join(os.path.dirname(__file__), "..", "sci_fi_dashboard", "state.py")) as fh:
+        src = fh.read()
     assert "openclaw" not in src, "state.py contains openclaw reference"
     assert "subprocess" not in src or "# subprocess" in src, "state.py uses subprocess"
 
@@ -222,18 +230,20 @@ def test_state_no_subprocess_calls(monkeypatch):
 
 def test_health_endpoint_has_databases_key():
     """HLTH-01: GET /health response includes 'databases' key."""
-    src = open(
+    with open(
         os.path.join(os.path.dirname(__file__), "..", "sci_fi_dashboard", "api_gateway.py")
-    ).read()
+    ) as fh:
+        src = fh.read()
     assert "_check_databases" in src, "_check_databases helper not in api_gateway.py"
     assert '"databases"' in src or "'databases'" in src, "'databases' key not in /health response"
 
 
 def test_health_endpoint_has_llm_key():
     """HLTH-01: GET /health response includes 'llm' key."""
-    src = open(
+    with open(
         os.path.join(os.path.dirname(__file__), "..", "sci_fi_dashboard", "api_gateway.py")
-    ).read()
+    ) as fh:
+        src = fh.read()
     assert "_check_llm_provider" in src, "_check_llm_provider helper not in api_gateway.py"
     assert '"llm"' in src or "'llm'" in src, "'llm' key not in /health response"
 
@@ -260,7 +270,6 @@ def test_no_openclaw_binary_calls_in_active_files():
       - sci_fi_dashboard/api_gateway.py — docstring mentions openclaw sessions list schema
     """
     import re
-    import subprocess
 
     workspace = os.path.join(os.path.dirname(__file__), "..")
     # Files that are ALLOWED to contain 'openclaw' (migration/cosmetic/legacy)
@@ -272,10 +281,10 @@ def test_no_openclaw_binary_calls_in_active_files():
         "tests/test_onboard",
         "tests/test_sessions",
         # Pre-existing cosmetic references deferred from Phase 7 cleanup:
-        "main.py",        # OPENCLAW_GATEWAY_TOKEN env var + description text — no binary exec
-        "monitor.py",     # "OpenClaw HTTP" error label string — no binary exec
-        "synapse_config.py",              # module docstring mention
-        "sci_fi_dashboard/api_gateway",   # docstring mention of sessions list schema
+        "main.py",  # OPENCLAW_GATEWAY_TOKEN env var + description text — no binary exec
+        "monitor.py",  # "OpenClaw HTTP" error label string — no binary exec
+        "synapse_config.py",  # module docstring mention
+        "sci_fi_dashboard/api_gateway",  # docstring mention of sessions list schema
     ]
     # Patterns that indicate actual execution of the openclaw binary
     active_call_pattern = re.compile(
@@ -295,12 +304,13 @@ def test_no_openclaw_binary_calls_in_active_files():
             relpath = os.path.relpath(fpath, workspace).replace("\\", "/")
             if any(pat in relpath for pat in allowed_patterns):
                 continue
-            content = open(fpath, encoding="utf-8", errors="ignore").read()
+            with open(fpath, encoding="utf-8", errors="ignore") as fh:
+                content = fh.read()
             # Check for actual subprocess/os.system/shutil.which calls invoking openclaw
             active_lines = [
-                line for line in content.splitlines()
-                if not line.strip().startswith("#")
-                and active_call_pattern.search(line)
+                line
+                for line in content.splitlines()
+                if not line.strip().startswith("#") and active_call_pattern.search(line)
             ]
             if active_lines:
                 violations.append((relpath, active_lines))

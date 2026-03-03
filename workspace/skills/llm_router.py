@@ -95,9 +95,7 @@ class LLMRouter:
             self._synapse_router = SynapseLLMRouter(self._synapse_config)
             logger.info("LLMRouter: SynapseLLMRouter initialized (litellm backend)")
         except Exception as exc:  # noqa: BLE001
-            logger.warning(
-                "LLMRouter: SynapseLLMRouter unavailable (%s) — Ollama only", exc
-            )
+            logger.warning("LLMRouter: SynapseLLMRouter unavailable (%s) — Ollama only", exc)
             self._synapse_config = None
             self._synapse_router = None
 
@@ -123,25 +121,17 @@ class LLMRouter:
         role = "casual"
         if self._synapse_router is not None and self.cloud_models:
             candidate = self.cloud_models[0]
-            cfg = (
-                self._synapse_config.model_mappings
-                if self._synapse_config is not None
-                else {}
-            )
+            cfg = self._synapse_config.model_mappings if self._synapse_config is not None else {}
             if candidate in cfg:
                 role = candidate
 
         if self._synapse_router is not None:
             try:
-                text = _run_async(
-                    self._synapse_router.call(role, messages, max_tokens=1024)
-                )
+                text = _run_async(self._synapse_router.call(role, messages, max_tokens=1024))
                 if text:
                     return self._sanitize(text)
             except Exception as exc:  # noqa: BLE001
-                logger.warning(
-                    "SynapseLLMRouter failed for role '%s': %s", role, exc
-                )
+                logger.warning("SynapseLLMRouter failed for role '%s': %s", role, exc)
 
         # Ollama fallback
         return self._sanitize(self._call_ollama(prompt, system_prompt))
@@ -153,9 +143,7 @@ class LLMRouter:
         # 1. Remove <think> blocks completely
         text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL | re.IGNORECASE)
         # 2. Extract content from <final> tags if they exist
-        text = re.sub(
-            r"<final>(.*?)</final>", r"\1", text, flags=re.DOTALL | re.IGNORECASE
-        )
+        text = re.sub(r"<final>(.*?)</final>", r"\1", text, flags=re.DOTALL | re.IGNORECASE)
         # 3. Clean up generic thought headers
         text = re.sub(r"^Thought for\b.*$", "", text, flags=re.MULTILINE | re.IGNORECASE)
         # 4. Clean up any leftover thinking content (non-greedy)

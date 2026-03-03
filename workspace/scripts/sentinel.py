@@ -6,20 +6,20 @@ Description: Monitors Brain (FastAPI), Body (Node), and Vitality (Disk/Swap).
              Auto-heals services and alerts on critical failures.
 """
 
-import os as _os, sys as _sys
-_sys.path.insert(0, _os.path.abspath(_os.path.join(_os.path.dirname(__file__), "..")))
-from synapse_config import SynapseConfig
+import os as _os
+import sys as _sys
 
-import os
-import sys
-import time
+_sys.path.insert(0, _os.path.abspath(_os.path.join(_os.path.dirname(__file__), "..")))
+import glob
 import json
+import os
+import re
 import shutil
 import subprocess
-import glob
 import urllib.request
-import re
 from datetime import datetime
+
+from synapse_config import SynapseConfig
 
 # --- CONFIGURATION ---
 MEMORY_SERVER_URL = "http://127.0.0.1:8989/health"
@@ -48,7 +48,7 @@ def log(message, level="INFO"):
 def load_state():
     if os.path.exists(STATE_FILE):
         try:
-            with open(STATE_FILE, "r") as f:
+            with open(STATE_FILE) as f:
                 return json.load(f)
         except:
             pass
@@ -217,9 +217,7 @@ def run_sentinel():
         if state["body_strikes"] <= MAX_RETRIES:
             log("Attempting CPR (Restarting Synapse Gateway)...", "WARN")
             # TODO Phase 4: replace with Synapse bridge start command
-            subprocess.run(
-                [shutil.which("synapse_start.sh") or "./synapse_start.sh"], check=False
-            )
+            subprocess.run([shutil.which("synapse_start.sh") or "./synapse_start.sh"], check=False)
             alert_macos("Sentinel Action", "Restarted Synapse Gateway.")
         else:
             log("Body Critical Failure. Max retries exceeded.", "CRITICAL")

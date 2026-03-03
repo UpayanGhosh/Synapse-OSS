@@ -250,9 +250,7 @@ def run_whatsapp_qr_flow(
         )
         return False
 
-    result = subprocess.run(
-        ["node", "--version"], capture_output=True, text=True, timeout=5
-    )
+    result = subprocess.run(["node", "--version"], capture_output=True, text=True, timeout=5)
     version_str = result.stdout.strip().lstrip("v")  # e.g. "22.14.0"
     try:
         major = int(version_str.split(".")[0])
@@ -272,9 +270,7 @@ def run_whatsapp_qr_flow(
     bridge_was_started_by_wizard = False
 
     try:
-        existing = httpx.get(
-            f"http://127.0.0.1:{BRIDGE_PORT}/health", timeout=3.0
-        )
+        existing = httpx.get(f"http://127.0.0.1:{BRIDGE_PORT}/health", timeout=3.0)
         if existing.status_code == 200:
             _print(f"[green]Reusing existing bridge on port {BRIDGE_PORT}.[/green]")
     except httpx.RequestError:
@@ -300,9 +296,7 @@ def run_whatsapp_qr_flow(
         qr_string: str | None = None
         while time.monotonic() < qr_deadline:
             try:
-                qr_resp = httpx.get(
-                    f"http://127.0.0.1:{BRIDGE_PORT}/qr", timeout=5.0
-                )
+                qr_resp = httpx.get(f"http://127.0.0.1:{BRIDGE_PORT}/qr", timeout=5.0)
                 if qr_resp.status_code == 200:
                     candidate = qr_resp.json().get("qr")
                     if candidate:
@@ -356,9 +350,7 @@ def run_whatsapp_qr_flow(
 
         while time.monotonic() < scan_deadline:
             try:
-                health_resp = httpx.get(
-                    f"http://127.0.0.1:{BRIDGE_PORT}/health", timeout=5.0
-                )
+                health_resp = httpx.get(f"http://127.0.0.1:{BRIDGE_PORT}/health", timeout=5.0)
                 if health_resp.status_code == 200:
                     health_data = health_resp.json()
                     state = health_data.get("connectionState", "")
@@ -383,9 +375,7 @@ def run_whatsapp_qr_flow(
             now = time.monotonic()
             if now - last_qr_refresh >= QR_REFRESH_INTERVAL:
                 try:
-                    refresh_resp = httpx.get(
-                        f"http://127.0.0.1:{BRIDGE_PORT}/qr", timeout=5.0
-                    )
+                    refresh_resp = httpx.get(f"http://127.0.0.1:{BRIDGE_PORT}/qr", timeout=5.0)
                     if refresh_resp.status_code == 200:
                         new_qr = refresh_resp.json().get("qr")
                         if new_qr and new_qr != last_qr_string:
@@ -461,9 +451,7 @@ def setup_telegram(non_interactive: bool = False) -> "dict | None":
             )
             return None
 
-        choice = questionary.select(
-            "Telegram:", choices=["Configure", "Skip"]
-        ).ask()
+        choice = questionary.select("Telegram:", choices=["Configure", "Skip"]).ask()
         if choice != "Configure":
             return None
 
@@ -481,9 +469,7 @@ def setup_telegram(non_interactive: bool = False) -> "dict | None":
         else:
             _print("Validating Telegram token...")
             info = validate_telegram_token(token)
-        _print(
-            f"[green]Telegram OK[/green] — @{info.get('username')} (id={info.get('id')})"
-        )
+        _print(f"[green]Telegram OK[/green] — @{info.get('username')} (id={info.get('id')})")
         return {"token": token}
     except ValueError as exc:
         _print(f"[red]Telegram validation failed:[/red] {exc}")
@@ -543,9 +529,7 @@ def setup_discord(non_interactive: bool = False) -> "dict | None":
             )
             return None
 
-        choice = questionary.select(
-            "Discord:", choices=["Configure", "Skip"]
-        ).ask()
+        choice = questionary.select("Discord:", choices=["Configure", "Skip"]).ask()
         if choice != "Configure":
             return None
 
@@ -564,9 +548,7 @@ def setup_discord(non_interactive: bool = False) -> "dict | None":
         else:
             _print("Validating Discord token...")
             info = validate_discord_token(token)
-        _print(
-            f"[green]Discord OK[/green] — {info.get('username')} (id={info.get('id')})"
-        )
+        _print(f"[green]Discord OK[/green] — {info.get('username')} (id={info.get('id')})")
     except ValueError as exc:
         _print(f"[red]Discord validation failed:[/red] {exc}")
         return None
@@ -602,9 +584,7 @@ def setup_discord(non_interactive: bool = False) -> "dict | None":
             raw = input("Allowed channel IDs (comma-separated, or leave blank for all): ")
 
         if raw and raw.strip():
-            channel_ids = [
-                int(x.strip()) for x in raw.split(",") if x.strip().isdigit()
-            ]
+            channel_ids = [int(x.strip()) for x in raw.split(",") if x.strip().isdigit()]
 
     return {"token": token, "allowed_channel_ids": channel_ids}
 
@@ -649,9 +629,7 @@ def setup_slack(non_interactive: bool = False) -> "dict | None":
             )
             return None
 
-        choice = questionary.select(
-            "Slack:", choices=["Configure", "Skip"]
-        ).ask()
+        choice = questionary.select("Slack:", choices=["Configure", "Skip"]).ask()
         if choice != "Configure":
             return None
 
@@ -741,9 +719,7 @@ def setup_whatsapp(
         )
         return None
 
-    choice = questionary.select(
-        "WhatsApp:", choices=["Configure (scan QR now)", "Skip"]
-    ).ask()
+    choice = questionary.select("WhatsApp:", choices=["Configure (scan QR now)", "Skip"]).ask()
     if choice != "Configure (scan QR now)":
         return None
 

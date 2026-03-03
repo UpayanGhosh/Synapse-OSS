@@ -11,9 +11,7 @@ Tests are intentionally sync (no async) — asyncio_mode=auto is set in pytest.i
 but is not required here.
 """
 
-import os
 import sys
-import stat
 from pathlib import Path
 from unittest.mock import patch
 
@@ -23,7 +21,6 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from synapse_config import SynapseConfig, write_config  # noqa: E402
-
 
 # ---------------------------------------------------------------------------
 # CONF-03 / default behaviour
@@ -49,9 +46,9 @@ def test_synapse_home_override(tmp_path, monkeypatch):
     """SYNAPSE_HOME env var must override data_root. Verifies CONF-03."""
     monkeypatch.setenv("SYNAPSE_HOME", str(tmp_path))
     config = SynapseConfig.load()
-    assert config.data_root == tmp_path.resolve(), (
-        f"Expected data_root={tmp_path.resolve()}, got {config.data_root}"
-    )
+    assert (
+        config.data_root == tmp_path.resolve()
+    ), f"Expected data_root={tmp_path.resolve()}, got {config.data_root}"
 
 
 # ---------------------------------------------------------------------------
@@ -65,9 +62,9 @@ def test_reads_synapse_json(tmp_path, monkeypatch):
     write_config(tmp_path, payload)
     monkeypatch.setenv("SYNAPSE_HOME", str(tmp_path))
     config = SynapseConfig.load()
-    assert config.providers["gemini"]["api_key"] == "test-key", (
-        "providers.gemini.api_key should have been read from synapse.json"
-    )
+    assert (
+        config.providers["gemini"]["api_key"] == "test-key"
+    ), "providers.gemini.api_key should have been read from synapse.json"
 
 
 # ---------------------------------------------------------------------------
@@ -103,9 +100,7 @@ def test_write_config_creates_file_with_mode_600(tmp_path):
 
     if sys.platform != "win32":
         actual_mode = oct(config_file.stat().st_mode & 0o777)
-        assert actual_mode == "0o600", (
-            f"synapse.json should have mode 0o600, got {actual_mode}"
-        )
+        assert actual_mode == "0o600", f"synapse.json should have mode 0o600, got {actual_mode}"
 
 
 # ---------------------------------------------------------------------------
@@ -121,9 +116,11 @@ def test_invalid_synapse_home_raises(monkeypatch):
     def _mock_mkdir(self, *args, **kwargs):  # noqa: ANN001
         raise PermissionError("Permission denied")
 
-    with patch.object(Path, "mkdir", _mock_mkdir):
-        with pytest.raises(RuntimeError, match="cannot be created"):
-            SynapseConfig.load()
+    with (
+        patch.object(Path, "mkdir", _mock_mkdir),
+        pytest.raises(RuntimeError, match="cannot be created"),
+    ):
+        SynapseConfig.load()
 
 
 # ---------------------------------------------------------------------------

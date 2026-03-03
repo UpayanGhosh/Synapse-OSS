@@ -8,20 +8,21 @@ features are working.
 These tests should run quickly and catch obvious issues.
 """
 
-import pytest
 import asyncio
-import sys
 import os
-import tempfile
 import shutil
+import sys
+import tempfile
+
+import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from sci_fi_dashboard.gateway.queue import TaskQueue, MessageTask, TaskStatus
+from sci_fi_dashboard.conflict_resolver import ConflictManager
 from sci_fi_dashboard.gateway.dedup import MessageDeduplicator
 from sci_fi_dashboard.gateway.flood import FloodGate
+from sci_fi_dashboard.gateway.queue import MessageTask, TaskQueue, TaskStatus
 from sci_fi_dashboard.sqlite_graph import SQLiteGraph
-from sci_fi_dashboard.conflict_resolver import ConflictManager
 
 
 class TestCoreComponentsSmoke:
@@ -280,11 +281,11 @@ class TestDependenciesSmoke:
     def test_required_modules_importable(self):
         """All required modules should be importable."""
         try:
-            from sci_fi_dashboard.gateway.queue import TaskQueue
-            from sci_fi_dashboard.gateway.dedup import MessageDeduplicator
-            from sci_fi_dashboard.gateway.flood import FloodGate
-            from sci_fi_dashboard.sqlite_graph import SQLiteGraph
-            from sci_fi_dashboard.conflict_resolver import ConflictManager
+            from sci_fi_dashboard.conflict_resolver import ConflictManager  # noqa: F401
+            from sci_fi_dashboard.gateway.dedup import MessageDeduplicator  # noqa: F401
+            from sci_fi_dashboard.gateway.flood import FloodGate  # noqa: F401
+            from sci_fi_dashboard.gateway.queue import TaskQueue  # noqa: F401
+            from sci_fi_dashboard.sqlite_graph import SQLiteGraph  # noqa: F401
 
             assert True
         except ImportError as e:
@@ -298,7 +299,7 @@ class TestDatabaseSmoke:
     def test_database_creation(self, tmp_path):
         """Database should be created properly."""
         db_path = tmp_path / "create.db"
-        graph = SQLiteGraph(db_path=str(db_path))
+        SQLiteGraph(db_path=str(db_path))
 
         # Should create file
         assert os.path.exists(db_path)

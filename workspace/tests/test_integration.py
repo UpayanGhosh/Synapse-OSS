@@ -7,19 +7,20 @@ and the message processing pipeline.
 These tests verify that different modules work together correctly.
 """
 
-import pytest
 import asyncio
-import sys
 import os
-import tempfile
 import shutil
+import sys
+import tempfile
+
+import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from sci_fi_dashboard.sqlite_graph import SQLiteGraph
-from sci_fi_dashboard.gateway.queue import TaskQueue, MessageTask, TaskStatus
-from sci_fi_dashboard.gateway.dedup import MessageDeduplicator
 from sci_fi_dashboard.conflict_resolver import ConflictManager
+from sci_fi_dashboard.gateway.dedup import MessageDeduplicator
+from sci_fi_dashboard.gateway.queue import MessageTask, TaskQueue
+from sci_fi_dashboard.sqlite_graph import SQLiteGraph
 
 
 class TestDatabaseIntegration:
@@ -53,7 +54,7 @@ class TestDatabaseIntegration:
 
         # Verify task can be created with knowledge context
         assert task.user_message is not None
-        assert "John" in task.user_message or True  # Message content varies
+        assert True  # Message content varies
 
     @pytest.mark.asyncio
     async def test_dedup_and_queue_integration(self, temp_dir):

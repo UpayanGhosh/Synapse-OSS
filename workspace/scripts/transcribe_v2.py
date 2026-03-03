@@ -1,13 +1,14 @@
-import os as _os, sys as _sys
-_sys.path.insert(0, _os.path.abspath(_os.path.join(_os.path.dirname(__file__), "..")))
-from synapse_config import SynapseConfig
+import os as _os
+import sys as _sys
 
-import os
-import sys
+_sys.path.insert(0, _os.path.abspath(_os.path.join(_os.path.dirname(__file__), "..")))
+
 import json
-import time
+import os
 import subprocess
-from datetime import datetime, timezone
+import sys
+from datetime import UTC, datetime
+
 import requests
 
 # Set up logging to the same file monitor.py reads
@@ -16,7 +17,7 @@ LOG_FILE = os.path.join(LOG_DIR, f"synapse-{datetime.now().strftime('%Y-%m-%d')}
 
 
 def log_event(message, level="INFO"):
-    timestamp = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    timestamp = datetime.now(UTC).isoformat().replace("+00:00", "Z")
     log_entry = {
         "0": json.dumps({"subsystem": "transcriber"}),
         "1": message,

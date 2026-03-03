@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -23,7 +24,7 @@ class MessageTask:
     message_id: str = ""
     sender_name: str = ""
     is_group: bool = False
-    channel_id: str = "whatsapp"   # which channel this task belongs to; default for backwards compat
+    channel_id: str = "whatsapp"  # which channel this task belongs to; default for backwards compat
 
     response: str | None = None
     error: str | None = None
@@ -58,10 +59,8 @@ class TaskQueue:
         This guard allows _handle_task to be called directly in tests without
         enqueueing first (CHAN-07 test pattern).
         """
-        try:
-            self._queue.task_done()
-        except ValueError:
-            pass  # task was not obtained via dequeue() — safe to ignore in direct-call tests
+        with contextlib.suppress(ValueError):
+            self._queue.task_done()  # task was not obtained via dequeue() — safe to ignore in direct-call tests
 
     def complete(self, task: MessageTask, result: str = ""):
         task.status = TaskStatus.COMPLETED

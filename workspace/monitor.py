@@ -1,23 +1,18 @@
-import tempfile
-import time
-import psutil
-import os
 import glob
 import json
+import os
 import re
-import subprocess
+import time
 from datetime import datetime
-from rich.live import Live
-from rich.table import Table
-from rich.console import Console, Group
-from rich.layout import Layout
-from rich.panel import Panel
-from rich.text import Text
-from rich import box
-from rich.style import Style
+
+import psutil
 from rich.align import Align
-from rich.progress_bar import ProgressBar
-from rich.columns import Columns
+from rich.console import Console
+from rich.layout import Layout
+from rich.live import Live
+from rich.panel import Panel
+from rich.table import Table
+from rich.text import Text
 from synapse_config import SynapseConfig
 
 console = Console()
@@ -114,7 +109,7 @@ class BrainDashboard:
                     self.log_file = new_file
                     if self.file_handle:
                         self.file_handle.close()
-                    self.file_handle = open(self.log_file, "r")
+                    self.file_handle = open(self.log_file)
                     file_size = os.path.getsize(self.log_file)
                     self.file_handle.seek(max(0, file_size - 4096), 0)
                     if self.file_handle.tell() > 0:
@@ -379,7 +374,7 @@ class BrainDashboard:
         """Read API usage from sessions.json."""
         try:
             if os.path.exists(SESSIONS_FILE):
-                with open(SESSIONS_FILE, "r") as f:
+                with open(SESSIONS_FILE) as f:
                     data = json.load(f)
                 for key, session in data.items():
                     if isinstance(session, dict) and "totalTokens" in session:
@@ -514,16 +509,16 @@ def generate_layout(m: BrainDashboard):
     bar = "#" * filled + "." * (bar_width - filled)
 
     usage_text = Text()
-    usage_text.append(f"  Model: ", style="dim")
+    usage_text.append("  Model: ", style="dim")
     usage_text.append(f"{m.model_name}\n", style="bold cyan")
-    usage_text.append(f"  Context: ", style="dim")
+    usage_text.append("  Context: ", style="dim")
     usage_text.append(f"[{bar}]", style=f"bold {usage_color}")
     usage_text.append(f" {usage_pct:.1f}%\n", style=f"bold {usage_color}")
-    usage_text.append(f"  Input:  ", style="dim")
+    usage_text.append("  Input:  ", style="dim")
     usage_text.append(f"{format_tokens(m.input_tokens)}", style="bold green")
-    usage_text.append(f"  |  Output: ", style="dim")
+    usage_text.append("  |  Output: ", style="dim")
     usage_text.append(f"{format_tokens(m.output_tokens)}", style="bold magenta")
-    usage_text.append(f"  |  Total: ", style="dim")
+    usage_text.append("  |  Total: ", style="dim")
     usage_text.append(f"{format_tokens(m.total_tokens_used)}", style=f"bold {usage_color}")
     usage_text.append(f" / {format_tokens(m.total_tokens_limit)}\n", style="dim")
 

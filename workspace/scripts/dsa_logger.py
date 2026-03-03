@@ -1,7 +1,5 @@
-import sqlite3
 import argparse
-import sys
-import os
+import sqlite3
 
 DB_PATH = "./db/memory.db"
 

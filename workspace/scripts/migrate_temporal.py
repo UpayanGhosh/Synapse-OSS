@@ -1,12 +1,12 @@
-import os as _os, sys as _sys
-_sys.path.insert(0, _os.path.abspath(_os.path.join(_os.path.dirname(__file__), "..")))
-from synapse_config import SynapseConfig
+import os as _os
+import sys as _sys
 
+_sys.path.insert(0, _os.path.abspath(_os.path.join(_os.path.dirname(__file__), "..")))
 import sqlite3
-import os
-import json
 from datetime import datetime
+
 from qdrant_client import QdrantClient
+from synapse_config import SynapseConfig
 
 # Paths
 DB_PATH = str(SynapseConfig.load().db_dir / "memory.db")
@@ -52,7 +52,7 @@ def migrate():
             if count % 200 == 0:
                 print(f"  Synced {count} records...")
                 conn.commit()
-        except Exception as e:
+        except Exception:
             # print(f"Error for ID {doc_id}: {e}")
             pass
 

@@ -2,10 +2,11 @@ import asyncio
 import contextlib
 import time
 import traceback
-from typing import Optional
 
 from .queue import MessageTask, TaskQueue
-from .sender import WhatsAppSender  # kept for backwards-compat constructor param; Phase 4 removes it
+from .sender import (
+    WhatsAppSender,  # kept for backwards-compat constructor param; Phase 4 removes it
+)
 
 # ChannelRegistry imported lazily to avoid circular imports at module load time
 
@@ -41,7 +42,7 @@ class MessageWorker:
         queue: TaskQueue,
         process_fn,
         num_workers: int = 2,
-        sender: Optional[WhatsAppSender] = None,  # deprecated; kept for compat
+        sender: WhatsAppSender | None = None,  # deprecated; kept for compat
         channel_registry=None,  # ChannelRegistry — preferred dispatch path
     ):
         self.queue = queue

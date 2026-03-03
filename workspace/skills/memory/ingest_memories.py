@@ -1,7 +1,8 @@
-import requests
-import sys
 import os
+import sys
 import time
+
+import requests
 
 API_URL = "http://localhost:8000/add"
 
@@ -13,7 +14,7 @@ def ingest_file(file_path):
         print(f"[ERROR] File not found: {file_path}")
         return
 
-    with open(file_path, "r") as f:
+    with open(file_path) as f:
         content = f.read()
 
     # Simple chunking by double newline (paragraphs)

@@ -8,21 +8,18 @@ These tests are designed to verify the core value propositions
 of the Synapse-OSS system.
 """
 
-import pytest
-import asyncio
-import sys
 import os
-import tempfile
-import shutil
+import sys
 import time
+
+import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from sci_fi_dashboard.gateway.queue import TaskQueue, MessageTask, TaskStatus
 from sci_fi_dashboard.gateway.dedup import MessageDeduplicator
 from sci_fi_dashboard.gateway.flood import FloodGate
+from sci_fi_dashboard.gateway.queue import MessageTask, TaskQueue
 from sci_fi_dashboard.sqlite_graph import SQLiteGraph
-from sci_fi_dashboard.conflict_resolver import ConflictManager
 
 
 class TestMemoryRequirements:
@@ -84,7 +81,7 @@ class TestMemoryRequirements:
 
         # Measure retrieval time
         start = time.time()
-        result = graph.get_entity_neighborhood("Entity_500", hops=2)
+        graph.get_entity_neighborhood("Entity_500", hops=2)
         elapsed = (time.time() - start) * 1000  # Convert to ms
 
         # Should be under 350ms
@@ -178,7 +175,7 @@ class TestPrivacyRequirements:
         # Simulate vault routing
         sensitive_topics = ["banking", "medical", "password", "secret"]
 
-        for topic in sensitive_topics:
+        for _topic in sensitive_topics:
             # In real system, would route to Ollama only
             assert True  # Would verify no cloud API calls made
 
@@ -222,8 +219,8 @@ class TestPerformanceRequirements:
         REQUIREMENT: System should run on 8GB RAM MacBook Air.
         """
         # Test memory-efficient components exist
-        from sci_fi_dashboard.sqlite_graph import SQLiteGraph
         from sci_fi_dashboard.gateway.queue import TaskQueue
+        from sci_fi_dashboard.sqlite_graph import SQLiteGraph
 
         # These use minimal RAM
         assert SQLiteGraph is not None

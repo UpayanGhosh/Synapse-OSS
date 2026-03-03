@@ -82,6 +82,7 @@ class DashboardState:
         # Fetch real API usage
         try:
             import sqlite3  # noqa: PLC0415
+
             from sci_fi_dashboard.db import DB_PATH  # noqa: PLC0415 — lazy import avoids circular
 
             conn = sqlite3.connect(DB_PATH)

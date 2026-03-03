@@ -1,13 +1,14 @@
-import os as _os, sys as _sys
-_sys.path.insert(0, _os.path.abspath(_os.path.join(_os.path.dirname(__file__), "..")))
-from synapse_config import SynapseConfig
+import os as _os
+import sys as _sys
 
-import sqlite3
-import sqlite_vec
-import subprocess
+_sys.path.insert(0, _os.path.abspath(_os.path.join(_os.path.dirname(__file__), "..")))
 import json
+import sqlite3
+import subprocess
+
 import requests
-import os
+import sqlite_vec
+from synapse_config import SynapseConfig
 
 DB_PATH = str(SynapseConfig.load().db_dir / "memory.db")
 OLLAMA_URL = "http://127.0.0.1:11434/api/embeddings"

@@ -12,6 +12,7 @@ Usage:
     print(config.db_dir)      # e.g. /home/user/.synapse/workspace/db
 """
 
+import contextlib
 import json
 import os
 import stat
@@ -124,8 +125,7 @@ def _verify_permissions(path: Path) -> None:
     mode = path.stat().st_mode
     if mode & (stat.S_IRGRP | stat.S_IROTH):
         warnings.warn(
-            f"{path} is readable by group/other (mode {oct(mode)}). "
-            f"Run: chmod 600 {path}",
+            f"{path} is readable by group/other (mode {oct(mode)}). " f"Run: chmod 600 {path}",
             stacklevel=3,
         )
 
@@ -150,10 +150,8 @@ def write_config(data_root: Path, config: dict) -> None:
         with os.fdopen(fd, "w") as f:
             json.dump(config, f, indent=2)
     except Exception:
-        try:
+        with contextlib.suppress(OSError):
             os.unlink(str(tmp))
-        except OSError:
-            pass
         raise
 
     os.replace(str(tmp), str(config_file))

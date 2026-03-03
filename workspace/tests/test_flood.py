@@ -8,10 +8,11 @@ This prevents webhook timeout issues when users send multiple
 messages in quick succession.
 """
 
-import pytest
 import asyncio
-import sys
 import os
+import sys
+
+import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -107,8 +108,6 @@ class TestFloodGate:
             )
 
         flood_gate.set_callback(callback)
-
-        start_time = asyncio.get_event_loop().time()
 
         # Send first message
         await flood_gate.incoming("chat_001", "First", {"sender": "user1"})

@@ -12,8 +12,9 @@ from flashrank import Ranker, RerankRequest
 try:
     from synapse_config import SynapseConfig
 except ImportError:
-    import sys as _sys
     import os as _os
+    import sys as _sys
+
     _sys.path.insert(0, _os.path.abspath(_os.path.join(_os.path.dirname(__file__), "..")))
     from synapse_config import SynapseConfig
 
@@ -85,7 +86,9 @@ RERANK_MODEL_NAME = "ms-marco-TinyBERT-L-2-v2"
 
 def _get_db_path() -> str:
     from synapse_config import SynapseConfig  # noqa: PLC0415
+
     return str(SynapseConfig.load().db_dir / "memory.db")
+
 
 DB_PATH = _get_db_path()
 BACKUP_FILE = os.path.join(WORKSPACE_ROOT, "_archived_memories", "persistent_log.jsonl")

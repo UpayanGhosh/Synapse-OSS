@@ -7,7 +7,6 @@ owns the event loop and calling asyncio.run() inside an existing loop raises Run
 """
 
 import asyncio
-from typing import Optional
 
 from .base import BaseChannel
 
@@ -52,7 +51,7 @@ class ChannelRegistry:
             raise ValueError(f"Channel '{cid}' already registered")
         self._channels[cid] = channel
 
-    def get(self, channel_id: str) -> Optional[BaseChannel]:
+    def get(self, channel_id: str) -> BaseChannel | None:
         """
         Return the channel adapter for the given id, or None if not registered.
 

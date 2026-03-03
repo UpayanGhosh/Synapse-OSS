@@ -59,9 +59,7 @@ class WhatsAppChannel(BaseChannel):
 
     def __init__(self, bridge_port: int = 5010, python_webhook_url: str = "") -> None:
         self._port = bridge_port
-        self._webhook_url = (
-            python_webhook_url or "http://127.0.0.1:8000/channels/whatsapp/webhook"
-        )
+        self._webhook_url = python_webhook_url or "http://127.0.0.1:8000/channels/whatsapp/webhook"
         self._proc: asyncio.subprocess.Process | None = None
         self._bridge_pid: int | None = None
         self._status: str = "stopped"
@@ -94,16 +92,12 @@ class WhatsAppChannel(BaseChannel):
                 "Install from: https://nodejs.org/en/download/\n"
                 "Then restart Synapse."
             )
-        result = subprocess.run(
-            ["node", "--version"], capture_output=True, text=True, timeout=5
-        )
+        result = subprocess.run(["node", "--version"], capture_output=True, text=True, timeout=5)
         version_str = result.stdout.strip().lstrip("v")  # e.g. "22.14.0"
         try:
             major = int(version_str.split(".")[0])
         except (ValueError, IndexError) as exc:
-            raise RuntimeError(
-                f"Could not parse Node.js version: {version_str!r}"
-            ) from exc
+            raise RuntimeError(f"Could not parse Node.js version: {version_str!r}") from exc
         if major < 18:
             raise RuntimeError(
                 f"Node.js {version_str} found but Node.js 18+ is required.\n"
@@ -146,9 +140,7 @@ class WhatsAppChannel(BaseChannel):
                 )
                 self._bridge_pid = self._proc.pid
                 self._status = "running"
-                logger.info(
-                    "[WA] Bridge started — PID %d port %d", self._bridge_pid, self._port
-                )
+                logger.info("[WA] Bridge started — PID %d port %d", self._bridge_pid, self._port)
 
                 # Drain stderr asynchronously to prevent pipe buffer deadlock
                 asyncio.create_task(self._drain_stderr(self._proc.stderr))
@@ -302,9 +294,7 @@ class WhatsAppChannel(BaseChannel):
              is_group, timestamp (Unix seconds), sender_name, raw}
         """
         ts_raw = raw_payload.get("timestamp")
-        timestamp = (
-            datetime.fromtimestamp(ts_raw) if ts_raw else datetime.now()
-        )
+        timestamp = datetime.fromtimestamp(ts_raw) if ts_raw else datetime.now()
         return ChannelMessage(
             channel_id=raw_payload.get("channel_id", "whatsapp"),
             user_id=raw_payload.get("user_id", raw_payload.get("chat_id", "")),

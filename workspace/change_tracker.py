@@ -22,18 +22,19 @@ Usage:
   python3 change_tracker.py --resume        # Remove .pause_tracking (kill-switch OFF)
 """
 
+import argparse
 import logging
 import os
+import signal
+import subprocess
 import sys
 import time
-import signal
-import argparse
-import subprocess
 from datetime import datetime
-from threading import Timer, Lock
-from watchdog.observers import Observer
-from watchdog.events import RegexMatchingEventHandler
+from threading import Lock, Timer
+
 from synapse_config import SynapseConfig
+from watchdog.events import RegexMatchingEventHandler
+from watchdog.observers import Observer
 
 # ===========================================
 #  CONFIGURATION
@@ -185,7 +186,7 @@ def has_merge_conflict() -> bool:
         for fname in staged.strip().split("\n"):
             fpath = os.path.join(WORKSPACE, fname)
             try:
-                with open(fpath, "r", errors="ignore") as f:
+                with open(fpath, errors="ignore") as f:
                     content = f.read(50_000)  # First 50KB
                     if "<<<<<<< " in content and "=======\n" in content and ">>>>>>> " in content:
                         return True
@@ -413,7 +414,7 @@ def ensure_branch():
     rc, stash_out = git("stash", "--include-untracked")
     stashed = rc == 0 and "No local changes" not in stash_out
     if stashed:
-        log.info(f"Stashed dirty files before branch switch")
+        log.info("Stashed dirty files before branch switch")
 
     # Check if branch exists
     rc, branches = git("branch", "--list", BRANCH)
@@ -492,7 +493,7 @@ def main():
     log.info(f"[INFO] Auto-push: {'ON' if args.push else 'OFF'}")
     log.info(f"[PAUSED]  Paused:    {'YES [WARN]' if paused else 'NO'}")
     log.info(f"[LOG] Log file: {LOG_FILE}")
-    log.info(f"[GUARD]  Excluded:  .git/, .db, .log, __pycache__, qdrant/")
+    log.info("[GUARD]  Excluded:  .git/, .db, .log, __pycache__, qdrant/")
     log.info("=" * 56)
 
     if paused:

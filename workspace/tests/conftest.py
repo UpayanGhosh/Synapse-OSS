@@ -4,6 +4,7 @@ Pytest Configuration and Fixtures
 Shared fixtures and configuration for all tests.
 """
 
+import asyncio
 import json
 import os
 import shutil
@@ -12,7 +13,6 @@ import tempfile
 import time
 import unittest.mock
 
-import asyncio
 import pytest
 
 # Add workspace to path

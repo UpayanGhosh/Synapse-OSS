@@ -1,10 +1,10 @@
-import sqlite3
-import os
-import struct
 import json
+import sqlite3
+import struct
 import urllib.request
-from tqdm import tqdm
+
 from synapse_config import SynapseConfig
+from tqdm import tqdm
 
 DB_PATH = str(SynapseConfig.load().db_dir / "memory.db")
 

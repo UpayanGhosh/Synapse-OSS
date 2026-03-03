@@ -19,7 +19,6 @@ import os
 import socket
 import sqlite3
 import sys
-import time
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 from typing import Any
@@ -56,7 +55,10 @@ def _check_databases() -> dict:
     from sci_fi_dashboard.sqlite_graph import DB_PATH as GRAPH_DB  # noqa: PLC0415
 
     result = {
-        "memory_db": {"status": "ok" if os.path.exists(MEMORY_DB) else "missing", "path": MEMORY_DB},
+        "memory_db": {
+            "status": "ok" if os.path.exists(MEMORY_DB) else "missing",
+            "path": MEMORY_DB,
+        },
         "knowledge_graph_db": {
             "status": "ok" if os.path.exists(GRAPH_DB) else "missing",
             "path": GRAPH_DB,
@@ -106,7 +108,9 @@ def validate_env() -> None:
 
     gemini_key = os.environ.get("GEMINI_API_KEY", "").strip()
     if not gemini_key:
-        print("[WARN] GEMINI_API_KEY not set — direct Gemini routing disabled (configure in synapse.json for Phase 2)")
+        print(
+            "[WARN] GEMINI_API_KEY not set — direct Gemini routing disabled (configure in synapse.json for Phase 2)"
+        )
 
     if not os.environ.get("GROQ_API_KEY", "").strip():
         print("[WARN] GROQ_API_KEY not set -- voice transcription disabled")
@@ -178,8 +182,10 @@ async def continue_conversation(target: str, messages: list[dict], last_reply: s
         # For now, just send it.
 
         # 5. Send continuation — Phase 4 will implement Baileys HTTP bridge here
-        print(f"[AUTO-CONTINUE] Continuation ready ({len(continuation)} chars). "
-              "WhatsApp send skipped until Phase 4 Baileys bridge is implemented.")
+        print(
+            f"[AUTO-CONTINUE] Continuation ready ({len(continuation)} chars). "
+            "WhatsApp send skipped until Phase 4 Baileys bridge is implemented."
+        )
 
         # 6. Recursive Check? (If this one is ALSO cut off?)
         # For now, let's limit to one continuation to avoid infinite loops.
@@ -218,14 +224,14 @@ dual_cognition = DualCognitionEngine(
 # --- Async Gateway Components ---
 import uuid  # noqa: E402
 
-from gateway.dedup import MessageDeduplicator  # noqa: E402
-from gateway.flood import FloodGate  # noqa: E402
-from gateway.queue import MessageTask, TaskQueue  # noqa: E402
-from gateway.worker import MessageWorker  # noqa: E402
 from channels.base import ChannelMessage  # noqa: E402
 from channels.registry import ChannelRegistry  # noqa: E402
 from channels.stub import StubChannel  # noqa: E402
 from channels.whatsapp import WhatsAppChannel  # noqa: E402
+from gateway.dedup import MessageDeduplicator  # noqa: E402
+from gateway.flood import FloodGate  # noqa: E402
+from gateway.queue import MessageTask, TaskQueue  # noqa: E402
+from gateway.worker import MessageWorker  # noqa: E402
 
 task_queue = TaskQueue(max_size=100)
 dedup = MessageDeduplicator(window_seconds=300)
@@ -234,14 +240,16 @@ flood = FloodGate(batch_window_seconds=3.0)
 # Channel registry — all adapters register here; lifespan calls start_all()
 channel_registry = ChannelRegistry()
 # Phase 4: Real WhatsApp bridge via Baileys Node.js microservice (WA-02)
-channel_registry.register(WhatsAppChannel(
-    bridge_port=int(os.environ.get("BRIDGE_PORT", "5010")),
-    python_webhook_url=os.environ.get(
-        "PYTHON_WEBHOOK_URL",
-        "http://127.0.0.1:8000/channels/whatsapp/webhook",
-    ),
-))
-channel_registry.register(StubChannel(channel_id="stub"))      # test/demo channel
+channel_registry.register(
+    WhatsAppChannel(
+        bridge_port=int(os.environ.get("BRIDGE_PORT", "5010")),
+        python_webhook_url=os.environ.get(
+            "PYTHON_WEBHOOK_URL",
+            "http://127.0.0.1:8000/channels/whatsapp/webhook",
+        ),
+    )
+)
+channel_registry.register(StubChannel(channel_id="stub"))  # test/demo channel
 
 # --- Sentinel (File Governance) ---
 from sbs.sentinel.tools import init_sentinel  # noqa: E402
@@ -316,6 +324,7 @@ load_env_file(anchor=Path(__file__))  # noqa: E402
 validate_env()  # ENV-01, ENV-02, ENV-03 -- hard-fail or warn before singletons
 
 from synapse_config import SynapseConfig  # noqa: E402
+
 from sci_fi_dashboard.llm_router import SynapseLLMRouter  # noqa: E402
 
 # --- LLM Client (Phase 2: litellm via SynapseLLMRouter) ---
@@ -331,6 +340,7 @@ import logging as _logging  # noqa: E402
 
 _ch_logger = _logging.getLogger(__name__)
 _ch_cfg = _synapse_cfg.channels  # dict[str, dict] from synapse.json "channels" key
+
 
 def _make_flood_enqueue(channel_id: str):
     """
@@ -387,7 +397,9 @@ if _ds_token:
         _ds_allowed = [int(x) for x in _ch_cfg.get("discord", {}).get("allowed_channel_ids", [])]
         _dis_enqueue = _make_flood_enqueue("discord")
         channel_registry.register(
-            DiscordChannel(token=_ds_token, allowed_channel_ids=_ds_allowed, enqueue_fn=_dis_enqueue)
+            DiscordChannel(
+                token=_ds_token, allowed_channel_ids=_ds_allowed, enqueue_fn=_dis_enqueue
+            )
         )
         _ch_logger.info("Discord channel registered")
     except ImportError:
@@ -503,7 +515,9 @@ async def call_or_fallback(prompt: str) -> str:
     return await synapse_llm_router.call("casual", messages)
 
 
-async def call_gemini_flash(input_messages: list, temperature: float = 0.7, max_tokens: int = 500) -> str:
+async def call_gemini_flash(
+    input_messages: list, temperature: float = 0.7, max_tokens: int = 500
+) -> str:
     """AG_CASUAL / TRAFFIC COP: routes to 'casual' role in model_mappings."""
     return await synapse_llm_router.call("casual", input_messages, temperature, max_tokens)
 
@@ -777,7 +791,7 @@ async def on_batch_ready(chat_id: str, combined_message: str, metadata: dict):
         user_message=combined_message,
         message_id=metadata.get("message_id", ""),
         sender_name=metadata.get("sender_name", ""),
-        channel_id=metadata.get("channel_id", "whatsapp"),   # NEW: propagate channel_id
+        channel_id=metadata.get("channel_id", "whatsapp"),  # NEW: propagate channel_id
     )
     await task_queue.enqueue(task)
 
@@ -943,7 +957,7 @@ async def lifespan(app: FastAPI):
     print("[STOP] Shutting down...")
     brain.save_graph()
     worker_task.cancel()
-    await channel_registry.stop_all()   # NEW: stop all channels before worker
+    await channel_registry.stop_all()  # NEW: stop all channels before worker
     if hasattr(app.state, "worker"):
         await app.state.worker.stop()
     with suppress(asyncio.CancelledError):
@@ -1002,7 +1016,9 @@ async def health():
         "architecture": {
             "casual": SynapseConfig.load().model_mappings.get("casual", {}).get("model", "unset"),
             "code": SynapseConfig.load().model_mappings.get("code", {}).get("model", "unset"),
-            "analysis": SynapseConfig.load().model_mappings.get("analysis", {}).get("model", "unset"),
+            "analysis": SynapseConfig.load()
+            .model_mappings.get("analysis", {})
+            .get("model", "unset"),
             "review": SynapseConfig.load().model_mappings.get("review", {}).get("model", "unset"),
         },
         "channels": channels_health,
@@ -1038,6 +1054,7 @@ def get_sessions():
     Graceful degradation: returns [] if sessions table absent or DB unreadable.
     """
     import sqlite3  # noqa: PLC0415
+
     from sci_fi_dashboard.db import DB_PATH  # noqa: PLC0415
 
     try:
@@ -1079,8 +1096,8 @@ async def unified_webhook(channel_id: str, request: Request):
 
     try:
         raw = await request.json()
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid JSON payload")
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Invalid JSON payload") from exc
 
     msg: ChannelMessage = await channel.receive(raw)
 
@@ -1093,7 +1110,7 @@ async def unified_webhook(channel_id: str, request: Request):
         metadata={
             "message_id": msg.message_id,
             "sender_name": msg.sender_name,
-            "channel_id": msg.channel_id,    # CRITICAL: must be in metadata for on_batch_ready
+            "channel_id": msg.channel_id,  # CRITICAL: must be in metadata for on_batch_ready
         },
     )
     return {"status": "queued", "accepted": True, "task_queue_depth": task_queue.pending_count}

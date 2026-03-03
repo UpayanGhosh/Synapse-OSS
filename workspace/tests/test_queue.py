@@ -7,15 +7,15 @@ with async operations, status tracking, and history management.
 Critical for ensuring no messages are lost and proper processing flow.
 """
 
-import pytest
-import asyncio
-import sys
 import os
+import sys
 from datetime import datetime
+
+import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from sci_fi_dashboard.gateway.queue import TaskQueue, MessageTask, TaskStatus
+from sci_fi_dashboard.gateway.queue import MessageTask, TaskQueue, TaskStatus
 
 
 class TestTaskQueue:
@@ -172,7 +172,7 @@ class TestTaskQueue:
             await queue.enqueue(task)
             tasks.append(task)
 
-        for i, expected_task in enumerate(tasks):
+        for _i, expected_task in enumerate(tasks):
             dequeued = await queue.dequeue()
             assert dequeued.task_id == expected_task.task_id
             queue.complete(dequeued, "Done")

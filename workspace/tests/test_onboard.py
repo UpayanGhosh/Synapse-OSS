@@ -21,7 +21,6 @@ no real terminal, no real Baileys bridge.
 import json
 import os
 import sys
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -31,7 +30,7 @@ import pytest
 # ---------------------------------------------------------------------------
 
 try:
-    from cli.onboard import run_wizard
+    from cli.onboard import run_wizard  # noqa: F401
     from synapse_cli import app
 
     ONBOARD_AVAILABLE = True
@@ -84,7 +83,9 @@ def test_non_interactive_missing_primary_provider_exits_1(tmp_path, monkeypatch)
     """ONB-09: --non-interactive without SYNAPSE_PRIMARY_PROVIDER → exit 1 with clear error."""
     monkeypatch.setenv("SYNAPSE_HOME", str(tmp_path))
     monkeypatch.delenv("SYNAPSE_PRIMARY_PROVIDER", raising=False)
-    result = runner.invoke(app, ["onboard", "--non-interactive"], env={"SYNAPSE_HOME": str(tmp_path)})
+    result = runner.invoke(
+        app, ["onboard", "--non-interactive"], env={"SYNAPSE_HOME": str(tmp_path)}
+    )
     assert result.exit_code == 1
     combined = result.output or ""
     assert "SYNAPSE_PRIMARY_PROVIDER" in combined, f"Expected env var name in output: {combined}"
@@ -198,9 +199,9 @@ def test_provider_validation_calls_max_tokens_1(tmp_path, monkeypatch):
     assert result.exit_code == 0
     assert mock_acomp.called, "litellm.acompletion should have been called"
     call_kwargs = mock_acomp.call_args[1]
-    assert call_kwargs.get("max_tokens") == 1, (
-        f"max_tokens must be 1, got {call_kwargs.get('max_tokens')}"
-    )
+    assert (
+        call_kwargs.get("max_tokens") == 1
+    ), f"max_tokens must be 1, got {call_kwargs.get('max_tokens')}"
 
 
 # ===========================================================================
@@ -264,9 +265,9 @@ def test_validate_provider_restores_env(tmp_path):
         mock_acomp.return_value = MagicMock(choices=[MagicMock()])
         validate_provider("gemini", "new-test-key")
 
-    assert os.environ.get("GEMINI_API_KEY") == sentinel, (
-        "os.environ[GEMINI_API_KEY] must be restored to original value after validation"
-    )
+    assert (
+        os.environ.get("GEMINI_API_KEY") == sentinel
+    ), "os.environ[GEMINI_API_KEY] must be restored to original value after validation"
     del os.environ["GEMINI_API_KEY"]
 
 
@@ -280,9 +281,23 @@ def test_provider_list_completeness():
     from cli.provider_steps import PROVIDER_LIST
 
     expected = {
-        "anthropic", "openai", "gemini", "groq", "openrouter", "mistral",
-        "xai", "togetherai", "minimax", "moonshot", "zai", "volcengine",
-        "ollama", "bedrock", "huggingface", "nvidia_nim", "github_copilot",
+        "anthropic",
+        "openai",
+        "gemini",
+        "groq",
+        "openrouter",
+        "mistral",
+        "xai",
+        "togetherai",
+        "minimax",
+        "moonshot",
+        "zai",
+        "volcengine",
+        "ollama",
+        "bedrock",
+        "huggingface",
+        "nvidia_nim",
+        "github_copilot",
     }
     missing = expected - set(PROVIDER_LIST)
     assert not missing, f"Missing providers from PROVIDER_LIST: {missing}"
@@ -311,9 +326,8 @@ def test_validate_telegram_token_401_raises():
 
     mock_resp = MagicMock()
     mock_resp.status_code = 401
-    with patch("httpx.get", return_value=mock_resp):
-        with pytest.raises(ValueError, match="401"):
-            validate_telegram_token("bad-token")
+    with patch("httpx.get", return_value=mock_resp), pytest.raises(ValueError, match="401"):
+        validate_telegram_token("bad-token")
 
 
 def test_validate_discord_token_401_raises():
@@ -322,9 +336,8 @@ def test_validate_discord_token_401_raises():
 
     mock_resp = MagicMock()
     mock_resp.status_code = 401
-    with patch("httpx.get", return_value=mock_resp):
-        with pytest.raises(ValueError, match="401"):
-            validate_discord_token("bad-token")
+    with patch("httpx.get", return_value=mock_resp), pytest.raises(ValueError, match="401"):
+        validate_discord_token("bad-token")
 
 
 def test_validate_slack_prefix_check_bot_token():
@@ -383,12 +396,13 @@ def test_no_migration_offer_when_openclaw_absent(tmp_path):
 
 def test_github_copilot_device_flow_is_async():
     """ONB-10: GitHub Copilot provider triggers device flow function (not password prompt)."""
-    from cli.provider_steps import github_copilot_device_flow
     import inspect
 
-    assert inspect.iscoroutinefunction(github_copilot_device_flow), (
-        "github_copilot_device_flow must be async (coroutine function)"
-    )
+    from cli.provider_steps import github_copilot_device_flow
+
+    assert inspect.iscoroutinefunction(
+        github_copilot_device_flow
+    ), "github_copilot_device_flow must be async (coroutine function)"
 
 
 def test_github_copilot_device_flow_polls_github(tmp_path):
@@ -408,8 +422,7 @@ def test_github_copilot_device_flow_polls_github(tmp_path):
 
     async def _run():
         console = Console(quiet=True)
-        with patch("webbrowser.open"), \
-             patch("httpx.AsyncClient") as mock_client_cls:
+        with patch("webbrowser.open"), patch("httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
             mock_client.__aexit__ = AsyncMock(return_value=False)
@@ -439,17 +452,19 @@ def test_interactive_provider_selection_writes_config(tmp_path, monkeypatch):
 
     mock_acomp = _make_mock_acompletion()
 
-    with patch("litellm.acompletion", mock_acomp), \
-         patch("questionary.confirm") as mock_confirm, \
-         patch("questionary.checkbox") as mock_checkbox, \
-         patch("questionary.password") as mock_password, \
-         patch("cli.onboard._check_for_openclaw", return_value=None):
+    with (
+        patch("litellm.acompletion", mock_acomp),
+        patch("questionary.confirm") as mock_confirm,
+        patch("questionary.checkbox") as mock_checkbox,
+        patch("questionary.password") as mock_password,
+        patch("cli.onboard._check_for_openclaw", return_value=None),
+    ):
         # No existing config → skip reconfigure confirm
         mock_confirm.return_value.ask.return_value = False
         # Provider checkbox → select gemini only; then channel checkbox → none
         mock_checkbox.return_value.ask.side_effect = [
             ["gemini"],  # Step 4: provider selection
-            [],          # Step 6: channel selection (none)
+            [],  # Step 6: channel selection (none)
         ]
         # Password prompt → fake key
         mock_password.return_value.ask.return_value = "fake-gemini-key"
@@ -459,21 +474,23 @@ def test_interactive_provider_selection_writes_config(tmp_path, monkeypatch):
     config_path = tmp_path / "synapse.json"
     assert config_path.exists(), "synapse.json should be written after interactive wizard"
     config = json.loads(config_path.read_text())
-    assert "gemini" in config.get("providers", {}), (
-        f"Expected 'gemini' in providers, got: {config.get('providers')}"
-    )
+    assert "gemini" in config.get(
+        "providers", {}
+    ), f"Expected 'gemini' in providers, got: {config.get('providers')}"
 
 
 def test_interactive_aborts_on_no_providers(tmp_path, monkeypatch):
     """Interactive flow: selecting zero providers → wizard exits 0 without writing config."""
-    from cli.onboard import run_wizard
     import typer
+    from cli.onboard import run_wizard
 
     monkeypatch.setenv("SYNAPSE_HOME", str(tmp_path))
 
-    with patch("questionary.confirm") as mock_confirm, \
-         patch("questionary.checkbox") as mock_checkbox, \
-         patch("cli.onboard._check_for_openclaw", return_value=None):
+    with (
+        patch("questionary.confirm") as mock_confirm,
+        patch("questionary.checkbox") as mock_checkbox,
+        patch("cli.onboard._check_for_openclaw", return_value=None),
+    ):
         mock_confirm.return_value.ask.return_value = False
         mock_checkbox.return_value.ask.return_value = []  # empty selection
 
@@ -481,9 +498,9 @@ def test_interactive_aborts_on_no_providers(tmp_path, monkeypatch):
             run_wizard(force_interactive=True)
         assert exc_info.value.exit_code == 0, "Empty provider list should exit 0"
 
-    assert not (tmp_path / "synapse.json").exists(), (
-        "synapse.json must NOT be written when no providers selected"
-    )
+    assert not (
+        tmp_path / "synapse.json"
+    ).exists(), "synapse.json must NOT be written when no providers selected"
 
 
 def test_interactive_migration_offer_on_openclaw_present(tmp_path, monkeypatch):
@@ -506,15 +523,17 @@ def test_interactive_migration_offer_on_openclaw_present(tmp_path, monkeypatch):
             mock_ans.ask.return_value = False  # decline reconfigure
         return mock_ans
 
-    with patch("litellm.acompletion", mock_acomp), \
-         patch("questionary.confirm", side_effect=confirm_side_effect), \
-         patch("questionary.checkbox") as mock_checkbox, \
-         patch("questionary.password") as mock_password, \
-         patch("cli.onboard._check_for_openclaw", return_value=fake_openclaw):
+    with (
+        patch("litellm.acompletion", mock_acomp),
+        patch("questionary.confirm", side_effect=confirm_side_effect),
+        patch("questionary.checkbox") as mock_checkbox,
+        patch("questionary.password") as mock_password,
+        patch("cli.onboard._check_for_openclaw", return_value=fake_openclaw),
+    ):
         mock_checkbox.return_value.ask.side_effect = [["gemini"], []]
         mock_password.return_value.ask.return_value = "fake-key"
         run_wizard(force_interactive=True)
 
-    assert migration_confirm_called, (
-        "Migration confirm should be shown when _check_for_openclaw returns a path"
-    )
+    assert (
+        migration_confirm_called
+    ), "Migration confirm should be shown when _check_for_openclaw returns a path"

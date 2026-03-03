@@ -95,9 +95,7 @@ class DiscordChannel(BaseChannel):
 
         @self._client.event
         async def on_ready() -> None:
-            logger.info(
-                "[DIS] Logged in as %s (id=%s)", self._client.user, self._client.user.id
-            )
+            logger.info("[DIS] Logged in as %s (id=%s)", self._client.user, self._client.user.id)
             self._status = "running"
 
         @self._client.event
@@ -114,7 +112,11 @@ class DiscordChannel(BaseChannel):
                 return
 
             # Allowed channel filter (server messages only)
-            if not is_dm and self._allowed_channel_ids and message.channel.id not in self._allowed_channel_ids:
+            if (
+                not is_dm
+                and self._allowed_channel_ids
+                and message.channel.id not in self._allowed_channel_ids
+            ):
                 return
 
             # Guard: DMs and @mentions are exempt from MESSAGE_CONTENT intent restriction.
@@ -132,15 +134,17 @@ class DiscordChannel(BaseChannel):
                 return
 
             # Normalize and enqueue
-            channel_msg = await self.receive({
-                "content": message.content,
-                "author_id": str(message.author.id),
-                "author_name": message.author.display_name,
-                "channel_discord_id": message.channel.id,
-                "message_id": str(message.id),
-                "is_group": not is_dm,
-                "reply_callable": message.reply,  # stored for native Discord reply threading
-            })
+            channel_msg = await self.receive(
+                {
+                    "content": message.content,
+                    "author_id": str(message.author.id),
+                    "author_name": message.author.display_name,
+                    "channel_discord_id": message.channel.id,
+                    "message_id": str(message.id),
+                    "is_group": not is_dm,
+                    "reply_callable": message.reply,  # stored for native Discord reply threading
+                }
+            )
             if self._enqueue_fn:
                 await self._enqueue_fn(channel_msg)
 

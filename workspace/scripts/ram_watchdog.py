@@ -1,8 +1,7 @@
-import psutil
-import time
-import os
 import subprocess
-import requests
+import time
+
+import psutil
 
 # Threshold: 85% RAM Usage
 THRESHOLD = 85.0

@@ -8,21 +8,19 @@ intermediate states.
 These tests focus on "what" the system does, not "how" it does it.
 """
 
-import pytest
 import asyncio
-import sys
 import os
-import tempfile
-import shutil
-from unittest.mock import Mock, patch, AsyncMock
+import sys
+
+import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from sci_fi_dashboard.gateway.queue import TaskQueue, MessageTask, TaskStatus
+from sci_fi_dashboard.conflict_resolver import ConflictManager
 from sci_fi_dashboard.gateway.dedup import MessageDeduplicator
 from sci_fi_dashboard.gateway.flood import FloodGate
+from sci_fi_dashboard.gateway.queue import MessageTask, TaskQueue
 from sci_fi_dashboard.sqlite_graph import SQLiteGraph
-from sci_fi_dashboard.conflict_resolver import ConflictManager
 
 
 class TestMessageProcessingFunctionality:
@@ -239,10 +237,7 @@ class TestRoutingFunctionality:
         message = "Hello how are you"
 
         # Simple routing logic simulation
-        if len(message.split()) < 5:
-            route = "gemini_flash"  # Fast model for casual
-        else:
-            route = "claude"  # Strong model for complex
+        route = "gemini_flash" if len(message.split()) < 5 else "claude"
 
         assert route == "gemini_flash"
 

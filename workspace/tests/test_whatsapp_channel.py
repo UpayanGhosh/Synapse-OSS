@@ -91,12 +91,12 @@ def _make_mock_process(returncode_after_start=None):
 
 def test_bridge_files_exist():
     """WA-01: baileys-bridge/index.js and package.json must exist before integration."""
-    assert (_BRIDGE_DIR / "index.js").exists(), (
-        "baileys-bridge/index.js missing — Plan 04-02 must create it"
-    )
-    assert (_BRIDGE_DIR / "package.json").exists(), (
-        "baileys-bridge/package.json missing — Plan 04-02 must create it"
-    )
+    assert (
+        _BRIDGE_DIR / "index.js"
+    ).exists(), "baileys-bridge/index.js missing — Plan 04-02 must create it"
+    assert (
+        _BRIDGE_DIR / "package.json"
+    ).exists(), "baileys-bridge/package.json missing — Plan 04-02 must create it"
 
 
 # ---------------------------------------------------------------------------
@@ -121,12 +121,12 @@ async def test_start_tracks_pid(monkeypatch):
     await asyncio.sleep(0)
     await asyncio.sleep(0)
 
-    assert channel._bridge_pid == mock_proc.pid, (
-        f"Expected _bridge_pid={mock_proc.pid}, got {channel._bridge_pid}"
-    )
+    assert (
+        channel._bridge_pid == mock_proc.pid
+    ), f"Expected _bridge_pid={mock_proc.pid}, got {channel._bridge_pid}"
 
     start_task.cancel()
-    try:
+    try:  # noqa: SIM105
         await start_task
     except (asyncio.CancelledError, Exception):
         pass
@@ -150,10 +150,7 @@ def test_bridge_endpoints_defined():
         ("get", "/qr"),
     ]
     for verb, path in required_endpoints:
-        found = (
-            f"app.{verb}('{path}'" in src
-            or f'app.{verb}("{path}"' in src
-        )
+        found = f"app.{verb}('{path}'" in src or f'app.{verb}("{path}"' in src
         assert found, f"Bridge index.js missing endpoint: {verb.upper()} {path}"
 
 
@@ -167,9 +164,9 @@ def test_atomic_write_dep_present():
     pkg_path = _BRIDGE_DIR / "package.json"
     assert pkg_path.exists(), "baileys-bridge/package.json missing — cannot check dependencies"
     pkg = json.loads(pkg_path.read_text())
-    assert "write-file-atomic" in pkg.get("dependencies", {}), (
-        "write-file-atomic missing from baileys-bridge/package.json dependencies"
-    )
+    assert "write-file-atomic" in pkg.get(
+        "dependencies", {}
+    ), "write-file-atomic missing from baileys-bridge/package.json dependencies"
 
 
 # ---------------------------------------------------------------------------
@@ -182,9 +179,9 @@ def test_cached_group_metadata_enabled():
     index_js = _BRIDGE_DIR / "index.js"
     assert index_js.exists(), "baileys-bridge/index.js missing — cannot check cachedGroupMetadata"
     src = index_js.read_text()
-    assert "cachedGroupMetadata" in src, (
-        "cachedGroupMetadata not found in index.js — required for group message performance (WA-05)"
-    )
+    assert (
+        "cachedGroupMetadata" in src
+    ), "cachedGroupMetadata not found in index.js — required for group message performance (WA-05)"
 
 
 # ---------------------------------------------------------------------------
@@ -219,7 +216,7 @@ async def test_supervisor_restarts_on_crash(monkeypatch):
         await asyncio.sleep(0)
 
     start_task.cancel()
-    try:
+    try:  # noqa: SIM105
         await start_task
     except (asyncio.CancelledError, Exception):
         pass
@@ -240,9 +237,9 @@ def test_qr_endpoint_routed():
     index_js = _BRIDGE_DIR / "index.js"
     assert index_js.exists(), "baileys-bridge/index.js missing — cannot check /qr endpoint"
     src = index_js.read_text()
-    assert "app.get('/qr'" in src or 'app.get("/qr"' in src, (
-        "GET /qr endpoint not found in index.js — required for WhatsApp QR pairing (WA-07)"
-    )
+    assert (
+        "app.get('/qr'" in src or 'app.get("/qr"' in src
+    ), "GET /qr endpoint not found in index.js — required for WhatsApp QR pairing (WA-07)"
 
 
 # ---------------------------------------------------------------------------
@@ -273,7 +270,9 @@ async def test_gateway_get_qr_returns_qr_string(monkeypatch):
     try:
         import sci_fi_dashboard.api_gateway as gw
     except Exception:
-        pytest.skip("api_gateway not importable in test environment (sqlite_vec/qdrant_client absent)")
+        pytest.skip(
+            "api_gateway not importable in test environment (sqlite_vec/qdrant_client absent)"
+        )
     from starlette.testclient import TestClient
 
     # Patch WhatsAppChannel.get_qr to return a fake QR string
@@ -307,7 +306,9 @@ async def test_gateway_get_qr_returns_503_when_bridge_down(monkeypatch):
     try:
         import sci_fi_dashboard.api_gateway as gw
     except Exception:
-        pytest.skip("api_gateway not importable in test environment (sqlite_vec/qdrant_client absent)")
+        pytest.skip(
+            "api_gateway not importable in test environment (sqlite_vec/qdrant_client absent)"
+        )
     from starlette.testclient import TestClient
 
     # Patch WhatsAppChannel.get_qr to return None (bridge down or already authenticated)
@@ -339,7 +340,9 @@ async def test_gateway_get_qr_returns_503_when_whatsapp_not_registered(monkeypat
     try:
         import sci_fi_dashboard.api_gateway as gw
     except Exception:
-        pytest.skip("api_gateway not importable in test environment (sqlite_vec/qdrant_client absent)")
+        pytest.skip(
+            "api_gateway not importable in test environment (sqlite_vec/qdrant_client absent)"
+        )
     from starlette.testclient import TestClient
 
     # Patch channel_registry.get to return None for 'whatsapp'

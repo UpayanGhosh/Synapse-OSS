@@ -1,10 +1,9 @@
 import asyncio
-import websockets
-import subprocess
+import os
 import sys
 import time
-import os
-from datetime import datetime
+
+import websockets
 
 # Import Config
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
@@ -80,7 +79,7 @@ async def monitor():
                             # Reset timer implicitly
                             last_pong = time.time()
 
-                    except asyncio.TimeoutError:
+                    except TimeoutError:
                         print("Timeout waiting for Pong!")
                         diff = time.time() - last_pong
                         await send_whatsapp(f"[WARN] Gateway Unresponsive! Lag: {diff:.1f}s")

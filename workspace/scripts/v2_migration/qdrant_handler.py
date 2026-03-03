@@ -1,7 +1,7 @@
-import os
+from typing import Any
+
 from qdrant_client import QdrantClient
 from qdrant_client.http import models
-from typing import List, Dict, Any, Optional
 
 
 class QdrantVectorStore:
@@ -30,7 +30,7 @@ class QdrantVectorStore:
         except Exception as e:
             print(f"Error connecting to Qdrant: {e}")
 
-    def upsert_facts(self, facts: List[Dict[str, Any]]):
+    def upsert_facts(self, facts: list[dict[str, Any]]):
         """
         facts: List of dicts with {id, vector, metadata}
         """
@@ -43,8 +43,8 @@ class QdrantVectorStore:
         self.client.upsert(collection_name=self.collection_name, points=points)
 
     def search(
-        self, query_vector: List[float], limit: int = 5, score_threshold: float = 0.0
-    ) -> List[Dict[str, Any]]:
+        self, query_vector: list[float], limit: int = 5, score_threshold: float = 0.0
+    ) -> list[dict[str, Any]]:
         results = self.client.query_points(
             collection_name=self.collection_name,
             query=query_vector,

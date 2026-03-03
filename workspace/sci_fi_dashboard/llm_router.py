@@ -5,6 +5,7 @@ Replaces OpenClaw proxy (port 8080), call_gemini_direct(), and _call_antigravity
 All LLM calls go through router.acompletion() using provider-prefixed model strings
 from synapse.json model_mappings. No hardcoded model strings in this file.
 """
+
 import logging
 import os
 import sqlite3
@@ -26,7 +27,6 @@ from litellm import (  # noqa: E402
     ServiceUnavailableError,
     Timeout,
 )
-
 from synapse_config import SynapseConfig  # noqa: E402
 
 logger = logging.getLogger(__name__)
@@ -46,7 +46,7 @@ _KEY_MAP: dict[str, str] = {
     "xai": "XAI_API_KEY",
     "minimax": "MINIMAX_API_KEY",
     "moonshot": "MOONSHOT_API_KEY",
-    "zai": "ZAI_API_KEY",              # Zhipu Z.AI — prefix is zai/, NOT zhipu/
+    "zai": "ZAI_API_KEY",  # Zhipu Z.AI — prefix is zai/, NOT zhipu/
     "volcengine": "VOLCENGINE_API_KEY",
     "huggingface": "HUGGINGFACE_API_KEY",
     "nvidia_nim": "NVIDIA_NIM_API_KEY",
@@ -87,9 +87,10 @@ def _inject_provider_keys(providers: dict) -> None:
 
 
 # Ollama chat prefix sentinel — centralised so no bare provider strings appear at call sites
-_OLLAMA_CHAT_PREFIX = "ollama_chat/"  # noqa: LLM-16 — this IS the single allowed definition
+_OLLAMA_CHAT_PREFIX = "ollama_chat/"  # this IS the single allowed definition
 
 # --- Router builder ---
+
 
 def build_router(model_mappings: dict, providers: dict) -> Router:
     """
@@ -124,11 +125,10 @@ def build_router(model_mappings: dict, providers: dict) -> Router:
             )
         elif primary_model.startswith("hosted_vllm/"):
             litellm_params["api_base"] = vllm_api_base
-        elif primary_model.startswith("openai/") and providers.get("qianfan"):
+        elif primary_model.startswith("openai/") and providers.get("qianfan") and role == "qianfan":
             # Baidu Qianfan uses openai/ + api_base override
             # Only applied when provider config is "qianfan" role
-            if role == "qianfan":
-                litellm_params["api_base"] = qianfan_api_base
+            litellm_params["api_base"] = qianfan_api_base
 
         model_list.append({"model_name": role, "litellm_params": litellm_params})
 
@@ -151,6 +151,7 @@ def build_router(model_mappings: dict, providers: dict) -> Router:
 
 
 # --- Session tracking ---
+
 
 def _write_session(role: str, model: str, usage) -> None:
     """
@@ -180,6 +181,7 @@ def _write_session(role: str, model: str, usage) -> None:
 
 
 # --- SynapseLLMRouter ---
+
 
 class SynapseLLMRouter:
     """
@@ -225,9 +227,7 @@ class SynapseLLMRouter:
             choice = response.choices[0]
             finish_reason = choice.finish_reason
             if finish_reason not in ("stop", "end_turn", "length", None):
-                logger.warning(
-                    "Unexpected finish_reason '%s' for role '%s'", finish_reason, role
-                )
+                logger.warning("Unexpected finish_reason '%s' for role '%s'", finish_reason, role)
             text = choice.message.content or ""
             # SESS-01: Write token usage to sessions table (non-fatal side effect)
             try:

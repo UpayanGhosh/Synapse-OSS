@@ -10,8 +10,9 @@ from sci_fi_dashboard.retriever import get_embedding
 try:
     from synapse_config import SynapseConfig  # noqa: PLC0415
 except ImportError:
-    import sys as _sys
     import os as _os
+    import sys as _sys
+
     _sys.path.insert(0, _os.path.abspath(_os.path.join(_os.path.dirname(__file__), "..")))
     from synapse_config import SynapseConfig
 

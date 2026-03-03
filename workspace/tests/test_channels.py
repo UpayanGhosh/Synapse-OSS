@@ -55,6 +55,7 @@ class TestBaseChannel:
             @property
             def channel_id(self) -> str:
                 return "partial"
+
             # Missing: receive, send, send_typing, mark_read, health_check
 
         with pytest.raises(TypeError):

@@ -43,6 +43,18 @@ target-version = "py311"
 select = ["E", "F", "W", "I", "N", "UP", "B", "C4", "SIM"]
 ignore = ["E501"]
 
+[tool.ruff.lint.per-file-ignores]
+# Legacy V2 utility scripts — not part of the core Synapse-OSS system
+"workspace/monitor.py" = ["E", "F", "W", "B", "SIM", "UP", "C4"]
+"workspace/change_tracker.py" = ["E", "F", "W", "B", "SIM", "UP", "C4"]
+"workspace/change_viewer.py" = ["E", "F", "W", "B", "SIM", "UP", "C4"]
+"workspace/finish_facts.py" = ["E", "F", "W", "B", "SIM", "UP", "C4"]
+"workspace/purge_trash.py" = ["E", "F", "W", "B", "SIM", "UP", "C4"]
+"workspace/scripts/*.py" = ["E", "F", "W", "B", "SIM", "UP", "C4"]
+"workspace/skills/**/*.py" = ["E", "F", "W", "B", "SIM", "UP", "C4"]
+# do_transcribe.py uses sys.path manipulation before imports — E402 is intentional
+"workspace/do_transcribe.py" = ["E402"]
+
 [tool.black]
 line-length = 100
 target-version = ["py311"]

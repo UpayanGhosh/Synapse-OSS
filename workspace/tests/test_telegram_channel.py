@@ -478,9 +478,9 @@ class TestTelegramFloodGateIntegration:
         async def capture(channel_msg):
             # Old broken code: task_queue.enqueue() would have done channel_msg.task_id here
             # Verify ChannelMessage does NOT have task_id
-            assert not hasattr(channel_msg, "task_id"), (
-                "ChannelMessage has task_id — use adapter pattern, not direct task_queue.enqueue"
-            )
+            assert not hasattr(
+                channel_msg, "task_id"
+            ), "ChannelMessage has task_id — use adapter pattern, not direct task_queue.enqueue"
             received.append(channel_msg)
 
         ch = TelegramChannel(token="fake-token", enqueue_fn=capture)

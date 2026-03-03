@@ -53,8 +53,8 @@ class TelegramChannel(BaseChannel):
     def __init__(self, token: str, enqueue_fn=None) -> None:
         self._token = token
         self._enqueue_fn = enqueue_fn  # async callable(ChannelMessage) -> None
-        self._app = None               # telegram.ext.Application
-        self._updater = None           # telegram.ext.Updater
+        self._app = None  # telegram.ext.Application
+        self._updater = None  # telegram.ext.Updater
         self._status: str = "stopped"
         self._bot_info: dict = {}
 
@@ -213,9 +213,7 @@ class TelegramChannel(BaseChannel):
         if not self._app:
             return
         with contextlib.suppress(TelegramError):
-            await self._app.bot.send_chat_action(
-                chat_id=int(chat_id), action=ChatAction.TYPING
-            )
+            await self._app.bot.send_chat_action(chat_id=int(chat_id), action=ChatAction.TYPING)
 
     async def mark_read(self, chat_id: str, message_id: str) -> None:
         """

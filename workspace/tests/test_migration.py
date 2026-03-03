@@ -8,15 +8,15 @@ All tests use real SQLite databases created in pytest tmp_path directories.
 """
 
 import json
+import os
 import sqlite3
 import sys
-import os
-
-import pytest
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-from scripts.migrate_openclaw import migrate, DATABASES
+from scripts.migrate_openclaw import DATABASES, migrate
 
 
 def _create_source(root: Path) -> None:
@@ -65,7 +65,9 @@ def test_migrate_sbs_profiles_copied(tmp_path):
     dest = tmp_path / "dest"
     _create_source(source)
     migrate(source, dest)
-    assert (dest / "workspace" / "sci_fi_dashboard" / "synapse_data" / "core_identity.json").exists()
+    assert (
+        dest / "workspace" / "sci_fi_dashboard" / "synapse_data" / "core_identity.json"
+    ).exists()
 
 
 def test_migrate_writes_manifest(tmp_path):
@@ -115,6 +117,7 @@ def test_migrate_dry_run_no_dest_written(tmp_path):
 
 def test_migrate_port_8000_guard(tmp_path, monkeypatch):
     import scripts.migrate_openclaw as mod
+
     monkeypatch.setattr(mod, "_port_open", lambda port: True)
     source = tmp_path / "source"
     dest = tmp_path / "dest"

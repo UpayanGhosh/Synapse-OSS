@@ -8,21 +8,20 @@ WARNING: These tests are designed to stress the system and may
 require significant resources to run.
 """
 
-import pytest
 import asyncio
-import sys
 import os
-import time
-import tempfile
-import shutil
 import statistics
+import sys
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+
+import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from sci_fi_dashboard.gateway.queue import TaskQueue, MessageTask, TaskStatus
 from sci_fi_dashboard.gateway.dedup import MessageDeduplicator
 from sci_fi_dashboard.gateway.flood import FloodGate
+from sci_fi_dashboard.gateway.queue import MessageTask, TaskQueue
 from sci_fi_dashboard.sqlite_graph import SQLiteGraph
 
 
@@ -65,13 +64,9 @@ class TestQueuePerformance:
             queue.complete(task, "Done")
             return task.task_id
 
-        start = time.time()
-
         # Concurrent dequeue
         tasks = [dequeue_task() for _ in range(50)]
         results = await asyncio.gather(*tasks)
-
-        elapsed = time.time() - start
 
         # Should complete in reasonable time
         assert len(results) == 50
@@ -131,7 +126,7 @@ class TestKnowledgeGraphPerformance:
 
         # Query
         start = time.time()
-        result = graph.get_entity_neighborhood("Node_5000", hops=2)
+        graph.get_entity_neighborhood("Node_5000", hops=2)
         elapsed = time.time() - start
 
         print(f"Query took {elapsed * 1000:.2f}ms")
@@ -141,7 +136,7 @@ class TestKnowledgeGraphPerformance:
 
     @pytest.mark.skipif(
         sys.platform == "win32",
-        reason="SQLite WAL concurrent write throughput varies significantly on Windows; test tuned for Linux/macOS"
+        reason="SQLite WAL concurrent write throughput varies significantly on Windows; test tuned for Linux/macOS",
     )
     def test_concurrent_writes(self, tmp_path):
         """Test concurrent write performance."""
@@ -196,7 +191,7 @@ class TestMemoryFootprint:
             await queue.enqueue(task)
 
         # Complete and archive
-        for i in range(100):
+        for _i in range(100):
             task = await queue.dequeue()
             queue.complete(task, "x" * 1000)
 
@@ -340,7 +335,7 @@ class TestBottleneckIdentification:
                     await asyncio.sleep(0.001)
                     queue.complete(task, "done")
                     count += 1
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     break
 
         start = time.time()

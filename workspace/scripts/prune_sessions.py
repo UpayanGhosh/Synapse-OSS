@@ -1,14 +1,18 @@
-import os as _os, sys as _sys
-_sys.path.insert(0, _os.path.abspath(_os.path.join(_os.path.dirname(__file__), "..")))
-from synapse_config import SynapseConfig
+import os as _os
+import sys as _sys
 
+_sys.path.insert(0, _os.path.abspath(_os.path.join(_os.path.dirname(__file__), "..")))
 import json
 import os
 import shutil
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 
-SESSION_FILE = str(SynapseConfig.load().data_root / "agents" / "main" / "sessions" / "sessions.json")
+from synapse_config import SynapseConfig
+
+SESSION_FILE = str(
+    SynapseConfig.load().data_root / "agents" / "main" / "sessions" / "sessions.json"
+)
 MAX_AGE_DAYS = 7
 
 
@@ -19,7 +23,7 @@ def prune_sessions():
 
     print(f"Reading sessions from {SESSION_FILE}...")
     try:
-        with open(SESSION_FILE, "r") as f:
+        with open(SESSION_FILE) as f:
             sessions = json.load(f)
     except json.JSONDecodeError:
         print("Error decoding JSON.")

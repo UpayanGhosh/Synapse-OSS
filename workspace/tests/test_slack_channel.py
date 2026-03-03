@@ -49,8 +49,9 @@ if SLK_AVAILABLE:
 
 def _make_channel(enqueue_fn=None) -> "SlackChannel":
     """Construct SlackChannel with mocked Slack SDK internals."""
-    with patch("slack_bolt.async_app.AsyncApp.__init__", return_value=None), patch(
-        "slack_sdk.web.async_client.AsyncWebClient.__init__", return_value=None
+    with (
+        patch("slack_bolt.async_app.AsyncApp.__init__", return_value=None),
+        patch("slack_sdk.web.async_client.AsyncWebClient.__init__", return_value=None),
     ):
         ch = SlackChannel(
             bot_token="xoxb-fake",
@@ -165,12 +166,15 @@ async def test_start_calls_connect_async():
         status_at_park.append(ch._status)
         raise asyncio.CancelledError()
 
-    with patch(
-        "sci_fi_dashboard.channels.slack.AsyncSocketModeHandler",
-        return_value=mock_handler,
-    ), patch(
-        "sci_fi_dashboard.channels.slack.AsyncApp",
-    ) as mock_app_cls:
+    with (
+        patch(
+            "sci_fi_dashboard.channels.slack.AsyncSocketModeHandler",
+            return_value=mock_handler,
+        ),
+        patch(
+            "sci_fi_dashboard.channels.slack.AsyncApp",
+        ) as mock_app_cls,
+    ):
         # AsyncApp() returns a MagicMock that supports .event decorator
         mock_app_inst = MagicMock()
         mock_app_inst.event = MagicMock(return_value=lambda f: f)
@@ -344,13 +348,15 @@ class TestSlackFloodGateIntegration:
         """Returns an async enqueue_fn that captures what the adapter would pass to flood."""
 
         async def _enqueue(channel_msg):
-            collected.append({
-                "chat_id": channel_msg.chat_id,
-                "text": channel_msg.text,
-                "message_id": channel_msg.message_id,
-                "sender_name": channel_msg.sender_name,
-                "channel_id": "slack",
-            })
+            collected.append(
+                {
+                    "chat_id": channel_msg.chat_id,
+                    "text": channel_msg.text,
+                    "message_id": channel_msg.message_id,
+                    "sender_name": channel_msg.sender_name,
+                    "channel_id": "slack",
+                }
+            )
 
         return _enqueue
 

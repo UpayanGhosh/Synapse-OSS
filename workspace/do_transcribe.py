@@ -4,6 +4,7 @@ CLI utility to transcribe an audio file using the Groq Whisper backend.
 Usage:
     python do_transcribe.py <path/to/audio.ogg>
 """
+
 import sys
 from pathlib import Path
 

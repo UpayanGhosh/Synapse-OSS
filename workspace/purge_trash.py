@@ -1,5 +1,5 @@
 import sqlite3
-import os
+
 import sqlite_vec  # This is the key for Mac
 from synapse_config import SynapseConfig
 

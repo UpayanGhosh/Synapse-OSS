@@ -1,12 +1,12 @@
-import os as _os, sys as _sys
-_sys.path.insert(0, _os.path.abspath(_os.path.join(_os.path.dirname(__file__), "..", "..")))
-from synapse_config import SynapseConfig
+import os as _os
+import sys as _sys
 
+_sys.path.insert(0, _os.path.abspath(_os.path.join(_os.path.dirname(__file__), "..", "..")))
 import json
-import os
-import urllib.request
 import urllib.error
-import sys
+import urllib.request
+
+from synapse_config import SynapseConfig
 
 
 def ingest_banglish_dictionary():
@@ -16,7 +16,7 @@ def ingest_banglish_dictionary():
     api_url = "http://127.0.0.1:8989/add"
 
     try:
-        with open(file_path, "r") as f:
+        with open(file_path) as f:
             data = json.load(f)
     except Exception as e:
         print(f"Error reading dictionary file: {e}")

@@ -1,14 +1,14 @@
-import os as _os, sys as _sys
-_sys.path.insert(0, _os.path.abspath(_os.path.join(_os.path.dirname(__file__), "..")))
-from synapse_config import SynapseConfig
+import os as _os
+import sys as _sys
 
-import os
+_sys.path.insert(0, _os.path.abspath(_os.path.join(_os.path.dirname(__file__), "..")))
 import json
+import os
 import sqlite3
-import requests
-import subprocess
 import time
 from datetime import datetime
+
+from synapse_config import SynapseConfig
 
 try:
     import ollama

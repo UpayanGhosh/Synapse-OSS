@@ -1,9 +1,10 @@
 # NOTE: This file reads from ~/.openclaw/ as the migration source. SynapseConfig provides the dest.
-import networkx as nx
-import json
 import gzip
-import sqlite3
+import json
 import os
+import sqlite3
+
+import networkx as nx
 
 OPENCLAW_HOME = os.path.expanduser("~/.openclaw")
 DB_PATH = os.path.join(OPENCLAW_HOME, "workspace", "db", "memory.db")

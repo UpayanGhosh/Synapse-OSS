@@ -16,27 +16,27 @@ import sys
 import time
 from pathlib import Path
 
-import typer
 import questionary
+import typer
 from rich.console import Console
 from rich.panel import Panel
+from synapse_config import write_config
 
-from cli.provider_steps import (
-    PROVIDER_GROUPS,
-    PROVIDER_LIST,
-    _KEY_MAP,
-    validate_provider,
-    validate_ollama,
-    github_copilot_device_flow,
-)
 from cli.channel_steps import (
     CHANNEL_LIST,  # noqa: F401 — re-exported for tests
-    setup_telegram,
     setup_discord,
     setup_slack,
+    setup_telegram,
     setup_whatsapp,
 )
-from synapse_config import write_config
+from cli.provider_steps import (
+    _KEY_MAP,
+    PROVIDER_GROUPS,
+    PROVIDER_LIST,
+    github_copilot_device_flow,
+    validate_ollama,
+    validate_provider,
+)
 
 console = Console()
 
@@ -284,9 +284,7 @@ def _run_interactive() -> None:  # noqa: C901 — linear wizard, complexity is i
     data_root = Path(os.environ.get("SYNAPSE_HOME", Path.home() / ".synapse"))
     config_path = data_root / "synapse.json"
     if config_path.exists():
-        ans = questionary.confirm(
-            "synapse.json already exists. Reconfigure?", default=False
-        ).ask()
+        ans = questionary.confirm("synapse.json already exists. Reconfigure?", default=False).ask()
         if not ans:
             raise typer.Exit(0)
 
@@ -294,9 +292,7 @@ def _run_interactive() -> None:  # noqa: C901 — linear wizard, complexity is i
     detected = _check_for_openclaw()
     if detected:
         console.print("[yellow]Found existing ~/.openclaw/ data.[/]")
-        do_migrate = questionary.confirm(
-            "Migrate data to ~/.synapse/ now?", default=True
-        ).ask()
+        do_migrate = questionary.confirm("Migrate data to ~/.synapse/ now?", default=True).ask()
         if do_migrate is None:
             raise typer.Exit(1)  # Ctrl+C
         if do_migrate:
@@ -333,16 +329,12 @@ def _run_interactive() -> None:  # noqa: C901 — linear wizard, complexity is i
             if token:
                 config["providers"]["github_copilot"] = {"token": token}
             else:
-                console.print(
-                    "[yellow]  Skipping GitHub Copilot (auth failed or timed out).[/]"
-                )
+                console.print("[yellow]  Skipping GitHub Copilot (auth failed or timed out).[/]")
             continue
 
         # Ollama — api_base + httpx health check
         if provider == "ollama":
-            api_base = questionary.text(
-                "Ollama api_base:", default="http://localhost:11434"
-            ).ask()
+            api_base = questionary.text("Ollama api_base:", default="http://localhost:11434").ask()
             if api_base is None:
                 continue
             with console.status(f"[yellow]Checking Ollama at {api_base}...[/]"):
@@ -352,9 +344,7 @@ def _run_interactive() -> None:  # noqa: C901 — linear wizard, complexity is i
                 config["providers"]["ollama"] = {"api_base": api_base}
             else:
                 console.print(f"  [red]Ollama not reachable: {result.error}[/]")
-                console.print(
-                    "  Tip: Start Ollama first (https://ollama.com) then re-run."
-                )
+                console.print("  Tip: Start Ollama first (https://ollama.com) then re-run.")
             continue
 
         # vLLM — api_base only (no validation call)
@@ -398,9 +388,8 @@ def _run_interactive() -> None:  # noqa: C901 — linear wizard, complexity is i
         env_var = _KEY_MAP.get(provider, f"{provider.upper()}_API_KEY")
 
         for attempt in range(MAX_KEY_ATTEMPTS):
-            prompt_label = (
-                f"Enter {provider} API key [{env_var}]"
-                + (f" (attempt {attempt + 1}/{MAX_KEY_ATTEMPTS}):" if attempt > 0 else ":")
+            prompt_label = f"Enter {provider} API key [{env_var}]" + (
+                f" (attempt {attempt + 1}/{MAX_KEY_ATTEMPTS}):" if attempt > 0 else ":"
             )
             key = questionary.password(prompt_label).ask()
             if key is None:
@@ -469,7 +458,6 @@ def _run_interactive() -> None:  # noqa: C901 — linear wizard, complexity is i
     config["model_mappings"] = _build_model_mappings(list(config["providers"].keys()))
 
     # --- Step 9: Write config (ONB-07) ---
-    import stat  # noqa: PLC0415
 
     write_config(data_root, config)
     cfg_file = data_root / "synapse.json"

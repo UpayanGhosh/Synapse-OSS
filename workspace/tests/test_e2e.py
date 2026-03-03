@@ -8,22 +8,22 @@ WARNING: These tests require the full system to be running
 and may require API keys and external services.
 """
 
-import pytest
 import asyncio
-import sys
 import os
-import time
-import tempfile
 import shutil
-from unittest.mock import Mock, patch, AsyncMock
+import sys
+import tempfile
+import time
+
+import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from sci_fi_dashboard.gateway.queue import TaskQueue, MessageTask, TaskStatus
+from sci_fi_dashboard.conflict_resolver import ConflictManager
 from sci_fi_dashboard.gateway.dedup import MessageDeduplicator
 from sci_fi_dashboard.gateway.flood import FloodGate
+from sci_fi_dashboard.gateway.queue import MessageTask, TaskQueue, TaskStatus
 from sci_fi_dashboard.sqlite_graph import SQLiteGraph
-from sci_fi_dashboard.conflict_resolver import ConflictManager
 
 
 class TestWhatsAppMessageFlow:
@@ -136,17 +136,11 @@ class TestMemoryRetrievalFlow:
         db_path = os.path.join(temp_dir, "memory.db")
         graph = SQLiteGraph(db_path=db_path)
 
-        # User tells Synapse something important
-        user_message = "Remember that I have a meeting with John tomorrow at 3pm"
-
         # Extract and store (simulated)
         graph.add_node("Meeting_001", "event", description="Meeting with John")
         graph.add_node("John", "person")
         graph.add_edge("User", "Meeting_001", "has_scheduled")
         graph.add_edge("Meeting_001", "John", "with")
-
-        # Later, user asks about the meeting
-        query = "What meetings do I have?"
 
         # Retrieve
         results = graph.get_entity_neighborhood("User", hops=2)
@@ -157,7 +151,7 @@ class TestMemoryRetrievalFlow:
     def test_persona_evolution_flow(self, temp_dir):
         """Test persona profile build-up over time."""
         conflicts_file = os.path.join(temp_dir, "conflicts.json")
-        cm = ConflictManager(conflicts_file=conflicts_file)
+        ConflictManager(conflicts_file=conflicts_file)
 
         # Track conversation patterns
         messages = [
@@ -239,7 +233,7 @@ class TestMultiModelRoutingFlow:
             ("Review my code", "claude_opus"),  # Complex reasoning
         ]
 
-        for message, expected_route in test_cases:
+        for message, _expected_route in test_cases:
             # Simple routing simulation
             if any(kw in message.lower() for kw in ["write", "code", "script"]):
                 route = "claude"

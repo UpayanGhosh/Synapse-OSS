@@ -107,7 +107,7 @@ class BaseChannel(ABC):
     # Lifecycle (non-abstract — default no-ops)
     # ------------------------------------------------------------------
 
-    async def start(self) -> None:
+    async def start(self) -> None:  # noqa: B027
         """
         Start the channel adapter (e.g. begin polling, open websocket).
 
@@ -115,11 +115,13 @@ class BaseChannel(ABC):
         Real channel adapters override this with their event loop.
         Default implementation is a no-op — safe for adapters that don't need it.
         """
+        ...  # default no-op; subclasses may override
 
-    async def stop(self) -> None:
+    async def stop(self) -> None:  # noqa: B027
         """
         Gracefully shut down the channel adapter.
 
         Called by ChannelRegistry.stop_all() after the asyncio task is cancelled.
         Default implementation is a no-op — safe for adapters that don't need it.
         """
+        ...  # default no-op; subclasses may override

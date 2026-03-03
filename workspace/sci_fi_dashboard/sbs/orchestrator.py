@@ -138,7 +138,9 @@ class SBSOrchestrator:
         return {
             "current_mood": profile["emotional_state"]["current_dominant_mood"],
             "sentiment": profile["emotional_state"]["current_sentiment_avg"],
-            "primary_language_ratio": profile["linguistic"].get("current_style", {}).get("primary_language_ratio"),
+            "primary_language_ratio": profile["linguistic"]
+            .get("current_style", {})
+            .get("primary_language_ratio"),
             "vocab_size": profile["vocabulary"].get("total_unique_words", 0),
             "profile_version": profile["meta"].get("current_version", 0),
             "total_messages": profile["meta"].get("total_messages_processed", 0),

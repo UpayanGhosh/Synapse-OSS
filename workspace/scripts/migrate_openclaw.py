@@ -154,12 +154,14 @@ def migrate(source_root: Path, dest_root: Path, dry_run: bool = False) -> dict:
                     f"Checksum mismatch for {src.name}: "
                     f"source={src_hash[:12]}... staged={dst_hash[:12]}..."
                 )
-            manifest["databases"].append({
-                "file": src.name,
-                "src_hash": src_hash,
-                "dst_hash": dst_hash,
-                "size_bytes": src.stat().st_size,
-            })
+            manifest["databases"].append(
+                {
+                    "file": src.name,
+                    "src_hash": src_hash,
+                    "dst_hash": dst_hash,
+                    "size_bytes": src.stat().st_size,
+                }
+            )
 
         # Step 6 — Verify row counts
         for db_name in DATABASES:

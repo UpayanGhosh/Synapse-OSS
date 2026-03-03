@@ -23,7 +23,13 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import httpx
-from litellm import APIConnectionError, AuthenticationError, BadRequestError, RateLimitError, Timeout
+from litellm import (
+    APIConnectionError,
+    AuthenticationError,
+    BadRequestError,
+    RateLimitError,
+    Timeout,
+)
 
 # ---------------------------------------------------------------------------
 # ValidationResult
@@ -136,11 +142,7 @@ PROVIDER_GROUPS: list[dict] = [
 ]
 
 # Flat list for non-interactive mode lookups
-PROVIDER_LIST: list[str] = [
-    p["key"]
-    for group in PROVIDER_GROUPS
-    for p in group["providers"]
-]
+PROVIDER_LIST: list[str] = [p["key"] for group in PROVIDER_GROUPS for p in group["providers"]]
 
 # ---------------------------------------------------------------------------
 # GitHub Copilot OAuth constants

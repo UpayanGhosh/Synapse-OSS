@@ -9,9 +9,12 @@ import os
 import sqlite3
 import time
 
+
 def _get_db_path() -> str:
     from synapse_config import SynapseConfig  # noqa: PLC0415
+
     return str(SynapseConfig.load().db_dir / "knowledge_graph.db")
+
 
 DB_PATH = _get_db_path()
 

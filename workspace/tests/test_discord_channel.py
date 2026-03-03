@@ -193,14 +193,16 @@ async def test_dm_message_dispatches_to_enqueue_fn():
 
     # Simulate what the on_message handler does for a DM
     msg, _bot_user = _make_mock_message(content="hi there", is_dm=True)
-    channel_msg = await ch.receive({
-        "content": msg.content,
-        "author_id": str(msg.author.id),
-        "author_name": msg.author.display_name,
-        "channel_discord_id": msg.channel.id,
-        "message_id": str(msg.id),
-        "is_group": False,
-    })
+    channel_msg = await ch.receive(
+        {
+            "content": msg.content,
+            "author_id": str(msg.author.id),
+            "author_name": msg.author.display_name,
+            "channel_discord_id": msg.channel.id,
+            "message_id": str(msg.id),
+            "is_group": False,
+        }
+    )
     await enqueue_fn(channel_msg)
 
     enqueue_fn.assert_awaited_once()
@@ -215,14 +217,16 @@ async def test_server_mention_dispatches_to_enqueue_fn():
     ch = DiscordChannel(token="t", enqueue_fn=enqueue_fn)
 
     msg, _bot_user = _make_mock_message(content="@bot help me", is_dm=False, is_mention=True)
-    channel_msg = await ch.receive({
-        "content": msg.content,
-        "author_id": str(msg.author.id),
-        "author_name": msg.author.display_name,
-        "channel_discord_id": msg.channel.id,
-        "message_id": str(msg.id),
-        "is_group": True,
-    })
+    channel_msg = await ch.receive(
+        {
+            "content": msg.content,
+            "author_id": str(msg.author.id),
+            "author_name": msg.author.display_name,
+            "channel_discord_id": msg.channel.id,
+            "message_id": str(msg.id),
+            "is_group": True,
+        }
+    )
     await enqueue_fn(channel_msg)
 
     enqueue_fn.assert_awaited_once()
@@ -465,13 +469,15 @@ class TestDiscordFloodGateIntegration:
 
         async def _enqueue(channel_msg):
             # Mirror the _make_flood_enqueue adapter in api_gateway.py
-            collected.append({
-                "chat_id": channel_msg.chat_id,
-                "text": channel_msg.text,
-                "message_id": channel_msg.message_id,
-                "sender_name": channel_msg.sender_name,
-                "channel_id": "discord",
-            })
+            collected.append(
+                {
+                    "chat_id": channel_msg.chat_id,
+                    "text": channel_msg.text,
+                    "message_id": channel_msg.message_id,
+                    "sender_name": channel_msg.sender_name,
+                    "channel_id": "discord",
+                }
+            )
 
         return _enqueue
 
@@ -481,14 +487,16 @@ class TestDiscordFloodGateIntegration:
         ch = DiscordChannel(token="fake-token", enqueue_fn=self._make_flood_adapter(collected))
 
         # Build a ChannelMessage as the on_message handler would via receive()
-        channel_msg = await ch.receive({
-            "content": "hello",
-            "author_id": "999888777",
-            "author_name": "TestUser",
-            "channel_discord_id": 111222333,
-            "message_id": "123456789",
-            "is_group": False,
-        })
+        channel_msg = await ch.receive(
+            {
+                "content": "hello",
+                "author_id": "999888777",
+                "author_name": "TestUser",
+                "channel_discord_id": 111222333,
+                "message_id": "123456789",
+                "is_group": False,
+            }
+        )
         # Call the adapter directly — same as on_message handler does
         await ch._enqueue_fn(channel_msg)
 
@@ -501,14 +509,16 @@ class TestDiscordFloodGateIntegration:
         collected = []
         ch = DiscordChannel(token="fake-token", enqueue_fn=self._make_flood_adapter(collected))
 
-        channel_msg = await ch.receive({
-            "content": "hey bot",
-            "author_id": "111",
-            "author_name": "User",
-            "channel_discord_id": 999,
-            "message_id": "42",
-            "is_group": True,
-        })
+        channel_msg = await ch.receive(
+            {
+                "content": "hey bot",
+                "author_id": "111",
+                "author_name": "User",
+                "channel_discord_id": 999,
+                "message_id": "42",
+                "is_group": True,
+            }
+        )
         await ch._enqueue_fn(channel_msg)
 
         assert len(collected) == 1
@@ -525,14 +535,16 @@ class TestDiscordFloodGateIntegration:
             received.append(channel_msg)
 
         ch = DiscordChannel(token="fake-token", enqueue_fn=capture)
-        channel_msg = await ch.receive({
-            "content": "test",
-            "author_id": "1",
-            "author_name": "Tester",
-            "channel_discord_id": 100,
-            "message_id": "99",
-            "is_group": False,
-        })
+        channel_msg = await ch.receive(
+            {
+                "content": "test",
+                "author_id": "1",
+                "author_name": "Tester",
+                "channel_discord_id": 100,
+                "message_id": "99",
+                "is_group": False,
+            }
+        )
         await ch._enqueue_fn(channel_msg)
 
         assert len(received) == 1
@@ -544,4 +556,6 @@ class TestDiscordFloodGateIntegration:
         assert hasattr(msg, "message_id")
         assert hasattr(msg, "sender_name")
         # Confirm ChannelMessage does NOT have task_id (it's not a MessageTask)
-        assert not hasattr(msg, "task_id"), "ChannelMessage must not have task_id — use adapter pattern"
+        assert not hasattr(
+            msg, "task_id"
+        ), "ChannelMessage must not have task_id — use adapter pattern"

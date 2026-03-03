@@ -11,17 +11,16 @@ Usage:
   python3 change_viewer.py --branch main            # Show specific branch
 """
 
-import os
-import sys
 import argparse
 import subprocess
 from datetime import datetime
-from rich.console import Console
-from rich.table import Table
-from rich.panel import Panel
-from rich.text import Text
-from rich.syntax import Syntax
+
 from rich import box
+from rich.console import Console
+from rich.panel import Panel
+from rich.syntax import Syntax
+from rich.table import Table
+from rich.text import Text
 from synapse_config import SynapseConfig
 
 console = Console()

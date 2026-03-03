@@ -5,10 +5,11 @@ Tests the MessageDeduplicator class which prevents reprocessing
 of duplicate webhook messages within a configurable time window.
 """
 
-import pytest
-import time
-import sys
 import os
+import sys
+import time
+
+import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 

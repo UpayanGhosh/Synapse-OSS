@@ -5,11 +5,12 @@ Tests the SQLiteGraph class which provides a knowledge graph
 backed by SQLite instead of NetworkX.
 """
 
-import pytest
 import os
+import shutil
 import sys
 import tempfile
-import shutil
+
+import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 

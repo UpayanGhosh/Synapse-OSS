@@ -1,9 +1,13 @@
 import argparse
-import sys
+import asyncio
+import contextlib
 import os
-import time
 import subprocess
+import sys
+import time
 from pathlib import Path
+
+import aiohttp
 from sci_fi_dashboard.db import get_db_connection
 from utils.env_loader import load_env_file
 
@@ -50,9 +54,9 @@ def verify_system():
         start = time.perf_counter()
         # Simulate the "Spicy Filter": Safe Tag + Valid Vector
         conn.execute("""
-            SELECT d.content 
-            FROM documents d 
-            WHERE d.hemisphere_tag = 'safe' 
+            SELECT d.content
+            FROM documents d
+            WHERE d.hemisphere_tag = 'safe'
             AND d.id IN (SELECT document_id FROM vec_items LIMIT 10)
         """).fetchall()
         duration = (time.perf_counter() - start) * 1000
@@ -65,11 +69,6 @@ def verify_system():
         if duration < 50
         else "\n[WARN] System Verification Warning: High Latency"
     )
-
-
-import asyncio
-import aiohttp
-import sys
 
 
 async def interactive_chat_loop():
@@ -102,7 +101,7 @@ async def interactive_chat_loop():
     time.sleep(3)
 
     session_type = "safe"  # Default start
-    print(f"\n[OK] Connected. Session: [LOCK] SAFE MODE")
+    print("\n[OK] Connected. Session: [LOCK] SAFE MODE")
     print("commands: /spicy (unlock), /safe (lock), /quit (exit)\n")
 
     async with aiohttp.ClientSession() as session:
@@ -162,10 +161,8 @@ async def interactive_chat_loop():
 
 def start_chat():
     """Wrapper to run the async loop"""
-    try:
+    with contextlib.suppress(KeyboardInterrupt):
         asyncio.run(interactive_chat_loop())
-    except KeyboardInterrupt:
-        pass
 
 
 def ingest_data():

@@ -1,9 +1,9 @@
 # NOTE: This file reads from ~/.openclaw/ as the migration source. SynapseConfig provides the dest.
-import sqlite3
-import sqlite_vec
-import os
-import sys
 import json
+import os
+import sqlite3
+
+import sqlite_vec
 from qdrant_handler import QdrantVectorStore
 
 OPENCLAW_HOME = os.path.expanduser("~/.openclaw")

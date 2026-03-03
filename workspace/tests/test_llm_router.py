@@ -28,7 +28,6 @@ Requirements covered:
   LLM-18: Routing selects correct model role (casual, vault)
 """
 
-import subprocess
 import sys
 from pathlib import Path
 
@@ -46,7 +45,11 @@ from synapse_config import SynapseConfig  # noqa: E402
 # and all tests in this file are skipped.  That is the correct RED state.
 # ---------------------------------------------------------------------------
 try:
-    from sci_fi_dashboard.llm_router import SynapseLLMRouter, build_router, _inject_provider_keys
+    from sci_fi_dashboard.llm_router import (  # noqa: F401
+        SynapseLLMRouter,
+        _inject_provider_keys,
+        build_router,
+    )
 
     ROUTER_AVAILABLE = True
 except ImportError:
@@ -104,9 +107,9 @@ async def test_acompletion_called(mock_acompletion):
     config = _make_config("casual", "gemini/gemini-2.0-flash", "groq/llama-3.3-70b-versatile")
     router = SynapseLLMRouter(config)
     await router.call("casual", _TEST_MESSAGES)
-    assert mock_acompletion.called is True, (
-        "litellm.acompletion must be called — no urllib.request or requests.post allowed"
-    )
+    assert (
+        mock_acompletion.called is True
+    ), "litellm.acompletion must be called — no urllib.request or requests.post allowed"
 
 
 # ---------------------------------------------------------------------------
@@ -161,12 +164,12 @@ async def test_ollama_chat_prefix(mock_acompletion):
     router = SynapseLLMRouter(config)
     await router.call("vault", _TEST_MESSAGES)
     model = _get_model_arg(mock_acompletion)
-    assert model.startswith("ollama_chat/"), (
-        f"Ollama must use 'ollama_chat/' prefix (not 'ollama/'), got: {model!r}"
-    )
-    assert not model.startswith("ollama/"), (
-        f"Must NOT use bare 'ollama/' prefix — breaks chat format, got: {model!r}"
-    )
+    assert model.startswith(
+        "ollama_chat/"
+    ), f"Ollama must use 'ollama_chat/' prefix (not 'ollama/'), got: {model!r}"
+    assert not model.startswith(
+        "ollama/"
+    ), f"Must NOT use bare 'ollama/' prefix — breaks chat format, got: {model!r}"
 
 
 async def test_openrouter_prefix(mock_acompletion):
@@ -228,12 +231,12 @@ async def test_zai_prefix(mock_acompletion):
     router = SynapseLLMRouter(config)
     await router.call("zhipu", _TEST_MESSAGES)
     model = _get_model_arg(mock_acompletion)
-    assert model.startswith("zai/"), (
-        f"Zhipu Z.AI must use 'zai/' prefix (not 'zhipu/'), got: {model!r}"
-    )
-    assert not model.startswith("zhipu/"), (
-        f"Must NOT use 'zhipu/' prefix — use 'zai/' for litellm compatibility, got: {model!r}"
-    )
+    assert model.startswith(
+        "zai/"
+    ), f"Zhipu Z.AI must use 'zai/' prefix (not 'zhipu/'), got: {model!r}"
+    assert not model.startswith(
+        "zhipu/"
+    ), f"Must NOT use 'zhipu/' prefix — use 'zai/' for litellm compatibility, got: {model!r}"
 
 
 async def test_volcengine_prefix(mock_acompletion):
@@ -260,9 +263,7 @@ async def test_github_copilot_prefix(mock_acompletion):
     router = SynapseLLMRouter(config)
     await router.call("copilot", _TEST_MESSAGES)
     model = _get_model_arg(mock_acompletion)
-    assert model.startswith("github_copilot/"), (
-        f"Expected 'github_copilot/' prefix, got: {model!r}"
-    )
+    assert model.startswith("github_copilot/"), f"Expected 'github_copilot/' prefix, got: {model!r}"
 
 
 # ---------------------------------------------------------------------------
@@ -309,7 +310,9 @@ def test_no_hardcoded_models():
                     in_docstring = True
                     docstring_delim = delim
                     # Single-line docstring: open and close on same line
-                    if count >= 2 or (count == 1 and stripped.endswith(delim) and stripped != delim):
+                    if count >= 2 or (
+                        count == 1 and stripped.endswith(delim) and stripped != delim
+                    ):
                         in_docstring = False
                         docstring_delim = None
                     break
@@ -321,7 +324,7 @@ def test_no_hardcoded_models():
                 continue
             if stripped.startswith("#"):
                 continue
-            # Allow lines explicitly exempted with  # noqa: LLM-16
+            # Allow lines explicitly exempted with the LLM-16 suppression marker
             if "# noqa: LLM-16" in stripped:
                 continue
             for pattern in patterns:
@@ -362,16 +365,20 @@ async def test_fallback_on_auth_error(mock_acompletion):
 
     await router.call("casual", _TEST_MESSAGES)
 
-    assert mock_acompletion.call_count == 2, (
-        f"Expected 2 calls (primary + fallback), got {mock_acompletion.call_count}"
-    )
+    assert (
+        mock_acompletion.call_count == 2
+    ), f"Expected 2 calls (primary + fallback), got {mock_acompletion.call_count}"
     second_call_model = mock_acompletion.call_args_list[1].kwargs.get(
         "model",
-        mock_acompletion.call_args_list[1].args[0] if mock_acompletion.call_args_list[1].args else "",
+        (
+            mock_acompletion.call_args_list[1].args[0]
+            if mock_acompletion.call_args_list[1].args
+            else ""
+        ),
     )
-    assert second_call_model.startswith("groq/"), (
-        f"Fallback must use groq/ model, got: {second_call_model!r}"
-    )
+    assert second_call_model.startswith(
+        "groq/"
+    ), f"Fallback must use groq/ model, got: {second_call_model!r}"
 
 
 async def test_fallback_on_rate_limit(mock_acompletion):
@@ -395,16 +402,20 @@ async def test_fallback_on_rate_limit(mock_acompletion):
 
     await router.call("code", _TEST_MESSAGES)
 
-    assert mock_acompletion.call_count == 2, (
-        f"Expected 2 calls (primary + fallback), got {mock_acompletion.call_count}"
-    )
+    assert (
+        mock_acompletion.call_count == 2
+    ), f"Expected 2 calls (primary + fallback), got {mock_acompletion.call_count}"
     second_call_model = mock_acompletion.call_args_list[1].kwargs.get(
         "model",
-        mock_acompletion.call_args_list[1].args[0] if mock_acompletion.call_args_list[1].args else "",
+        (
+            mock_acompletion.call_args_list[1].args[0]
+            if mock_acompletion.call_args_list[1].args
+            else ""
+        ),
     )
-    assert second_call_model.startswith("openai/"), (
-        f"Fallback must use openai/ model, got: {second_call_model!r}"
-    )
+    assert second_call_model.startswith(
+        "openai/"
+    ), f"Fallback must use openai/ model, got: {second_call_model!r}"
 
 
 # ---------------------------------------------------------------------------
@@ -422,16 +433,19 @@ async def test_casual_route(mock_acompletion):
         providers={},
         channels={},
         model_mappings={
-            "casual": {"model": "gemini/gemini-2.0-flash", "fallback": "groq/llama-3.3-70b-versatile"},
+            "casual": {
+                "model": "gemini/gemini-2.0-flash",
+                "fallback": "groq/llama-3.3-70b-versatile",
+            },
             "vault": {"model": "ollama_chat/stheno:latest", "fallback": None},
         },
     )
     router = SynapseLLMRouter(config)
     await router.call("casual", _TEST_MESSAGES)
     model = _get_model_arg(mock_acompletion)
-    assert model == "gemini/gemini-2.0-flash", (
-        f"casual route must use gemini/gemini-2.0-flash from model_mappings, got: {model!r}"
-    )
+    assert (
+        model == "gemini/gemini-2.0-flash"
+    ), f"casual route must use gemini/gemini-2.0-flash from model_mappings, got: {model!r}"
 
 
 async def test_vault_route(mock_acompletion):
@@ -444,16 +458,19 @@ async def test_vault_route(mock_acompletion):
         providers={},
         channels={},
         model_mappings={
-            "casual": {"model": "gemini/gemini-2.0-flash", "fallback": "groq/llama-3.3-70b-versatile"},
+            "casual": {
+                "model": "gemini/gemini-2.0-flash",
+                "fallback": "groq/llama-3.3-70b-versatile",
+            },
             "vault": {"model": "ollama_chat/stheno:latest", "fallback": None},
         },
     )
     router = SynapseLLMRouter(config)
     await router.call("vault", _TEST_MESSAGES)
     model = _get_model_arg(mock_acompletion)
-    assert model.startswith("ollama_chat/"), (
-        f"vault route must use ollama_chat/ model, got: {model!r}"
-    )
+    assert model.startswith(
+        "ollama_chat/"
+    ), f"vault route must use ollama_chat/ model, got: {model!r}"
 
 
 # ---------------------------------------------------------------------------
@@ -486,7 +503,9 @@ async def test_translate_banglish_uses_router(monkeypatch):
     try:
         import sci_fi_dashboard.api_gateway as gw
     except (ImportError, Exception):
-        pytest.skip("api_gateway not importable in test environment (sqlite_vec/qdrant_client absent)")
+        pytest.skip(
+            "api_gateway not importable in test environment (sqlite_vec/qdrant_client absent)"
+        )
 
     calls = []
 
@@ -513,7 +532,9 @@ async def test_translate_banglish_graceful_degradation(monkeypatch):
     try:
         import sci_fi_dashboard.api_gateway as gw
     except (ImportError, Exception):
-        pytest.skip("api_gateway not importable in test environment (sqlite_vec/qdrant_client absent)")
+        pytest.skip(
+            "api_gateway not importable in test environment (sqlite_vec/qdrant_client absent)"
+        )
 
     async def _failing_call(role, messages, **kwargs):
         raise KeyError(f"Role {role!r} not found in model_mappings")
@@ -524,6 +545,5 @@ async def test_translate_banglish_graceful_degradation(monkeypatch):
     result = await gw.translate_banglish(original)
 
     assert result == original, (
-        f"translate_banglish() should return original text on router failure, "
-        f"got: {result!r}"
+        f"translate_banglish() should return original text on router failure, " f"got: {result!r}"
     )

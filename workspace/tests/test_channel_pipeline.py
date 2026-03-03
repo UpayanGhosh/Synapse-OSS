@@ -35,7 +35,6 @@ from sci_fi_dashboard.channels.base import ChannelMessage
 from sci_fi_dashboard.gateway.flood import FloodGate
 from sci_fi_dashboard.gateway.queue import MessageTask, TaskQueue
 
-
 # ---------------------------------------------------------------------------
 # Shared helpers
 # ---------------------------------------------------------------------------
@@ -134,7 +133,9 @@ class TestDiscordPipeline:
         assert task_queue.pending_count == 1, f"Expected 1 task, got {task_queue.pending_count}"
         assert len(collected_tasks) == 1
         task = collected_tasks[0]
-        assert task.channel_id == "discord", f"Expected channel_id='discord', got '{task.channel_id}'"
+        assert (
+            task.channel_id == "discord"
+        ), f"Expected channel_id='discord', got '{task.channel_id}'"
         assert task.user_message == "hello discord"
         assert task.chat_id == "dc-chat-1"
 
