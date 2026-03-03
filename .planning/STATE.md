@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-03-03T08:15:21.382Z"
+last_updated: "2026-03-03T08:25:28.485Z"
 progress:
   total_phases: 7
   completed_phases: 6
   total_plans: 31
-  completed_plans: 28
+  completed_plans: 29
 ---
 
 ---
@@ -122,16 +122,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-02)
 
 **Core value:** A user can run Synapse-OSS on any machine, connect to their messaging apps and LLM providers, and have a fully working AI assistant — with zero dependency on any external binary or bridge service.
-**Current focus:** Phase 6 COMPLETE — All 5 plans done; milestone v1.0 achieved; 27/27 plans complete across all 6 phases
+**Current focus:** Phase 7 IN PROGRESS — Session metrics, health endpoint, cleanup; Plan 07-01 complete
 
 ## Current Position
 
-Phase: 6 of 6 (Onboarding Wizard) — COMPLETE
-Plan: 5 of 5 complete in current phase (06-05 wizard test suite)
-Status: 27/27 plans complete across all 6 phases; milestone v1.0 achieved
-Last activity: 2026-03-02 — Plan 06-05 complete: 24-test wizard suite covering ONB-01 through ONB-10; 2 tasks, 1 file
+Phase: 7 of 7 (Session Metrics and Health Cleanup) — IN PROGRESS
+Plan: 1 of 4 complete in current phase (07-01 sessions table + LLM instrumentation)
+Status: 28/31 plans complete across all 7 phases
+Last activity: 2026-03-03 — Plan 07-01 complete: sessions table in memory.db + _write_session() in llm_router.py; 2 tasks, 2 files
 
-Progress: [████████████████████████] 27/27 plans complete (Phase 6 COMPLETE)
+Progress: [█████████████████████████░░░] 28/31 plans complete (Phase 7 In Progress)
 
 ## Performance Metrics
 
@@ -173,6 +173,7 @@ Progress: [███████████████████████
 | Phase 06-onboarding-wizard P05 | 12 | 2 tasks | 1 files |
 | Phase 06-onboarding-wizard PP05 | 12 | 2 tasks | 1 files |
 | Phase 07-session-metrics-health-cleanup P03 | 2 | 2 tasks | 9 files |
+| Phase 07-session-metrics-health-cleanup P01 | 12 | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -256,6 +257,9 @@ Recent decisions affecting current work:
 - [Phase 06-onboarding-wizard]: CliRunner without mix_stderr kwarg — typer 0.24.1 compat; stderr merged into stdout; result.output used for all assertions
 - [Phase 07-session-metrics-health-cleanup]: LOG_DIR uses SYNAPSE_HOME env var with ~/.synapse fallback — consistent with SynapseConfig.resolve_data_root() precedence
 - [Phase 07-session-metrics-health-cleanup]: .openclawignore renamed to .synapsenotrack in change_tracker.py CATEGORY_MAP — matches Synapse-OSS naming convention
+- [Phase 07-session-metrics-health-cleanup]: _ensure_sessions_table() placed at module level in db.py, callable with any sqlite3.Connection for fresh and existing DBs
+- [Phase 07-session-metrics-health-cleanup]: _write_session() uses lazy import of DB_PATH inside function body (noqa PLC0415) — preserves monkeypatching compatibility for tests
+- [Phase 07-session-metrics-health-cleanup]: call_model() NOT instrumented in llm_router.py — used for validation pings only; token tracking irrelevant per plan spec
 
 ### Pending Todos
 

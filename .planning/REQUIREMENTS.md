@@ -95,7 +95,7 @@
 
 ### Session Metrics & Health
 
-- [ ] **SESS-01**: System tracks per-session token usage (input, output, total) in SQLite `sessions` table in `memory.db`
+- [x] **SESS-01**: System tracks per-session token usage (input, output, total) in SQLite `sessions` table in `memory.db`
 - [ ] **SESS-02**: `GET /api/sessions` endpoint returns JSON matching the schema previously returned by `openclaw sessions list --json`
 - [ ] **SESS-03**: `state.py` reads session metrics from internal SQLite instead of shelling out to `openclaw sessions list`
 - [ ] **HLTH-01**: `GET /health` reports status of: LLM provider connectivity, each active channel, Baileys bridge subprocess, SQLite databases
@@ -215,7 +215,7 @@
 | ONB-08 | Phase 6: Onboarding Wizard | Complete |
 | ONB-09 | Phase 6: Onboarding Wizard | Complete |
 | ONB-10 | Phase 6: Onboarding Wizard | Complete |
-| SESS-01 | Phase 7: Session Metrics, Health & Cleanup | Pending |
+| SESS-01 | Phase 7: Session Metrics, Health & Cleanup | Complete |
 | SESS-02 | Phase 7: Session Metrics, Health & Cleanup | Pending |
 | SESS-03 | Phase 7: Session Metrics, Health & Cleanup | Pending |
 | HLTH-01 | Phase 7: Session Metrics, Health & Cleanup | Pending |
