@@ -14,7 +14,7 @@ cloud exposure. Here is how the pieces fit together:
 ```
 Your Phone (WhatsApp)
         ↓
-   OpenClaw Gateway          ← bridges WhatsApp to your computer
+  Baileys Bridge (internal)  ← spawned automatically by the gateway; bridges WhatsApp to your computer
         ↓
   Synapse API Gateway        ← the brain: memory, routing, persona
         ↓
@@ -26,7 +26,7 @@ Your Phone (WhatsApp)
   Qdrant + SQLite            ← memory databases
 ```
 
-**What runs on your machine:** OpenClaw, Ollama, the Synapse API gateway, and the databases.
+**What runs on your machine:** Ollama, the Synapse API gateway, the Baileys WhatsApp bridge, and the databases.
 **What lives in the cloud:** The LLM API you configure (Gemini, Claude, OpenRouter, etc.).
 
 > **Why Ollama is required:** Every message you send and every fact Synapse learns is
@@ -42,7 +42,7 @@ Your Phone (WhatsApp)
 | Stage | Time |
 |-------|------|
 | Installing prerequisites | 15–30 min (mostly downloads) |
-| Pulling Ollama model (`nomic-embed-text`, ~800 MB) | 5–15 min depending on connection |
+| Pulling Ollama model (`nomic-embed-text`, ~900 MB) | 5–15 min depending on connection |
 | First-time onboarding | 5–10 min |
 | Scanning WhatsApp QR code | 2 min |
 | **Total** | **~30–60 min** |
@@ -51,7 +51,7 @@ Your Phone (WhatsApp)
 
 ## Part 1 — Install Prerequisites
 
-You need **five things** before you start. Install them in order.
+You need **four things** before you start. Install them in order.
 
 ---
 
@@ -121,49 +121,7 @@ docker info   # Should say "Server: Docker Engine" — if this fails, Docker isn
 
 ---
 
-### 1.4 — OpenClaw
-
-OpenClaw is the WhatsApp bridge that connects your phone to Synapse. It handles QR code
-linking, message routing, and the connection between WhatsApp and your local gateway.
-
-**Install:**
-
-```bash
-# macOS / Linux
-curl -fsSL https://openclaw.ai/install.sh | bash
-
-# Windows (PowerShell — run as Administrator)
-iwr -useb https://openclaw.ai/install.ps1 | iex
-```
-
-> **Requires Node.js 22 or higher.** The installer checks for this automatically. If Node.js
-> is missing or outdated, install it first from [nodejs.org](https://nodejs.org) — choose
-> the **LTS** version (22 or higher).
-
-**Verify the install:**
-```bash
-openclaw --version
-openclaw doctor      # Runs a self-check — everything should show green
-```
-
-**First-time OpenClaw setup:**
-
-Run the OpenClaw onboarding wizard once. This creates the `~/.openclaw/` directory and
-prepares OpenClaw for use:
-
-```bash
-openclaw onboard
-```
-
-The wizard asks you to choose a model/API key for OpenClaw's own agents. You can skip
-model selection for now — Synapse uses its own API keys configured separately in `.env`.
-
-> **What `openclaw onboard` does:** Creates `~/.openclaw/openclaw.json`, sets up the
-> workspace directory, and walks you through initial configuration. You only run this once.
-
----
-
-### 1.5 — Ollama (Required — powers memory and ingestion)
+### 1.4 — Ollama (Required — powers memory and ingestion)
 
 Ollama runs the `nomic-embed-text` embedding model locally. This model converts every
 message and memory into a 768-dimensional vector — the foundation of Synapse's semantic
@@ -174,7 +132,7 @@ by a local LLM with zero cloud exposure.
 
 #### Install Ollama
 
-> **The onboarding script (`synapse_onboard.sh` / `.bat` / `.ps1`) installs Ollama
+> **The onboarding script (`synapse_onboard.sh` / `.bat`) installs Ollama
 > automatically if it is not found.** You can skip the manual install below and let the
 > script handle it — or pre-install now if you prefer.
 
@@ -250,8 +208,6 @@ cd Synapse-OSS
 ## Part 3 — Get Your API Keys
 
 Synapse needs at least **one LLM API key** to work. Get it before continuing.
-
-### Required
 
 **Google Gemini API Key** — Free tier available, no credit card required.
 
@@ -363,9 +319,9 @@ the [Troubleshooting](#troubleshooting) section.
 
 ## Part 6 — Run the Onboarding Script (One Time Only)
 
-The onboarding script does everything else: links your WhatsApp, configures OpenClaw,
-creates required directories, and starts all services. **Run it once on first setup.
-Never run it again after that** — use the start script for daily use instead.
+The onboarding script does everything else: creates required directories, configures the
+workspace, guides you through WhatsApp setup, and starts all services. **Run it once on
+first setup. Never run it again after that** — use the start script for daily use instead.
 
 ### macOS / Linux
 
@@ -390,11 +346,12 @@ synapse_onboard.bat
 ### What the onboarding script does — step by step
 
 **Step 1: Checks your tools**
-Verifies Git, Python, Docker, and OpenClaw are installed and working. Fails with a clear
-message if anything is missing.
+Verifies Git, Python, Docker, and Ollama are installed and working. If Ollama is missing,
+it installs it automatically (via Homebrew on macOS, the official installer on Linux).
+Fails with a clear message if anything else is missing.
 
-**Step 2: Verifies your `.env`**
-Checks the file exists and warns if `GEMINI_API_KEY` still looks like the placeholder.
+**Step 2: Creates your `.env`**
+Auto-creates `.env` from `.env.example` if it does not already exist. No manual file copy needed.
 
 **Step 3: Asks your WhatsApp setup preference**
 
@@ -412,33 +369,41 @@ Enter `1` or `2`. Either works — personal number is the simplest way to get st
 
 **Step 4: Takes your phone number**
 Enter your WhatsApp number in E.164 format (same as `ADMIN_PHONE` in `.env`). This is
-saved to OpenClaw's allow-list so Synapse only responds to you.
+saved so Synapse only responds to you.
 
 **Step 5: Shows the WhatsApp QR code**
-A QR code appears in your terminal.
-
-On your phone:
+A QR code appears in your terminal, served by the Baileys bridge that is spawned by the
+gateway. On your phone:
 1. Open **WhatsApp**
 2. Go to **Settings** → **Linked Devices**
 3. Tap **Link a Device**
 4. Scan the QR code
 
-You have about 60 seconds. If it expires, the script continues anyway (WhatsApp is already
-linked from a previous run, or you can link later with `openclaw channels login --channel whatsapp`).
+You have about 60 seconds. If it expires, you can retrieve a fresh QR code at any time
+by visiting `GET http://localhost:8000/qr` while Synapse is running.
 
 **Step 6: Configures the workspace**
-Tells OpenClaw where Synapse's workspace lives and creates the required directory structure.
+Creates the required directory structure under `~/.synapse/`:
+- `~/.synapse/logs/` — service log files
+- `~/.synapse/workspace/db/` — SQLite databases
+- Profile directories for each persona
 
-**Step 7: Starts all services**
+**Step 7: Configures LLM access**
+Checks for a `GEMINI_API_KEY` in `.env`. If none is found, it prints a warning (does not
+abort) so you can add a key later without re-running the full onboard.
+
+**Step 8: Starts all services**
 
 | Service | Purpose |
 |---------|---------|
 | Qdrant (Docker) | Vector database for semantic memory |
 | Ollama | Embedding model (`nomic-embed-text`) — required for memory ingestion |
 | Synapse API Gateway | The brain — handles memory, routing, persona |
-| OpenClaw Gateway | The bridge — forwards WhatsApp messages to the brain |
 
-**Step 8: Waits for startup and verifies**
+The Baileys WhatsApp bridge is spawned automatically by the API gateway on startup —
+it is an internal subprocess and does not need to be managed separately.
+
+**Step 9: Waits for startup and verifies**
 Polls the health endpoints for up to 15 seconds. Reports which services are running.
 
 ---
@@ -489,8 +454,7 @@ synapse_start.bat
 The start script automatically:
 - Starts Docker / Qdrant if not already running
 - Starts Ollama (required for memory embedding)
-- Starts the Synapse API Gateway
-- Starts the OpenClaw Gateway (WhatsApp bridge)
+- Starts the Synapse API Gateway (which in turn spawns the Baileys WhatsApp bridge)
 
 Then message Synapse on WhatsApp — it's live.
 
@@ -522,9 +486,9 @@ synapse_stop.bat
 
 Expected output:
 ```
-✅ Gateway    (8000)
-✅ Qdrant     (6333)
-✅ Ollama     (11434)
+[OK] Gateway    (8000)
+[OK] Qdrant     (6333)
+[OK] Ollama     (11434)
 ```
 
 All three must show green for Synapse to function fully. If Ollama is red, memory ingestion
@@ -535,7 +499,7 @@ is disabled — see the [Troubleshooting](#troubleshooting) section.
 ```cmd
 curl.exe http://localhost:8000/health
 curl.exe http://localhost:11434
-netstat -ano | findstr ":8000 :6333 :11434 :18789"
+netstat -ano | findstr ":8000 :6333 :11434"
 ```
 
 ---
@@ -547,7 +511,7 @@ netstat -ano | findstr ":8000 :6333 :11434 :18789"
 | Synapse API Gateway | 8000 | Yes | Main brain — memory, routing, persona |
 | Qdrant | 6333 | Yes | Vector memory database |
 | Ollama | 11434 | Yes | Embedding model (`nomic-embed-text`) for ingestion |
-| OpenClaw Gateway | 18789 | Yes | WhatsApp bridge |
+| Baileys Bridge | 5010 | Internal | WhatsApp bridge — managed by the gateway, not user-facing |
 
 ---
 
@@ -558,30 +522,63 @@ mix). Here is how to make it respond to you in your own style.
 
 ### 9.1 — Map your phone number to a persona
 
-Open `workspace/sci_fi_dashboard/api_gateway.py` and find the `PHONE_MAP` dictionary
-(search for `PHONE_MAP`):
+Open `workspace/personas.yaml` and fill in your phone numbers under the persona you want
+to reach when WhatsApp messages come in from that number:
 
-```python
-PHONE_MAP = {
-    "1555XXXXXXX": "your_contact",
-    "1555YYYYYYY": "your_name"
-}
+```yaml
+personas:
+  - id: the_creator
+    display_name: "Your Name"
+    description: "Chat as Synapse -> you"
+    whatsapp_phones:
+      - "15551234567"   # digits only, no + prefix
+    whatsapp_keywords: []
+
+  - id: the_partner
+    display_name: "Partner"
+    description: "Chat as Synapse -> your partner"
+    whatsapp_phones:
+      - "15559876543"
+    whatsapp_keywords: []
+
+default_persona: the_creator
 ```
 
-Replace the phone numbers with your numbers (digits only, no `+`). The persona names
-(`your_contact`, `your_name`) map to the personality profiles Synapse loads.
+**Adding a third persona** (e.g. a family member or work context): add a new entry to the
+`personas` list, fill in their phone number, and restart Synapse. The `/chat/<id>` route
+is registered automatically — no code changes needed.
 
-### 9.2 — Set your language
+### 9.2 — Set your language and feedback phrases
 
-By default Synapse mixes Bengali and English (Banglish). To use plain English:
-
-Open `workspace/sci_fi_dashboard/api_gateway.py` and search for `translate_banglish` and
-`route_traffic_cop`. In both functions, update the system prompt to instruct the model
-to respond in English only. Change the Banglish instructions to:
+**Default detection phrases** (what triggers style adaptation) are defined in:
 
 ```
-Always respond in clear, natural English. Never mix languages.
+workspace/sci_fi_dashboard/sbs/feedback/language_patterns.yaml
 ```
+
+Open it and add phrases for your own language under the relevant category:
+
+```yaml
+correction_formal:
+  - "why (are you|so) formal"
+  - "stop being (formal|robotic)"
+  # Add your language here:
+  # - "beshi formal hoyona"        # Bengali example
+  # - "deja de ser tan formal"     # Spanish example
+
+correction_length:
+  - "too long"
+  - "keep it short"
+  # - "mukhtasar karo"             # Urdu example
+
+praise:
+  - "good (boy|job)"
+  - "perfect"
+  # - "shabaash"                   # Hindi/Urdu example
+```
+
+Each pattern is a Python regex (case-insensitive). Restart Synapse after saving. Changes
+take effect immediately on the next boot — no code edits needed.
 
 ### 9.3 — Define who you are (persona profile)
 
@@ -607,16 +604,19 @@ Edit `core_identity.json` to set your name and personality:
 }
 ```
 
-Edit `linguistic.json` to control language mixing:
+Edit `linguistic.json` to control how strongly Synapse leans toward your primary language:
 
 ```json
 {
-  "banglish_ratio": 0.0,
+  "primary_language_ratio": 0.0,
   "formality": "casual"
 }
 ```
 
-Set `banglish_ratio` to `0.0` for pure English.
+Set `primary_language_ratio` to `0.0` for neutral/formal tone, `1.0` for maximum
+casual/local-language mix. Synapse also adjusts this automatically when you send phrases
+defined in `language_patterns.yaml` (e.g. "stop being formal" raises it; "be professional"
+lowers it).
 
 ### 9.4 — Inject your background (jump-start memory)
 
@@ -675,33 +675,36 @@ curl http://localhost:8000/health
 # Expected: {"status": "ok"} or any JSON response
 ```
 
-**2. Check the OpenClaw gateway is running:**
-```bash
-openclaw status
-```
-
-**3. Check the logs:**
+**2. Check the gateway log for errors:**
 
 ```bash
 # macOS / Linux
-tail -50 ~/.openclaw/logs/gateway.log
-tail -50 ~/.openclaw/logs/openclaw_gateway.log
+tail -50 ~/.synapse/logs/gateway.log
 
 # Windows
-type "%USERPROFILE%\.openclaw\logs\gateway.log"
-type "%USERPROFILE%\.openclaw\logs\openclaw_gateway.log"
+type "%USERPROFILE%\.synapse\logs\gateway.log"
 ```
 
-**4. Make sure your phone number is in the allowlist:**
+**3. Check the WhatsApp bridge status:**
+
+The Baileys bridge is managed internally by the gateway. Check its status via:
 ```bash
-openclaw config get channels.whatsapp.allowFrom
-```
-This should show your number. If it's missing, run:
-```bash
-openclaw config set channels.whatsapp.allowFrom '["+15551234567"]' --json
+curl http://localhost:8000/channels/whatsapp/health
 ```
 
-**5. Re-run the start script:**
+**4. Get a fresh WhatsApp QR code (if WhatsApp is not linked):**
+```bash
+curl http://localhost:8000/qr
+```
+Or open `http://localhost:8000/qr` in your browser. Scan the returned QR code with
+WhatsApp → Settings → Linked Devices → Link a Device.
+
+**5. Make sure your phone number is set in `.env`:**
+
+Open your `.env` file and confirm `ADMIN_PHONE` is set to your number in E.164 format
+(e.g. `+15551234567`). If it was blank, add it and restart Synapse.
+
+**6. Re-run the start script:**
 ```bash
 ./synapse_start.sh    # Mac/Linux
 synapse_start.bat     # Windows
@@ -711,14 +714,15 @@ synapse_start.bat     # Windows
 
 ### WhatsApp QR code expired or login failed during onboarding
 
-This is normal if you took too long to scan. Link WhatsApp manually:
+This is normal if you took too long to scan. Get a fresh QR code at any time while
+Synapse is running:
 
 ```bash
-openclaw channels login --channel whatsapp
+curl http://localhost:8000/qr
 ```
 
-A new QR code appears. Scan it with WhatsApp → Settings → Linked Devices → Link a Device.
-Then run the start script.
+Or open `http://localhost:8000/qr` in your browser. Scan it with WhatsApp → Settings →
+Linked Devices → Link a Device.
 
 ---
 
@@ -800,7 +804,7 @@ ollama list
 # You should see: nomic-embed-text:latest
 ```
 
-**Pull it if missing (this is ~800 MB):**
+**Pull it if missing (this is ~900 MB):**
 ```bash
 ollama pull nomic-embed-text
 ```
@@ -816,10 +820,10 @@ ollama embeddings nomic-embed-text "test"
 Look at the gateway startup log:
 ```bash
 # macOS / Linux
-grep -i "retriever\|embed\|ollama" ~/.openclaw/logs/gateway.log | head -5
+grep -i "retriever\|embed\|ollama" ~/.synapse/logs/gateway.log | head -5
 
 # Windows
-findstr /i "retriever embed ollama" "%USERPROFILE%\.openclaw\logs\gateway.log"
+findstr /i "retriever embed ollama" "%USERPROFILE%\.synapse\logs\gateway.log"
 ```
 
 You want to see:
@@ -832,26 +836,15 @@ Fix Ollama first, then restart the gateway.
 
 ---
 
-### `openclaw` command not found after install
-
-Close your terminal and open a new one — the install script modifies your PATH, but the
-current shell session does not pick it up. If it's still missing:
-
-```bash
-# macOS / Linux: add to your shell profile
-echo 'export PATH="$HOME/.openclaw/bin:$PATH"' >> ~/.bashrc   # or ~/.zshrc
-source ~/.bashrc
-
-# Windows: the installer updates PATH automatically — restart the terminal
-```
-
----
-
 ### Gateway starts but crashes immediately
 
 Check the log for the actual error:
 ```bash
-tail -100 ~/.openclaw/logs/gateway.log
+# macOS / Linux
+tail -100 ~/.synapse/logs/gateway.log
+
+# Windows
+type "%USERPROFILE%\.synapse\logs\gateway.log"
 ```
 
 Common causes:
@@ -861,24 +854,24 @@ Common causes:
 
 ---
 
-## Advanced Topics
+### Node.js not found (Baileys bridge fails to start)
 
-### Manual workspace configuration
+The Baileys WhatsApp bridge requires **Node.js 18 or higher**. The gateway logs a clear
+error if Node.js is missing or outdated.
 
-The onboarding script sets this automatically. If you need to set it manually:
-
+**Check:**
 ```bash
-# macOS / Linux
-openclaw config set agents.defaults.workspace "/absolute/path/to/Synapse-OSS/workspace"
-
-# Windows
-openclaw config set agents.defaults.workspace "C:\Users\YourName\Synapse-OSS\workspace"
-
-# Verify
-openclaw config get agents.defaults.workspace
+node --version
+# Expected: v18.x.x or higher
 ```
 
+**Install if missing:** Download from [nodejs.org](https://nodejs.org) — choose the **LTS** version (18 or higher).
+
+After installing, restart Synapse. The bridge starts automatically.
+
 ---
+
+## Advanced Topics
 
 ### Run the API gateway directly (for development)
 
@@ -924,8 +917,7 @@ docker compose up --build
 docker compose down
 ```
 
-This starts Qdrant and the Synapse API Gateway in containers. Note: OpenClaw still needs
-to be installed and run natively for WhatsApp bridging.
+This starts Qdrant and the Synapse API Gateway in containers.
 
 ---
 
@@ -936,13 +928,20 @@ All endpoints are at `http://localhost:8000`:
 | Method | Endpoint | Purpose |
 |--------|----------|---------|
 | `GET` | `/health` | Check if gateway is alive |
-| `POST` | `/chat/the_creator` | Send a message (sync response) |
+| `GET` | `/qr` | Get WhatsApp QR code for (re)linking |
+| `GET` | `/channels/whatsapp/health` | Check Baileys bridge status |
+| `POST` | `/chat/<persona_id>` | Send a message to a specific persona (e.g. `/chat/the_creator`) |
 | `POST` | `/whatsapp/enqueue` | Enqueue a WhatsApp message (async) |
 | `POST` | `/ingest` | Add a fact to the knowledge graph |
 | `POST` | `/add` | Store unstructured memory |
 | `POST` | `/query` | Search memory |
-| `POST` | `/persona/rebuild` | Rebuild persona profiles from logs |
-| `GET` | `/persona/status` | View current persona statistics |
+| `POST` | `/persona/rebuild` | Rebuild all persona profiles from logs |
+| `GET` | `/persona/status` | View all persona profile statistics |
+| `GET` | `/sbs/status` | Live SBS stats (mood, sentiment, language ratio) |
+
+> **Persona routes are dynamic.** Every `id` entry in `personas.yaml` automatically gets
+> a `/chat/<id>` endpoint. Add a new persona to the YAML, restart, and it appears in
+> `GET /openapi.json` with no code changes.
 
 ```bash
 # Example: check health
@@ -959,6 +958,25 @@ curl.exe -X POST http://localhost:8000/chat/the_creator -H "Content-Type: applic
 
 ---
 
+### Custom data root
+
+By default Synapse stores all data in `~/.synapse/`. To use a different location, set the
+`SYNAPSE_HOME` environment variable before starting:
+
+```bash
+# macOS / Linux
+export SYNAPSE_HOME="/data/synapse"
+./synapse_start.sh
+
+# Windows
+set SYNAPSE_HOME=D:\synapse
+synapse_start.bat
+```
+
+All log files, databases, and persona profiles will be placed under that directory.
+
+---
+
 ## Quick Reference Card
 
 | Task | Mac/Linux | Windows |
@@ -970,16 +988,15 @@ curl.exe -X POST http://localhost:8000/chat/the_creator -H "Content-Type: applic
 | Check Ollama | `curl http://localhost:11434` | `curl.exe http://localhost:11434` |
 | Pull embedding model | `ollama pull nomic-embed-text` | same |
 | Verify embeddings work | `ollama embeddings nomic-embed-text "test"` | same |
-| View gateway log | `tail -f ~/.openclaw/logs/gateway.log` | `type "%USERPROFILE%\.openclaw\logs\gateway.log"` |
-| Link WhatsApp | `openclaw channels login --channel whatsapp` | same |
-| Check OpenClaw | `openclaw status` | same |
+| View gateway log | `tail -f ~/.synapse/logs/gateway.log` | `type "%USERPROFILE%\.synapse\logs\gateway.log"` |
+| Get WhatsApp QR code | `curl http://localhost:8000/qr` | `curl.exe http://localhost:8000/qr` |
+| Check bridge status | `curl http://localhost:8000/channels/whatsapp/health` | same |
 
 ---
 
 ## Getting Help
 
 - **GitHub Issues:** [github.com/UpayanGhosh/Synapse-OSS/issues](https://github.com/UpayanGhosh/Synapse-OSS/issues)
-- **OpenClaw Docs:** [docs.openclaw.ai](https://docs.openclaw.ai)
 - **Persona Setup:** [SETUP_PERSONA.md](SETUP_PERSONA.md)
 - **Architecture Deep-Dive:** [ARCHITECTURE.md](ARCHITECTURE.md)
 - **Engineering Philosophy:** [MANIFESTO.md](MANIFESTO.md)
