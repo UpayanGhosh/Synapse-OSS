@@ -350,14 +350,43 @@ else:
         "(add channels.telegram.token to synapse.json to enable)"
     )
 
+def _make_flood_enqueue(channel_id: str):
+    """
+    Factory: returns an async callable that routes a ChannelMessage through
+    FloodGate (with dedup) instead of passing it directly to task_queue.enqueue().
+
+    CHAN-05 reference pattern: see unified_webhook() which calls flood.incoming().
+    The inner _enqueue function receives a ChannelMessage (not MessageTask) — the
+    FloodGate on_batch_ready callback constructs the MessageTask with a uuid4 task_id.
+    This avoids the AttributeError: 'ChannelMessage' object has no attribute 'task_id'
+    that would occur if enqueue_fn=task_queue.enqueue were used directly.
+    """
+
+    async def _enqueue(channel_msg):
+        if dedup.is_duplicate(channel_msg.message_id or ""):
+            return
+        await flood.incoming(
+            chat_id=channel_msg.chat_id,
+            message=channel_msg.text,
+            metadata={
+                "message_id": channel_msg.message_id,
+                "sender_name": channel_msg.sender_name,
+                "channel_id": channel_id,
+            },
+        )
+
+    return _enqueue
+
+
 _ds_token = _ch_cfg.get("discord", {}).get("token", "").strip()
 if _ds_token:
     try:
         from channels.discord_channel import DiscordChannel  # noqa: E402
 
         _ds_allowed = [int(x) for x in _ch_cfg.get("discord", {}).get("allowed_channel_ids", [])]
+        _dis_enqueue = _make_flood_enqueue("discord")
         channel_registry.register(
-            DiscordChannel(token=_ds_token, allowed_channel_ids=_ds_allowed)
+            DiscordChannel(token=_ds_token, allowed_channel_ids=_ds_allowed, enqueue_fn=_dis_enqueue)
         )
         _ch_logger.info("Discord channel registered")
     except ImportError:
@@ -377,7 +406,10 @@ if _slk_bot and _slk_app:
     try:
         from channels.slack import SlackChannel  # noqa: E402
 
-        channel_registry.register(SlackChannel(bot_token=_slk_bot, app_token=_slk_app))
+        _slk_enqueue = _make_flood_enqueue("slack")
+        channel_registry.register(
+            SlackChannel(bot_token=_slk_bot, app_token=_slk_app, enqueue_fn=_slk_enqueue)
+        )
         _ch_logger.info("Slack channel registered")
     except ImportError:
         _ch_logger.warning(
