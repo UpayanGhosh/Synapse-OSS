@@ -22,23 +22,39 @@ To customize your Synapse, you'll need to edit text files. Here's how:
 4. Save changes with Ctrl+S
 
 ### Tip: Finding Text in Files
-To find a specific word (like `PHONE_MAP`) in a file:
+To find a specific word (like `primary_language_ratio`) in a file:
 - **VS Code:** Press `Ctrl+F` and type what you're looking for
 - **Notepad:** Press `Ctrl+F` also works!
 
 ---
 
-## 1. Edit the API Gateway Route Targets
+## 1. Map Your Phone Number to a Persona
 
-In `workspace/sci_fi_dashboard/api_gateway.py`, search for the `PHONE_MAP` and the target keywords. You need to map your own phone number/name to a persona name.
+Open `workspace/personas.yaml` — this is the single file that controls all personas and
+their phone number / keyword mappings. No Python edits needed.
 
-```python
-    # Strict Phone Mapping
-    PHONE_MAP = {
-        "1555XXXXXXX": "your_contact",
-        "1555YYYYYYY": "your_name"
-    }
+```yaml
+personas:
+  - id: the_creator
+    display_name: "Your Name"
+    description: "Chat as Synapse -> you"
+    whatsapp_phones:
+      - "15551234567"     # digits only, no + prefix
+    whatsapp_keywords: [] # optional: route by keyword instead of number
+
+  - id: the_partner
+    display_name: "Partner"
+    description: "Chat as Synapse -> partner"
+    whatsapp_phones:
+      - "15559876543"
+    whatsapp_keywords: []
+
+default_persona: the_creator  # fallback when no number/keyword matches
 ```
+
+**Adding a new persona** — append another entry to the list and restart Synapse. A new
+`/chat/<id>` API route is registered automatically. You can verify it appears at
+`GET http://localhost:8000/openapi.json`.
 
 ## 2. Define Your Personas (SBS Architecture)
 
@@ -51,7 +67,7 @@ The system automatically generates its "soul" data when you first start the API 
 ### Key Files to Edit:
 *   **core_identity.json**: Define your name, the bot's name, and personality "pillars".
 *   **exemplars.json**: Replace the default `pairs` with your own (Few-Shot learning).
-*   **linguistic.json**: Change the `banglish_ratio` (0.0 for pure English).
+*   **linguistic.json**: Change `primary_language_ratio` (0.0 for neutral/formal, 1.0 for maximum local-language mix).
 
 For example, to change who the bot thinks you are, edit `core_identity.json`:
 
@@ -114,32 +130,73 @@ Just start talking to it! Every time you chat, the `/add` endpoint uses LLMs to 
 
 ### Option C: The "Memory Dump" (Instant Hyper-Personalization)
 
-> **Prerequisite:** The bot must already be fully running and connected to WhatsApp (complete the onboarding script first). Option C works by sending instructions to the live bot — it won't work before setup is complete.
+> **Prerequisite:** The bot must already be fully running and connected to your channel (WhatsApp, Telegram, Discord, or Slack — complete the onboarding script first). Option C works by sending instructions to the live bot — it won't work before setup is complete.
 
 If you want the bot to instantly understand your coding style, your humor, or your dynamic with a partner, **you do not need to manually ingest facts.**
 
 Instead:
 
 1. Export your data from another platform (e.g., export your ChatGPT data archive, export a WhatsApp chat history, or download a Discord log).
-2. Simply upload the `.json` or `.txt` file directly to the bot via the OpenClaw interface or your configured WhatsApp channel.
+2. Simply upload the `.json` or `.txt` file directly to the bot via your configured channel (WhatsApp, Telegram, Discord, or Slack).
 3. Tell the bot: _"Read this entire chat log file. Extract every relevant personal fact, preference, relationship dynamic, and recurring joke you can find, and ingest them into your Knowledge Graph."_
 
-Because the bot has native file-reading tool capabilities (inherited from OpenClaw) and access to the `/add` memory ingestion logic, it will autonomously read your history, extract the triples, build the SQLite graph, and instantly become a hyper-personalized version of you without you writing a single line of code.
+Because the bot has native file-reading tool capabilities and access to the `/add` memory ingestion logic, it will autonomously read your history, extract the triples, build the SQLite graph, and instantly become a hyper-personalized version of you without you writing a single line of code.
 
 ## 4. The Language Walkthrough (Customizing Dialects)
 
-By default, the "soul" of this bot is programmed to speak in **Banglish** (a mix of Bengali and English) because that is how the creator communicates. If you want the bot to speak in plain English, or in your own local language (Hindi, Spanish, French, etc.), you need to update a few key files.
+Synapse's default patterns are English-only. All feedback-detection phrases are defined in
+a single YAML file — no code editing needed.
 
-### To Switch to Plain English:
-1.  **Open `workspace/sci_fi_dashboard/api_gateway.py`**: Search for the function `route_traffic_cop` (the Traffic Cop intent classifier) and `translate_banglish` (the language post-processor). Update the `system` prompt strings inside those two functions to instruct the model to use English only. Tip: use Ctrl+F and search for `def route_traffic_cop` and `def translate_banglish` to jump directly to the right locations — there are many occurrences of the word "Banglish" in the file across unrelated sections.
+### Step 1 — Open the patterns file
 
-### To Use Your Own Local Language:
-If you want a "Spanglish" bot or a French-speaking Synapse:
-1.  **Modify `CORE.md`**: Update the instructions to say: *"Speak in [Your Language] for casual conversation and English for technical explanations."*
-2.  **Teach it Slang**: In your `core_identity.json` or `exemplars.json` (see Section 2), add several `few_shot_examples` using your local slang. The LLM will instantly pick up the cadence and dialect from those examples.
-3.  **Update Transcription (Optional)**: If you use audio messages, check `workspace/scripts/transcribe_v2.py` and update the `language` code (e.g., `es` for Spanish, `fr` for French) to improve Whisper/Groq accuracy for your dialect.
+```
+workspace/sci_fi_dashboard/sbs/feedback/language_patterns.yaml
+```
 
-The bot is model-agnostic, meaning as long as you update the **Instructions** and provide **Examples**, it will adapt to any human language you prefer.
+### Step 2 — Add your language's phrases
+
+Each category maps to a specific behavior adjustment. Add regex patterns for your language
+under the relevant category:
+
+```yaml
+correction_formal:
+  - "why (are you|so) formal"
+  - "stop being (formal|robotic)"
+  # Bengali / Banglish:
+  # - "beshi formal hoyona"
+  # Spanish:
+  # - "deja de ser tan formal"
+
+correction_length:
+  - "too long"
+  - "keep it short"
+  # Hindi:
+  # - "bahut lamba hai"
+
+praise:
+  - "good (boy|job)"
+  - "perfect"
+  # French:
+  # - "parfait"
+  # - "c'est bien"
+```
+
+Patterns are Python regexes, matched case-insensitively. Restart the gateway after saving.
+
+### Step 3 — Teach Synapse your style with examples
+
+In `core_identity.json` or `exemplars.json` (see Section 2), add a few example exchanges
+in your local language. The LLM will pick up the dialect cadence from those samples and
+start responding in kind — even without any system prompt changes.
+
+### Step 4 — Update voice transcription language (optional)
+
+If you send voice notes, open `workspace/do_transcribe.py` and check the `AudioProcessor`
+initialisation. You can pass a `language` hint (e.g. `"es"` for Spanish, `"fr"` for French)
+to improve Whisper/Groq accuracy for your dialect.
+
+The system is model-agnostic: as long as you provide **patterns** and **examples**,
+Synapse adapts to any human language.
 
 ---
 
@@ -160,20 +217,38 @@ These adjustments happen **immediately** on the current conversation and are rei
 
 ### Customizing Feedback Patterns
 
-The detection patterns are defined in `workspace/sci_fi_dashboard/sbs/feedback/implicit.py` in the `FEEDBACK_PATTERNS` dictionary. You can add patterns for your own language or communication style:
+Detection phrases are defined in a YAML file — no Python edits needed:
 
-```python
-FEEDBACK_PATTERNS = {
-    "correction_formal": [
-        r"why (are you|so) formal",
-        r"stop being (formal|robotic)",
-        # Add your own patterns here
-    ],
-    # ... more categories
-}
+```
+workspace/sci_fi_dashboard/sbs/feedback/language_patterns.yaml
 ```
 
-Each category maps to a specific profile adjustment. The system supports English, Bengali, and Banglish patterns out of the box.
+Open it, add your phrases under the relevant category, save, and restart. Example:
+
+```yaml
+correction_formal:
+  - "why (are you|so) formal"
+  - "stop being (formal|robotic)"
+  - "beshi formal hoyona"     # your language here
+
+praise:
+  - "good (boy|job)"
+  - "perfect"
+  - "ekdum sahi"              # your language here
+```
+
+Each category maps to a specific profile adjustment (see table below). Patterns are
+Python regexes, matched case-insensitively. If the file is missing, Synapse falls back
+to built-in English defaults automatically.
+
+| Category | What it adjusts |
+|---|---|
+| `correction_formal` | Raises `primary_language_ratio` (more casual/local-language) |
+| `correction_casual` | Lowers `primary_language_ratio` (more formal) |
+| `correction_length` | Halves `avg_response_length` |
+| `correction_short` | Doubles `avg_response_length` |
+| `praise` | Reinforces current style (logged for batch processor) |
+| `rejection` | Logged for batch processor rollback consideration |
 
 ---
 
@@ -186,6 +261,6 @@ Each category maps to a specific profile adjustment. The system supports English
 | **Knowledge Graph** | A database that stores facts as connections (Subject → Relation → Object). |
 | **RAG** | Retrieval-Augmented Generation - looking up info before answering. |
 | **Subject-Relation-Object** | The way facts are stored: "User works_as Backend Engineer". |
-| **banglish_ratio** | A setting controlling how much Bengali mix to use (0.0 = pure English). |
+| **primary_language_ratio** | A setting controlling how strongly Synapse leans toward your casual/local-language style (0.0 = neutral/formal, 1.0 = maximum local flavor). Adjusted automatically by feedback phrases. |
 
 > **Tip:** For setup instructions and prerequisites, see [HOW_TO_RUN.md](HOW_TO_RUN.md).
