@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-03-03T12:11:59.299Z"
+last_updated: "2026-03-03T13:42:33.108Z"
 progress:
-  total_phases: 9
-  completed_phases: 9
-  total_plans: 37
-  completed_plans: 37
+  total_phases: 10
+  completed_phases: 10
+  total_plans: 38
+  completed_plans: 38
 ---
 
 ---
@@ -246,6 +246,7 @@ Progress: [███████████████████████
 | Phase 09 P02 | 8 | 2 tasks | 2 files |
 | Phase 09-verification-backfill-llm-cleanup P01 | 3 | 2 tasks | 1 files |
 | Phase 09-verification-backfill-llm-cleanup P03 | 3 | 2 tasks | 2 files |
+| Phase standalone-verification Pstandalone-01 | 5 | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -350,6 +351,8 @@ Recent decisions affecting current work:
 - [Phase 09-verification-backfill-llm-cleanup]: GET /qr returns 503 (not 404) in all failure cases — WA-07 spec; 503 semantically correct for bridge-unavailable
 - [Phase 09-verification-backfill-llm-cleanup]: isinstance(wa_channel, WhatsAppChannel) guard before get_qr() — prevents AttributeError when StubChannel occupies registry slot
 - [Phase 09-verification-backfill-llm-cleanup]: New GET /qr gateway tests use try/except pytest.skip() for api_gateway import — matches established pattern from test_sessions.py
+- [Phase standalone-verification]: Deprecate rather than delete: 6 V2-specific scripts receive DEPRECATED block headers; original logic preserved intact for historical reference
+- [Phase standalone-verification]: synapse_manager.sh deprecation block explicitly names synapse_start.sh, synapse_stop.sh, synapse_health.sh as correct replacements
 
 ### Pending Todos
 
