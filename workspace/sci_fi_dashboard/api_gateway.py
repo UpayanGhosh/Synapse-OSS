@@ -332,24 +332,6 @@ import logging as _logging  # noqa: E402
 _ch_logger = _logging.getLogger(__name__)
 _ch_cfg = _synapse_cfg.channels  # dict[str, dict] from synapse.json "channels" key
 
-_tg_token = _ch_cfg.get("telegram", {}).get("token", "").strip()
-if _tg_token:
-    try:
-        from channels.telegram import TelegramChannel  # noqa: E402
-
-        channel_registry.register(TelegramChannel(token=_tg_token, enqueue_fn=task_queue.enqueue))
-        _ch_logger.info("Telegram channel registered")
-    except ImportError:
-        _ch_logger.warning(
-            "Telegram token configured but python-telegram-bot not installed. "
-            "Run: pip install python-telegram-bot>=22.0"
-        )
-else:
-    _ch_logger.info(
-        "Telegram channel not configured — skipping "
-        "(add channels.telegram.token to synapse.json to enable)"
-    )
-
 def _make_flood_enqueue(channel_id: str):
     """
     Factory: returns an async callable that routes a ChannelMessage through
@@ -377,6 +359,25 @@ def _make_flood_enqueue(channel_id: str):
 
     return _enqueue
 
+
+_tg_token = _ch_cfg.get("telegram", {}).get("token", "").strip()
+if _tg_token:
+    try:
+        from channels.telegram import TelegramChannel  # noqa: E402
+
+        _tel_enqueue = _make_flood_enqueue("telegram")
+        channel_registry.register(TelegramChannel(token=_tg_token, enqueue_fn=_tel_enqueue))
+        _ch_logger.info("Telegram channel registered")
+    except ImportError:
+        _ch_logger.warning(
+            "Telegram token configured but python-telegram-bot not installed. "
+            "Run: pip install python-telegram-bot>=22.0"
+        )
+else:
+    _ch_logger.info(
+        "Telegram channel not configured — skipping "
+        "(add channels.telegram.token to synapse.json to enable)"
+    )
 
 _ds_token = _ch_cfg.get("discord", {}).get("token", "").strip()
 if _ds_token:
