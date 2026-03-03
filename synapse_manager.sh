@@ -1,5 +1,12 @@
 #!/bin/bash
 #
+# DEPRECATED — Legacy Jarvis manager, not applicable to Synapse-OSS
+# ==================================================================
+# This script was written for the private Jarvis V2 deployment.
+# It references the openclaw binary and ~/.openclaw/ paths which do
+# not exist in Synapse-OSS. Users should use synapse_start.sh (boot),
+# synapse_stop.sh (shutdown), or synapse_health.sh (health check).
+#
 # Jarvis Manager - Handles start/stop for launchd
 # Works with OrbStack (lighter than Docker)
 #
