@@ -13,6 +13,27 @@ DB_PATH = _get_db_path()
 MAX_DB_SIZE_MB = 100
 
 
+def _ensure_sessions_table(conn: sqlite3.Connection) -> None:
+    """
+    Idempotent migration helper: create the sessions table and its index
+    if they do not yet exist. Safe to call on both fresh and existing DBs.
+    """
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS sessions (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id    TEXT NOT NULL,
+            role          TEXT NOT NULL,
+            model         TEXT NOT NULL,
+            input_tokens  INTEGER NOT NULL DEFAULT 0,
+            output_tokens INTEGER NOT NULL DEFAULT 0,
+            total_tokens  INTEGER NOT NULL DEFAULT 0,
+            created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_sessions_created_at ON sessions(created_at);
+    """)
+    conn.commit()
+
+
 class DatabaseManager:
     """
     The Single Source of Truth for Database Integrity.
@@ -87,9 +108,14 @@ class DatabaseManager:
             except Exception as e:
                 print(f"[WARN] Could not create FTS5 table: {e}")
 
+            _ensure_sessions_table(conn)
             conn.commit()
             conn.close()
             print("[OK] Memory database initialized successfully.")
+        else:
+            # Existing DB: apply idempotent sessions migration (no sqlite-vec needed here)
+            with sqlite3.connect(DB_PATH) as _mig:
+                _ensure_sessions_table(_mig)
 
         DatabaseManager._initialized = True
 
