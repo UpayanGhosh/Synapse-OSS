@@ -99,8 +99,8 @@
 - [ ] **SESS-02**: `GET /api/sessions` endpoint returns JSON matching the schema previously returned by `openclaw sessions list --json`
 - [ ] **SESS-03**: `state.py` reads session metrics from internal SQLite instead of shelling out to `openclaw sessions list`
 - [ ] **HLTH-01**: `GET /health` reports status of: LLM provider connectivity, each active channel, Baileys bridge subprocess, SQLite databases
-- [ ] **HLTH-02**: `synapse_health.sh` is updated to check internal health endpoint instead of openclaw process
-- [ ] **HLTH-03**: `synapse_start.sh` / `synapse_stop.sh` no longer reference or depend on the openclaw binary
+- [x] **HLTH-02**: `synapse_health.sh` is updated to check internal health endpoint instead of openclaw process
+- [x] **HLTH-03**: `synapse_start.sh` / `synapse_stop.sh` no longer reference or depend on the openclaw binary
 
 ---
 
@@ -219,8 +219,8 @@
 | SESS-02 | Phase 7: Session Metrics, Health & Cleanup | Pending |
 | SESS-03 | Phase 7: Session Metrics, Health & Cleanup | Pending |
 | HLTH-01 | Phase 7: Session Metrics, Health & Cleanup | Pending |
-| HLTH-02 | Phase 7: Session Metrics, Health & Cleanup | Pending |
-| HLTH-03 | Phase 7: Session Metrics, Health & Cleanup | Pending |
+| HLTH-02 | Phase 7: Session Metrics, Health & Cleanup | Complete |
+| HLTH-03 | Phase 7: Session Metrics, Health & Cleanup | Complete |
 
 **Coverage:**
 - v1 requirements: 71 total

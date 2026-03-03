@@ -3,6 +3,19 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
+last_updated: "2026-03-03T08:15:21.382Z"
+progress:
+  total_phases: 7
+  completed_phases: 6
+  total_plans: 31
+  completed_plans: 28
+---
+
+---
+gsd_state_version: 1.0
+milestone: v1.0
+milestone_name: milestone
+status: unknown
 last_updated: "2026-03-02T20:28:28.017Z"
 progress:
   total_phases: 6
@@ -159,6 +172,7 @@ Progress: [███████████████████████
 | Phase 06-onboarding-wizard P04 | 5 | 2 tasks | 1 files |
 | Phase 06-onboarding-wizard P05 | 12 | 2 tasks | 1 files |
 | Phase 06-onboarding-wizard PP05 | 12 | 2 tasks | 1 files |
+| Phase 07-session-metrics-health-cleanup P03 | 2 | 2 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -240,6 +254,8 @@ Recent decisions affecting current work:
 - [Phase 06-onboarding-wizard Plan 05]: CliRunner() used without mix_stderr=False — typer 0.24.1 does not support that kwarg; stderr merged into stdout; result.output used for all assertions
 - [Phase 06-onboarding-wizard Plan 05]: run_wizard(force_interactive=True) + mocked questionary exercises _run_interactive() without TTY — standard interactive path test pattern for wizard tests
 - [Phase 06-onboarding-wizard]: CliRunner without mix_stderr kwarg — typer 0.24.1 compat; stderr merged into stdout; result.output used for all assertions
+- [Phase 07-session-metrics-health-cleanup]: LOG_DIR uses SYNAPSE_HOME env var with ~/.synapse fallback — consistent with SynapseConfig.resolve_data_root() precedence
+- [Phase 07-session-metrics-health-cleanup]: .openclawignore renamed to .synapsenotrack in change_tracker.py CATEGORY_MAP — matches Synapse-OSS naming convention
 
 ### Pending Todos
 
