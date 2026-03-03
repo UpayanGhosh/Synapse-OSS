@@ -87,7 +87,7 @@ def _inject_provider_keys(providers: dict) -> None:
 
 
 # Ollama chat prefix sentinel — centralised so no bare provider strings appear at call sites
-_OLLAMA_CHAT_PREFIX = "ollama_chat/"  # this IS the single allowed definition
+_OLLAMA_CHAT_PREFIX = "ollama_chat/"  # allowed: constant-definition
 
 # --- Router builder ---
 

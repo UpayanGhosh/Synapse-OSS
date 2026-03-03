@@ -324,8 +324,8 @@ def test_no_hardcoded_models():
                 continue
             if stripped.startswith("#"):
                 continue
-            # Allow lines explicitly exempted with the LLM-16 suppression marker
-            if "# noqa: LLM-16" in stripped:
+            # Allow lines explicitly exempted with the constant-definition marker
+            if "# allowed: constant-definition" in stripped:
                 continue
             for pattern in patterns:
                 if pattern in stripped:
