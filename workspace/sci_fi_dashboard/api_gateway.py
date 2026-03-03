@@ -50,6 +50,53 @@ def _port_open(host: str, port: int, timeout: float = 0.5) -> bool:
         return False
 
 
+def _check_databases() -> dict:
+    """HLTH-01: Check existence of each SQLite database file."""
+    from sci_fi_dashboard.db import DB_PATH as MEMORY_DB  # noqa: PLC0415
+    from sci_fi_dashboard.sqlite_graph import DB_PATH as GRAPH_DB  # noqa: PLC0415
+
+    result = {
+        "memory_db": {"status": "ok" if os.path.exists(MEMORY_DB) else "missing", "path": MEMORY_DB},
+        "knowledge_graph_db": {
+            "status": "ok" if os.path.exists(GRAPH_DB) else "missing",
+            "path": GRAPH_DB,
+        },
+    }
+    # emotional_trajectory — optional, may not exist in all deployments
+    try:
+        from sci_fi_dashboard.emotional_trajectory import DB_PATH as TRAJ_DB  # noqa: PLC0415
+
+        result["emotional_trajectory_db"] = {
+            "status": "ok" if os.path.exists(TRAJ_DB) else "missing",
+            "path": TRAJ_DB,
+        }
+    except ImportError:
+        result["emotional_trajectory_db"] = {"status": "not_installed"}
+    return result
+
+
+def _check_llm_provider() -> dict:
+    """HLTH-01: Report LLM provider configuration status. No live call — key presence check only."""
+    cfg = SynapseConfig.load()
+    casual_model = cfg.model_mappings.get("casual", {}).get("model", "")
+    if not casual_model:
+        return {"status": "unconfigured", "model": None}
+    if "ollama" in casual_model:
+        reachable = _port_open("localhost", 11434)
+        return {
+            "status": "ok" if reachable else "down",
+            "provider": "ollama",
+            "model": casual_model,
+        }
+    # Cloud provider: key presence check (no live ping to avoid token cost)
+    has_providers = bool(cfg.providers)
+    return {
+        "status": "configured" if has_providers else "unconfigured",
+        "provider": "cloud",
+        "model": casual_model,
+    }
+
+
 def validate_env() -> None:
     """Validate required and optional env keys. Uses SynapseConfig for path resolution."""
     from synapse_config import SynapseConfig  # noqa: PLC0415
@@ -926,6 +973,8 @@ async def health():
             "review": SynapseConfig.load().model_mappings.get("review", {}).get("model", "unset"),
         },
         "channels": channels_health,
+        "databases": _check_databases(),
+        "llm": _check_llm_provider(),
     }
 
 
