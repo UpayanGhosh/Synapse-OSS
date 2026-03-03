@@ -81,13 +81,19 @@ class DashboardState:
 
         # Fetch real API usage
         try:
-            sessions_data: list = []  # Placeholder — Phase 7 populates from memory.db sessions table
-            sessions = sessions_data
-            self.active_sessions = len(sessions)
-            self.total_tokens_in = sum(s.get("inputTokens", 0) for s in sessions)
-            self.total_tokens_out = sum(s.get("outputTokens", 0) for s in sessions)
-            if sessions:
-                self.context_limit = sessions[0].get("contextTokens", 1048576)
+            import sqlite3  # noqa: PLC0415
+            from sci_fi_dashboard.db import DB_PATH  # noqa: PLC0415 — lazy import avoids circular
+
+            conn = sqlite3.connect(DB_PATH)
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                "SELECT input_tokens, output_tokens, total_tokens "
+                "FROM sessions ORDER BY created_at DESC LIMIT 50"
+            ).fetchall()
+            conn.close()
+            self.active_sessions = len(rows)
+            self.total_tokens_in = sum(r["input_tokens"] for r in rows)
+            self.total_tokens_out = sum(r["output_tokens"] for r in rows)
         except Exception:
             pass
 
