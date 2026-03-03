@@ -260,3 +260,100 @@ async def test_nodejs_missing_raises_clear_error(monkeypatch):
 
     with pytest.raises(RuntimeError, match="Node.js"):
         await channel.start()
+
+
+# ---------------------------------------------------------------------------
+# WA-07 (gateway): GET /qr route on the FastAPI gateway
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.skipif(not WA_AVAILABLE, reason="WhatsApp channel not available")
+async def test_gateway_get_qr_returns_qr_string(monkeypatch):
+    """WA-07: GET /qr on the gateway returns {"qr": <string>} when bridge is running."""
+    try:
+        import sci_fi_dashboard.api_gateway as gw
+    except Exception:
+        pytest.skip("api_gateway not importable in test environment (sqlite_vec/qdrant_client absent)")
+    from starlette.testclient import TestClient
+
+    # Patch WhatsAppChannel.get_qr to return a fake QR string
+    async def _fake_get_qr(self):
+        return "2@FAKEQRDATA=="
+
+    monkeypatch.setattr(
+        gw.WhatsAppChannel,
+        "get_qr",
+        _fake_get_qr,
+    )
+
+    # Ensure a WhatsAppChannel is registered (may already be registered at module scope)
+    if gw.channel_registry.get("whatsapp") is None:
+        gw.channel_registry.register(
+            WhatsAppChannel(bridge_port=5010, python_webhook_url="http://localhost:8000")
+        )
+
+    client = TestClient(gw.app)
+    response = client.get("/qr")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert "qr" in data
+    assert data["qr"] == "2@FAKEQRDATA=="
+
+
+@pytest.mark.skipif(not WA_AVAILABLE, reason="WhatsApp channel not available")
+async def test_gateway_get_qr_returns_503_when_bridge_down(monkeypatch):
+    """WA-07: GET /qr returns 503 when bridge not running (get_qr() returns None)."""
+    try:
+        import sci_fi_dashboard.api_gateway as gw
+    except Exception:
+        pytest.skip("api_gateway not importable in test environment (sqlite_vec/qdrant_client absent)")
+    from starlette.testclient import TestClient
+
+    # Patch WhatsAppChannel.get_qr to return None (bridge down or already authenticated)
+    async def _none_get_qr(self):
+        return None
+
+    monkeypatch.setattr(
+        gw.WhatsAppChannel,
+        "get_qr",
+        _none_get_qr,
+    )
+
+    # Ensure a WhatsAppChannel is registered
+    if gw.channel_registry.get("whatsapp") is None:
+        gw.channel_registry.register(
+            WhatsAppChannel(bridge_port=5010, python_webhook_url="http://localhost:8000")
+        )
+
+    client = TestClient(gw.app)
+    response = client.get("/qr")
+
+    assert response.status_code == 503
+    assert "QR not available" in response.json().get("detail", "")
+
+
+@pytest.mark.skipif(not WA_AVAILABLE, reason="WhatsApp channel not available")
+async def test_gateway_get_qr_returns_503_when_whatsapp_not_registered(monkeypatch):
+    """WA-07: GET /qr returns 503 when WhatsApp channel not registered in registry."""
+    try:
+        import sci_fi_dashboard.api_gateway as gw
+    except Exception:
+        pytest.skip("api_gateway not importable in test environment (sqlite_vec/qdrant_client absent)")
+    from starlette.testclient import TestClient
+
+    # Patch channel_registry.get to return None for 'whatsapp'
+    original_get = gw.channel_registry.get
+
+    def _get_no_whatsapp(channel_id):
+        if channel_id == "whatsapp":
+            return None
+        return original_get(channel_id)
+
+    monkeypatch.setattr(gw.channel_registry, "get", _get_no_whatsapp)
+
+    client = TestClient(gw.app)
+    response = client.get("/qr")
+
+    assert response.status_code == 503
+    assert "not registered" in response.json().get("detail", "")
