@@ -193,17 +193,17 @@
 | WA-06 | Phase 4: WhatsApp — Baileys Bridge | Complete |
 | WA-07 | Phase 4 → Phase 9 (cleanup) | Partial — no HTTP /qr route on gateway; fix in Phase 9 |
 | WA-08 | Phase 4: WhatsApp — Baileys Bridge | Complete |
-| TEL-01 | Phase 5 → Phase 8 (gap fix) | Pending — ChannelMessage/MessageTask type mismatch breaks inbound |
+| TEL-01 | Phase 5 → Phase 8 (gap fix) | Complete — flood adapter wired; type mismatch fixed; integration test passing |
 | TEL-02 | Phase 5: Core Channels — Telegram, Discord, Slack | Complete |
-| TEL-03 | Phase 5 → Phase 8 (gap fix) | Pending — same root cause as TEL-01 |
+| TEL-03 | Phase 5 → Phase 8 (gap fix) | Complete — MessageTask with channel_id='telegram' verified in test_channel_pipeline.py |
 | TEL-04 | Phase 5: Core Channels — Telegram, Discord, Slack | Complete |
-| DIS-01 | Phase 5 → Phase 8 (gap fix) | Pending — enqueue_fn not passed at registration |
+| DIS-01 | Phase 5 → Phase 8 (gap fix) | Complete — _make_flood_enqueue wired; integration test passing |
 | DIS-02 | Phase 5: Core Channels — Telegram, Discord, Slack | Complete |
-| DIS-03 | Phase 5 → Phase 8 (gap fix) | Pending — same root cause as DIS-01 |
+| DIS-03 | Phase 5 → Phase 8 (gap fix) | Complete — MessageTask with channel_id='discord' verified in test_channel_pipeline.py |
 | DIS-04 | Phase 5: Core Channels — Telegram, Discord, Slack | Complete |
-| SLK-01 | Phase 5 → Phase 8 (gap fix) | Pending — enqueue_fn not passed at registration |
+| SLK-01 | Phase 5 → Phase 8 (gap fix) | Complete — _make_flood_enqueue wired; integration test passing |
 | SLK-02 | Phase 5: Core Channels — Telegram, Discord, Slack | Complete |
-| SLK-03 | Phase 5 → Phase 8 (gap fix) | Pending — same root cause as SLK-01 |
+| SLK-03 | Phase 5 → Phase 8 (gap fix) | Complete — MessageTask with channel_id='slack' verified in test_channel_pipeline.py |
 | SLK-04 | Phase 5: Core Channels — Telegram, Discord, Slack | Complete |
 | ONB-01 | Phase 6: Onboarding Wizard | Complete |
 | ONB-02 | Phase 6: Onboarding Wizard | Complete |
@@ -221,12 +221,12 @@
 | HLTH-01 | Phase 7: Session Metrics, Health & Cleanup | Complete |
 | HLTH-02 | Phase 7: Session Metrics, Health & Cleanup | Complete |
 | HLTH-03 | Phase 7: Session Metrics, Health & Cleanup | Complete |
-| TEL-01 (gap) | Phase 8: Fix Channel Inbound Pipeline | Pending |
-| TEL-03 (gap) | Phase 8: Fix Channel Inbound Pipeline | Pending |
-| DIS-01 (gap) | Phase 8: Fix Channel Inbound Pipeline | Pending |
-| DIS-03 (gap) | Phase 8: Fix Channel Inbound Pipeline | Pending |
-| SLK-01 (gap) | Phase 8: Fix Channel Inbound Pipeline | Pending |
-| SLK-03 (gap) | Phase 8: Fix Channel Inbound Pipeline | Pending |
+| TEL-01 (gap) | Phase 8: Fix Channel Inbound Pipeline | Complete |
+| TEL-03 (gap) | Phase 8: Fix Channel Inbound Pipeline | Complete |
+| DIS-01 (gap) | Phase 8: Fix Channel Inbound Pipeline | Complete |
+| DIS-03 (gap) | Phase 8: Fix Channel Inbound Pipeline | Complete |
+| SLK-01 (gap) | Phase 8: Fix Channel Inbound Pipeline | Complete |
+| SLK-03 (gap) | Phase 8: Fix Channel Inbound Pipeline | Complete |
 | CONF-01–07 (gap) | Phase 9: Verification Backfill & LLM Cleanup | Pending |
 | LLM-01 (gap) | Phase 9: Verification Backfill & LLM Cleanup | Pending |
 | LLM-16 (gap) | Phase 9: Verification Backfill & LLM Cleanup | Pending |
@@ -235,9 +235,9 @@
 **Coverage:**
 - v1 requirements: 71 total
 - Mapped to phases: 71
-- Satisfied: 54 | Partial: 11 | Pending (gap closure): 6 | Unmapped: 0
-- Gap closure phases: Phase 8 (TEL-01, TEL-03, DIS-01, DIS-03, SLK-01, SLK-03), Phase 9 (CONF-01–07, LLM-01, LLM-16, WA-07)
-- Updated: 2026-03-03 (post audit v1.0-MILESTONE-AUDIT.md)
+- Satisfied: 60 | Partial: 5 | Pending (gap closure): 0 | Unmapped: 0
+- Gap closure phases: Phase 8 (TEL-01, TEL-03, DIS-01, DIS-03, SLK-01, SLK-03) — COMPLETE; Phase 9 (CONF-01–07, LLM-01, LLM-16, WA-07) — pending
+- Updated: 2026-03-03 (Phase 8 complete — all 6 channel inbound pipeline gaps closed)
 
 ---
 *Requirements defined: 2026-03-02*
