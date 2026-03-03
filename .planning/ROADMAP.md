@@ -231,7 +231,7 @@ Plans:
 **Plans**: 1 plan
 
 Plans:
-- [ ] standalone-01-PLAN.md — Add DEPRECATED block headers to 6 legacy shell scripts (metabolism_master.sh, revive_jarvis.sh, rollback.sh, sentinel_heal.sh, test.sh, synapse_manager.sh)
+- [x] standalone-01-PLAN.md — Add DEPRECATED block headers to 6 legacy shell scripts (metabolism_master.sh, revive_jarvis.sh, rollback.sh, sentinel_heal.sh, test.sh, synapse_manager.sh)
 
 ## Progress
 
@@ -249,4 +249,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 7. Session Metrics, Health & Cleanup | 4/4 | Complete   | 2026-03-03 |
 | 8. Fix Channel Inbound Pipeline | 3/3 | Complete   | 2026-03-03 |
 | 9. Verification Backfill & LLM Cleanup | 3/3 | Complete   | 2026-03-03 |
-| standalone-verification (gap closure) | 0/1 | In Progress | — |
+| standalone-verification (gap closure) | 1/1 | Complete   | 2026-03-03 |
