@@ -160,7 +160,7 @@
 | CONF-05 | Phase 1 → Phase 9 (verification) | Partial — code correct, VERIFICATION.md missing |
 | CONF-06 | Phase 1 → Phase 9 (verification) | Partial — code correct, VERIFICATION.md missing |
 | CONF-07 | Phase 1 → Phase 9 (verification) | Partial — code correct, VERIFICATION.md missing |
-| LLM-01 | Phase 2 → Phase 9 (cleanup) | Partial — translate_banglish() bypass; fix in Phase 9 |
+| LLM-01 | Phase 2 → Phase 9 (cleanup) | Complete — translate_banglish() router tests added (09-02) |
 | LLM-02 | Phase 2: LLM Provider Layer | Complete (02-02) |
 | LLM-03 | Phase 2: LLM Provider Layer | Complete (02-02) |
 | LLM-04 | Phase 2: LLM Provider Layer | Complete (02-02) |
@@ -175,7 +175,7 @@
 | LLM-13 | Phase 2: LLM Provider Layer | Complete (02-02) |
 | LLM-14 | Phase 2: LLM Provider Layer | Complete (02-02) |
 | LLM-15 | Phase 2: LLM Provider Layer | Complete (02-02) |
-| LLM-16 | Phase 2 → Phase 9 (cleanup) | Partial — meta-llama/ not in test patterns; fix in Phase 9 |
+| LLM-16 | Phase 2 → Phase 9 (cleanup) | Complete — synapse.json.example with translate role created (09-02) |
 | LLM-17 | Phase 2: LLM Provider Layer | Complete (02-02) |
 | LLM-18 | Phase 2: LLM Provider Layer | Complete |
 | CHAN-01 | Phase 3: Channel Abstraction Layer | Complete |
@@ -228,16 +228,16 @@
 | SLK-01 (gap) | Phase 8: Fix Channel Inbound Pipeline | Complete |
 | SLK-03 (gap) | Phase 8: Fix Channel Inbound Pipeline | Complete |
 | CONF-01–07 (gap) | Phase 9: Verification Backfill & LLM Cleanup | Pending |
-| LLM-01 (gap) | Phase 9: Verification Backfill & LLM Cleanup | Pending |
-| LLM-16 (gap) | Phase 9: Verification Backfill & LLM Cleanup | Pending |
+| LLM-01 (gap) | Phase 9: Verification Backfill & LLM Cleanup | Complete — test_translate_banglish_uses_router added (09-02) |
+| LLM-16 (gap) | Phase 9: Verification Backfill & LLM Cleanup | Complete — synapse.json.example with translate role (09-02) |
 | WA-07 (gap) | Phase 9: Verification Backfill & LLM Cleanup | Pending |
 
 **Coverage:**
 - v1 requirements: 71 total
 - Mapped to phases: 71
 - Satisfied: 60 | Partial: 5 | Pending (gap closure): 0 | Unmapped: 0
-- Gap closure phases: Phase 8 (TEL-01, TEL-03, DIS-01, DIS-03, SLK-01, SLK-03) — COMPLETE; Phase 9 (CONF-01–07, LLM-01, LLM-16, WA-07) — pending
-- Updated: 2026-03-03 (Phase 8 complete — all 6 channel inbound pipeline gaps closed)
+- Gap closure phases: Phase 8 (TEL-01, TEL-03, DIS-01, DIS-03, SLK-01, SLK-03) — COMPLETE; Phase 9 (CONF-01–07 — pending; LLM-01, LLM-16 — COMPLETE via 09-02; WA-07 — pending)
+- Updated: 2026-03-03 (Phase 9 Plan 02 complete — LLM-01 and LLM-16 gaps closed)
 
 ---
 *Requirements defined: 2026-03-02*
