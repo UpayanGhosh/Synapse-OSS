@@ -1,4 +1,12 @@
 #!/bin/bash
+#
+# DEPRECATED — V2-only script, not applicable to Synapse-OSS
+# ============================================================
+# This script was written for the private Jarvis V2 deployment and
+# references the openclaw binary and ~/.openclaw/ paths which do not
+# exist in Synapse-OSS. It is kept for historical reference only.
+# Synapse-OSS users should use synapse_start.sh instead.
+#
 
 # Sentinel Self-Healing & Freshness Protocol
 # Runs daily at 5:00 AM IST
