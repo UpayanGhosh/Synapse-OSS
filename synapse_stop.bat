@@ -22,12 +22,6 @@ if %ERRORLEVEL% EQU 0 (
     echo    [--] Ollama was not running.
 )
 
-REM --- Stop OpenClaw Gateway (port 18789) ---
-echo Stopping OpenClaw Gateway...
-for /f "tokens=5" %%P in ('netstat -ano 2^>nul ^| findstr ":18789" ^| findstr "LISTENING"') do (
-    taskkill /PID %%P /F >nul 2>&1 && echo    [OK] Stopped process on port 18789.
-)
-
 echo.
 echo Synapse stopped.
 echo.

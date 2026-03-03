@@ -32,7 +32,12 @@ fi
 echo ""
 
 echo "=== Services ==="
-curl -sf http://localhost:8000/ > /dev/null && echo "✅ Gateway    (8000)" || echo "❌ Gateway DOWN"
+HEALTH=$(curl -sf http://localhost:8000/health 2>/dev/null)
+if [ -n "$HEALTH" ]; then
+    echo "✅ Gateway    (8000) — /health OK"
+else
+    echo "❌ Gateway DOWN (or /health not responding)"
+fi
 curl -sf http://localhost:6333/collections > /dev/null && echo "✅ Qdrant     (6333)" || echo "❌ Qdrant DOWN"
 curl -sf http://localhost:11434/api/tags > /dev/null && echo "✅ Ollama     (11434)" || echo "❌ Ollama DOWN (or not installed)"
 

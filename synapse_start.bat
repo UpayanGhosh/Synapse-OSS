@@ -78,7 +78,7 @@ if not exist "%PROJECT_ROOT%\.venv\Scripts\python.exe" (
 )
 
 REM --- 1. Qdrant ---
-echo [1/4] Starting Qdrant...
+echo [1/3] Starting Qdrant...
 docker start antigravity_qdrant >nul 2>&1
 if %ERRORLEVEL% EQU 0 (
     echo    [OK] Started.
@@ -92,7 +92,7 @@ if %ERRORLEVEL% EQU 0 (
 )
 
 REM --- 2. Ollama ---
-echo [2/4] Starting Ollama...
+echo [2/3] Starting Ollama...
 tasklist /FI "IMAGENAME eq ollama.exe" 2>nul | find /I "ollama.exe" >nul
 if %ERRORLEVEL% NEQ 0 (
     where ollama >nul 2>&1
@@ -108,29 +108,19 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 REM --- 3. API Gateway ---
-echo [3/4] Starting API Gateway...
+echo [3/3] Starting API Gateway...
 netstat -ano | findstr ":8000" | find "LISTENING" >nul
 if %ERRORLEVEL% NEQ 0 (
-    mkdir "%USERPROFILE%\.openclaw\logs" >nul 2>&1
+    mkdir "%USERPROFILE%\.synapse\logs" >nul 2>&1
     REM Write a temp launcher -- avoids nested-quote breakage in cmd /c "..."
     (
         echo @echo off
         echo set PYTHONUTF8=1
         echo set PYTHONIOENCODING=utf-8
-        echo "%PROJECT_ROOT%\.venv\Scripts\python.exe" -X utf8 -m uvicorn --app-dir "%PROJECT_ROOT%\workspace" sci_fi_dashboard.api_gateway:app --host 0.0.0.0 --port 8000 --workers 1 ^>^> "%USERPROFILE%\.openclaw\logs\gateway.log" 2^>^&1
+        echo "%PROJECT_ROOT%\.venv\Scripts\python.exe" -X utf8 -m uvicorn --app-dir "%PROJECT_ROOT%\workspace" sci_fi_dashboard.api_gateway:app --host 0.0.0.0 --port 8000 --workers 1 ^>^> "%USERPROFILE%\.synapse\logs\gateway.log" 2^>^&1
     ) > "%TEMP%\_synapse_gateway.bat"
     start "Synapse API Gateway" /min cmd /c "%TEMP%\_synapse_gateway.bat"
-    echo    [OK] Started. (log: %USERPROFILE%\.openclaw\logs\gateway.log)
-) else (
-    echo    [OK] Already running.
-)
-
-REM --- 4. OpenClaw Gateway ---
-echo [4/4] Starting OpenClaw Gateway...
-netstat -ano | findstr ":18789" | find "LISTENING" >nul
-if %ERRORLEVEL% NEQ 0 (
-    start "OpenClaw Gateway" /min openclaw gateway
-    echo    [OK] Started.
+    echo    [OK] Started. (log: %USERPROFILE%\.synapse\logs\gateway.log)
 ) else (
     echo    [OK] Already running.
 )
@@ -143,5 +133,5 @@ echo.
 echo Open WhatsApp ^> Message Yourself ^> say hello!
 echo.
 echo To check the API gateway log:
-echo    type "%USERPROFILE%\.openclaw\logs\gateway.log"
+echo    type "%USERPROFILE%\.synapse\logs\gateway.log"
 echo.
