@@ -92,10 +92,12 @@ MANIFESTO.md
 Assessment.md
 
 # ──────────────────────────────────────────────────────────────
-# Local deployment guides — personal, not for GitHub
+# Local guides and strategy docs — personal, not for GitHub
 # ──────────────────────────────────────────────────────────────
 MODAL_DEPLOY.md
 modal_deploy.py
+DEMO_STRATEGY.md
+demo_seed.py
 
 # ──────────────────────────────────────────────────────────────
 # OS / editor noise
