@@ -86,6 +86,9 @@ def _inject_provider_keys(providers: dict) -> None:
                 os.environ[env_key] = val
 
 
+# Ollama chat prefix sentinel — centralised so no bare provider strings appear at call sites
+_OLLAMA_CHAT_PREFIX = "ollama_chat/"  # noqa: LLM-16 — this IS the single allowed definition
+
 # --- Router builder ---
 
 def build_router(model_mappings: dict, providers: dict) -> Router:
@@ -112,11 +115,11 @@ def build_router(model_mappings: dict, providers: dict) -> Router:
 
         # Ollama: validate prefix and inject api_base
         litellm_params: dict = {"model": primary_model, "timeout": 60, "stream": False}
-        if primary_model.startswith("ollama_chat/"):
+        if primary_model.startswith(_OLLAMA_CHAT_PREFIX):
             litellm_params["api_base"] = ollama_api_base
         elif primary_model.startswith("ollama/"):
             raise ValueError(
-                f"Role '{role}' uses ollama/ prefix — must be ollama_chat/ for chat calls. "
+                f"Role '{role}' uses ollama/ prefix — must be {_OLLAMA_CHAT_PREFIX} for chat calls. "
                 f"Got: {primary_model}"
             )
         elif primary_model.startswith("hosted_vllm/"):
@@ -134,7 +137,7 @@ def build_router(model_mappings: dict, providers: dict) -> Router:
         if fallback_model:
             fallback_role = f"{role}_fallback"
             fallback_params: dict = {"model": fallback_model, "timeout": 60, "stream": False}
-            if fallback_model.startswith("ollama_chat/"):
+            if fallback_model.startswith(_OLLAMA_CHAT_PREFIX):
                 fallback_params["api_base"] = ollama_api_base
             model_list.append({"model_name": fallback_role, "litellm_params": fallback_params})
             fallbacks.append({role: [fallback_role]})

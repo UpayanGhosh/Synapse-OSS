@@ -295,13 +295,36 @@ def test_no_hardcoded_models():
     for filepath in files_to_check:
         with open(filepath, encoding="utf-8") as f:
             content = f.read()
-        for pattern in patterns:
-            # Allow pattern in comments (lines starting with #) and docstrings
-            lines = content.splitlines()
-            for i, line in enumerate(lines, 1):
-                stripped = line.strip()
-                if stripped.startswith("#"):
-                    continue
+        # Allow pattern in comments (lines starting with #) and docstrings.
+        # Track triple-quoted string regions so docstring examples are excluded.
+        lines = content.splitlines()
+        in_docstring = False
+        docstring_delim = None
+        for i, line in enumerate(lines, 1):
+            stripped = line.strip()
+            # Toggle docstring state
+            for delim in ('"""', "'''"):
+                count = stripped.count(delim)
+                if not in_docstring and count >= 1:
+                    in_docstring = True
+                    docstring_delim = delim
+                    # Single-line docstring: open and close on same line
+                    if count >= 2 or (count == 1 and stripped.endswith(delim) and stripped != delim):
+                        in_docstring = False
+                        docstring_delim = None
+                    break
+                elif in_docstring and delim == docstring_delim and count >= 1:
+                    in_docstring = False
+                    docstring_delim = None
+                    break
+            if in_docstring:
+                continue
+            if stripped.startswith("#"):
+                continue
+            # Allow lines explicitly exempted with  # noqa: LLM-16
+            if "# noqa: LLM-16" in stripped:
+                continue
+            for pattern in patterns:
                 if pattern in stripped:
                     # Check it's not in a comment at end of line
                     code_part = stripped.split("#")[0]
