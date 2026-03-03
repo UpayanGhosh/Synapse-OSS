@@ -70,6 +70,34 @@ REDUNDANCY_ARCHIVE_*/
 !requirements.txt
 
 # ──────────────────────────────────────────────────────────────
+# Legacy V2 / OpenClaw files — kept locally, not for GitHub
+# ──────────────────────────────────────────────────────────────
+.openclawignore
+canvas/
+completions/
+extensions/
+synapse_manager.sh
+synapse_architecture.sh
+wake_watcher.sh
+install_qdrant_native.sh
+fix_unicode.py
+verify_concurrency.py
+test_all_models.sh
+test_new_keywords.sh
+test_proxy_gemini.sh
+test_toxic_route.sh
+architecture_diagram.md
+architecture_diagram.svg
+MANIFESTO.md
+Assessment.md
+
+# ──────────────────────────────────────────────────────────────
+# Local deployment guides — personal, not for GitHub
+# ──────────────────────────────────────────────────────────────
+MODAL_DEPLOY.md
+modal_deploy.py
+
+# ──────────────────────────────────────────────────────────────
 # OS / editor noise
 # ──────────────────────────────────────────────────────────────
 .DS_Store
