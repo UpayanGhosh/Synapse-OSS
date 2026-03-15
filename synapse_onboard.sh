@@ -3,6 +3,9 @@
 # Resolve the directory this script lives in, regardless of where it's called from
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Add Homebrew paths so tools installed via brew are found (macOS)
+export PATH="/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:$PATH"
+
 echo ""
 echo "🤖 ======================================="
 echo "   Synapse Onboard - Let's Get Started!"
@@ -125,6 +128,24 @@ if [ ! -f "$VENV_UVICORN" ]; then
 fi
 
 echo ""
+
+# Install Baileys bridge npm dependencies if not already installed
+if [ -d "$SCRIPT_DIR/baileys-bridge" ]; then
+    if [ ! -d "$SCRIPT_DIR/baileys-bridge/node_modules" ]; then
+        echo "📦 Installing WhatsApp bridge dependencies (npm)..."
+        if command -v npm > /dev/null 2>&1; then
+            (cd "$SCRIPT_DIR/baileys-bridge" && npm install --silent)
+            echo "   ✓ Bridge dependencies installed"
+        else
+            echo "   ⚠ npm not found — bridge install skipped"
+            echo "     Install Node.js 18+ from https://nodejs.org then run: cd baileys-bridge && npm install"
+        fi
+    else
+        echo "   ✓ Bridge dependencies already installed"
+    fi
+fi
+
+echo ""
 echo "✅ All tools are ready!"
 echo ""
 
@@ -222,32 +243,64 @@ echo ""
 read -p "Press Enter to show the QR code..."
 
 echo ""
-echo "Scan the QR code now! I'll wait..."
+echo "Starting the gateway so the QR code can be served..."
 echo ""
 
-# TODO Phase 4: WhatsApp login replaced by Baileys bridge QR code flow
-# if ! openclaw channels login --channel whatsapp; then
-#     echo ""
-#     echo "⚠️  Note: 'openclaw channels login' returned an error."
-#     echo "   This is normal if WhatsApp is already linked."
-#     echo "   Continuing with setup..."
-# fi
-echo "   (WhatsApp link step deferred — Phase 4 will implement Baileys bridge QR flow)"
+# Start the gateway briefly to generate a QR
+mkdir -p "$HOME/.synapse/logs"
+if ! pgrep -f "uvicorn.*api_gateway" > /dev/null; then
+    VENV_UVICORN_LOCAL="$SCRIPT_DIR/.venv/bin/uvicorn"
+    if [ -f "$VENV_UVICORN_LOCAL" ]; then
+        nohup "$VENV_UVICORN_LOCAL" \
+            --app-dir "$SCRIPT_DIR/workspace" \
+            sci_fi_dashboard.api_gateway:app \
+            --host 0.0.0.0 --port 8000 \
+            --workers 1 \
+            > "$HOME/.synapse/logs/gateway.log" 2>&1 &
+        echo "   Gateway starting..."
+        sleep 8
+    fi
+fi
 
 echo ""
-echo "✓ WhatsApp linked!"
+echo "📷 Scan the QR code to link WhatsApp:"
+echo ""
+echo "   Option 1 — Open this URL in your browser:"
+echo "      http://localhost:8000/qr"
+echo ""
+echo "   Option 2 — Or run this in another terminal:"
+echo "      curl http://localhost:8000/qr"
+echo ""
+echo "   Then on your phone:"
+echo "   WhatsApp → Settings → Linked Devices → Link a Device → Scan"
+echo ""
+
+read -p "Press Enter once you have scanned the QR code (or to skip for now)..."
+
+echo ""
+echo "✓ WhatsApp setup complete!"
 echo ""
 
 echo ""
 echo "Saving phone number to Synapse config..."
 echo ""
 
-# TODO Phase 4: phone allowlist moved to ~/.synapse/synapse.json
-# openclaw config set channels.whatsapp.allowFrom "[\"$phone_number\"]" --json 2>/dev/null || \
-#     openclaw config set channels.whatsapp.allowFrom "[\"$phone_number\"]"
+# Write phone number to ADMIN_PHONE in .env and to personas.yaml
+DIGITS_ONLY="${phone_number#+}"   # strip leading +
+sed -i.bak "s|^ADMIN_PHONE=.*|ADMIN_PHONE=$phone_number|" "$SCRIPT_DIR/.env" 2>/dev/null && \
+    rm -f "$SCRIPT_DIR/.env.bak"
+
+PERSONAS_FILE="$SCRIPT_DIR/workspace/personas.yaml"
+if [ -f "$PERSONAS_FILE" ]; then
+    # Insert phone under the_creator if not already there
+    if ! grep -q "$DIGITS_ONLY" "$PERSONAS_FILE" 2>/dev/null; then
+        sed -i.bak "s|the_creator.*|the_creator|; /the_creator/{n; s|whatsapp_phones: \[\]|whatsapp_phones: [\"$DIGITS_ONLY\"]|}" \
+            "$PERSONAS_FILE" 2>/dev/null
+        rm -f "$PERSONAS_FILE.bak"
+    fi
+fi
 
 echo "✓ Phone number saved: $phone_number"
-echo "  (Configure in ~/.synapse/synapse.json once Phase 4 Baileys bridge is installed)"
 echo ""
 
 # ---- Workspace Configuration ----
@@ -305,6 +358,25 @@ else
     echo "   Fix by adding to .env:"
     echo "      GEMINI_API_KEY=<key>           (free at aistudio.google.com)"
     echo ""
+fi
+
+# Create ~/.synapse/synapse.json from synapse.json.example if it doesn't exist
+SYNAPSE_HOME_DIR="${SYNAPSE_HOME:-$HOME/.synapse}"
+SYNAPSE_JSON="$SYNAPSE_HOME_DIR/synapse.json"
+mkdir -p "$SYNAPSE_HOME_DIR"
+
+if [ ! -f "$SYNAPSE_JSON" ]; then
+    if [ -f "$SCRIPT_DIR/synapse.json.example" ]; then
+        cp "$SCRIPT_DIR/synapse.json.example" "$SYNAPSE_JSON"
+        chmod 600 "$SYNAPSE_JSON"
+        echo "   ✓ Created $SYNAPSE_JSON"
+        echo ""
+        echo "   ⚠  IMPORTANT: Open $SYNAPSE_JSON and fill in your API keys."
+        echo "   At minimum, set your Gemini key under \"providers\" → \"gemini\" → \"api_key\"."
+        echo ""
+    fi
+else
+    echo "   ✓ $SYNAPSE_JSON already exists"
 fi
 
 echo ""

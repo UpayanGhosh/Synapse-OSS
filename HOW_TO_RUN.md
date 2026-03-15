@@ -317,6 +317,60 @@ the [Troubleshooting](#troubleshooting) section.
 
 ---
 
+## Part 5.5 — Configure LLM Routing (`synapse.json`)
+
+This step is **required** for Synapse to make LLM calls. Without it, the gateway starts
+but every chat reply fails with "0 roles configured".
+
+Copy the template and fill in your API keys:
+
+### macOS / Linux
+
+```bash
+mkdir -p ~/.synapse
+cp synapse.json.example ~/.synapse/synapse.json
+chmod 600 ~/.synapse/synapse.json   # keep your keys private
+nano ~/.synapse/synapse.json        # or: code ~/.synapse/synapse.json
+```
+
+### Windows
+
+```cmd
+mkdir "%USERPROFILE%\.synapse"
+copy synapse.json.example "%USERPROFILE%\.synapse\synapse.json"
+notepad "%USERPROFILE%\.synapse\synapse.json"
+```
+
+**What to fill in (minimum required):**
+
+```json
+{
+  "providers": {
+    "gemini": {"api_key": "AIzaSy..."}
+  },
+  "model_mappings": {
+    "casual":   {"model": "gemini/gemini-2.0-flash", "fallback": null},
+    "code":     {"model": "gemini/gemini-2.0-flash", "fallback": null},
+    "analysis": {"model": "gemini/gemini-2.0-flash", "fallback": null},
+    "review":   {"model": "gemini/gemini-2.0-flash", "fallback": null},
+    "vault":    {"model": "ollama_chat/llama3.2:3b",  "fallback": null},
+    "translate":{"model": "gemini/gemini-2.0-flash", "fallback": null}
+  }
+}
+```
+
+> **Why is this separate from `.env`?**
+> `synapse.json` controls per-role model routing (which model handles casual chat,
+> code, deep analysis, etc.) while `.env` contains infrastructure config. Keeping them
+> separate lets you swap models without touching environment variables.
+
+> **File location:** `~/.synapse/synapse.json` (Mac/Linux) or
+> `%USERPROFILE%\.synapse\synapse.json` (Windows).
+> The onboarding script creates this file automatically from the example — you just
+> need to open it and replace the placeholder API keys.
+
+---
+
 ## Part 6 — Run the Onboarding Script (One Time Only)
 
 The onboarding script does everything else: creates required directories, configures the
@@ -943,17 +997,22 @@ All endpoints are at `http://localhost:8000`:
 > a `/chat/<id>` endpoint. Add a new persona to the YAML, restart, and it appears in
 > `GET /openapi.json` with no code changes.
 
+> **Authentication:** All `/chat/*`, `/ingest`, `/add`, `/query`, and `/persona/*`
+> endpoints require an `x-api-key` header containing your `GEMINI_API_KEY` value.
+> `/health`, `/qr`, and `/sbs/status` are unauthenticated.
+
 ```bash
-# Example: check health
+# Example: check health (no auth needed)
 curl http://localhost:8000/health
 
-# Example: chat directly
+# Example: chat directly (requires x-api-key header)
 curl -X POST http://localhost:8000/chat/the_creator \
   -H "Content-Type: application/json" \
+  -H "x-api-key: YOUR_GEMINI_API_KEY" \
   -d '{"message": "What do you know about me?"}'
 
 # Windows equivalent
-curl.exe -X POST http://localhost:8000/chat/the_creator -H "Content-Type: application/json" -d "{\"message\": \"What do you know about me?\"}"
+curl.exe -X POST http://localhost:8000/chat/the_creator -H "Content-Type: application/json" -H "x-api-key: YOUR_GEMINI_API_KEY" -d "{\"message\": \"What do you know about me?\"}"
 ```
 
 ---

@@ -2,6 +2,9 @@
 export PYTHONUTF8=1
 export PYTHONIOENCODING=utf-8
 
+# Add Homebrew paths so tools installed via brew are found (macOS)
+export PATH="/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:$PATH"
+
 echo "[INFO] Starting Synapse services..."
 echo ""
 
@@ -12,7 +15,20 @@ LOG_DIR="${SYNAPSE_HOME:-$HOME/.synapse}/logs"
 mkdir -p "$LOG_DIR"
 
 echo "[1/3] Starting Qdrant..."
-docker start antigravity_qdrant 2>/dev/null && echo "   [OK] Started" || echo "   [OK] Already running or not found"
+if ! docker info > /dev/null 2>&1; then
+    echo "   [--] Docker not running — skipping Qdrant (vector search disabled)"
+elif docker start antigravity_qdrant > /dev/null 2>&1; then
+    echo "   [OK] Started"
+else
+    echo "   Container not found. Creating Qdrant..."
+    if docker run -d --name antigravity_qdrant \
+        -p 6333:6333 -p 6334:6334 \
+        qdrant/qdrant > /dev/null 2>&1; then
+        echo "   [OK] Created and started"
+    else
+        echo "   [--] Could not start Qdrant — vector search will fall back to SQLite"
+    fi
+fi
 
 echo "[2/3] Starting Ollama..."
 if command -v ollama > /dev/null 2>&1; then
