@@ -1,197 +1,156 @@
-# CLAUDE.md
-
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+# CLAUDE.md — Synapse-OSS (optimized for local models)
 
 ## Commands
-
-### Start / Stop
 ```bash
-# First-time setup
-./synapse_onboard.sh        # Mac/Linux
-synapse_onboard.bat         # Windows (double-click or run from cmd)
+# Start/Stop
+./synapse_start.sh          # Start all (Mac/Linux)
+synapse_start.bat           # Start all (Windows)
+./synapse_stop.sh           # Stop all
 
-# Start all services (Qdrant, Ollama, API Gateway, OpenClaw)
-./synapse_start.sh          # Mac/Linux
-synapse_start.bat           # Windows (double-click or run from cmd)
+# API server
+cd workspace/sci_fi_dashboard && uvicorn api_gateway:app --host 0.0.0.0 --port 8000 --reload
 
-# Stop all services
-./synapse_stop.sh           # Mac/Linux
-synapse_stop.bat            # Windows
+# CLI
+cd workspace && python main.py chat|ingest|vacuum|verify
 
-# Health check
-./synapse_health.sh         # Mac/Linux
+# Tests
+cd workspace && pytest tests/ -v
+pytest tests/ -m unit|integration|smoke
+
+# Lint
+ruff check workspace/ && black workspace/   # line-length 100, py311
 ```
 
-### Run the API server directly
-```bash
-cd workspace/sci_fi_dashboard
-uvicorn api_gateway:app --host 0.0.0.0 --port 8000 --reload
-```
+## File Map (workspace/)
 
-### CLI usage
-```bash
-cd workspace
-python main.py chat          # Interactive chat
-python main.py ingest        # Ingest facts into knowledge graph
-python main.py vacuum        # Cleanup/prune graph
-python main.py verify        # Verify system state
-```
+### Entry Points
+| File | Purpose |
+|------|---------|
+| `main.py` | CLI: chat, ingest, vacuum, verify |
+| `sci_fi_dashboard/api_gateway.py` | FastAPI app (~1200 lines), all singletons init here |
 
-### Linting
-```bash
-ruff check workspace/        # Lint (line-length 100, py311 target)
-black workspace/             # Format
-```
+### Core Modules (sci_fi_dashboard/)
+| File | Class/Purpose |
+|------|---------------|
+| `db.py` | `DatabaseManager` — SQLite+sqlite-vec, WAL mode, schema lifecycle |
+| `memory_engine.py` | `MemoryEngine` — hybrid RAG (vector+FTS+rerank) |
+| `retriever.py` | `RetrievalPipeline` — embed via Ollama/sentence-transformers, ANN+FTS search |
+| `llm_router.py` | `SynapseLLMRouter` — litellm dispatch (Gemini/Claude/Ollama/OpenRouter) |
+| `dual_cognition.py` | `DualCognitionEngine` — inner monologue, tension scoring (self-contained) |
+| `sqlite_graph.py` | `SQLiteGraph` — knowledge graph (nodes/edges, subject-predicate-object) |
+| `ingest.py` | `ingest_atomic()` — shadow table swap, hash dedup |
+| `conflict_resolver.py` | `ConflictManager` — relationship/context conflicts |
+| `emotional_trajectory.py` | `EmotionalTrajectory` — mood tracking over time |
+| `toxic_scorer_lazy.py` | `LazyToxicScorer` — Toxic-BERT, auto-unloads after 30s idle |
+| `persona.py` | `PersonaManager` — system prompt, dictionary |
+| `chat_parser.py` | `ChatParser` — intent/sentiment from messages |
 
-### Tests
-```bash
-# Run all tests from workspace/
-cd workspace
-pytest tests/ -v
+### Gateway Pipeline (sci_fi_dashboard/gateway/)
+Flow: FloodGate -> Dedup -> TaskQueue -> MessageWorker x2 -> Send
 
-# Run by category
-pytest tests/ -m unit
-pytest tests/ -m integration
-pytest tests/ -m smoke
-pytest tests/ -m "not performance"   # Skip slow tests
+| File | Class | Purpose |
+|------|-------|---------|
+| `flood.py` | `FloodGate` | 3s message batching per user |
+| `dedup.py` | `MessageDeduplicator` | 5-min TTL duplicate filter |
+| `queue.py` | `TaskQueue` | asyncio FIFO, max 100 tasks |
+| `worker.py` | `MessageWorker` | 2 concurrent workers, processes tasks |
+| `sender.py` | `WhatsAppSender` | OpenClaw CLI outbound |
 
-# Run a single test file
-pytest tests/test_queue.py -v
+### Channels (sci_fi_dashboard/channels/)
+All implement `BaseChannel` (ABC): `receive()`, `send()`, `send_typing()`, `start()`, `stop()`
 
-# Run a single test
-pytest tests/test_queue.py::TestTaskQueue::test_enqueue -v
-```
+| File | Channel |
+|------|---------|
+| `base.py` | `BaseChannel` (ABC), `ChannelMessage` (dataclass) |
+| `registry.py` | `ChannelRegistry` — register/get/start_all/stop_all |
+| `whatsapp.py` | `WhatsAppChannel` — OpenClaw bridge + Baileys HTTP |
+| `telegram.py` | `TelegramChannel` — python-telegram-bot |
+| `discord_channel.py` | `DiscordChannel` — discord.py |
+| `slack.py` | `SlackChannel` — slack_bolt |
+| `stub.py` | `StubChannel` — testing mock |
 
-Tests use `asyncio_mode = auto` — all async tests work without `@pytest.mark.asyncio`.
+### Soul-Brain Sync (sci_fi_dashboard/sbs/)
+Pipeline: RawMessage -> RealtimeProcessor -> BatchProcessor (every 50 msgs/6h) -> PromptCompiler -> system prompt
 
-### Database maintenance
-```bash
-python workspace/scripts/db_cleanup.py
-python workspace/scripts/optimize_db.py    # VACUUM + optimize
-python workspace/scripts/prune_sessions.py
-```
+| File | Class | Purpose |
+|------|-------|---------|
+| `orchestrator.py` | `SBSOrchestrator` | Master coordinator |
+| `ingestion/schema.py` | `RawMessage` | Pydantic message DTO |
+| `ingestion/logger.py` | `ConversationLogger` | JSONL+SQLite message log |
+| `processing/realtime.py` | `RealtimeProcessor` | Sentiment, language, mood per message |
+| `processing/batch.py` | `BatchProcessor` | Distill into 8 profile layers |
+| `processing/selectors/exemplar.py` | `ExemplarSelector` | Few-shot example selection |
+| `injection/compiler.py` | `PromptCompiler` | Profile -> ~1500-token prompt segment |
+| `profile/manager.py` | `ProfileManager` | Load/save 8 JSON profile layers |
+| `feedback/implicit.py` | `ImplicitFeedbackDetector` | Regex-based correction detection |
+| `sentinel/gateway.py` | `Sentinel` | Fail-closed file access control |
+| `sentinel/manifest.py` | `ProtectionLevel` | CRITICAL/PROTECTED/MONITORED/OPEN zones |
+| `sentinel/audit.py` | `AuditLogger` | JSONL access trail |
+| `vacuum.py` | — | SBS data compaction |
 
----
+Profile layers: core_identity, linguistic, emotional_state, domain, interaction, vocabulary, exemplars, meta
+
+### Skills (workspace/skills/)
+| File | Purpose |
+|------|---------|
+| `llm_router.py` | `LLMRouter` — Ollama/OpenClaw gateway routing |
+| `google_native.py` | `GoogleNative` — Gmail, Calendar, direct Google API |
+| `language/ingest_dict.py` | Vocabulary ingestion |
+| `memory/ingest_memories.py` | Bulk memory import to API |
+
+### CLI (workspace/cli/)
+| File | Purpose |
+|------|---------|
+| `onboard.py` | Interactive setup wizard (questionary+typer) |
+| `channel_steps.py` | WhatsApp QR, Discord/Slack/Telegram setup |
+| `provider_steps.py` | LLM provider validation |
 
 ## Architecture
 
-### Request Flow (WhatsApp)
-
+### Request Flow
 ```
-WhatsApp → OpenClaw bridge
-  → POST /whatsapp/enqueue
-  → FloodGate (3-second batching window)
-  → MessageDeduplicator (5-min seen-set, exact match)
-  → TaskQueue (asyncio FIFO, max 100)
-  → MessageWorker × 2 (concurrent)
-  → LLM routing (see below)
-  → WhatsAppSender (OpenClaw CLI)
+WhatsApp -> POST /whatsapp/enqueue -> FloodGate(3s) -> Dedup(5min) -> TaskQueue(max100) -> Worker x2 -> SBS+RAG+DualCognition -> LLM -> Send
 ```
 
-### LLM Routing (Mixture of Agents)
+### LLM Routing
+- Default/Banglish: Gemini Flash
+- Code: Claude Sonnet (thinking)
+- Deep analysis: Gemini Pro
+- Private (The Vault): Local Ollama — air-gapped spicy hemisphere
+- Fallback: OpenRouter
 
-`api_gateway.py` contains an intent classifier that routes to specialist "agents":
-- **Default / Banglish**: Gemini Flash
-- **The Creator** (`/chat/the_creator`): Brother-mode persona, full memory context
-- **The Partner** (`/chat/the_partner`): Caring PA persona
-- **The Vault**: Local Ollama (Stheno) — used for air-gapped, private conversations (spicy hemisphere)
-- **OpenRouter**: Fallback when primary LLM fails
+### Memory (Hybrid RAG)
+DBs in `~/.openclaw/workspace/db/`:
+1. `memory.db` — documents + sqlite-vec embeddings (WAL mode)
+2. `knowledge_graph.db` — subject-predicate-object triples
 
-The route entry point is `POST /whatsapp/enqueue` for async processing. `/chat/*` routes are synchronous fallbacks.
+Retrieval: embed(Ollama nomic-embed-text) -> ANN+FTS -> FlashRank rerank -> inject into prompt
+Dual hemispheres: `hemisphere_tag = "safe"|"spicy"`. Vault uses spicy only.
 
-### Memory System (Hybrid RAG)
+### Key Singletons (init in api_gateway.py)
+Brain, memory_engine, dual_cognition, sqlite_graph, sbs_orchestrator, task_queue, message_worker
 
-Two databases, both in `~/.openclaw/workspace/db/`:
+### Ports
+API:8000 | Tools:8989 | Qdrant:6333 | Ollama:11434 | OAuth:8080
 
-1. **`memory.db`** — documents + sqlite-vec embeddings. Managed by `db.py` (WAL mode, sqlite-vec extension loaded at connection time).
-2. **`knowledge_graph.db`** — subject-predicate-object triples in `nodes`/`edges` tables. Managed by `sqlite_graph.py`. Replaced NetworkX (155MB → <1.2MB).
+## Dependencies (what breaks if you edit...)
 
-Retrieval pipeline (`retriever.py`):
-1. Embed query via Ollama `nomic-embed-text` (fallback: `all-MiniLM-L6-v2`)
-2. ANN search in sqlite-vec + full-text search
-3. FlashRank reranker (bypassed via high-confidence fast-gate for <350ms P95)
-4. Results injected into prompt via `memory_engine.py`
+### High-Impact Files (edit carefully)
+- `synapse_config.py` -> imported by 50+ files (root config)
+- `api_gateway.py` -> central hub, imports everything
+- `db.py` -> all memory/vector operations funnel through here
+- `memory_engine.py` -> RAG pipeline, affects search quality
 
-**Dual hemispheres**: every document is tagged `hemisphere_tag = "safe" | "spicy"`. The Vault (local Ollama) exclusively reads/writes the spicy hemisphere.
+### Isolated Modules (safe to edit independently)
+- `dual_cognition.py` — no internal imports
+- `gateway/flood.py`, `dedup.py`, `queue.py` — self-contained
+- `channels/*.py` — loosely coupled via BaseChannel ABC
+- `sbs/profile/manager.py` — standalone JSON CRUD
+- `narrative.py`, `conflict_resolver.py` — minimal deps
 
-### Soul-Brain Sync (SBS) — Persona Engine
+### Symbol Lookup
+Use `grep "^SYMBOL_NAME\t" tags` to find any class/function/variable definition instantly.
+The `tags` file indexes 1215 symbols across all Python files.
 
-Located in `workspace/sci_fi_dashboard/sbs/`. Continuously evolves behavioral profiles:
-
-- **Real-time** (`processing/realtime.py`): sentiment + language detection on every message
-- **Batch** (`processing/batch.py`): triggers every 50 messages OR 6 hours, distills into 8 profile layers stored as JSON in `synapse_data/`
-- **Injection** (`injection/compiler.py`): compiles profile layers into the system prompt before each LLM call
-
-Profile layers: `core_identity`, `linguistic`, `emotional_state`, `domain`, `interaction`, `vocabulary`, `exemplars`, `meta`.
-
-- **Feedback** (`feedback/implicit.py`): detects implicit user corrections (e.g. "too long", "be less formal") and adjusts profile in real-time
-- **Sentinel** (`sentinel/`): fail-closed file governance — controls what the AI agent can read/write/delete, with JSONL audit trail
-- **Vacuum** (`vacuum.py`): SBS data compaction and old profile pruning
-
-### Database Tools (`workspace/db/`)
-
-- `tools.py` — `ToolRegistry`: Crawl4AI headless browser automation (OpenAI function-calling compatible)
-- `model_orchestrator.py` — `ModelOrchestrator`: 3-tier local model routing (REFLEX/WORKER/ARCHITECT) via Ollama
-- `audio_processor.py` — `AudioProcessor`: Groq Whisper-Large-v3 cloud transcription for voice messages
-- `ingest.py` — Bulk file ingestion pipeline with WhatsApp/markdown chunking and thermal safety
-
-### Key Singletons (initialized once at boot in `api_gateway.py`)
-
-- `Brain` — central LLM caller
-- `memory_engine` — RAG orchestrator
-- `dual_cognition` — inner monologue + tension scoring
-- `sqlite_graph` — knowledge graph
-- `sbs_orchestrator` — persona engine
-- `task_queue` + `message_worker` — async pipeline
-
-`ToxicScorer` (`toxic_scorer_lazy.py`) is lazy-loaded on demand and auto-unloads after 30s idle to save RAM.
-
-### Concurrency Safety
-
-All known race conditions resolved (see `workspace/Vulnerabilities.md`):
-- SQLite in WAL mode; memory re-indexing is a single atomic transaction
-- `INSERT OR IGNORE` for user registration (no TOCTOU)
-- `threading.Lock()` (double-checked locking) on FlashRank model init
-- `fcntl.flock` around OAuth token file writes
-- WebSocket broadcast iterates `list(self.active_connections)` copy
-
-### Service Ports
-
-| Service | Port |
-|---------|------|
-| API Gateway (FastAPI) | 8000 |
-| Memory/tools server | 8989 |
-| Qdrant | 6333 |
-| Ollama | 11434 |
-| OpenClaw OAuth proxy | 8080 |
-
-### Internal Tool Endpoints (at `http://127.0.0.1:8989`)
-
-These are used by the Synapse assistant persona at runtime, not by the development workflow:
-- `POST /query` — semantic memory search
-- `POST /add` — store a new memory
-- `POST /browse` — headless browser (Playwright/Crawl4AI)
-- `POST /transcribe` — Whisper audio transcription
-- `POST /think` — local Llama 3.2 (3B) for cheap formatting/summarization
-- `GET /logs` — tail service logs
-- `GET /roast/serve` / `POST /roast/add` — roast database
-
-### Environment
-
-Copy `.env.example` to `.env`. Key variables:
-- `GEMINI_API_KEY` — primary LLM (required)
-- `GROQ_API_KEY` — voice message transcription via Groq Whisper (required for voice)
-- `OPENROUTER_API_KEY` — fallback model routing
-- `OPENAI_API_KEY` — for specific tools/overrides
-- `WHATSAPP_BRIDGE_TOKEN` — OpenClaw bridge auth
-- `WINDOWS_PC_IP` — remote Ollama instance for distributed inference (optional)
-- `OLLAMA_KEEP_ALIVE=0` — evict models immediately after use (RAM management)
-
-Databases (`memory.db`, `knowledge_graph.db`) are auto-created on first boot — no manual setup needed.
-The onboarding script auto-configures the OpenClaw workspace directory.
-
-### Code Style
-
-- Python 3.11, line-length 100 (`ruff` + `black`)
-- Ruff rules: `E, F, W, I, N, UP, B, C4, SIM` (E501 ignored — black handles length)
-- All async I/O via `asyncio`; no Redis, no Celery
+## Code Style
+Python 3.11 | line-length 100 | ruff + black | asyncio (no Redis/Celery) | SQLite WAL mode
