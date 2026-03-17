@@ -1,5 +1,5 @@
 """
-test_llm_router.py — RED phase test scaffold for LLM-01 through LLM-18
+test_llm_router.py — RED phase test scaffold for LLM-01 through LLM-19
 
 All tests in this file are SKIPPED until Plan 02 creates
 workspace/sci_fi_dashboard/llm_router.py with SynapseLLMRouter.
@@ -26,6 +26,7 @@ Requirements covered:
   LLM-16: No hardcoded model strings remain in workspace/sci_fi_dashboard/ or workspace/skills/
   LLM-17: AuthenticationError and RateLimitError both trigger fallback provider
   LLM-18: Routing selects correct model role (casual, vault)
+  LLM-19: Cohere provider uses "cohere/" prefix
 """
 
 import sys
@@ -206,6 +207,15 @@ async def test_xai_prefix(mock_acompletion):
     await router.call("grok", _TEST_MESSAGES)
     model = _get_model_arg(mock_acompletion)
     assert model.startswith("xai/"), f"Expected 'xai/' prefix, got: {model!r}"
+
+
+async def test_cohere_prefix(mock_acompletion):
+    """LLM-19: Cohere model string must start with 'cohere/'."""
+    config = _make_config("cohere_role", "cohere/command-r-plus", None)
+    router = SynapseLLMRouter(config)
+    await router.call("cohere_role", _TEST_MESSAGES)
+    model = _get_model_arg(mock_acompletion)
+    assert model.startswith("cohere/"), f"Expected 'cohere/' prefix, got: {model!r}"
 
 
 async def test_bedrock_prefix(mock_acompletion):

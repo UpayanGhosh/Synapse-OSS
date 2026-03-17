@@ -44,6 +44,7 @@ _KEY_MAP: dict[str, str] = {
     "mistral": "MISTRAL_API_KEY",
     "togetherai": "TOGETHERAI_API_KEY",
     "xai": "XAI_API_KEY",
+    "cohere": "COHERE_API_KEY",
     "minimax": "MINIMAX_API_KEY",
     "moonshot": "MOONSHOT_API_KEY",
     "zai": "ZAI_API_KEY",  # Zhipu Z.AI — prefix is zai/, NOT zhipu/

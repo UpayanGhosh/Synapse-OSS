@@ -9,7 +9,8 @@
     "openrouter": {"api_key": "YOUR_OPENROUTER_API_KEY"},
     "mistral": {"api_key": "YOUR_MISTRAL_API_KEY"},
     "together_ai": {"api_key": "YOUR_TOGETHER_AI_API_KEY"},
-    "xai": {"api_key": "YOUR_XAI_API_KEY"}
+    "xai": {"api_key": "YOUR_XAI_API_KEY"},
+    "cohere": {"api_key": "YOUR_COHERE_API_KEY"}
   },
 
   "channels": {
