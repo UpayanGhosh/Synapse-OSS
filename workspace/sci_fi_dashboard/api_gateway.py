@@ -25,7 +25,7 @@ from typing import Any
 
 import psutil
 import uvicorn
-from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Request, WebSocket
 from pydantic import BaseModel
 
 # from celery import Celery  # REMOVED -- using async workers
@@ -364,6 +364,7 @@ def _make_flood_enqueue(channel_id: str):
                 "message_id": channel_msg.message_id,
                 "sender_name": channel_msg.sender_name,
                 "channel_id": channel_id,
+                "is_group": getattr(channel_msg, "is_group", False),
             },
         )
 
@@ -785,6 +786,9 @@ async def process_message_pipeline(user_msg: str, chat_id: str) -> str:
 
 
 async def on_batch_ready(chat_id: str, combined_message: str, metadata: dict):
+    is_group = metadata.get("is_group", False)
+    chat_type = "group" if is_group else "direct"
+    session_key = f"{metadata.get('channel_id', 'whatsapp')}:{chat_type}:{chat_id}"
     task = MessageTask(
         task_id=str(uuid.uuid4()),
         chat_id=chat_id,
@@ -792,6 +796,8 @@ async def on_batch_ready(chat_id: str, combined_message: str, metadata: dict):
         message_id=metadata.get("message_id", ""),
         sender_name=metadata.get("sender_name", ""),
         channel_id=metadata.get("channel_id", "whatsapp"),  # NEW: propagate channel_id
+        is_group=is_group,
+        session_key=session_key,
     )
     await task_queue.enqueue(task)
 
@@ -952,6 +958,27 @@ async def lifespan(app: FastAPI):
     await app.state.worker.start()
     print("[INFO] Async Gateway Pipeline started.")
 
+    # Initialize SessionActorQueue
+    from gateway.session_actor import SessionActorQueue  # noqa: E402, PLC0415
+
+    app.state.session_actor_queue = SessionActorQueue()
+
+    # Initialize models catalog
+    from models_catalog import ensure_models_catalog  # noqa: E402, PLC0415
+
+    catalog_path, action = ensure_models_catalog(_synapse_cfg)
+    print(f"[INFO] Models catalog: {catalog_path} ({action})")
+
+    # Initialize GatewayWebSocket
+    from gateway.ws_server import GatewayWebSocket  # noqa: E402, PLC0415
+
+    app.state.gateway_ws = GatewayWebSocket(
+        config=_synapse_cfg,
+        task_queue=task_queue,
+        channel_registry=channel_registry,
+        models_catalog_path=catalog_path,
+    )
+
     yield
 
     print("[STOP] Shutting down...")
@@ -965,6 +992,16 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+
+
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    gw = websocket.app.state.gateway_ws
+    if gw:
+        await gw.handle(websocket)
+    else:
+        await websocket.close(code=4000, reason="Gateway not ready")
+
 
 # --- CORS Configuration ---
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
