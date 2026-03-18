@@ -5,9 +5,14 @@ All future channel adapters (WhatsApp, Telegram, Discord, Slack) subclass BaseCh
 Import from the channels package (__init__.py), not from this submodule directly.
 """
 
+from __future__ import annotations
+
+import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -25,6 +30,118 @@ class ChannelMessage:
     # MUST use field(default_factory=dict) — NOT raw: dict = {} which causes a shared
     # mutable default bug (all instances sharing the same dict object).
     raw: dict = field(default_factory=dict)
+
+
+@dataclass
+class MsgContext:
+    """Canonical inbound message — superset of ChannelMessage fields."""
+
+    # Core routing (required)
+    channel_id: str
+    user_id: str
+    chat_id: str
+    body: str
+    timestamp: datetime = field(default_factory=datetime.now)
+
+    # Identity
+    sender_name: str = ""
+    sender_id: str = ""
+    sender_username: str = ""
+    sender_e164: str = ""
+
+    # Message IDs
+    message_sid: str = ""
+    reply_to_id: str = ""
+
+    # Session
+    session_key_str: str = ""
+    account_id: str = ""
+    parent_session_key: str = ""
+
+    # Chat context
+    chat_type: str = "direct"  # "direct" | "group" | "channel" | "thread"
+    provider: str = ""  # "whatsapp" | "telegram" | ...
+    is_group: bool = False
+    group_subject: str = ""
+    was_mentioned: bool = False
+
+    # Media
+    media_path: str = ""
+    media_url: str = ""
+    media_type: str = ""
+    media_paths: list[str] = field(default_factory=list)
+    media_urls: list[str] = field(default_factory=list)
+    media_types: list[str] = field(default_factory=list)
+
+    # Reply context
+    reply_to_body: str = ""
+    reply_to_sender: str = ""
+
+    # Thread
+    message_thread_id: str = ""
+    thread_label: str = ""
+
+    # Commands
+    command_authorized: bool = False
+    command_body: str = ""
+
+    # Body variants
+    body_for_agent: str = ""
+    raw_body: str = ""
+
+    # Transcript
+    transcript: str = ""
+
+    # Provenance
+    max_chars: int = 4000
+
+    # Raw payload passthrough
+    raw: dict = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        for field_name in ("channel_id", "user_id", "chat_id"):
+            value = getattr(self, field_name)
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(
+                    f"MsgContext.{field_name} must be a non-empty string, "
+                    f"got {value!r}"
+                )
+
+    @staticmethod
+    def session_key(channel: str, chat_type: str, target_id: str) -> str:
+        """Build canonical session key: '<channel>:<chatType>:<targetId>'."""
+        return f"{channel}:{chat_type}:{target_id}"
+
+    @classmethod
+    def from_channel_message(cls, cm: ChannelMessage, **overrides) -> MsgContext:
+        """Convert a ChannelMessage to MsgContext, filling defaults."""
+        base: dict = {
+            "channel_id": cm.channel_id,
+            "user_id": cm.user_id,
+            "chat_id": cm.chat_id,
+            "body": cm.text,
+            "timestamp": cm.timestamp,
+            "sender_name": cm.sender_name,
+            "message_sid": cm.message_id,
+            "is_group": cm.is_group,
+            "chat_type": "group" if cm.is_group else "direct",
+            "provider": cm.channel_id,
+            "raw": cm.raw,
+        }
+        base.update(overrides)
+        return cls(**base)
+
+
+@dataclass
+class ReplyPayload:
+    """Outbound reply shape returned by the agent pipeline."""
+
+    text: str = ""
+    media_url: str = ""
+    media_urls: list[str] = field(default_factory=list)
+    reply_to_id: str = ""
+    is_reasoning: bool = False
+    channel_data: dict = field(default_factory=dict)
 
 
 class BaseChannel(ABC):
