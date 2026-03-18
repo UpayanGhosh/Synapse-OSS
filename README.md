@@ -23,6 +23,17 @@
 > Linux should work but is less tested. If you hit issues, please
 > [open an issue](https://github.com/UpayanGhosh/Synapse-OSS/issues).
 
+> [!IMPORTANT]
+> **This is an actively developing project.** You may run into bugs, broken features, or
+> the agent may not even start due to recent changes -- please don't get annoyed!
+> I'm a solo developer with a full-time job, so progress comes in evenings and weekends.
+>
+> - **Found a bug?** [Open an issue](https://github.com/UpayanGhosh/Synapse-OSS/issues)
+> - **Have a question or idea?** [Start a discussion](https://github.com/UpayanGhosh/Synapse-OSS/discussions)
+> - **Want to contribute?** Please read [CONTRIBUTING.md](CONTRIBUTING.md) first
+>
+> Your patience and feedback are genuinely appreciated. Thank you for checking this out!
+
 ---
 
 ## What Makes This Different
