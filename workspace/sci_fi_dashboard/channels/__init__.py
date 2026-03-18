@@ -21,6 +21,12 @@ Example usage in FastAPI lifespan:
 from .base import BaseChannel, ChannelMessage, MsgContext, ReplyPayload
 from .plugin import ChannelCapabilities, ChannelPlugin
 from .registry import ChannelRegistry
+from .security import (
+    ChannelSecurityConfig,
+    DmPolicy,
+    PairingStore,
+    resolve_dm_access,
+)
 from .stub import StubChannel
 from .whatsapp import WhatsAppChannel
 
@@ -46,11 +52,15 @@ __all__ = [
     "ChannelMessage",
     "ChannelPlugin",
     "ChannelRegistry",
+    "ChannelSecurityConfig",
     "DiscordChannel",
+    "DmPolicy",
     "MsgContext",
+    "PairingStore",
     "ReplyPayload",
     "SlackChannel",
     "StubChannel",
     "TelegramChannel",
     "WhatsAppChannel",
+    "resolve_dm_access",
 ]

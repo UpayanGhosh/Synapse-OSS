@@ -11,6 +11,10 @@ import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .security import ChannelSecurityConfig
 
 logger = logging.getLogger(__name__)
 
@@ -153,6 +157,10 @@ class BaseChannel(ABC):
     they can be instantiated. The non-abstract lifecycle hooks (start / stop) have
     default no-op bodies that subclasses may override.
     """
+
+    # Optional security configuration — set by subclass __init__ when provided.
+    # Defaults to None (no access control), so existing channels work unchanged.
+    security_config: ChannelSecurityConfig | None = None
 
     # ------------------------------------------------------------------
     # Identity

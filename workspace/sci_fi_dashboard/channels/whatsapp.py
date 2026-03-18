@@ -28,6 +28,7 @@ from pathlib import Path
 import httpx
 
 from .base import BaseChannel, ChannelMessage
+from .security import ChannelSecurityConfig, PairingStore, resolve_dm_access
 
 # ---------------------------------------------------------------------------
 # Windows event-loop policy — must be set before any asyncio usage
@@ -57,12 +58,20 @@ class WhatsAppChannel(BaseChannel):
     MAX_RESTARTS: int = 5
     INITIAL_BACKOFF: float = 0.0  # first restart immediate; subsequent: 1 s → 2 s → 4 s → … → 60 s
 
-    def __init__(self, bridge_port: int = 5010, python_webhook_url: str = "") -> None:
+    def __init__(
+        self,
+        bridge_port: int = 5010,
+        python_webhook_url: str = "",
+        security_config: ChannelSecurityConfig | None = None,
+        pairing_store: PairingStore | None = None,
+    ) -> None:
         self._port = bridge_port
         self._webhook_url = python_webhook_url or "http://127.0.0.1:8000/channels/whatsapp/webhook"
         self._proc: asyncio.subprocess.Process | None = None
         self._bridge_pid: int | None = None
         self._status: str = "stopped"
+        self.security_config = security_config
+        self._pairing_store = pairing_store
 
     # ------------------------------------------------------------------
     # Identity
@@ -285,17 +294,19 @@ class WhatsAppChannel(BaseChannel):
     # Inbound normalisation
     # ------------------------------------------------------------------
 
-    async def receive(self, raw_payload: dict) -> ChannelMessage:
+    async def receive(self, raw_payload: dict) -> ChannelMessage | None:
         """
         Normalise a raw Baileys webhook payload to ChannelMessage.
 
         Bridge sends:
             {channel_id, user_id, chat_id, text, message_id,
              is_group, timestamp (Unix seconds), sender_name, raw}
+
+        Returns None if the message is blocked by the DM security policy.
         """
         ts_raw = raw_payload.get("timestamp")
         timestamp = datetime.fromtimestamp(ts_raw) if ts_raw else datetime.now()
-        return ChannelMessage(
+        cm = ChannelMessage(
             channel_id=raw_payload.get("channel_id", "whatsapp"),
             user_id=raw_payload.get("user_id", raw_payload.get("chat_id", "")),
             chat_id=raw_payload.get("chat_id", ""),
@@ -306,6 +317,15 @@ class WhatsAppChannel(BaseChannel):
             sender_name=raw_payload.get("sender_name", ""),
             raw=raw_payload.get("raw", {}),
         )
+
+        # DM security check — only for direct messages, skip groups
+        if self.security_config and self._pairing_store and not cm.is_group:
+            access = resolve_dm_access(cm.user_id, self.security_config, self._pairing_store)
+            if access != "allow":
+                logger.info("[WA] DM from %s blocked (%s)", cm.user_id, access)
+                return None
+
+        return cm
 
     # ------------------------------------------------------------------
     # Internal helpers
