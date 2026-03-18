@@ -10,13 +10,19 @@ any resolution error also returns ``True``.
 size enforcement, and symlink rejection.
 """
 
+from __future__ import annotations
+
 import asyncio
+import contextlib
 import ipaddress
 import logging
 import os
-import contextlib
 from pathlib import Path
+from typing import TYPE_CHECKING
 from urllib.parse import urlparse
+
+if TYPE_CHECKING:
+    from .store import SavedMedia
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +82,7 @@ async def is_ssrf_blocked(url: str) -> bool:
         loop = asyncio.get_running_loop()
         infos = await loop.getaddrinfo(hostname, None)
 
-        for family, _type, _proto, _canonname, sockaddr in infos:
+        for _family, _type, _proto, _canonname, sockaddr in infos:
             ip_str = sockaddr[0]
             try:
                 addr = ipaddress.ip_address(ip_str)
@@ -104,7 +110,7 @@ async def download_to_file(
     dest: Path,
     max_bytes: int,
     headers: dict | None = None,
-) -> "SavedMedia":
+) -> SavedMedia:
     """Download *url* to *dest* with SSRF check, streaming, and symlink rejection.
 
     Parameters
@@ -151,26 +157,28 @@ async def download_to_file(
 
     tmp = dest.with_suffix(dest.suffix + ".tmp")
 
-    async with httpx.AsyncClient(follow_redirects=True, timeout=30.0) as client:
-        async with client.stream("GET", url, headers=headers or {}) as resp:
-            resp.raise_for_status()
-            content_type = resp.headers.get("content-type")
+    async with (
+        httpx.AsyncClient(follow_redirects=True, timeout=30.0) as client,
+        client.stream("GET", url, headers=headers or {}) as resp,
+    ):
+        resp.raise_for_status()
+        content_type = resp.headers.get("content-type")
 
-            total = 0
-            fd = os.open(str(tmp), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
-            try:
-                with os.fdopen(fd, "wb") as fh:
-                    async for chunk in resp.aiter_bytes(chunk_size=65_536):
-                        total += len(chunk)
-                        if total > max_bytes:
-                            raise ValueError(
-                                f"Download exceeds {max_bytes} byte limit"
-                            )
-                        fh.write(chunk)
-            except Exception:
-                with contextlib.suppress(OSError):
-                    os.unlink(str(tmp))
-                raise
+        total = 0
+        fd = os.open(str(tmp), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
+        try:
+            with os.fdopen(fd, "wb") as fh:
+                async for chunk in resp.aiter_bytes(chunk_size=65_536):
+                    total += len(chunk)
+                    if total > max_bytes:
+                        raise ValueError(
+                            f"Download exceeds {max_bytes} byte limit"
+                        )
+                    fh.write(chunk)
+        except Exception:
+            with contextlib.suppress(OSError):
+                os.unlink(str(tmp))
+            raise
 
     os.replace(str(tmp), str(dest))
 

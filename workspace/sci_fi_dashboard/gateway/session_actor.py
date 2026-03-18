@@ -1,6 +1,7 @@
 import asyncio
 import logging
-from typing import Awaitable, Callable, TypeVar
+from collections.abc import Awaitable, Callable
+from typing import TypeVar
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +37,7 @@ class SessionActorQueue:
         try:
             async with lock:
                 return await asyncio.wait_for(op(), timeout=self._timeout)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning(
                 "SessionActorQueue: op for %s timed out after %.1fs",
                 actor_key,

@@ -20,6 +20,7 @@ Each connection gets its own monotonic ``seq`` counter for events.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import os
@@ -109,7 +110,7 @@ class GatewayWebSocket:
                 raw = await asyncio.wait_for(
                     websocket.receive_text(), timeout=CONNECT_TIMEOUT_S
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 logger.warning("WS %s: connect timeout after %.0fs", conn_id, CONNECT_TIMEOUT_S)
                 await websocket.close(code=4000, reason="Connect timeout")
                 return
@@ -182,18 +183,14 @@ class GatewayWebSocket:
                 logger.info("WS %s: client disconnected", conn_id)
             finally:
                 tick_task.cancel()
-                try:
+                with contextlib.suppress(asyncio.CancelledError):
                     await tick_task
-                except asyncio.CancelledError:
-                    pass
 
         except Exception:
             logger.exception("WS %s: unhandled error", conn_id)
             # Attempt graceful close; ignore if already closed
-            try:
+            with contextlib.suppress(Exception):
                 await websocket.close(code=4000, reason="Internal error")
-            except Exception:
-                pass
 
     # ------------------------------------------------------------------
     # Tick loop

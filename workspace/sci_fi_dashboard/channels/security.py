@@ -28,7 +28,7 @@ import logging
 import os
 import tempfile
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 from typing import Literal
 
@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
-class DmPolicy(str, Enum):
+class DmPolicy(StrEnum):
     """Access-control policy for direct messages on a channel."""
 
     PAIRING = "pairing"
