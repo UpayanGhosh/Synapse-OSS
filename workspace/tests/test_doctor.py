@@ -9,8 +9,6 @@ Tests:
 """
 
 import json
-import os
-import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -254,7 +252,7 @@ def test_checks_1_through_7_are_config_and_disk_only(tmp_path, monkeypatch):
         mock_home = MagicMock()
         mock_path_cls.home.return_value = mock_home
         mock_home.__truediv__ = lambda self, other: MagicMock(exists=lambda: False)
-        result = _check_no_legacy_dirs()
+        _check_no_legacy_dirs()
     # Don't assert on _check_no_legacy_dirs result — just confirm it doesn't crash
 
 

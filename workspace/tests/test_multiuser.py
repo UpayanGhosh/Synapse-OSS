@@ -34,31 +34,28 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 # Conditional import guard (RED-phase pattern from test_session_actor.py)
 # ---------------------------------------------------------------------------
 try:
-    from sci_fi_dashboard.multiuser.session_key import build_session_key, parse_session_key
-    from sci_fi_dashboard.multiuser.session_store import SessionEntry, SessionStore, _merge_entry
-    from sci_fi_dashboard.multiuser.transcript import (
-        append_message,
-        archive_transcript,
-        limit_history_turns,
-        load_messages,
-        transcript_path,
-    )
-    from sci_fi_dashboard.multiuser.memory_manager import (
-        BOOTSTRAP_FILES,
-        MINIMAL_BOOTSTRAP_FILES,
-        load_bootstrap_files,
-        seed_workspace,
-        append_daily_note,
-    )
     from sci_fi_dashboard.multiuser.compaction import (
         compact_session,
         estimate_tokens,
         should_compact,
     )
     from sci_fi_dashboard.multiuser.context_assembler import (
-        CONTEXT_WINDOW_HARD_MIN_TOKENS,
         ContextWindowTooSmallError,
         assemble_context,
+    )
+    from sci_fi_dashboard.multiuser.memory_manager import (
+        BOOTSTRAP_FILES,
+        MINIMAL_BOOTSTRAP_FILES,
+        load_bootstrap_files,
+        seed_workspace,
+    )
+    from sci_fi_dashboard.multiuser.session_key import build_session_key, parse_session_key
+    from sci_fi_dashboard.multiuser.session_store import SessionStore, _merge_entry
+    from sci_fi_dashboard.multiuser.transcript import (
+        append_message,
+        archive_transcript,
+        limit_history_turns,
+        load_messages,
     )
 
     AVAILABLE = True
@@ -467,7 +464,7 @@ class TestMergeSessionEntry:
         # Zero-millisecond TTL — cache entries expire immediately.
         monkeypatch.setenv("SYNAPSE_SESSION_CACHE_TTL_MS", "0")
 
-        from sci_fi_dashboard.multiuser.session_store import _CACHE, _cache_invalidate
+        from sci_fi_dashboard.multiuser.session_store import _cache_invalidate
 
         store = SessionStore("test-agent", data_root=tmp_path)
         session_key = "agent:test-agent:whatsapp:dm:ttl-test"
@@ -678,7 +675,7 @@ class TestCompactionTimeoutPath:
         # Replace asyncio.wait_for so it immediately raises TimeoutError,
         # simulating the 900 s guard triggering.
         async def _never_complete(*_args, **_kwargs):
-            raise asyncio.TimeoutError
+            raise TimeoutError
 
         with patch(
             "sci_fi_dashboard.multiuser.compaction.asyncio.wait_for",

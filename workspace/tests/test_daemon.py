@@ -12,7 +12,7 @@ Tests:
 import subprocess
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -24,7 +24,6 @@ try:
     from cli.daemon import (
         InstallOpts,
         LaunchdService,
-        SystemdUserService,
         WindowsTaskService,
         build_gateway_install_plan,
         resolve_gateway_service,
@@ -133,7 +132,6 @@ def test_windows_task_service_falls_back_on_timeout(tmp_path, monkeypatch):
     svc = WindowsTaskService()
 
     # Redirect APPDATA so the bat file lands in tmp_path instead of real Startup folder
-    startup_base = tmp_path / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup"
     monkeypatch.setenv(
         "APPDATA",
         str(tmp_path),
@@ -293,6 +291,5 @@ def test_resolve_gateway_service_win32():
 
 def test_resolve_gateway_service_unsupported_raises():
     """resolve_gateway_service() must raise NotImplementedError on unknown platforms."""
-    with patch("sys.platform", "freebsd14"):
-        with pytest.raises(NotImplementedError):
-            resolve_gateway_service()
+    with patch("sys.platform", "freebsd14"), pytest.raises(NotImplementedError):
+        resolve_gateway_service()

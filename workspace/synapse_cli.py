@@ -107,7 +107,7 @@ def daemon_install() -> None:
         typer.echo("Gateway daemon installed successfully.")
     except NotImplementedError as exc:
         typer.echo(f"ERROR: {exc}", err=True)
-        raise typer.Exit(1)
+        raise typer.Exit(1) from None
 
 
 @app.command()
@@ -121,7 +121,7 @@ def daemon_uninstall() -> None:
         typer.echo("Gateway daemon uninstalled.")
     except NotImplementedError as exc:
         typer.echo(f"ERROR: {exc}", err=True)
-        raise typer.Exit(1)
+        raise typer.Exit(1) from None
 
 
 @app.command()
