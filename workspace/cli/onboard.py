@@ -20,6 +20,7 @@ import questionary
 import typer
 from rich.console import Console
 from rich.panel import Panel
+from rich.table import Table
 from synapse_config import write_config
 
 from cli.channel_steps import (
@@ -88,6 +89,7 @@ def _run_non_interactive() -> None:
         SYNAPSE_DISCORD_TOKEN
         SYNAPSE_SLACK_BOT_TOKEN + SYNAPSE_SLACK_APP_TOKEN
         SYNAPSE_HOME             — override default ~/.synapse data root
+        SYNAPSE_GATEWAY_TOKEN    — WebSocket control-plane auth token
 
     Exit codes:
         0 — config written successfully
@@ -152,15 +154,26 @@ def _run_non_interactive() -> None:
     tg_token = os.environ.get("SYNAPSE_TELEGRAM_TOKEN")
     if tg_token:
         config["channels"]["telegram"] = {"token": tg_token}
+        dm_pol = os.environ.get("SYNAPSE_TELEGRAM_DM_POLICY", "pairing")
+        config["channels"]["telegram"]["dm_policy"] = dm_pol
 
     ds_token = os.environ.get("SYNAPSE_DISCORD_TOKEN")
     if ds_token:
         config["channels"]["discord"] = {"token": ds_token, "allowed_channel_ids": []}
+        dm_pol = os.environ.get("SYNAPSE_DISCORD_DM_POLICY", "pairing")
+        config["channels"]["discord"]["dm_policy"] = dm_pol
 
     slk_bot = os.environ.get("SYNAPSE_SLACK_BOT_TOKEN")
     slk_app = os.environ.get("SYNAPSE_SLACK_APP_TOKEN")
     if slk_bot and slk_app:
         config["channels"]["slack"] = {"bot_token": slk_bot, "app_token": slk_app}
+        dm_pol = os.environ.get("SYNAPSE_SLACK_DM_POLICY", "pairing")
+        config["channels"]["slack"]["dm_policy"] = dm_pol
+
+    # --- Gateway token ---
+    gw_token = os.environ.get("SYNAPSE_GATEWAY_TOKEN")
+    if gw_token:
+        config["gateway"] = {"token": gw_token}
 
     # --- Model mappings ---
     config["model_mappings"] = _build_model_mappings(list(config["providers"].keys()))
@@ -342,6 +355,32 @@ def _run_interactive() -> None:  # noqa: C901 — linear wizard, complexity is i
             if result.ok:
                 console.print(f"  [green]Ollama {result.detail}[/]")
                 config["providers"]["ollama"] = {"api_base": api_base}
+                # --- Ollama model discovery preview ---
+                try:
+                    from sci_fi_dashboard.models_catalog import discover_ollama_models
+
+                    with console.status("[yellow]Discovering installed models...[/]"):
+                        ollama_models = asyncio.run(discover_ollama_models(api_base))
+                    if ollama_models:
+                        tbl = Table(title="Installed Ollama Models")
+                        tbl.add_column("Model Name")
+                        tbl.add_column("Context Window")
+                        for m in ollama_models:
+                            ctx = (
+                                f"{m.context_window // 1024}k"
+                                if m.context_window > 0
+                                else "unknown"
+                            )
+                            tbl.add_row(m.name, ctx)
+                        console.print(tbl)
+                    else:
+                        console.print(
+                            "  [yellow]No models found — pull one with: ollama pull llama3.3[/]"
+                        )
+                except Exception:
+                    console.print(
+                        "  [yellow]Could not discover Ollama models (non-fatal).[/]"
+                    )
             else:
                 console.print(f"  [red]Ollama not reachable: {result.error}[/]")
                 console.print("  Tip: Start Ollama first (https://ollama.com) then re-run.")
