@@ -18,8 +18,15 @@ Example usage in FastAPI lifespan:
         await registry.stop_all()
 """
 
-from .base import BaseChannel, ChannelMessage
+from .base import BaseChannel, ChannelMessage, MsgContext, ReplyPayload
+from .plugin import ChannelCapabilities, ChannelPlugin
 from .registry import ChannelRegistry
+from .security import (
+    ChannelSecurityConfig,
+    DmPolicy,
+    PairingStore,
+    resolve_dm_access,
+)
 from .stub import StubChannel
 from .whatsapp import WhatsAppChannel
 
@@ -41,11 +48,19 @@ except ImportError:
 
 __all__ = [
     "BaseChannel",
+    "ChannelCapabilities",
     "ChannelMessage",
+    "ChannelPlugin",
     "ChannelRegistry",
+    "ChannelSecurityConfig",
     "DiscordChannel",
+    "DmPolicy",
+    "MsgContext",
+    "PairingStore",
+    "ReplyPayload",
     "SlackChannel",
     "StubChannel",
     "TelegramChannel",
     "WhatsAppChannel",
+    "resolve_dm_access",
 ]

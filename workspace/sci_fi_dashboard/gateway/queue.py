@@ -25,6 +25,7 @@ class MessageTask:
     sender_name: str = ""
     is_group: bool = False
     channel_id: str = "whatsapp"  # which channel this task belongs to; default for backwards compat
+    session_key: str = ""  # actor key for SessionActorQueue serialization
 
     response: str | None = None
     error: str | None = None

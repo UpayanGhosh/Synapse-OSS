@@ -34,6 +34,8 @@ class SynapseConfig:
 
     providers and channels come from synapse.json (Layer 2) and can be empty dicts
     (Layer 3 default) when the file is absent.
+
+    gateway holds WebSocket control-plane config (port, host, token).
     """
 
     data_root: Path
@@ -43,6 +45,8 @@ class SynapseConfig:
     providers: dict = field(default_factory=dict)
     channels: dict = field(default_factory=dict)
     model_mappings: dict = field(default_factory=dict)
+    gateway: dict = field(default_factory=dict)
+    session: dict = field(default_factory=dict)
 
     @classmethod
     def load(cls) -> "SynapseConfig":
@@ -67,6 +71,8 @@ class SynapseConfig:
         providers: dict[str, Any] = {}
         channels: dict[str, Any] = {}
         model_mappings: dict[str, Any] = {}
+        gateway: dict[str, Any] = {}
+        session: dict[str, Any] = {}
 
         config_file = data_root / "synapse.json"
         if config_file.exists():
@@ -76,6 +82,8 @@ class SynapseConfig:
             providers = raw.get("providers", {})
             channels = raw.get("channels", {})
             model_mappings = raw.get("model_mappings", {})
+            gateway = raw.get("gateway", {})
+            session = raw.get("session", {})
 
         return cls(
             data_root=data_root,
@@ -85,6 +93,8 @@ class SynapseConfig:
             providers=providers,
             channels=channels,
             model_mappings=model_mappings,
+            gateway=gateway,
+            session=session,
         )
 
 
@@ -156,3 +166,27 @@ def write_config(data_root: Path, config: dict) -> None:
 
     os.replace(str(tmp), str(config_file))
     os.chmod(str(config_file), 0o600)  # re-enforce after replace (umask drift)
+
+
+def gateway_token(config: SynapseConfig) -> str | None:
+    """Return the WebSocket gateway auth token from config, or None if unset."""
+    val = config.gateway.get("token", "")
+    return val if val else None
+
+
+def dm_scope(config: SynapseConfig) -> str:
+    """Return the active DM scope from ``config.session``.
+
+    One of ``"main"``, ``"per-peer"``, ``"per-channel-peer"``,
+    ``"per-account-channel-peer"``.  Defaults to ``"main"`` (zero-config safe).
+    """
+    return config.session.get("dmScope", "main")
+
+
+def identity_links(config: SynapseConfig) -> dict:
+    """Return the identity-links map from ``config.session``.
+
+    Shape: ``dict[canonical_name, list[str]]`` where each value is a list of
+    platform IDs that resolve to the canonical name.  Returns ``{}`` if absent.
+    """
+    return config.session.get("identityLinks", {})

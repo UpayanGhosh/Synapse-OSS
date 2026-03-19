@@ -32,6 +32,7 @@ from telegram.error import Conflict, InvalidToken, TelegramError
 from telegram.ext import ApplicationBuilder, MessageHandler, Updater, filters
 
 from .base import BaseChannel, ChannelMessage
+from .security import ChannelSecurityConfig, PairingStore, resolve_dm_access
 
 logger = logging.getLogger(__name__)
 
@@ -50,13 +51,21 @@ class TelegramChannel(BaseChannel):
                     If None, incoming messages are logged and dropped (safe for tests).
     """
 
-    def __init__(self, token: str, enqueue_fn=None) -> None:
+    def __init__(
+        self,
+        token: str,
+        enqueue_fn=None,
+        security_config: ChannelSecurityConfig | None = None,
+        pairing_store: PairingStore | None = None,
+    ) -> None:
         self._token = token
         self._enqueue_fn = enqueue_fn  # async callable(ChannelMessage) -> None
         self._app = None  # telegram.ext.Application
         self._updater = None  # telegram.ext.Updater
         self._status: str = "stopped"
         self._bot_info: dict = {}
+        self.security_config = security_config
+        self._pairing_store = pairing_store
 
     # ------------------------------------------------------------------
     # Identity
@@ -265,6 +274,9 @@ class TelegramChannel(BaseChannel):
 
         Builds a ChannelMessage from the Update fields and calls the injected
         enqueue_fn. If enqueue_fn is None (test mode), logs a warning and drops.
+
+        DM security check runs here (NOT in receive()) because TelegramChannel
+        uses PTB handler callbacks — receive() always raises NotImplementedError.
         """
         msg = update.message
         chat = msg.chat
@@ -280,6 +292,16 @@ class TelegramChannel(BaseChannel):
             sender_name=msg.from_user.full_name if msg.from_user else "",
             raw=update.to_dict(),
         )
+
+        # DM security check — only for direct messages, skip groups
+        if self.security_config and self._pairing_store and not channel_msg.is_group:
+            access = resolve_dm_access(
+                channel_msg.user_id, self.security_config, self._pairing_store
+            )
+            if access != "allow":
+                logger.info("[TEL] DM from %s blocked (%s)", channel_msg.user_id, access)
+                return
+
         if self._enqueue_fn:
             await self._enqueue_fn(channel_msg)
         else:

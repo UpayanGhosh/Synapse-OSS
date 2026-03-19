@@ -8,9 +8,11 @@ from synapse.json model_mappings. No hardcoded model strings in this file.
 
 import logging
 import os
+import re
 import sqlite3
 import sys
 import uuid
+from enum import StrEnum
 
 # Ensure workspace root on path for SynapseConfig import
 _DIR = os.path.dirname(os.path.abspath(__file__))
@@ -179,6 +181,169 @@ def _write_session(role: str, model: str, usage) -> None:
             (str(uuid.uuid4()), role, model, input_tokens, output_tokens, total_tokens),
         )
         conn.commit()
+
+
+# --- Environment variable resolution ---
+
+_ENV_VAR_RE = re.compile(r"^\$\{([A-Z_][A-Z0-9_]*)\}$")
+
+
+def resolve_env_var(value: str) -> str:
+    """Resolve ${ENV_VAR} syntax to the actual environment variable value.
+
+    If value matches the pattern ${SOME_VAR}, look up SOME_VAR in os.environ.
+    If the env var is not set, return the original string unchanged.
+
+    Args:
+        value: A string that may contain ${ENV_VAR} syntax.
+
+    Returns:
+        The resolved value, or the original string if no match or env var not set.
+    """
+    m = _ENV_VAR_RE.match(value)
+    if m:
+        return os.environ.get(m.group(1), value)
+    return value
+
+
+# --- LLM Error Classification ---
+
+
+class AuthProfileFailureReason(StrEnum):
+    """Classifies LLM API failures for key-rotation decision-making.
+
+    Retryable failures (RATE_LIMIT, OVERLOADED, TIMEOUT) trigger rotation
+    to the next API key. Non-retryable failures (AUTH_PERMANENT, FORMAT,
+    BILLING, MODEL_NOT_FOUND) are raised immediately.
+    """
+
+    AUTH = "auth"
+    AUTH_PERMANENT = "auth_permanent"
+    FORMAT = "format"
+    OVERLOADED = "overloaded"
+    RATE_LIMIT = "rate_limit"
+    BILLING = "billing"
+    TIMEOUT = "timeout"
+    MODEL_NOT_FOUND = "model_not_found"
+    UNKNOWN = "unknown"
+
+
+# Retryable failure reasons — rotation to the next key is worthwhile
+_RETRYABLE_REASONS = frozenset({
+    AuthProfileFailureReason.RATE_LIMIT,
+    AuthProfileFailureReason.OVERLOADED,
+    AuthProfileFailureReason.TIMEOUT,
+})
+
+
+def classify_llm_error(error: Exception) -> AuthProfileFailureReason:
+    """Map a litellm exception to an AuthProfileFailureReason.
+
+    Args:
+        error: The exception raised by litellm.
+
+    Returns:
+        The classified failure reason.
+    """
+    if isinstance(error, RateLimitError):
+        return AuthProfileFailureReason.RATE_LIMIT
+    if isinstance(error, AuthenticationError):
+        return AuthProfileFailureReason.AUTH
+    if isinstance(error, BadRequestError):
+        return AuthProfileFailureReason.FORMAT
+    if isinstance(error, Timeout):
+        return AuthProfileFailureReason.TIMEOUT
+    if isinstance(error, ServiceUnavailableError):
+        return AuthProfileFailureReason.OVERLOADED
+    if isinstance(error, APIConnectionError):
+        return AuthProfileFailureReason.TIMEOUT
+    return AuthProfileFailureReason.UNKNOWN
+
+
+# --- API Key Rotation ---
+
+
+async def execute_with_api_key_rotation(
+    provider: str,
+    api_keys: list[str],
+    execute_fn,  # Callable[[str], Awaitable[T]]
+    should_retry_fn=None,  # Callable[[Exception, int], bool] | None
+):
+    """Try each API key in order; on retryable failure, advance to the next key.
+
+    Deduplicates keys (preserving order), strips empty/None entries. For each key,
+    calls execute_fn(key). On failure, classifies the error: if retryable
+    (RATE_LIMIT, OVERLOADED, TIMEOUT) and more keys are available, moves to the
+    next key. Otherwise re-raises.
+
+    Args:
+        provider: Provider name (for logging and error messages).
+        api_keys: List of API keys to try in order.
+        execute_fn: Async callable that takes an API key string and returns a result.
+        should_retry_fn: Optional override for retry logic. Takes (exception, key_index)
+            and returns True if the next key should be tried. Defaults to checking
+            whether the classified error is in _RETRYABLE_REASONS.
+
+    Returns:
+        The result from the first successful execute_fn call.
+
+    Raises:
+        ValueError: If no valid API keys are provided after deduplication.
+        Exception: The last exception encountered if all keys are exhausted.
+    """
+    # Dedupe keys, remove empty/None, preserve order
+    seen: set[str] = set()
+    unique_keys: list[str] = []
+    for k in api_keys:
+        if k and isinstance(k, str) and k.strip() and k not in seen:
+            seen.add(k)
+            unique_keys.append(k)
+
+    if not unique_keys:
+        raise ValueError(f"No API keys configured for {provider}")
+
+    last_error: Exception | None = None
+
+    for idx, key in enumerate(unique_keys):
+        try:
+            return await execute_fn(key)
+        except Exception as exc:
+            last_error = exc
+            reason = classify_llm_error(exc)
+            is_last_key = idx >= len(unique_keys) - 1
+
+            # Check if we should retry with the next key
+            if should_retry_fn is not None:
+                should_retry = should_retry_fn(exc, idx)
+            else:
+                should_retry = reason in _RETRYABLE_REASONS
+
+            if should_retry and not is_last_key:
+                logger.warning(
+                    "Key %d/%d for %s failed (%s: %s) — rotating to next key",
+                    idx + 1,
+                    len(unique_keys),
+                    provider,
+                    reason.value,
+                    exc,
+                )
+                continue
+
+            # Non-retryable or last key — raise immediately
+            logger.error(
+                "Key %d/%d for %s failed (%s: %s) — no more keys to try",
+                idx + 1,
+                len(unique_keys),
+                provider,
+                reason.value,
+                exc,
+            )
+            raise
+
+    # Should not reach here, but satisfy type checker
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError(f"No API keys available for {provider}")  # pragma: no cover
 
 
 # --- SynapseLLMRouter ---

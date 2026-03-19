@@ -44,6 +44,10 @@ playwright>=1.20.0 ; sys_platform == 'win32' # Windows browser automation -- rep
 # --- Audio Transcription ---
 groq>=0.4.0                      # Groq Whisper API (voice message transcription)
 
+# --- Media / MIME Detection ---
+python-magic>=0.4.27
+python-magic-bin>=0.4.14 ; sys_platform == "win32"
+
 # --- Configuration ---
 PyYAML>=6.0                      # personas.yaml + language_patterns.yaml parsing
 

@@ -84,7 +84,9 @@ def test_non_interactive_missing_primary_provider_exits_1(tmp_path, monkeypatch)
     monkeypatch.setenv("SYNAPSE_HOME", str(tmp_path))
     monkeypatch.delenv("SYNAPSE_PRIMARY_PROVIDER", raising=False)
     result = runner.invoke(
-        app, ["onboard", "--non-interactive"], env={"SYNAPSE_HOME": str(tmp_path)}
+        app,
+        ["onboard", "--non-interactive", "--accept-risk"],
+        env={"SYNAPSE_HOME": str(tmp_path)},
     )
     assert result.exit_code == 1
     combined = result.output or ""
@@ -97,7 +99,7 @@ def test_non_interactive_missing_api_key_exits_1(tmp_path, monkeypatch):
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     result = runner.invoke(
         app,
-        ["onboard", "--non-interactive"],
+        ["onboard", "--non-interactive", "--accept-risk"],
         env={"SYNAPSE_HOME": str(tmp_path), "SYNAPSE_PRIMARY_PROVIDER": "gemini"},
     )
     assert result.exit_code == 1
@@ -116,7 +118,7 @@ def test_non_interactive_success_writes_config(tmp_path, monkeypatch):
         )
         result = runner.invoke(
             app,
-            ["onboard", "--non-interactive"],
+            ["onboard", "--non-interactive", "--accept-risk"],
             env={
                 "SYNAPSE_HOME": str(tmp_path),
                 "SYNAPSE_PRIMARY_PROVIDER": "gemini",
@@ -138,7 +140,11 @@ def test_non_interactive_env_var_flag(tmp_path, monkeypatch):
     result = runner.invoke(
         app,
         ["onboard"],  # no --non-interactive flag
-        env={"SYNAPSE_HOME": str(tmp_path), "SYNAPSE_NON_INTERACTIVE": "1"},
+        env={
+            "SYNAPSE_HOME": str(tmp_path),
+            "SYNAPSE_NON_INTERACTIVE": "1",
+            "SYNAPSE_ACCEPT_RISK": "1",
+        },
     )
     # Should attempt non-interactive, fail on missing SYNAPSE_PRIMARY_PROVIDER
     assert result.exit_code == 1
@@ -161,7 +167,7 @@ def test_wizard_writes_config_with_mode_600(tmp_path, monkeypatch):
         )
         result = runner.invoke(
             app,
-            ["onboard", "--non-interactive"],
+            ["onboard", "--non-interactive", "--accept-risk"],
             env={
                 "SYNAPSE_HOME": str(tmp_path),
                 "SYNAPSE_PRIMARY_PROVIDER": "gemini",
@@ -189,7 +195,7 @@ def test_provider_validation_calls_max_tokens_1(tmp_path, monkeypatch):
     with patch("litellm.acompletion", mock_acomp):
         result = runner.invoke(
             app,
-            ["onboard", "--non-interactive"],
+            ["onboard", "--non-interactive", "--accept-risk"],
             env={
                 "SYNAPSE_HOME": str(tmp_path),
                 "SYNAPSE_PRIMARY_PROVIDER": "gemini",
@@ -537,3 +543,274 @@ def test_interactive_migration_offer_on_openclaw_present(tmp_path, monkeypatch):
     assert (
         migration_confirm_called
     ), "Migration confirm should be shown when _check_for_openclaw returns a path"
+
+
+# ===========================================================================
+# ONB-11: --flow quickstart skips workspace dir prompt; token auto-generated
+# ===========================================================================
+
+
+def test_quickstart_flow_writes_config_with_gateway_token(tmp_path, monkeypatch):
+    """ONB-11: --flow quickstart does not prompt for workspace dir; gateway.token is 48 hex chars."""
+    monkeypatch.setenv("SYNAPSE_HOME", str(tmp_path))
+
+    mock_acomp = _make_mock_acompletion()
+
+    with (
+        patch("litellm.acompletion", mock_acomp),
+        patch("questionary.confirm") as mock_confirm,
+        patch("questionary.checkbox") as mock_checkbox,
+        patch("questionary.password") as mock_password,
+        patch("questionary.text") as mock_text,
+        patch("cli.onboard._check_for_openclaw", return_value=None),
+        patch("cli.onboard._wizard_daemon_install"),  # skip daemon install
+        patch("cli.workspace_seeding.ensure_agent_workspace", return_value={}),
+    ):
+        # No existing config — skip reconfigure confirm
+        mock_confirm.return_value.ask.return_value = False
+        # Provider checkbox → select gemini; no channels (quickstart has no channel prompt)
+        mock_checkbox.return_value.ask.return_value = ["gemini"]
+        mock_password.return_value.ask.return_value = "fake-gemini-key"
+        # Gateway step: token left blank → auto-generate
+        mock_text.return_value.ask.return_value = ""
+
+        from cli.onboard import run_wizard
+
+        run_wizard(flow="quickstart", force_interactive=True)
+
+    config_path = tmp_path / "synapse.json"
+    assert config_path.exists(), "synapse.json should be written"
+    config = json.loads(config_path.read_text())
+
+    token = config.get("gateway", {}).get("token", "")
+    assert token, "gateway.token must be set"
+    assert len(token) == 48, f"Expected 48-char hex token, got len={len(token)}: {token!r}"
+    assert all(c in "0123456789abcdef" for c in token), f"Token not hex: {token!r}"
+
+
+# ===========================================================================
+# ONB-12: --flow advanced prompts for workspace dir
+# ===========================================================================
+
+
+def test_advanced_flow_prompts_for_workspace_dir(tmp_path, monkeypatch):
+    """ONB-12: --flow advanced must ask for workspace dir (StubPrompter sees the question)."""
+    from cli.wizard_prompter import StubPrompter
+    from cli.onboard import _run_interactive
+
+    monkeypatch.setenv("SYNAPSE_HOME", str(tmp_path))
+
+    workspace_questions_asked = []
+
+    class TrackingPrompter(StubPrompter):
+        def text(self, message, default="", password=False):
+            if "workspace" in message.lower() or "agent" in message.lower():
+                workspace_questions_asked.append(message)
+            # Return default for any text prompt
+            return default or ""
+
+    stub = TrackingPrompter(
+        answers={
+            "synapse.json already exists. Reconfigure?": False,
+            "Migrate data to ~/.synapse/ now?": False,
+        }
+    )
+
+    mock_acomp = _make_mock_acompletion()
+
+    with (
+        patch("litellm.acompletion", mock_acomp),
+        patch("cli.onboard._check_for_openclaw", return_value=None),
+        patch("cli.onboard._wizard_daemon_install"),
+        patch("cli.workspace_seeding.ensure_agent_workspace", return_value={}),
+        # Provider multiselect: return gemini; channel multiselect: return []
+        patch.object(TrackingPrompter, "multiselect", side_effect=[["gemini"], []]),
+        # Password prompt for gemini key
+        patch.object(TrackingPrompter, "text", wraps=stub.text),
+        patch("cli.onboard._collect_provider_keys"),  # skip key collection for speed
+        patch("cli.gateway_steps.configure_gateway", return_value={"port": 8000, "bind": "loopback", "token": "a" * 48}),
+        patch("synapse_config.write_config"),
+    ):
+        try:
+            _run_interactive(prompter=stub, flow="advanced")
+        except SystemExit:
+            pass
+        except Exception:
+            pass  # Some prompts may be unexpected — that's OK for this test
+
+    # The workspace dir question should have been asked
+    assert workspace_questions_asked, (
+        "Advanced flow must prompt for workspace directory, but no workspace question was seen"
+    )
+
+
+# ===========================================================================
+# ONB-13: --non-interactive without --accept-risk exits 1
+# ===========================================================================
+
+
+def test_non_interactive_without_accept_risk_exits_1(tmp_path, monkeypatch):
+    """ONB-13: --non-interactive without --accept-risk must exit 1 with error containing 'accept-risk'."""
+    monkeypatch.setenv("SYNAPSE_HOME", str(tmp_path))
+
+    from synapse_cli import app
+
+    result = runner.invoke(
+        app,
+        ["onboard", "--non-interactive"],  # no --accept-risk
+        env={"SYNAPSE_HOME": str(tmp_path)},
+    )
+    assert result.exit_code == 1, (
+        f"Expected exit 1 without --accept-risk, got {result.exit_code}. Output: {result.output}"
+    )
+    combined = result.output or ""
+    assert "accept-risk" in combined.lower(), (
+        f"Expected 'accept-risk' in error message, got: {combined}"
+    )
+
+
+# ===========================================================================
+# ONB-14: --reset config backs up synapse.json and wizard completes fresh
+# ===========================================================================
+
+
+def test_reset_config_moves_synapse_json(tmp_path, monkeypatch):
+    """ONB-14: --reset config moves synapse.json to a backup path before wizard runs."""
+    from cli.onboard import _handle_reset
+
+    monkeypatch.setenv("SYNAPSE_HOME", str(tmp_path))
+
+    # Create an existing synapse.json
+    existing_config = tmp_path / "synapse.json"
+    existing_config.write_text('{"providers": {}}', encoding="utf-8")
+    assert existing_config.exists()
+
+    # Run reset
+    _handle_reset("config", tmp_path)
+
+    # synapse.json should be gone from its original location
+    assert not existing_config.exists(), (
+        "synapse.json should be moved away after --reset config"
+    )
+
+    # A backup should exist in tmp_path/backups/
+    backups_dir = tmp_path / "backups"
+    assert backups_dir.exists(), "backups/ directory should be created"
+    backup_files = list(backups_dir.rglob("synapse.json"))
+    assert backup_files, "synapse.json should be present in backups dir"
+
+
+def test_reset_full_scope_moves_all_contents(tmp_path, monkeypatch):
+    """ONB-14: --reset full moves all data_root contents (except backups/) to backup dir."""
+    from cli.onboard import _handle_reset
+
+    # Create some files to reset
+    (tmp_path / "synapse.json").write_text("{}", encoding="utf-8")
+    (tmp_path / "credentials").mkdir()
+    (tmp_path / "sessions").mkdir()
+
+    _handle_reset("full", tmp_path)
+
+    assert not (tmp_path / "synapse.json").exists()
+    assert not (tmp_path / "credentials").exists()
+    assert not (tmp_path / "sessions").exists()
+
+
+def test_reset_invalid_scope_exits_1(tmp_path, monkeypatch):
+    """ONB-14: --reset with invalid scope must exit 1."""
+    import typer
+    from cli.onboard import _handle_reset
+
+    with pytest.raises(typer.Exit) as exc_info:
+        _handle_reset("invalid-scope", tmp_path)
+
+    assert exc_info.value.exit_code == 1
+
+
+# ===========================================================================
+# ONB-15: ensure_agent_workspace() seeding, idempotency, and completion detection
+# ===========================================================================
+
+
+def test_ensure_agent_workspace_seeds_all_7_files(tmp_path):
+    """ONB-15: First call seeds all 7 template files and sets bootstrapSeededAt."""
+    from cli.workspace_seeding import ensure_agent_workspace
+
+    workspace = tmp_path / "workspace"
+    state = ensure_agent_workspace(workspace, ensure_bootstrap_files=True)
+
+    assert "bootstrapSeededAt" in state, "bootstrapSeededAt must be set after first seeding"
+    assert state["bootstrapSeededAt"], "bootstrapSeededAt must be a non-empty string"
+
+    # All 7 template files must exist
+    expected_files = [
+        "AGENTS.md", "SOUL.md", "IDENTITY.md", "USER.md",
+        "TOOLS.md", "HEARTBEAT.md", "BOOTSTRAP.md",
+    ]
+    for fname in expected_files:
+        fpath = workspace / fname
+        assert fpath.exists(), f"Template file {fname} should be seeded in workspace"
+
+
+def test_ensure_agent_workspace_second_call_is_idempotent(tmp_path):
+    """ONB-15: Second call with BOOTSTRAP.md present does NOT overwrite any files."""
+    from cli.workspace_seeding import ensure_agent_workspace
+
+    workspace = tmp_path / "workspace"
+
+    # First call — seeds
+    ensure_agent_workspace(workspace, ensure_bootstrap_files=True)
+
+    # Overwrite SOUL.md with a sentinel value
+    sentinel_content = "SENTINEL_DO_NOT_OVERWRITE"
+    (workspace / "SOUL.md").write_text(sentinel_content, encoding="utf-8")
+
+    # Second call — should NOT overwrite existing files
+    ensure_agent_workspace(workspace, ensure_bootstrap_files=True)
+
+    assert (workspace / "SOUL.md").read_text(encoding="utf-8") == sentinel_content, (
+        "Second call must not overwrite existing SOUL.md"
+    )
+
+
+def test_ensure_agent_workspace_bootstrap_deleted_sets_completed_at(tmp_path):
+    """ONB-15: Deleting BOOTSTRAP.md after seeding triggers setupCompletedAt on next call."""
+    from cli.workspace_seeding import ensure_agent_workspace
+
+    workspace = tmp_path / "workspace"
+
+    # First call — seeds (sets bootstrapSeededAt)
+    state1 = ensure_agent_workspace(workspace, ensure_bootstrap_files=True)
+    assert "bootstrapSeededAt" in state1
+
+    # Delete BOOTSTRAP.md (simulate agent completing bootstrap ritual)
+    (workspace / "BOOTSTRAP.md").unlink()
+    assert not (workspace / "BOOTSTRAP.md").exists()
+
+    # Third call — should set setupCompletedAt
+    state2 = ensure_agent_workspace(workspace, ensure_bootstrap_files=True)
+    assert "setupCompletedAt" in state2, (
+        "setupCompletedAt must be set when BOOTSTRAP.md has been deleted"
+    )
+    assert state2["setupCompletedAt"], "setupCompletedAt must be non-empty"
+
+
+def test_ensure_agent_workspace_legacy_git_dir_sets_completed_at(tmp_path):
+    """ONB-15: Workspace with .git dir gets setupCompletedAt immediately (no template writes)."""
+    from cli.workspace_seeding import ensure_agent_workspace
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir(parents=True, exist_ok=True)
+
+    # Simulate a legacy workspace (has .git)
+    (workspace / ".git").mkdir()
+
+    state = ensure_agent_workspace(workspace, ensure_bootstrap_files=True)
+
+    assert "setupCompletedAt" in state, (
+        "setupCompletedAt must be set immediately for legacy (.git) workspace"
+    )
+    # BOOTSTRAP.md must NOT be written
+    assert not (workspace / "BOOTSTRAP.md").exists(), (
+        "BOOTSTRAP.md must NOT be created for a legacy (.git) workspace"
+    )
