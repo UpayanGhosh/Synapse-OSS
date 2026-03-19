@@ -34,6 +34,8 @@ class SynapseConfig:
 
     providers and channels come from synapse.json (Layer 2) and can be empty dicts
     (Layer 3 default) when the file is absent.
+
+    gateway holds WebSocket control-plane config (port, host, token).
     """
 
     data_root: Path
@@ -43,6 +45,7 @@ class SynapseConfig:
     providers: dict = field(default_factory=dict)
     channels: dict = field(default_factory=dict)
     model_mappings: dict = field(default_factory=dict)
+    gateway: dict = field(default_factory=dict)
 
     @classmethod
     def load(cls) -> "SynapseConfig":
@@ -67,6 +70,7 @@ class SynapseConfig:
         providers: dict[str, Any] = {}
         channels: dict[str, Any] = {}
         model_mappings: dict[str, Any] = {}
+        gateway: dict[str, Any] = {}
 
         config_file = data_root / "synapse.json"
         if config_file.exists():
@@ -76,6 +80,7 @@ class SynapseConfig:
             providers = raw.get("providers", {})
             channels = raw.get("channels", {})
             model_mappings = raw.get("model_mappings", {})
+            gateway = raw.get("gateway", {})
 
         return cls(
             data_root=data_root,
@@ -85,6 +90,7 @@ class SynapseConfig:
             providers=providers,
             channels=channels,
             model_mappings=model_mappings,
+            gateway=gateway,
         )
 
 
@@ -156,3 +162,9 @@ def write_config(data_root: Path, config: dict) -> None:
 
     os.replace(str(tmp), str(config_file))
     os.chmod(str(config_file), 0o600)  # re-enforce after replace (umask drift)
+
+
+def gateway_token(config: SynapseConfig) -> str | None:
+    """Return the WebSocket gateway auth token from config, or None if unset."""
+    val = config.gateway.get("token", "")
+    return val if val else None
