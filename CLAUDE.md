@@ -44,6 +44,7 @@ ruff check workspace/ && black workspace/   # line-length 100, py311
 | `toxic_scorer_lazy.py` | `LazyToxicScorer` — Toxic-BERT, auto-unloads after 30s idle |
 | `persona.py` | `PersonaManager` — system prompt, dictionary |
 | `chat_parser.py` | `ChatParser` — intent/sentiment from messages |
+| `models_catalog.py` | `ModelsCatalog` — Ollama discovery, context window guard, `models_catalog.json` |
 
 ### Gateway Pipeline (sci_fi_dashboard/gateway/)
 Flow: FloodGate -> Dedup -> TaskQueue -> MessageWorker x2 -> Send
@@ -68,6 +69,7 @@ All implement `BaseChannel` (ABC): `receive()`, `send()`, `send_typing()`, `star
 | `discord_channel.py` | `DiscordChannel` — discord.py |
 | `slack.py` | `SlackChannel` — slack_bolt |
 | `stub.py` | `StubChannel` — testing mock |
+| `security.py` | DM access control — `DmPolicy`, `PairingStore`, `resolve_dm_access()` |
 
 ### Soul-Brain Sync (sci_fi_dashboard/sbs/)
 Pipeline: RawMessage -> RealtimeProcessor -> BatchProcessor (every 50 msgs/6h) -> PromptCompiler -> system prompt
@@ -119,8 +121,29 @@ WhatsApp -> POST /whatsapp/enqueue -> FloodGate(3s) -> Dedup(5min) -> TaskQueue(
 - Private (The Vault): Local Ollama — air-gapped spicy hemisphere
 - Fallback: OpenRouter
 
+### Security (DM Access Control)
+Per-channel DM policy via `DmPolicy` enum (`pairing` | `allowlist` | `open` | `disabled`).
+- `ChannelSecurityConfig` — dataclass with policy + allow-from lists
+- `PairingStore` — JSONL-backed approved-senders at `~/.synapse/state/pairing/<channel_id>.jsonl`
+- `resolve_dm_access()` — pure function returning `"allow"` / `"deny"` / `"pending_approval"`
+- Source: `sci_fi_dashboard/channels/security.py`
+
+### Media Pipeline
+Inbound media handling via `sci_fi_dashboard/media/`:
+- MIME detection: `python-magic` (magic bytes) > HTTP header > extension > `application/octet-stream`
+- Size limits: image 6 MB, audio/video 16 MB, document 100 MB
+- TTL cleanup: default 120s, storage at `~/.synapse/state/media/`
+- SSRF guard: `is_ssrf_blocked()` rejects private/loopback IPs before fetch
+
+### WebSocket Gateway
+- Endpoint: `ws://127.0.0.1:8000/ws`
+- Auth: `SYNAPSE_GATEWAY_TOKEN` env var (optional)
+- Protocol: connect-first handshake, JSON frames (req/res/event)
+- Methods: `chat.send`, `channels.status`, `models.list`, `sessions.list`, `sessions.reset`
+- Heartbeat: tick event every 30s
+
 ### Memory (Hybrid RAG)
-DBs in `~/.openclaw/workspace/db/`:
+DBs in `~/.synapse/workspace/db/`:
 1. `memory.db` — documents + sqlite-vec embeddings (WAL mode)
 2. `knowledge_graph.db` — subject-predicate-object triples
 
@@ -131,7 +154,10 @@ Dual hemispheres: `hemisphere_tag = "safe"|"spicy"`. Vault uses spicy only.
 Brain, memory_engine, dual_cognition, sqlite_graph, sbs_orchestrator, task_queue, message_worker
 
 ### Ports
-API:8000 | Tools:8989 | Qdrant:6333 | Ollama:11434 | OAuth:8080
+API:8000 | Tools:8989 | Qdrant:6333 | Ollama:11434 | OAuth:8080 | WS:18789
+
+### Environment
+Key env vars: `GEMINI_API_KEY`, `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `GROQ_API_KEY`, `WHATSAPP_BRIDGE_TOKEN`, `SYNAPSE_GATEWAY_TOKEN` (optional WebSocket gateway auth token)
 
 ## Dependencies (what breaks if you edit...)
 
