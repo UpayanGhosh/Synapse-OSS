@@ -53,6 +53,47 @@ SCAN_TIMEOUT: float = 120.0
 SCAN_POLL_INTERVAL: float = 3.0
 QR_REFRESH_INTERVAL: float = 30.0  # re-render QR if string changes during polling
 
+# Authoritative source: DmPolicy StrEnum in channels/security.py.
+# Keep this list in sync with that enum.
+_DM_POLICY_CHOICES: list[str] = ["pairing", "allowlist", "open", "disabled"]
+_DM_POLICY_DEFAULT: str = "pairing"
+
+
+def _prompt_dm_policy(
+    channel_name: str,
+    non_interactive: bool,
+    env_var_name: str,
+    _print,
+) -> str:
+    """Prompt the user to select a DM security policy for a channel.
+
+    Non-interactive: reads the env var (falls back to 'pairing').
+    Interactive: uses questionary.select().
+
+    Returns one of _DM_POLICY_CHOICES (always a valid string).
+    """
+    if non_interactive:
+        value = os.environ.get(env_var_name, _DM_POLICY_DEFAULT)
+        if value not in _DM_POLICY_CHOICES:
+            _print(
+                f"[yellow]Warning: {env_var_name}={value!r} is not valid "
+                f"({', '.join(_DM_POLICY_CHOICES)}). Defaulting to '{_DM_POLICY_DEFAULT}'.[/yellow]"
+            )
+            return _DM_POLICY_DEFAULT
+        return value
+
+    try:
+        import questionary  # type: ignore[import]
+    except ImportError:
+        return _DM_POLICY_DEFAULT
+
+    result = questionary.select(
+        f"{channel_name} DM security policy:",
+        choices=_DM_POLICY_CHOICES,
+        default=_DM_POLICY_DEFAULT,
+    ).ask()
+    return result if result is not None else _DM_POLICY_DEFAULT
+
 
 # ---------------------------------------------------------------------------
 # Telegram
@@ -470,7 +511,10 @@ def setup_telegram(non_interactive: bool = False) -> "dict | None":
             _print("Validating Telegram token...")
             info = validate_telegram_token(token)
         _print(f"[green]Telegram OK[/green] — @{info.get('username')} (id={info.get('id')})")
-        return {"token": token}
+        dm_policy = _prompt_dm_policy(
+            "Telegram", non_interactive, "SYNAPSE_TELEGRAM_DM_POLICY", _print
+        )
+        return {"token": token, "dm_policy": dm_policy}
     except ValueError as exc:
         _print(f"[red]Telegram validation failed:[/red] {exc}")
         return None
@@ -586,7 +630,10 @@ def setup_discord(non_interactive: bool = False) -> "dict | None":
         if raw and raw.strip():
             channel_ids = [int(x.strip()) for x in raw.split(",") if x.strip().isdigit()]
 
-    return {"token": token, "allowed_channel_ids": channel_ids}
+    dm_policy = _prompt_dm_policy(
+        "Discord", non_interactive, "SYNAPSE_DISCORD_DM_POLICY", _print
+    )
+    return {"token": token, "allowed_channel_ids": channel_ids, "dm_policy": dm_policy}
 
 
 # ---------------------------------------------------------------------------
@@ -661,7 +708,10 @@ def setup_slack(non_interactive: bool = False) -> "dict | None":
             f"[green]Slack OK[/green] — team={info.get('team')} "
             f"user={info.get('user')} bot_id={info.get('bot_id')}"
         )
-        return {"bot_token": bot_token, "app_token": app_token}
+        dm_policy = _prompt_dm_policy(
+            "Slack", non_interactive, "SYNAPSE_SLACK_DM_POLICY", _print
+        )
+        return {"bot_token": bot_token, "app_token": app_token, "dm_policy": dm_policy}
     except ValueError as exc:
         _print(f"[red]Slack validation failed:[/red] {exc}")
         return None
@@ -708,7 +758,10 @@ def setup_whatsapp(
 
     if non_interactive:
         # In non-interactive mode, always return the config; QR is done at runtime.
-        return {"enabled": True, "bridge_port": BRIDGE_PORT}
+        policy = _prompt_dm_policy(
+            "WhatsApp", True, "SYNAPSE_WHATSAPP_DM_POLICY", _print
+        )
+        return {"enabled": True, "bridge_port": BRIDGE_PORT, "dm_policy": policy}
 
     # Interactive: skip gate
     try:
@@ -727,5 +780,8 @@ def setup_whatsapp(
     success = run_whatsapp_qr_flow(bridge_dir, console=console)
 
     if success:
-        return {"enabled": True, "bridge_port": BRIDGE_PORT}
+        dm_policy = _prompt_dm_policy(
+            "WhatsApp", False, "SYNAPSE_WHATSAPP_DM_POLICY", _print
+        )
+        return {"enabled": True, "bridge_port": BRIDGE_PORT, "dm_policy": dm_policy}
     return None
