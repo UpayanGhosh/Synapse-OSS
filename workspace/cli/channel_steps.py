@@ -630,9 +630,7 @@ def setup_discord(non_interactive: bool = False) -> "dict | None":
         if raw and raw.strip():
             channel_ids = [int(x.strip()) for x in raw.split(",") if x.strip().isdigit()]
 
-    dm_policy = _prompt_dm_policy(
-        "Discord", non_interactive, "SYNAPSE_DISCORD_DM_POLICY", _print
-    )
+    dm_policy = _prompt_dm_policy("Discord", non_interactive, "SYNAPSE_DISCORD_DM_POLICY", _print)
     return {"token": token, "allowed_channel_ids": channel_ids, "dm_policy": dm_policy}
 
 
@@ -708,9 +706,7 @@ def setup_slack(non_interactive: bool = False) -> "dict | None":
             f"[green]Slack OK[/green] — team={info.get('team')} "
             f"user={info.get('user')} bot_id={info.get('bot_id')}"
         )
-        dm_policy = _prompt_dm_policy(
-            "Slack", non_interactive, "SYNAPSE_SLACK_DM_POLICY", _print
-        )
+        dm_policy = _prompt_dm_policy("Slack", non_interactive, "SYNAPSE_SLACK_DM_POLICY", _print)
         return {"bot_token": bot_token, "app_token": app_token, "dm_policy": dm_policy}
     except ValueError as exc:
         _print(f"[red]Slack validation failed:[/red] {exc}")
@@ -758,9 +754,7 @@ def setup_whatsapp(
 
     if non_interactive:
         # In non-interactive mode, always return the config; QR is done at runtime.
-        policy = _prompt_dm_policy(
-            "WhatsApp", True, "SYNAPSE_WHATSAPP_DM_POLICY", _print
-        )
+        policy = _prompt_dm_policy("WhatsApp", True, "SYNAPSE_WHATSAPP_DM_POLICY", _print)
         return {"enabled": True, "bridge_port": BRIDGE_PORT, "dm_policy": policy}
 
     # Interactive: skip gate
@@ -780,8 +774,6 @@ def setup_whatsapp(
     success = run_whatsapp_qr_flow(bridge_dir, console=console)
 
     if success:
-        dm_policy = _prompt_dm_policy(
-            "WhatsApp", False, "SYNAPSE_WHATSAPP_DM_POLICY", _print
-        )
+        dm_policy = _prompt_dm_policy("WhatsApp", False, "SYNAPSE_WHATSAPP_DM_POLICY", _print)
         return {"enabled": True, "bridge_port": BRIDGE_PORT, "dm_policy": dm_policy}
     return None

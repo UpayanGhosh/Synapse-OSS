@@ -378,9 +378,7 @@ def _run_interactive() -> None:  # noqa: C901 — linear wizard, complexity is i
                             "  [yellow]No models found — pull one with: ollama pull llama3.3[/]"
                         )
                 except Exception:
-                    console.print(
-                        "  [yellow]Could not discover Ollama models (non-fatal).[/]"
-                    )
+                    console.print("  [yellow]Could not discover Ollama models (non-fatal).[/]")
             else:
                 console.print(f"  [red]Ollama not reachable: {result.error}[/]")
                 console.print("  Tip: Start Ollama first (https://ollama.com) then re-run.")

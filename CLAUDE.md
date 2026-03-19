@@ -159,6 +159,21 @@ API:8000 | Tools:8989 | Qdrant:6333 | Ollama:11434 | OAuth:8080 | WS:18789
 ### Environment
 Key env vars: `GEMINI_API_KEY`, `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `GROQ_API_KEY`, `WHATSAPP_BRIDGE_TOKEN`, `SYNAPSE_GATEWAY_TOKEN` (optional WebSocket gateway auth token)
 
+#### `synapse.json` — `session` block schema
+The optional `session` top-level key controls per-user session scoping and identity linking:
+```json
+{
+  "session": {
+    "dmScope": "per-channel-peer",
+    "identityLinks": {
+      "alice": ["919876543210", "telegram:123456789"]
+    }
+  }
+}
+```
+- `dmScope` — one of `"main"` (default), `"per-peer"`, `"per-channel-peer"`, `"per-account-channel-peer"`
+- `identityLinks` — maps a canonical name to a list of raw peer IDs (bare or `channel:id` prefixed); the same person across channels resolves to one session key
+
 ## Dependencies (what breaks if you edit...)
 
 ### High-Impact Files (edit carefully)
