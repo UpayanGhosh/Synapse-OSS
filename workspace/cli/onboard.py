@@ -12,25 +12,53 @@ Exports:
 
 import asyncio
 import os
+import shutil
 import sys
 import time
 from pathlib import Path
 
-import questionary
 import typer
-from rich.console import Console
-from rich.panel import Panel
-from rich.table import Table
-from synapse_config import write_config
 
-from cli.channel_steps import (
+# ---------------------------------------------------------------------------
+# Conditional rich import — fall back to plain print if not installed
+# (Required fix: no bare module-level import of rich or questionary)
+# ---------------------------------------------------------------------------
+try:
+    from rich.console import Console
+    from rich.panel import Panel
+    from rich.table import Table
+
+    _RICH_AVAILABLE = True
+    console = Console()
+except ImportError:  # pragma: no cover
+    _RICH_AVAILABLE = False
+    Console = None  # type: ignore[assignment,misc]
+    Panel = None  # type: ignore[assignment,misc]
+    Table = None  # type: ignore[assignment,misc]
+    console = None  # type: ignore[assignment]
+
+
+def _print(msg: str) -> None:
+    """Print with Rich if available, else plain print (strips markup)."""
+    if _RICH_AVAILABLE and console is not None:
+        console.print(msg)
+    else:
+        import re  # noqa: PLC0415
+
+        plain = re.sub(r"\[/?[^\]]*\]", "", msg)
+        print(plain)
+
+
+from synapse_config import write_config  # noqa: E402
+
+from cli.channel_steps import (  # noqa: E402
     CHANNEL_LIST,  # noqa: F401 — re-exported for tests
     setup_discord,
     setup_slack,
     setup_telegram,
     setup_whatsapp,
 )
-from cli.provider_steps import (
+from cli.provider_steps import (  # noqa: E402
     _KEY_MAP,
     PROVIDER_GROUPS,
     PROVIDER_LIST,
@@ -39,10 +67,14 @@ from cli.provider_steps import (
     validate_provider,
 )
 
-console = Console()
-
 MAX_KEY_ATTEMPTS = 3
 NETWORK_RETRY_DELAY = 5  # seconds between network-error retries
+
+# Valid reset scopes
+_RESET_SCOPES = ("config", "config+creds+sessions", "full")
+
+# Onboarding default DM scope (matches blueprint ONBOARDING_DEFAULT_DM_SCOPE)
+_ONBOARDING_DEFAULT_DM_SCOPE = "per-channel-peer"
 
 
 # ---------------------------------------------------------------------------
@@ -50,18 +82,30 @@ NETWORK_RETRY_DELAY = 5  # seconds between network-error retries
 # ---------------------------------------------------------------------------
 
 
-def run_wizard(non_interactive: bool = False, force_interactive: bool = False) -> None:
+def run_wizard(
+    non_interactive: bool = False,
+    force_interactive: bool = False,
+    flow: str = "quickstart",
+    accept_risk: bool = False,
+    reset: str | None = None,
+) -> None:
     """Entry point — dispatches to interactive or non-interactive wizard.
 
     Args:
-        non_interactive: Read all config from env vars; no prompts (CI/Docker use).
+        non_interactive:  Read all config from env vars; no prompts (CI/Docker use).
         force_interactive: Skip the TTY check and always run the interactive flow.
-            Used by tests to exercise _run_interactive() with mocked questionary.
+            Used by tests to exercise _run_interactive() with mocked prompter.
+        flow:             "quickstart" (default) or "advanced" — controls which
+            prompts are shown in interactive mode.
+        accept_risk:      Must be True when non_interactive=True; guard against
+            silent data loss in automated pipelines.
+        reset:            If set, must be one of "config", "config+creds+sessions",
+            or "full". Backed-up data before wizard starts.
     """
     if non_interactive or (not force_interactive and not _is_tty()):
-        _run_non_interactive()
+        _run_non_interactive(accept_risk=accept_risk, reset=reset, flow=flow)
     else:
-        _run_interactive()
+        _run_interactive(flow=flow, reset=reset)
 
 
 def _is_tty() -> bool:
@@ -77,7 +121,11 @@ def _is_tty() -> bool:
 # ---------------------------------------------------------------------------
 
 
-def _run_non_interactive() -> None:
+def _run_non_interactive(
+    accept_risk: bool = False,
+    reset: str | None = None,
+    flow: str = "quickstart",
+) -> None:
     """Non-interactive wizard: reads all inputs from environment variables.
 
     Required env vars:
@@ -95,6 +143,22 @@ def _run_non_interactive() -> None:
         0 — config written successfully
         1 — required env var missing or validation failed
     """
+    # --- accept-risk guard ---
+    if not accept_risk:
+        typer.echo(
+            "ERROR: --non-interactive requires --accept-risk to confirm you understand "
+            "that all configuration is read from environment variables without prompting.",
+            err=True,
+        )
+        raise typer.Exit(1)
+
+    # --- Data root ---
+    data_root = Path(os.environ.get("SYNAPSE_HOME", Path.home() / ".synapse"))
+
+    # --- Handle reset ---
+    if reset is not None:
+        _handle_reset(reset, data_root)
+
     # --- Primary provider ---
     provider = os.environ.get("SYNAPSE_PRIMARY_PROVIDER", "").strip()
     if not provider:
@@ -111,9 +175,6 @@ def _run_non_interactive() -> None:
             err=True,
         )
         raise typer.Exit(1)
-
-    # --- Data root ---
-    data_root = Path(os.environ.get("SYNAPSE_HOME", Path.home() / ".synapse"))
 
     # --- Build config ---
     config: dict = {"providers": {}, "model_mappings": {}, "channels": {}}
@@ -170,10 +231,14 @@ def _run_non_interactive() -> None:
         dm_pol = os.environ.get("SYNAPSE_SLACK_DM_POLICY", "pairing")
         config["channels"]["slack"]["dm_policy"] = dm_pol
 
-    # --- Gateway token ---
-    gw_token = os.environ.get("SYNAPSE_GATEWAY_TOKEN")
-    if gw_token:
-        config["gateway"] = {"token": gw_token}
+    # --- Gateway config (replaces bare gw_token block) ---
+    from cli.gateway_steps import configure_gateway  # noqa: PLC0415
+
+    gw_cfg = configure_gateway(flow="advanced", existing_gateway={}, non_interactive=True)
+    config["gateway"] = gw_cfg
+
+    # --- Session defaults ---
+    config["session"] = {"dmScope": _ONBOARDING_DEFAULT_DM_SCOPE, "identityLinks": {}}
 
     # --- Model mappings ---
     config["model_mappings"] = _build_model_mappings(list(config["providers"].keys()))
@@ -181,6 +246,62 @@ def _run_non_interactive() -> None:
     # --- Write ---
     write_config(data_root, config)
     typer.echo(f"Config written to {data_root / 'synapse.json'}")
+
+
+# ---------------------------------------------------------------------------
+# Reset handler
+# ---------------------------------------------------------------------------
+
+
+def _handle_reset(reset_scope: str, data_root: Path) -> None:
+    """Back up existing config/credentials/sessions per the requested scope.
+
+    Validates reset_scope before touching any files. Uses shutil.move to
+    move matching paths into a timestamped backup directory.
+
+    Args:
+        reset_scope: One of "config", "config+creds+sessions", or "full".
+        data_root:   The ~/.synapse (or SYNAPSE_HOME) data root.
+
+    Raises:
+        typer.Exit(1) on invalid scope (before any shutil.move call).
+    """
+    if reset_scope not in _RESET_SCOPES:
+        typer.echo(
+            f"ERROR: Invalid --reset scope {reset_scope!r}. "
+            f"Valid values: {', '.join(_RESET_SCOPES)}",
+            err=True,
+        )
+        raise typer.Exit(1)
+
+    from datetime import datetime  # noqa: PLC0415
+
+    timestamp = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+    backup_dir = data_root / "backups" / timestamp
+    backup_dir.mkdir(parents=True, exist_ok=True)
+
+    def _move_if_exists(path: Path) -> None:
+        if path.exists():
+            dest = backup_dir / path.name
+            shutil.move(str(path), str(dest))
+            _print(f"[yellow]Moved {path} → {dest}[/]")
+
+    if reset_scope == "config":
+        _move_if_exists(data_root / "synapse.json")
+
+    elif reset_scope == "config+creds+sessions":
+        _move_if_exists(data_root / "synapse.json")
+        _move_if_exists(data_root / "credentials")
+        _move_if_exists(data_root / "sessions")
+
+    elif reset_scope == "full":
+        # Move the entire data root contents (except the backups dir itself)
+        for child in data_root.iterdir():
+            if child.name == "backups":
+                continue
+            _move_if_exists(child)
+
+    _print(f"[green]Reset complete. Backup at: {backup_dir}[/]")
 
 
 # ---------------------------------------------------------------------------
@@ -253,7 +374,7 @@ def _run_migration(openclaw_root: Path, dest_root: Path) -> None:
     Falls back to a user-readable error with manual instructions on any failure.
     """
     try:
-        import importlib.util
+        import importlib.util  # noqa: PLC0415
 
         spec = importlib.util.spec_from_file_location(
             "migrate_openclaw",
@@ -262,79 +383,138 @@ def _run_migration(openclaw_root: Path, dest_root: Path) -> None:
         mod = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
         spec.loader.exec_module(mod)  # type: ignore[union-attr]
         mod.migrate(source_root=openclaw_root, dest_root=dest_root)
-        console.print("[green]Migration complete.[/]")
+        _print("[green]Migration complete.[/]")
     except Exception as exc:  # noqa: BLE001
-        console.print(f"[red]Migration failed: {exc}[/]")
-        console.print(
+        _print(f"[red]Migration failed: {exc}[/]")
+        _print(
             "You can run migration manually: python workspace/scripts/migrate_openclaw.py"
         )
 
 
 # ---------------------------------------------------------------------------
-# Interactive wizard
+# Interactive wizard — QuickStart flow
 # ---------------------------------------------------------------------------
 
 
-def _run_interactive() -> None:  # noqa: C901 — linear wizard, complexity is intentional
-    """Full interactive wizard flow with questionary prompts.
+def _run_quickstart_flow(
+    prompter: "object",
+    config: dict,
+    data_root: Path,
+) -> None:
+    """QuickStart sub-flow: auto-apply defaults, minimal prompts.
 
-    Steps:
-      1. Welcome banner
-      2. Check for existing config
-      3. Migration detection (ONB-08)
-      4. Provider selection with grouped checkbox (ONB-02)
-      5. Per-provider key collection + validation (ONB-03 + ONB-10)
-      6. Channel selection
-      7. Per-channel setup (ONB-05, ONB-06)
-      8. Generate model_mappings
-      9. Write config (ONB-07) and show summary panel
+    Handles Step 4 (provider selection) and Step 5 (key collection) only.
+    Channel selection defaults to none (can be added later).
     """
-    # --- Step 1: Welcome banner ---
-    console.print(Panel("[bold blue]Synapse-OSS Setup Wizard[/]", expand=False))
-    console.print("This wizard will configure your LLM providers and messaging channels.")
+    _print("\n[cyan]QuickStart mode: minimal prompts, sensible defaults applied.[/]")
 
-    # --- Step 2: Check for existing config ---
-    data_root = Path(os.environ.get("SYNAPSE_HOME", Path.home() / ".synapse"))
-    config_path = data_root / "synapse.json"
-    if config_path.exists():
-        ans = questionary.confirm("synapse.json already exists. Reconfigure?", default=False).ask()
-        if not ans:
-            raise typer.Exit(0)
+    # --- Step 4: Provider selection ---
+    try:
+        import questionary  # noqa: PLC0415
 
-    # --- Step 3: Migration detection (ONB-08) ---
-    detected = _check_for_openclaw()
-    if detected:
-        console.print("[yellow]Found existing ~/.openclaw/ data.[/]")
-        do_migrate = questionary.confirm("Migrate data to ~/.synapse/ now?", default=True).ask()
-        if do_migrate is None:
-            raise typer.Exit(1)  # Ctrl+C
-        if do_migrate:
-            _run_migration(detected, data_root)
+        choices: list = []
+        for group in PROVIDER_GROUPS:
+            choices.append(questionary.Separator(group["separator"]))
+            for p in group["providers"]:
+                choices.append(questionary.Choice(p["label"], value=p["key"]))
+    except ImportError:
+        choices = [p["key"] for group in PROVIDER_GROUPS for p in group["providers"]]
 
-    # --- Step 4: Provider selection (ONB-02) ---
-    choices: list = []
-    for group in PROVIDER_GROUPS:
-        choices.append(questionary.Separator(group["separator"]))
-        for p in group["providers"]:
-            choices.append(questionary.Choice(p["label"], value=p["key"]))
-
-    selected_providers = questionary.checkbox(
+    selected_providers = prompter.multiselect(  # type: ignore[attr-defined]
         "Select LLM providers to configure (Space to toggle, Enter to confirm):",
         choices=choices,
-    ).ask()
+    )
 
-    if selected_providers is None:
-        console.print("[yellow]Aborted.[/]")
-        raise typer.Exit(1)
     if not selected_providers:
-        console.print("[yellow]No providers selected. Exiting.[/]")
+        _print("[yellow]No providers selected. Exiting.[/]")
         raise typer.Exit(0)
 
-    # --- Step 5: Per-provider key collection + validation (ONB-03 + ONB-10) ---
-    config: dict = {"providers": {}, "model_mappings": {}, "channels": {}}
+    # --- Step 5: Per-provider key collection ---
+    _collect_provider_keys(prompter, config, selected_providers)
 
+
+# ---------------------------------------------------------------------------
+# Interactive wizard — Advanced flow
+# ---------------------------------------------------------------------------
+
+
+def _run_advanced_flow(
+    prompter: "object",
+    config: dict,
+    data_root: Path,
+) -> tuple[list, Path]:
+    """Advanced sub-flow: prompts for workspace dir and all settings.
+
+    Returns:
+        Tuple of (selected_channels, workspace_dir).
+    """
+    _print("\n[cyan]Advanced mode: all settings exposed.[/]")
+
+    # --- Workspace directory prompt ---
+    default_workspace = str(data_root / "workspace")
+    workspace_raw = prompter.text(  # type: ignore[attr-defined]
+        "Agent workspace directory:", default=default_workspace
+    )
+    workspace_dir = Path(workspace_raw) if workspace_raw else data_root / "workspace"
+
+    # --- Step 4: Provider selection ---
+    try:
+        import questionary  # noqa: PLC0415
+
+        choices: list = []
+        for group in PROVIDER_GROUPS:
+            choices.append(questionary.Separator(group["separator"]))
+            for p in group["providers"]:
+                choices.append(questionary.Choice(p["label"], value=p["key"]))
+    except ImportError:
+        choices = [p["key"] for group in PROVIDER_GROUPS for p in group["providers"]]
+
+    selected_providers = prompter.multiselect(  # type: ignore[attr-defined]
+        "Select LLM providers to configure (Space to toggle, Enter to confirm):",
+        choices=choices,
+    )
+
+    if not selected_providers:
+        _print("[yellow]No providers selected. Exiting.[/]")
+        raise typer.Exit(0)
+
+    # --- Step 5: Per-provider key collection ---
+    _collect_provider_keys(prompter, config, selected_providers)
+
+    # --- Step 6: Channel selection ---
+    try:
+        import questionary  # noqa: PLC0415
+
+        channel_choices = [
+            questionary.Choice("WhatsApp (QR code scan required)", value="whatsapp"),
+            questionary.Choice("Telegram (bot token)", value="telegram"),
+            questionary.Choice("Discord (bot token + MESSAGE_CONTENT intent)", value="discord"),
+            questionary.Choice("Slack (xoxb- + xapp- tokens)", value="slack"),
+        ]
+    except ImportError:
+        channel_choices = ["whatsapp", "telegram", "discord", "slack"]
+
+    selected_channels = prompter.multiselect(  # type: ignore[attr-defined]
+        "Select messaging channels to configure (optional — can be added later):",
+        choices=channel_choices,
+    )
+
+    return selected_channels, workspace_dir
+
+
+# ---------------------------------------------------------------------------
+# Provider key collection (shared between QuickStart and Advanced)
+# ---------------------------------------------------------------------------
+
+
+def _collect_provider_keys(
+    prompter: "object",
+    config: dict,
+    selected_providers: list,
+) -> None:
+    """Collect API keys/tokens for each selected provider (Steps 5/ONB-03)."""
     for provider in selected_providers:
-        console.print(f"\n[bold cyan]--- {provider} ---[/]")
+        _print(f"\n[bold cyan]--- {provider} ---[/]")
 
         # ONB-10: GitHub Copilot — device flow instead of password prompt
         if provider == "github_copilot":
@@ -342,55 +522,68 @@ def _run_interactive() -> None:  # noqa: C901 — linear wizard, complexity is i
             if token:
                 config["providers"]["github_copilot"] = {"token": token}
             else:
-                console.print("[yellow]  Skipping GitHub Copilot (auth failed or timed out).[/]")
+                _print("[yellow]  Skipping GitHub Copilot (auth failed or timed out).[/]")
             continue
 
         # Ollama — api_base + httpx health check
         if provider == "ollama":
-            api_base = questionary.text("Ollama api_base:", default="http://localhost:11434").ask()
-            if api_base is None:
-                continue
-            with console.status(f"[yellow]Checking Ollama at {api_base}...[/]"):
+            api_base = prompter.text(  # type: ignore[attr-defined]
+                "Ollama api_base:", default="http://localhost:11434"
+            )
+            if _RICH_AVAILABLE and console is not None:
+                with console.status(f"[yellow]Checking Ollama at {api_base}...[/]"):
+                    result = validate_ollama(api_base)
+            else:
+                _print(f"Checking Ollama at {api_base}...")
                 result = validate_ollama(api_base)
             if result.ok:
-                console.print(f"  [green]Ollama {result.detail}[/]")
+                _print(f"  [green]Ollama {result.detail}[/]")
                 config["providers"]["ollama"] = {"api_base": api_base}
                 # --- Ollama model discovery preview ---
                 try:
-                    from sci_fi_dashboard.models_catalog import discover_ollama_models
+                    from sci_fi_dashboard.models_catalog import (
+                        discover_ollama_models,  # noqa: PLC0415
+                    )
 
-                    with console.status("[yellow]Discovering installed models...[/]"):
+                    if _RICH_AVAILABLE and console is not None:
+                        with console.status("[yellow]Discovering installed models...[/]"):
+                            ollama_models = asyncio.run(discover_ollama_models(api_base))
+                    else:
                         ollama_models = asyncio.run(discover_ollama_models(api_base))
                     if ollama_models:
-                        tbl = Table(title="Installed Ollama Models")
-                        tbl.add_column("Model Name")
-                        tbl.add_column("Context Window")
-                        for m in ollama_models:
-                            ctx = (
-                                f"{m.context_window // 1024}k"
-                                if m.context_window > 0
-                                else "unknown"
-                            )
-                            tbl.add_row(m.name, ctx)
-                        console.print(tbl)
+                        if _RICH_AVAILABLE and Table is not None and console is not None:
+                            tbl = Table(title="Installed Ollama Models")
+                            tbl.add_column("Model Name")
+                            tbl.add_column("Context Window")
+                            for m in ollama_models:
+                                ctx = (
+                                    f"{m.context_window // 1024}k"
+                                    if m.context_window > 0
+                                    else "unknown"
+                                )
+                                tbl.add_row(m.name, ctx)
+                            console.print(tbl)
+                        else:
+                            for m in ollama_models:
+                                _print(f"  {m.name}")
                     else:
-                        console.print(
+                        _print(
                             "  [yellow]No models found — pull one with: ollama pull llama3.3[/]"
                         )
-                except Exception:
-                    console.print("  [yellow]Could not discover Ollama models (non-fatal).[/]")
+                except Exception:  # noqa: BLE001
+                    _print("  [yellow]Could not discover Ollama models (non-fatal).[/]")
             else:
-                console.print(f"  [red]Ollama not reachable: {result.error}[/]")
-                console.print("  Tip: Start Ollama first (https://ollama.com) then re-run.")
+                _print(f"  [red]Ollama not reachable: {result.error}[/]")
+                _print("  Tip: Start Ollama first (https://ollama.com) then re-run.")
             continue
 
         # vLLM — api_base only (no validation call)
         if provider == "vllm":
-            api_base = questionary.text("vLLM api_base:").ask()
-            if api_base is None:
+            api_base = prompter.text("vLLM api_base:")  # type: ignore[attr-defined]
+            if not api_base:
                 continue
             config["providers"]["vllm"] = {"api_base": api_base}
-            console.print(
+            _print(
                 "  [green]vLLM configured "
                 "(connectivity not validated — check /health manually).[/]"
             )
@@ -398,27 +591,31 @@ def _run_interactive() -> None:  # noqa: C901 — linear wizard, complexity is i
 
         # AWS Bedrock — 3 values before validation
         if provider == "bedrock":
-            aws_key = questionary.password("AWS Access Key ID (AKIA...):").ask()
-            aws_secret = questionary.password("AWS Secret Access Key:").ask()
-            aws_region = questionary.text("AWS Region:", default="us-east-1").ask()
+            aws_key = prompter.text(  # type: ignore[attr-defined]
+                "AWS Access Key ID (AKIA...):", password=True
+            )
+            aws_secret = prompter.text("AWS Secret Access Key:", password=True)  # type: ignore[attr-defined]
+            aws_region = prompter.text("AWS Region:", default="us-east-1")  # type: ignore[attr-defined]
             if not all([aws_key, aws_secret, aws_region]):
                 continue
-            # Temporarily set env vars so litellm can pick them up
-            os.environ["AWS_ACCESS_KEY_ID"] = aws_key  # type: ignore[arg-type]
-            os.environ["AWS_SECRET_ACCESS_KEY"] = aws_secret  # type: ignore[arg-type]
-            os.environ["AWS_DEFAULT_REGION"] = aws_region  # type: ignore[arg-type]
-            with console.status("[yellow]Validating Bedrock credentials...[/]"):
-                result = validate_provider("bedrock", aws_key)  # env vars drive the call
+            os.environ["AWS_ACCESS_KEY_ID"] = aws_key
+            os.environ["AWS_SECRET_ACCESS_KEY"] = aws_secret
+            os.environ["AWS_DEFAULT_REGION"] = aws_region
+            if _RICH_AVAILABLE and console is not None:
+                with console.status("[yellow]Validating Bedrock credentials...[/]"):
+                    result = validate_provider("bedrock", aws_key)
+            else:
+                result = validate_provider("bedrock", aws_key)
             if result.ok or result.error == "quota_exceeded":
                 quota_note = " (quota exceeded — key accepted)" if result.error else ""
-                console.print(f"  [green]Bedrock credentials valid[/]{quota_note}")
+                _print(f"  [green]Bedrock credentials valid[/]{quota_note}")
                 config["providers"]["bedrock"] = {
                     "aws_access_key_id": aws_key,
                     "aws_secret_access_key": aws_secret,
                     "aws_region_name": aws_region,
                 }
             else:
-                console.print(f"  [red]Bedrock validation failed: {result.error}[/]")
+                _print(f"  [red]Bedrock validation failed: {result.error}[/]")
             continue
 
         # Standard cloud provider: password prompt + validate_provider()
@@ -428,53 +625,140 @@ def _run_interactive() -> None:  # noqa: C901 — linear wizard, complexity is i
             prompt_label = f"Enter {provider} API key [{env_var}]" + (
                 f" (attempt {attempt + 1}/{MAX_KEY_ATTEMPTS}):" if attempt > 0 else ":"
             )
-            key = questionary.password(prompt_label).ask()
-            if key is None:
-                break  # Ctrl+C — skip this provider
+            key = prompter.text(prompt_label, password=True)  # type: ignore[attr-defined]
+            if not key:
+                break  # empty / cancelled — skip this provider
             if not key.strip():
                 continue  # empty input — re-prompt
 
-            with console.status(f"[yellow]Validating {provider} key...[/]", spinner="dots"):
+            if _RICH_AVAILABLE and console is not None:
+                with console.status(
+                    f"[yellow]Validating {provider} key...[/]", spinner="dots"
+                ):
+                    result = validate_provider(provider, key.strip())
+            else:
                 result = validate_provider(provider, key.strip())
 
             if result.ok:
                 quota_note = (
                     " (quota exceeded — key accepted)" if result.error == "quota_exceeded" else ""
                 )
-                console.print(f"  [green]✓[/] {provider} key valid{quota_note}")
+                _print(f"  [green]checkmark[/] {provider} key valid{quota_note}")
                 config["providers"][provider] = {"api_key": key.strip()}
                 break
             elif result.error == "quota_exceeded":
-                console.print("  [yellow]  Key valid but quota exhausted — saving key.[/]")
+                _print("  [yellow]  Key valid but quota exhausted — saving key.[/]")
                 config["providers"][provider] = {"api_key": key.strip()}
                 break
             elif result.error in ("timeout", "network_error") and attempt < MAX_KEY_ATTEMPTS - 1:
-                console.print(
+                _print(
                     f"  [yellow]  {result.error} — retrying in {NETWORK_RETRY_DELAY}s...[/]"
                 )
                 time.sleep(NETWORK_RETRY_DELAY)
             else:
-                console.print(
-                    f"  [red]✗[/] {provider}: {result.error} — {result.detail or 'check key'}"
+                _print(
+                    f"  [red]x[/] {provider}: {result.error} — {result.detail or 'check key'}"
                 )
 
-    # --- Step 6: Channel selection (ONB-04) ---
-    channel_choices = [
-        questionary.Choice("WhatsApp (QR code scan required)", value="whatsapp"),
-        questionary.Choice("Telegram (bot token)", value="telegram"),
-        questionary.Choice("Discord (bot token + MESSAGE_CONTENT intent)", value="discord"),
-        questionary.Choice("Slack (xoxb- + xapp- tokens)", value="slack"),
-    ]
-    selected_channels = questionary.checkbox(
-        "Select messaging channels to configure (optional — can be added later):",
-        choices=channel_choices,
-    ).ask()
-    if selected_channels is None:
-        console.print("[yellow]Aborted.[/]")
-        raise typer.Exit(1)
+
+# ---------------------------------------------------------------------------
+# Interactive wizard — main entry point
+# ---------------------------------------------------------------------------
+
+
+def _run_interactive(  # noqa: C901 — linear wizard, complexity is intentional
+    prompter: "object | None" = None,
+    flow: str = "quickstart",
+    reset: str | None = None,
+) -> None:
+    """Full interactive wizard flow.
+
+    Steps:
+      1. Welcome banner
+      2. Check for existing config
+      2b. Flow selection (QuickStart vs Advanced) — if not passed via arg
+      3. Migration detection (ONB-08)
+      4. Provider selection (ONB-02)  [via flow sub-function]
+      5. Per-provider key collection (ONB-03 + ONB-10) [via flow sub-function]
+      6. Channel selection  [advanced only]
+      7. Per-channel setup (ONB-05, ONB-06)
+      7b. Workspace seeding
+      8. Gateway configuration
+      9. Generate model_mappings
+      10. Write config (ONB-07)
+      11. Daemon install + health poll
+      12. Show summary panel
+    """
+    from cli.wizard_prompter import QuestionaryPrompter, WizardCancelledError  # noqa: PLC0415
+
+    if prompter is None:
+        prompter = QuestionaryPrompter()
+
+    try:
+        _run_interactive_impl(prompter=prompter, flow=flow, reset=reset)
+    except WizardCancelledError:
+        _print("[yellow]Wizard cancelled.[/]")
+        raise typer.Exit(1) from None
+
+
+def _run_interactive_impl(
+    prompter: "object",
+    flow: str,
+    reset: str | None,
+) -> None:  # noqa: C901 — linear wizard, complexity is intentional
+    """Inner implementation of the interactive wizard (separated for exception isolation)."""
+    # --- Step 1: Welcome banner ---
+    prompter.intro("Synapse-OSS Setup Wizard")  # type: ignore[attr-defined]
+    _print("This wizard will configure your LLM providers and messaging channels.")
+
+    # --- Data root ---
+    data_root = Path(os.environ.get("SYNAPSE_HOME", Path.home() / ".synapse"))
+
+    # --- Handle reset ---
+    if reset is not None:
+        _handle_reset(reset, data_root)
+
+    # --- Step 2: Check for existing config ---
+    config_path = data_root / "synapse.json"
+    if config_path.exists():
+        ans = prompter.confirm(  # type: ignore[attr-defined]
+            "synapse.json already exists. Reconfigure?", default=False
+        )
+        if not ans:
+            raise typer.Exit(0)
+
+    # --- Step 2b: Flow selection (only if "quickstart" is default but user may want advanced) ---
+    # workspace_dir default; advanced flow may override it in _run_advanced_flow
+    workspace_dir = data_root / "workspace"
+
+    # --- Step 3: Migration detection (ONB-08) ---
+    detected = _check_for_openclaw()
+    if detected:
+        _print("[yellow]Found existing ~/.openclaw/ data.[/]")
+        do_migrate = prompter.confirm(  # type: ignore[attr-defined]
+            "Migrate data to ~/.synapse/ now?", default=True
+        )
+        if do_migrate:
+            _run_migration(detected, data_root)
+
+    # --- Steps 4-6: Flow-specific provider + channel collection ---
+    config: dict = {
+        "providers": {},
+        "model_mappings": {},
+        "channels": {},
+        "session": {"dmScope": _ONBOARDING_DEFAULT_DM_SCOPE, "identityLinks": {}},
+    }
+    selected_channels: list = []
+
+    if flow == "quickstart":
+        _run_quickstart_flow(prompter=prompter, config=config, data_root=data_root)
+        # QuickStart: no channel prompt (user can add later)
+    else:
+        selected_channels, workspace_dir = _run_advanced_flow(
+            prompter=prompter, config=config, data_root=data_root
+        )
 
     # --- Step 7: Per-channel setup (ONB-05, ONB-06) ---
-    # Resolve bridge_dir relative to this file or workspace root
     _this_file = Path(__file__).resolve()
     bridge_dir = _this_file.parent.parent.parent / "baileys-bridge"
     if not bridge_dir.exists():
@@ -491,22 +775,116 @@ def _run_interactive() -> None:  # noqa: C901 — linear wizard, complexity is i
         if ch_cfg is not None:
             config["channels"][ch] = ch_cfg
 
-    # --- Step 8: Generate model_mappings ---
+    # --- Step 7b: Workspace seeding ---
+    try:
+        from cli.workspace_seeding import ensure_agent_workspace  # noqa: PLC0415
+
+        seeding_state = ensure_agent_workspace(workspace_dir, ensure_bootstrap_files=True)
+        if seeding_state.get("bootstrapSeededAt") and not seeding_state.get("setupCompletedAt"):
+            prompter.note(  # type: ignore[attr-defined]
+                f"Agent workspace seeded at {workspace_dir}\n"
+                "Bootstrap templates written — agent will complete identity setup"
+                " on first message.",
+                title="Workspace Ready",
+            )
+    except Exception:  # noqa: BLE001
+        _print("[yellow]Workspace seeding skipped (non-fatal).[/]")
+
+    # --- Step 8: Gateway configuration ---
+    from cli.gateway_steps import configure_gateway  # noqa: PLC0415
+
+    existing_gw = {}  # Fresh install — no existing gateway config
+    gw_cfg = configure_gateway(
+        flow=flow,
+        existing_gateway=existing_gw,
+        non_interactive=False,
+        prompter=prompter,
+    )
+    config["gateway"] = gw_cfg
+
+    # --- Step 9: Generate model_mappings ---
     config["model_mappings"] = _build_model_mappings(list(config["providers"].keys()))
 
-    # --- Step 9: Write config (ONB-07) ---
-
+    # --- Step 10: Write config (ONB-07) ---
     write_config(data_root, config)
     cfg_file = data_root / "synapse.json"
-    mode = oct(cfg_file.stat().st_mode & 0o777)
-    console.print(
-        Panel(
-            f"[bold green]Setup complete![/]\n\n"
-            f"Config: {cfg_file}\n"
-            f"Permissions: {mode}\n"
-            f"Providers: {', '.join(config['providers'].keys()) or '(none)'}\n"
-            f"Channels: {', '.join(config['channels'].keys()) or '(none)'}",
-            title="Synapse-OSS Ready",
-            expand=False,
-        )
+
+    # --- Step 11: Daemon install ---
+    _wizard_daemon_install(prompter=prompter, config=config, data_root=data_root, flow=flow)
+
+    # --- Step 12: Summary panel ---
+    import contextlib  # noqa: PLC0415
+
+    mode_str = ""
+    if sys.platform != "win32":
+        with contextlib.suppress(OSError):
+            mode_str = f"\nPermissions: {oct(cfg_file.stat().st_mode & 0o777)}"
+
+    summary = (
+        f"[bold green]Setup complete![/]\n\n"
+        f"Config: {cfg_file}{mode_str}\n"
+        f"Providers: {', '.join(config['providers'].keys()) or '(none)'}\n"
+        f"Channels: {', '.join(config['channels'].keys()) or '(none)'}"
     )
+
+    if _RICH_AVAILABLE and Panel is not None and console is not None:
+        console.print(Panel(summary, title="Synapse-OSS Ready", expand=False))
+    else:
+        _print(summary)
+
+
+# ---------------------------------------------------------------------------
+# Daemon install step (final wizard step)
+# ---------------------------------------------------------------------------
+
+
+def _wizard_daemon_install(
+    prompter: "object",
+    config: dict,
+    data_root: Path,
+    flow: str,
+) -> None:
+    """Optionally install gateway as a background daemon (final wizard step)."""
+    try:
+        from synapse_config import SynapseConfig  # noqa: PLC0415
+
+        from cli.daemon import build_gateway_install_plan, resolve_gateway_service  # noqa: PLC0415
+
+        do_install: bool
+        if flow == "quickstart":
+            do_install = True
+        else:
+            do_install = prompter.confirm(  # type: ignore[attr-defined]
+                "Install gateway as background service?", default=True
+            )
+
+        if not do_install:
+            return
+
+        sc = SynapseConfig.load()
+        svc = resolve_gateway_service()
+        opts = build_gateway_install_plan(sc)
+        svc.install(opts)
+        _print("[green]Gateway daemon installed.[/]")
+
+        # Health poll
+        try:
+            from cli.health import wait_for_gateway_reachable  # noqa: PLC0415
+
+            port = config.get("gateway", {}).get("port", 8000)
+            token = config.get("gateway", {}).get("token")
+            reachable = wait_for_gateway_reachable(port=port, token=token, deadline_secs=15.0)
+            if reachable:
+                _print("[green]Gateway is reachable — setup complete![/]")
+            else:
+                _print(
+                    "[yellow]Gateway did not respond within 15s — it may still be starting. "
+                    "Run: synapse health[/]"
+                )
+        except Exception:  # noqa: BLE001
+            pass  # Health check is non-fatal
+
+    except NotImplementedError:
+        _print("[yellow]Daemon install not supported on this platform (skipped).[/]")
+    except Exception as exc:  # noqa: BLE001
+        _print(f"[yellow]Daemon install failed (non-fatal): {exc}[/]")

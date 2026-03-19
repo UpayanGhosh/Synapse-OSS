@@ -1,5 +1,6 @@
 """
-channel_steps.py — Per-channel credential collection and validation for the Synapse onboarding wizard.
+channel_steps.py — Per-channel credential collection and validation for the Synapse onboarding
+wizard.
 
 Provides:
   - CHANNEL_LIST               : flat list of supported channel keys
@@ -457,15 +458,20 @@ def run_whatsapp_qr_flow(
 # ---------------------------------------------------------------------------
 
 
-def setup_telegram(non_interactive: bool = False) -> "dict | None":
+def setup_telegram(
+    non_interactive: bool = False,
+    prompter: "object | None" = None,
+) -> "dict | None":
     """
     Collect and validate a Telegram bot token.
 
-    Interactive mode: prompts user via questionary. Skippable.
+    Interactive mode: prompts user via questionary (or via prompter if provided). Skippable.
     Non-interactive mode: reads SYNAPSE_TELEGRAM_TOKEN env var. Returns None if absent.
 
     Args:
         non_interactive: If True, skip interactive prompts and use env vars.
+        prompter:        Optional WizardPrompter instance. When provided, all interactive
+                         prompts are delegated to it instead of calling questionary directly.
 
     Returns:
         {"token": str} on success, None if skipped or validation fails.
@@ -482,13 +488,23 @@ def setup_telegram(non_interactive: bool = False) -> "dict | None":
         token = os.environ.get("SYNAPSE_TELEGRAM_TOKEN", "").strip()
         if not token:
             return None
+    elif prompter is not None:
+        # Delegate to WizardPrompter
+        choice = prompter.select("Telegram:", choices=["Configure", "Skip"])  # type: ignore[attr-defined]
+        if choice != "Configure":
+            return None
+        token = prompter.text("Enter Telegram bot token:", password=True)  # type: ignore[attr-defined]
+        if not token:
+            return None
+        token = token.strip()
     else:
         # Lazy import — questionary not needed for non-interactive or unit tests
         try:
             import questionary  # type: ignore[import]
         except ImportError:
             _print(
-                "[yellow]questionary not installed — cannot run interactive Telegram setup.[/yellow]"
+                "[yellow]questionary not installed — "
+                "cannot run interactive Telegram setup.[/yellow]"
             )
             return None
 
@@ -532,11 +548,14 @@ ACTION REQUIRED — Discord MESSAGE_CONTENT Intent:
   Without this, the bot will receive empty messages and disable itself."""
 
 
-def setup_discord(non_interactive: bool = False) -> "dict | None":
+def setup_discord(
+    non_interactive: bool = False,
+    prompter: "object | None" = None,
+) -> "dict | None":
     """
     Collect and validate a Discord bot token. Shows MESSAGE_CONTENT intent instruction.
 
-    Interactive mode: prompts user via questionary. Skippable.
+    Interactive mode: prompts user via questionary (or via prompter if provided). Skippable.
     Non-interactive mode: reads SYNAPSE_DISCORD_TOKEN env var. Returns None if absent.
 
     After successful validation, always displays the MESSAGE_CONTENT intent instruction.
@@ -544,6 +563,7 @@ def setup_discord(non_interactive: bool = False) -> "dict | None":
 
     Args:
         non_interactive: If True, skip interactive prompts and use env vars.
+        prompter:        Optional WizardPrompter instance for test injection.
 
     Returns:
         {"token": str, "allowed_channel_ids": list[int]} on success, None if skipped.
@@ -564,6 +584,15 @@ def setup_discord(non_interactive: bool = False) -> "dict | None":
         raw_ids = os.environ.get("SYNAPSE_DISCORD_CHANNEL_IDS", "").strip()
         if raw_ids:
             channel_ids = [int(x.strip()) for x in raw_ids.split(",") if x.strip().isdigit()]
+    elif prompter is not None:
+        choice = prompter.select("Discord:", choices=["Configure", "Skip"])  # type: ignore[attr-defined]
+        if choice != "Configure":
+            return None
+        token = prompter.text("Enter Discord bot token:", password=True)  # type: ignore[attr-defined]
+        if not token:
+            return None
+        token = token.strip()
+        channel_ids = []
     else:
         try:
             import questionary  # type: ignore[import]
@@ -639,15 +668,19 @@ def setup_discord(non_interactive: bool = False) -> "dict | None":
 # ---------------------------------------------------------------------------
 
 
-def setup_slack(non_interactive: bool = False) -> "dict | None":
+def setup_slack(
+    non_interactive: bool = False,
+    prompter: "object | None" = None,
+) -> "dict | None":
     """
     Collect and validate a Slack bot+app token pair.
 
-    Interactive mode: prompts user via questionary. Skippable.
+    Interactive mode: prompts user via questionary (or via prompter if provided). Skippable.
     Non-interactive mode: reads SYNAPSE_SLACK_BOT_TOKEN and SYNAPSE_SLACK_APP_TOKEN.
 
     Args:
         non_interactive: If True, skip interactive prompts and use env vars.
+        prompter:        Optional WizardPrompter instance for test injection.
 
     Returns:
         {"bot_token": str, "app_token": str} on success, None if skipped or invalid.
@@ -665,6 +698,23 @@ def setup_slack(non_interactive: bool = False) -> "dict | None":
         app_token = os.environ.get("SYNAPSE_SLACK_APP_TOKEN", "").strip()
         if not bot_token or not app_token:
             return None
+    elif prompter is not None:
+        choice = prompter.select("Slack:", choices=["Configure", "Skip"])  # type: ignore[attr-defined]
+        if choice != "Configure":
+            return None
+        _print(
+            "Bot token: found in Slack App → OAuth & Permissions → Bot User OAuth Token\n"
+            "App token: found in Slack App → Basic Information → App-Level Tokens\n"
+            "          (must have connections:write scope)"
+        )
+        bot_token = prompter.text("Enter Slack bot token (xoxb-...):", password=True)  # type: ignore[attr-defined]
+        if not bot_token:
+            return None
+        bot_token = bot_token.strip()
+        app_token = prompter.text("Enter Slack app token (xapp-...):", password=True)  # type: ignore[attr-defined]
+        if not app_token:
+            return None
+        app_token = app_token.strip()
     else:
         try:
             import questionary  # type: ignore[import]
@@ -721,12 +771,13 @@ def setup_slack(non_interactive: bool = False) -> "dict | None":
 def setup_whatsapp(
     bridge_dir: "str | Path",
     non_interactive: bool = False,
+    prompter: "object | None" = None,
 ) -> "dict | None":
     """
     Configure the WhatsApp channel.
 
-    Interactive mode: runs the full QR pairing flow. Returns config dict if paired,
-    None if skipped or flow failed.
+    Interactive mode: runs the full QR pairing flow (or via prompter if provided).
+    Returns config dict if paired, None if skipped or flow failed.
 
     Non-interactive mode: WhatsApp QR cannot be automated. Returns the config dict
     immediately (enables the channel so it can be paired later at runtime) if the
@@ -737,6 +788,7 @@ def setup_whatsapp(
     Args:
         bridge_dir:       Path to the baileys-bridge directory.
         non_interactive:  If True, skip QR flow and return config without validation.
+        prompter:         Optional WizardPrompter instance for test injection.
 
     Returns:
         {"enabled": True, "bridge_port": BRIDGE_PORT} on success or non-interactive,
@@ -757,18 +809,26 @@ def setup_whatsapp(
         policy = _prompt_dm_policy("WhatsApp", True, "SYNAPSE_WHATSAPP_DM_POLICY", _print)
         return {"enabled": True, "bridge_port": BRIDGE_PORT, "dm_policy": policy}
 
-    # Interactive: skip gate
-    try:
-        import questionary  # type: ignore[import]
-    except ImportError:
-        _print(
-            "[yellow]questionary not installed — cannot run interactive WhatsApp setup.[/yellow]"
-        )
-        return None
+    if prompter is not None:
+        choice = prompter.select("WhatsApp:", choices=["Configure (scan QR now)", "Skip"])  # type: ignore[attr-defined]
+        if choice != "Configure (scan QR now)":
+            return None
+    else:
+        # Interactive: skip gate via questionary
+        try:
+            import questionary  # type: ignore[import]
+        except ImportError:
+            _print(
+                "[yellow]questionary not installed — "
+                "cannot run interactive WhatsApp setup.[/yellow]"
+            )
+            return None
 
-    choice = questionary.select("WhatsApp:", choices=["Configure (scan QR now)", "Skip"]).ask()
-    if choice != "Configure (scan QR now)":
-        return None
+        choice = questionary.select(
+            "WhatsApp:", choices=["Configure (scan QR now)", "Skip"]
+        ).ask()
+        if choice != "Configure (scan QR now)":
+            return None
 
     _print("Starting WhatsApp QR pairing flow...")
     success = run_whatsapp_qr_flow(bridge_dir, console=console)
