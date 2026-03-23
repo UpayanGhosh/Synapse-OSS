@@ -814,3 +814,58 @@ def test_ensure_agent_workspace_legacy_git_dir_sets_completed_at(tmp_path):
     assert not (workspace / "BOOTSTRAP.md").exists(), (
         "BOOTSTRAP.md must NOT be created for a legacy (.git) workspace"
     )
+
+
+# ===========================================================================
+# ONB-16: Ollama model validation
+# ===========================================================================
+
+
+def test_validate_ollama_model_not_found():
+    """ONB-16: validate_ollama returns model_not_found when requested model is not downloaded."""
+    from cli.provider_steps import validate_ollama
+
+    version_resp = MagicMock()
+    version_resp.status_code = 200
+    version_resp.json.return_value = {"version": "0.5.0"}
+
+    tags_resp = MagicMock()
+    tags_resp.status_code = 200
+    tags_resp.json.return_value = {
+        "models": [
+            {"name": "mistral:latest"},
+            {"name": "phi3:mini"},
+        ]
+    }
+
+    with patch("httpx.get", side_effect=[version_resp, tags_resp]):
+        result = validate_ollama(model="llama3.3")
+
+    assert result.ok is True, "Ollama is reachable — ok should still be True"
+    assert result.error == "model_not_found", f"Expected model_not_found, got: {result.error}"
+    assert "llama3.3" in (result.detail or ""), "detail must mention the missing model name"
+    assert "ollama pull llama3.3" in (result.detail or ""), "detail must include pull command"
+
+
+def test_validate_ollama_model_found():
+    """ONB-16: validate_ollama returns ok=True with no error when model is present."""
+    from cli.provider_steps import validate_ollama
+
+    version_resp = MagicMock()
+    version_resp.status_code = 200
+    version_resp.json.return_value = {"version": "0.5.0"}
+
+    tags_resp = MagicMock()
+    tags_resp.status_code = 200
+    tags_resp.json.return_value = {
+        "models": [
+            {"name": "llama3.3:latest"},
+            {"name": "mistral:latest"},
+        ]
+    }
+
+    with patch("httpx.get", side_effect=[version_resp, tags_resp]):
+        result = validate_ollama(model="llama3.3")
+
+    assert result.ok is True
+    assert result.error != "model_not_found", "Model is present — must not return model_not_found"
