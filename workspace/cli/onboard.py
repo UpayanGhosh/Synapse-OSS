@@ -247,6 +247,9 @@ def _run_non_interactive(
     write_config(data_root, config)
     typer.echo(f"Config written to {data_root / 'synapse.json'}")
 
+    # --- Environment validation ---
+    _validate_environment(config)
+
 
 # ---------------------------------------------------------------------------
 # Reset handler
@@ -831,6 +834,105 @@ def _run_interactive_impl(
         console.print(Panel(summary, title="Synapse-OSS Ready", expand=False))
     else:
         _print(summary)
+
+    # --- Step 13: Environment validation ---
+    _validate_environment(config)
+
+
+# ---------------------------------------------------------------------------
+# Environment validation (post-config check)
+# ---------------------------------------------------------------------------
+
+
+def _validate_environment(config: dict) -> None:
+    """Run a lightweight environment check after onboarding config is written.
+
+    Checks:
+      1. sqlite-vec native extension loads correctly
+      2. python-magic / python-magic-bin is available
+      3. Required channel SDK present for each configured channel
+      4. Ollama reachable if a local model is configured
+
+    Failures print actionable fix commands rather than stack traces.
+    """
+    _print("\n[bold cyan]Checking environment...[/]")
+
+    issues: list[str] = []
+
+    # --- Check 1: sqlite-vec ---
+    try:
+        import sqlite3  # noqa: PLC0415
+        import sqlite_vec  # noqa: PLC0415
+
+        conn = sqlite3.connect(":memory:")
+        conn.enable_load_extension(True)
+        sqlite_vec.load(conn)
+        conn.enable_load_extension(False)
+        _print("  [green]✓[/] sqlite-vec: OK")
+    except ImportError:
+        _print("  [red]✗[/] sqlite-vec: not installed")
+        issues.append("  Fix: pip install sqlite-vec")
+    except Exception as exc:  # noqa: BLE001
+        _print(f"  [red]✗[/] sqlite-vec: failed to load ({exc})")
+        issues.append("  Fix: pip install sqlite-vec  (or reinstall native libs)")
+
+    # --- Check 2: python-magic ---
+    try:
+        import magic  # noqa: PLC0415
+
+        _print("  [green]✓[/] python-magic: OK")
+    except ImportError:
+        _print("  [yellow]![/] python-magic: not installed (media MIME detection degraded)")
+        if sys.platform == "win32":
+            issues.append("  Fix: pip install python-magic-bin")
+        else:
+            issues.append("  Fix: pip install python-magic")
+    except Exception as exc:  # noqa: BLE001
+        _print(f"  [yellow]![/] python-magic: import error ({exc})")
+        if sys.platform == "win32":
+            issues.append("  Fix: pip install python-magic-bin  (Windows requires the -bin variant)")
+        else:
+            issues.append(
+                "  Fix: pip install python-magic"
+                "  (may also need: brew install libmagic  OR  apt install libmagic1)"
+            )
+
+    # --- Check 3: channel SDKs for configured channels ---
+    _CHANNEL_IMPORTS: dict[str, tuple[str, str]] = {
+        "telegram": ("telegram", "pip install python-telegram-bot"),
+        "discord": ("discord", "pip install discord.py"),
+        "slack": ("slack_bolt", "pip install slack-bolt"),
+    }
+    for channel, (module_name, fix_cmd) in _CHANNEL_IMPORTS.items():
+        if channel in config.get("channels", {}):
+            try:
+                __import__(module_name)
+                _print(f"  [green]✓[/] {channel} SDK ({module_name}): OK")
+            except ImportError:
+                _print(f"  [red]✗[/] {channel} SDK ({module_name}): not installed")
+                issues.append(f"  Fix ({channel}): {fix_cmd}")
+
+    # --- Check 4: Ollama reachable if ollama provider configured ---
+    if "ollama" in config.get("providers", {}):
+        from cli.doctor import _check_ollama_reachable  # noqa: PLC0415
+
+        result = _check_ollama_reachable()
+        if result.passed:
+            _print(f"  [green]✓[/] Ollama: reachable ({result.detail})")
+        else:
+            _print(f"  [red]✗[/] Ollama: not reachable ({result.detail})")
+            issues.append(
+                "  Fix (Ollama): start the Ollama service — https://ollama.com"
+                " — then run: synapse doctor"
+            )
+
+    # --- Summary ---
+    if issues:
+        _print("\n[bold yellow]Environment issues detected — fix before running synapse:[/]")
+        for issue in issues:
+            _print(f"[yellow]{issue}[/]")
+    else:
+        _print("  [bold green]All environment checks passed.[/]")
 
 
 # ---------------------------------------------------------------------------
