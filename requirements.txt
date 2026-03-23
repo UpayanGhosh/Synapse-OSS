@@ -1,6 +1,11 @@
 # ============================================================
 # Synapse-OSS — Core Dependencies
 # Install with: pip install -r requirements.txt
+#
+# For channels:  pip install -r requirements-channels.txt
+# For ML/NLP:    pip install -r requirements-ml.txt
+# For optional:  pip install -r requirements-optional.txt
+# For dev tools: pip install -r requirements-dev.txt
 # ============================================================
 
 # --- Web Framework & Server ---
@@ -17,36 +22,9 @@ psutil>=5.9.0
 rich>=13.0.0
 typer[all]>=0.24.0              # CLI framework (onboarding wizard + synapse entry point)
 questionary>=2.1.0              # Interactive prompts: text, password, select, checkbox, confirm
-qrcode>=8.0                     # ASCII QR code rendering (WhatsApp QR in terminal)
 
 # --- Database & Vector Search ---
 sqlite-vec>=0.1.1
-
-# --- Embeddings & NLP ---
-# --- Optional: Local LLM (Ollama CLI must be installed separately from https://ollama.com) ---
-# ollama>=0.1.0
-sentence-transformers>=2.2.0     # Fallback embedding model (all-MiniLM-L6-v2)
-flashtext>=2.7                   # Fast keyword extraction (EntityGate)
-flashrank>=0.2.0                 # Reranking retrieved memories
-
-# --- ML / Toxicity Scoring ---
-torch>=2.0.0                     # PyTorch (Toxic-BERT inference)
-transformers>=4.35.0             # Hugging Face Transformers (Toxic-BERT)
-
-# --- Vector Database (Qdrant) ---
-qdrant-client>=1.6.0
-
-# --- Web Browsing & Scraping ---
-# crawl4ai on Mac/Linux; playwright on Windows (crawl4ai has build failures on Windows)
-crawl4ai>=0.2.0 ; sys_platform != 'win32'   # Headless browser automation -- Mac/Linux only (Windows: fails to install)
-playwright>=1.20.0 ; sys_platform == 'win32' # Windows browser automation -- replaces crawl4ai on Windows
-
-# --- Audio Transcription ---
-groq>=0.4.0                      # Groq Whisper API (voice message transcription)
-
-# --- Media / MIME Detection ---
-python-magic>=0.4.27
-python-magic-bin>=0.4.14 ; sys_platform == "win32"
 
 # --- Configuration ---
 PyYAML>=6.0                      # personas.yaml + language_patterns.yaml parsing
@@ -54,16 +32,3 @@ PyYAML>=6.0                      # personas.yaml + language_patterns.yaml parsin
 # --- Background Workers ---
 schedule>=1.2.0                  # GentleWorker task scheduling
 filelock>=3.12.0                 # File locking for SBS audit and profile writes
-
-# --- Channel SDK Dependencies (install only for channels you use) ---
-python-telegram-bot>=22.0        # Telegram channel adapter (long polling, PTB v22+ manual lifecycle)
-discord.py>=2.4.0                # Discord channel adapter (async client, never client.run())
-slack-bolt>=1.18.0               # Slack channel adapter (AsyncApp + Socket Mode handler)
-slack-sdk>=3.26.0                # Slack Web API client (AsyncWebClient for chat_postMessage)
-aiohttp>=3.9.0                   # Required by slack-bolt AsyncApp
-websockets>=10.0                 # Required by AsyncSocketModeHandler
-
-# --- Google APIs (Optional — Gmail/Calendar integration) ---
-# google-auth>=2.23.0
-# google-auth-oauthlib>=1.1.0
-# google-api-python-client>=2.100.0

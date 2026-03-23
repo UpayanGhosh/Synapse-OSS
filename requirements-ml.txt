@@ -1,0 +1,22 @@
+# ============================================================
+# Synapse-OSS — ML / NLP Dependencies
+# Install with: pip install -r requirements-ml.txt
+#
+# Required for local embeddings, reranking, and toxicity scoring.
+# Skip if using Ollama embeddings only and disabling Toxic-BERT.
+# Core deps required first: pip install -r requirements.txt
+# ============================================================
+
+# --- Embeddings ---
+sentence-transformers>=2.2.0     # Fallback embedding model (all-MiniLM-L6-v2)
+
+# --- Keyword Extraction & Reranking ---
+flashtext>=2.7                   # Fast keyword extraction (EntityGate)
+flashrank>=0.2.0                 # Reranking retrieved memories
+
+# --- ML / Toxicity Scoring ---
+torch>=2.0.0                     # PyTorch (Toxic-BERT inference)
+transformers>=4.35.0             # Hugging Face Transformers (Toxic-BERT)
+
+# --- Audio Transcription ---
+groq>=0.4.0                      # Groq Whisper API (voice message transcription)
