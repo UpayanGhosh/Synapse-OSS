@@ -274,9 +274,9 @@ def _handle_reset(reset_scope: str, data_root: Path) -> None:
         )
         raise typer.Exit(1)
 
-    from datetime import datetime  # noqa: PLC0415
+    from datetime import datetime, timezone  # noqa: PLC0415
 
-    timestamp = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     backup_dir = data_root / "backups" / timestamp
     backup_dir.mkdir(parents=True, exist_ok=True)
 
