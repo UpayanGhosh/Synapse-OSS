@@ -264,12 +264,18 @@ class SystemdUserService(GatewayService):
         self._unit_path.parent.mkdir(parents=True, exist_ok=True)
         self._unit_path.write_text(self._build_unit(opts), encoding="utf-8")
 
-        # Enable linger so the user unit survives logout
-        subprocess.run(
-            ["loginctl", "enable-linger", str(os.getuid())],
-            check=False,
-            capture_output=True,
-        )
+        # Enable linger so the user unit survives logout (nice-to-have; skip if unavailable)
+        try:
+            subprocess.run(
+                ["loginctl", "enable-linger", str(os.getuid())],
+                check=True,
+                capture_output=True,
+            )
+        except (FileNotFoundError, subprocess.CalledProcessError):
+            print(
+                "Warning: loginctl not available — linger not enabled. "
+                "The service may stop after logout on some systems."
+            )
 
         subprocess.run(
             ["systemctl", "--user", "daemon-reload"],
