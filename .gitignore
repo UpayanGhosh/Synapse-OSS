@@ -68,6 +68,10 @@ REDUNDANCY_ARCHIVE_*/
 
 *.txt
 !requirements.txt
+!requirements-channels.txt
+!requirements-ml.txt
+!requirements-optional.txt
+!requirements-dev.txt
 
 # ──────────────────────────────────────────────────────────────
 # Legacy V2 / OpenClaw files — kept locally, not for GitHub

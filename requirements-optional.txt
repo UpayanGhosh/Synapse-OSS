@@ -1,0 +1,20 @@
+# ============================================================
+# Synapse-OSS — Optional Dependencies
+# Install with: pip install -r requirements-optional.txt
+#
+# Requires a running Qdrant server for qdrant-client.
+# Core deps required first: pip install -r requirements.txt
+# ============================================================
+
+# --- Vector Database (Qdrant) ---
+# Requires a separate running Qdrant server (https://qdrant.tech/documentation/quick-start/)
+qdrant-client>=1.6.0
+
+# --- Web Browsing & Scraping ---
+# crawl4ai on Mac/Linux; playwright on Windows (crawl4ai has build failures on Windows)
+crawl4ai>=0.2.0 ; sys_platform != 'win32'    # Headless browser automation — Mac/Linux only
+playwright>=1.20.0 ; sys_platform == 'win32' # Windows browser automation — replaces crawl4ai on Windows
+
+# --- Media / MIME Detection ---
+python-magic>=0.4.27
+python-magic-bin>=0.4.14 ; sys_platform == "win32"

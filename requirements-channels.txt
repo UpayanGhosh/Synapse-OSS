@@ -1,0 +1,24 @@
+# ============================================================
+# Synapse-OSS — Channel SDK Dependencies
+# Install with: pip install -r requirements-channels.txt
+#
+# Install only for the channels you plan to use.
+# Core deps required first: pip install -r requirements.txt
+# ============================================================
+
+# --- Telegram ---
+python-telegram-bot>=22.0        # Telegram channel adapter (long polling, PTB v22+ manual lifecycle)
+
+# --- Discord ---
+discord.py>=2.4.0                # Discord channel adapter (async client, never client.run())
+
+# --- Slack ---
+slack-bolt>=1.18.0               # Slack channel adapter (AsyncApp + Socket Mode handler)
+slack-sdk>=3.26.0                # Slack Web API client (AsyncWebClient for chat_postMessage)
+
+# --- Async HTTP / WebSocket support ---
+aiohttp>=3.9.0                   # Required by slack-bolt AsyncApp
+websockets>=10.0                 # Required by AsyncSocketModeHandler
+
+# --- WhatsApp QR code rendering ---
+qrcode>=8.0                      # ASCII QR code rendering (WhatsApp QR in terminal)
