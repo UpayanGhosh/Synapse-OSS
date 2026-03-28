@@ -165,22 +165,34 @@ REM ============================================================
 echo.
 echo Step 4: Running Synapse setup wizard...
 echo.
-echo The wizard will guide you through:
-echo   - Choosing your LLM provider ^(Anthropic, Google, OpenAI, etc.^)
-echo   - Entering your API key^(s^)
-echo   - Configuring your messaging channels ^(WhatsApp, Telegram, etc.^)
+echo A new PowerShell window will open for the interactive wizard.
+echo Complete the wizard there, then return to this window.
 echo.
+pause
 
-call "%PROJECT_ROOT%\.venv\Scripts\python.exe" -X utf8 ^
-    "%PROJECT_ROOT%\workspace\synapse_cli.py" onboard
+REM Launch wizard in a new PowerShell window (requires proper ANSI terminal for
+REM questionary checkbox/multiselect to register Space and arrow keypresses).
+REM /wait makes this window block until the PowerShell window is closed.
+REM Exit code is written to a temp file because `start /wait` loses ERRORLEVEL
+REM when PowerShell exits — this is the only reliable way to capture it in cmd.
 
-if %ERRORLEVEL% NEQ 0 (
+set "WIZARD_RESULT_FILE=%TEMP%\_synapse_wizard_result.txt"
+echo 1 > "%WIZARD_RESULT_FILE%"
+
+start /wait powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+    "& { $env:PYTHONUTF8='1'; $env:PYTHONIOENCODING='utf-8'; & '%PROJECT_ROOT%\.venv\Scripts\python.exe' -X utf8 '%PROJECT_ROOT%\workspace\synapse_cli.py' onboard; Set-Content -Path '%WIZARD_RESULT_FILE%' -Value $LASTEXITCODE }"
+
+set /p WIZARD_EXIT=<"%WIZARD_RESULT_FILE%"
+set "WIZARD_EXIT=%WIZARD_EXIT: =%"
+
+if "%WIZARD_EXIT%" NEQ "0" (
     echo.
-    echo [X] Wizard exited with an error. Fix the issue above and run this script again.
+    echo [X] Wizard exited with an error ^(code: %WIZARD_EXIT%^). Fix the issue and run this script again.
     echo.
     pause
     exit /b 1
 )
+echo    [OK] Wizard completed successfully.
 
 REM ============================================================
 REM Step 5: Start all services
