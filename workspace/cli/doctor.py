@@ -1,9 +1,9 @@
 """
 doctor.py — Synapse-OSS system health check command.
 
-Runs 10 targeted checks covering config, directories, providers, gateway, and
-legacy state.  Exits 0 when all checks pass, exits with the count of failures
-when any check fails.
+Runs 13 targeted checks covering config, directories, providers, gateway,
+legacy state, and the ML stack.  Exits 0 when all checks pass, exits with the
+count of failures when any check fails.
 
 Checks (in order):
   1.  synapse.json exists and is valid JSON
@@ -16,6 +16,9 @@ Checks (in order):
   8.  API gateway reachable (GET http://localhost:8000/health with 2s timeout)
   9.  workspace-state.json exists and has bootstrapSeededAt set
  10.  No legacy state dirs present (.synapse_old, .clawdbot, .moldbot)
+ 11.  sqlite-vec importable (required for vector memory)
+ 12.  sentence-transformers importable (required for ingest/embedding)
+ 13.  torch importable (required by sentence-transformers)
 
 Exports:
   doctor_command()    Entry point for the synapse doctor CLI subcommand
@@ -226,6 +229,39 @@ def _check_no_legacy_dirs() -> CheckResult:
     return CheckResult(False, label, f"Found: {', '.join(str(home / d) for d in found)}")
 
 
+def _check_sqlite_vec() -> CheckResult:
+    """Check 11: sqlite-vec importable (required for vector memory)."""
+    label = "sqlite-vec importable"
+    try:
+        import sqlite_vec  # noqa: F401, PLC0415
+
+        return CheckResult(True, label)
+    except ImportError:
+        return CheckResult(False, label, "Run: pip install sqlite-vec")
+
+
+def _check_sentence_transformers() -> CheckResult:
+    """Check 12: sentence-transformers importable (required for ingest/embedding)."""
+    label = "sentence-transformers importable"
+    try:
+        import sentence_transformers  # noqa: F401, PLC0415
+
+        return CheckResult(True, label)
+    except ImportError:
+        return CheckResult(False, label, "Run: pip install sentence-transformers")
+
+
+def _check_torch() -> CheckResult:
+    """Check 13: torch importable (required by sentence-transformers)."""
+    label = "torch importable"
+    try:
+        import torch  # noqa: F401, PLC0415
+
+        return CheckResult(True, label)
+    except ImportError:
+        return CheckResult(False, label, "Run: pip install torch")
+
+
 # ---------------------------------------------------------------------------
 # Check runner and printer
 # ---------------------------------------------------------------------------
@@ -258,7 +294,7 @@ def _print_result(result: CheckResult) -> None:
 
 
 def doctor_command(fix: bool = False, non_interactive: bool = False) -> int:
-    """Run all 10 system health checks and print results.
+    """Run all 13 system health checks and print results.
 
     Args:
         fix:             If True, attempt to auto-fix certain issues (e.g., generate
@@ -276,6 +312,7 @@ def doctor_command(fix: bool = False, non_interactive: bool = False) -> int:
 
     # Build check list — each is a zero-arg callable returning CheckResult.
     # Checks 1-7 work entirely offline; checks 8-9 require live services.
+    # Checks 11-13 verify the ML stack needed for memory/ingest features.
     checks: list[Callable[[], CheckResult]] = [
         lambda: _check_config_valid(data_root),
         lambda: _check_data_root_exists(data_root),
@@ -287,6 +324,9 @@ def doctor_command(fix: bool = False, non_interactive: bool = False) -> int:
         lambda: _check_gateway_reachable(non_interactive=non_interactive),
         lambda: _check_workspace_state(data_root),
         lambda: _check_no_legacy_dirs(),
+        _check_sqlite_vec,
+        _check_sentence_transformers,
+        _check_torch,
     ]
 
     # Run all checks and collect results
