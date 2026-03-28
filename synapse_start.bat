@@ -57,7 +57,7 @@ if not exist "%PROJECT_ROOT%\.venv\Scripts\python.exe" (
         exit /b 1
     )
 
-    echo Installing dependencies (this takes a minute on first run)...
+    echo Installing dependencies ^(this takes a minute on first run^)...
     call "%PROJECT_ROOT%\.venv\Scripts\pip.exe" install -r "%PROJECT_ROOT%\requirements.txt"
     if %ERRORLEVEL% NEQ 0 (
         echo [X] pip install failed. Check requirements.txt and try again.
@@ -65,7 +65,7 @@ if not exist "%PROJECT_ROOT%\.venv\Scripts\python.exe" (
         exit /b 1
     )
 
-    echo Installing Playwright browser (Chromium)...
+    echo Installing Playwright browser ^(Chromium^)...
     call "%PROJECT_ROOT%\.venv\Scripts\python.exe" -m playwright install chromium
     if %ERRORLEVEL% NEQ 0 (
         echo [--] Playwright install failed - /browse tool will not work.
@@ -130,7 +130,7 @@ echo =======================================
 echo [OK] Synapse is running!
 echo =======================================
 echo.
-echo Open WhatsApp ^> Message Yourself ^> say hello!
+echo Use one of your configured channels to say hello.
 echo.
 echo To check the API gateway log:
 echo    type "%USERPROFILE%\.synapse\logs\gateway.log"

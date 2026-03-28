@@ -389,7 +389,7 @@ chmod +x synapse_onboard.sh   # Make executable (only needed once)
 Double-click `synapse_onboard.bat` in File Explorer. Or from a terminal:
 
 ```cmd
-synapse_onboard.bat
+.\synapse_onboard.bat
 ```
 
 > **Do NOT double-click the `.ps1` files** — Windows opens them in Notepad by default.
