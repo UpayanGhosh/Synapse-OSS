@@ -219,13 +219,21 @@ def validate_provider(provider: str, api_key: str) -> ValidationResult:
             os.environ[env_var] = old
 
 
-def validate_ollama(api_base: str = "http://localhost:11434") -> ValidationResult:
+def validate_ollama(
+    api_base: str = "http://localhost:11434", model: str | None = None
+) -> ValidationResult:
     """Validate Ollama availability via a synchronous httpx GET to /api/version.
 
     No litellm call is made — Ollama requires no API key.
 
+    If *model* is provided, also queries GET /api/tags to verify the model is
+    downloaded locally.  Ollama tag suffixes (e.g. ``:latest``) are ignored when
+    matching so ``"llama3.3"`` matches ``"llama3.3:latest"``.
+
     Returns:
-      ValidationResult(ok=True)  — HTTP 200
+      ValidationResult(ok=True)  — HTTP 200 (and model present if requested)
+      ValidationResult(ok=True,  error="model_not_found") — Ollama running but
+                                  model not downloaded; detail contains pull hint
       ValidationResult(ok=False, error="http_error")      — non-200 response
       ValidationResult(ok=False, error="not_running")     — connection refused
       ValidationResult(ok=False, error="timeout")         — 5 s timeout exceeded
@@ -234,6 +242,30 @@ def validate_ollama(api_base: str = "http://localhost:11434") -> ValidationResul
         resp = httpx.get(f"{api_base}/api/version", timeout=5.0)
         if resp.status_code == 200:
             version = resp.json().get("version", "unknown")
+
+            if model is not None:
+                try:
+                    tags_resp = httpx.get(f"{api_base}/api/tags", timeout=5.0)
+                    if tags_resp.status_code == 200:
+                        models_data = tags_resp.json().get("models", [])
+                        model_names = [m.get("name", "") for m in models_data]
+                        model_base = model.split(":")[0]
+                        found = any(
+                            name == model or name.startswith(f"{model_base}:")
+                            for name in model_names
+                        )
+                        if not found:
+                            return ValidationResult(
+                                ok=True,
+                                error="model_not_found",
+                                detail=(
+                                    f"Model '{model}' not found locally. "
+                                    f"Run: ollama pull {model}"
+                                ),
+                            )
+                except (httpx.ConnectError, httpx.TimeoutException):
+                    pass  # /api/tags unreachable — skip model check, Ollama is up
+
             return ValidationResult(ok=True, detail=f"Ollama {version} running")
         return ValidationResult(
             ok=False,
