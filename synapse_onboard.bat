@@ -51,8 +51,23 @@ if %ERRORLEVEL% NEQ 0 (
     echo    [OK] Docker
 )
 
+REM Check for Ollama — first via PATH, then fallback to the known default install location.
+REM "where ollama" only searches the PATH inherited when this process started, so it misses
+REM Ollama if it was installed in the current session or lives only in the User PATH registry
+REM entry that cmd.exe did not pick up. The fallback covers that case.
+set "OLLAMA_EXE="
 where ollama >nul 2>&1
-if %ERRORLEVEL% NEQ 0 (
+if %ERRORLEVEL% EQU 0 (
+    set "OLLAMA_EXE=ollama"
+) else if exist "%LOCALAPPDATA%\Programs\Ollama\ollama.exe" (
+    set "OLLAMA_EXE=%LOCALAPPDATA%\Programs\Ollama\ollama.exe"
+    REM Add to PATH for this session so subsequent calls work without full path
+    set "PATH=%PATH%;%LOCALAPPDATA%\Programs\Ollama"
+)
+
+if defined OLLAMA_EXE (
+    echo    [OK] Ollama
+) else (
     echo    Ollama not found. Installing automatically...
     echo    Downloading installer ^(this may take a moment^)...
     curl -L -o "%TEMP%\OllamaSetup.exe" "https://ollama.com/download/OllamaSetup.exe"
@@ -64,18 +79,15 @@ if %ERRORLEVEL% NEQ 0 (
         echo    Running Ollama installer silently...
         "%TEMP%\OllamaSetup.exe" /S
         timeout /t 15 /nobreak >nul
-        for /f "usebackq tokens=2,*" %%A in (`reg query "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v Path 2^>nul`) do set "SYSTEM_PATH=%%B"
-        set "PATH=%PATH%;!SYSTEM_PATH!"
-        where ollama >nul 2>&1
-        if %ERRORLEVEL% NEQ 0 (
+        if exist "%LOCALAPPDATA%\Programs\Ollama\ollama.exe" (
+            set "OLLAMA_EXE=%LOCALAPPDATA%\Programs\Ollama\ollama.exe"
+            set "PATH=%PATH%;%LOCALAPPDATA%\Programs\Ollama"
+            echo    [OK] Ollama installed successfully
+        ) else (
             echo    [X] Ollama install did not complete. Install manually from https://ollama.com
             set "MISSING=1"
-        ) else (
-            echo    [OK] Ollama installed successfully
         )
     )
-) else (
-    echo    [OK] Ollama
 )
 
 if defined MISSING (
@@ -186,7 +198,7 @@ echo.
 echo Step 6: Pulling required embedding model ^(nomic-embed-text, ~900 MB^)...
 echo This may take several minutes on first run. Please wait...
 echo.
-ollama pull nomic-embed-text
+"%OLLAMA_EXE%" pull nomic-embed-text
 echo    [OK] nomic-embed-text ready.
 
 REM ============================================================
