@@ -26,6 +26,9 @@ questionary>=2.1.0              # Interactive prompts: text, password, select, c
 # --- Database & Vector Search ---
 sqlite-vec>=0.1.1
 
+# --- LLM Routing ---
+litellm>=1.40.0                  # Unified LLM API (Gemini, Claude, Ollama, OpenRouter dispatch)
+
 # --- Configuration ---
 PyYAML>=6.0                      # personas.yaml + language_patterns.yaml parsing
 

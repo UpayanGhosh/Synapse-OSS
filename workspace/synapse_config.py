@@ -77,7 +77,7 @@ class SynapseConfig:
         config_file = data_root / "synapse.json"
         if config_file.exists():
             _verify_permissions(config_file)
-            with open(config_file, encoding="utf-8") as fh:
+            with open(config_file, encoding="utf-8-sig") as fh:
                 raw = json.load(fh)
             providers = raw.get("providers", {})
             channels = raw.get("channels", {})
