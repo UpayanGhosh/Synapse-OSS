@@ -20,7 +20,7 @@ import contextlib
 import json
 import os
 import tempfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
@@ -200,4 +200,4 @@ def ensure_agent_workspace(
 
 def _utcnow() -> str:
     """Return current UTC time as ISO 8601 string (no microseconds)."""
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")

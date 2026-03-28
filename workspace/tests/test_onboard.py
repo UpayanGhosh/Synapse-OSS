@@ -595,8 +595,8 @@ def test_quickstart_flow_writes_config_with_gateway_token(tmp_path, monkeypatch)
 
 def test_advanced_flow_prompts_for_workspace_dir(tmp_path, monkeypatch):
     """ONB-12: --flow advanced must ask for workspace dir (StubPrompter sees the question)."""
-    from cli.wizard_prompter import StubPrompter
     from cli.onboard import _run_interactive
+    from cli.wizard_prompter import StubPrompter
 
     monkeypatch.setenv("SYNAPSE_HOME", str(tmp_path))
 

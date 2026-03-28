@@ -92,9 +92,8 @@ def test_questionary_prompter_text_raises_on_none():
     mock_q = MagicMock()
     mock_q.text.return_value.ask.return_value = None  # simulate Ctrl+C
 
-    with patch.dict("sys.modules", {"questionary": mock_q}):
-        with pytest.raises(WizardCancelledError):
-            prompter.text("Enter something:")
+    with patch.dict("sys.modules", {"questionary": mock_q}), pytest.raises(WizardCancelledError):
+        prompter.text("Enter something:")
 
 
 # ===========================================================================

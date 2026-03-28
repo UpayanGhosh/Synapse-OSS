@@ -101,7 +101,7 @@ class TestSessionActorQueue:
         try:
             await asyncio.wait_for(both_started.wait(), timeout=2.0)
             concurrent = True
-        except asyncio.TimeoutError:
+        except TimeoutError:
             concurrent = False
 
         await asyncio.gather(task_x, task_y)

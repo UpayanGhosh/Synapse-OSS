@@ -277,9 +277,9 @@ def _handle_reset(reset_scope: str, data_root: Path) -> None:
         )
         raise typer.Exit(1)
 
-    from datetime import datetime, timezone  # noqa: PLC0415
+    from datetime import UTC, datetime  # noqa: PLC0415
 
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     backup_dir = data_root / "backups" / timestamp
     backup_dir.mkdir(parents=True, exist_ok=True)
 
@@ -862,6 +862,7 @@ def _validate_environment(config: dict) -> None:
     # --- Check 1: sqlite-vec ---
     try:
         import sqlite3  # noqa: PLC0415
+
         import sqlite_vec  # noqa: PLC0415
 
         conn = sqlite3.connect(":memory:")
@@ -878,7 +879,7 @@ def _validate_environment(config: dict) -> None:
 
     # --- Check 2: python-magic ---
     try:
-        import magic  # noqa: PLC0415
+        import magic  # noqa: F401, PLC0415
 
         _print("  [green]✓[/] python-magic: OK")
     except ImportError:
@@ -898,12 +899,12 @@ def _validate_environment(config: dict) -> None:
             )
 
     # --- Check 3: channel SDKs for configured channels ---
-    _CHANNEL_IMPORTS: dict[str, tuple[str, str]] = {
+    _channel_sdk_map: dict[str, tuple[str, str]] = {
         "telegram": ("telegram", "pip install python-telegram-bot"),
         "discord": ("discord", "pip install discord.py"),
         "slack": ("slack_bolt", "pip install slack-bolt"),
     }
-    for channel, (module_name, fix_cmd) in _CHANNEL_IMPORTS.items():
+    for channel, (module_name, fix_cmd) in _channel_sdk_map.items():
         if channel in config.get("channels", {}):
             try:
                 __import__(module_name)
