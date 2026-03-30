@@ -949,6 +949,17 @@ async def lifespan(app: FastAPI):
     # Start channel adapters — all within uvicorn's event loop (asyncio.create_task inside)
     await channel_registry.start_all()
 
+    # Wire retry queue into WhatsApp channel now that the event loop is running
+    from gateway.retry_queue import RetryQueue  # noqa: PLC0415
+
+    wa_ch = channel_registry.get("whatsapp")
+    if isinstance(wa_ch, WhatsAppChannel):
+        _retry_queue = RetryQueue(data_root=_synapse_cfg.data_root)
+        wa_ch._retry_queue = _retry_queue
+        await _retry_queue.start(wa_ch)
+        app.state.retry_queue = _retry_queue
+        print("[INFO] WhatsApp retry queue started.")
+
     app.state.worker = MessageWorker(
         queue=task_queue,
         channel_registry=channel_registry,  # WA-02: WhatsAppChannel handles all dispatch
@@ -984,6 +995,8 @@ async def lifespan(app: FastAPI):
     print("[STOP] Shutting down...")
     brain.save_graph()
     worker_task.cancel()
+    if hasattr(app.state, "retry_queue"):
+        await app.state.retry_queue.stop()
     await channel_registry.stop_all()  # NEW: stop all channels before worker
     if hasattr(app.state, "worker"):
         await app.state.worker.stop()
