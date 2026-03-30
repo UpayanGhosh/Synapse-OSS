@@ -32,7 +32,7 @@ graph TD
     %% --- SECTION 1: INGRESS (LEFT) ---
     subgraph Inputs ["User Inputs"]
         U1["📱 WhatsApp Webhook<br/>Node Gateway"]:::user
-        U2["💻 OpenClaw CLI<br/>Proxy Request"]:::user
+        U2["💻 Synapse CLI<br/>API Request"]:::user
     end
 
     %% --- SECTION 2: ASYNC PIPELINE (LEFT-CENTER) ---
@@ -203,7 +203,7 @@ And right now? I'm looking at *you* looking at *me,* and I already know what you
 Fine. Let's talk numbers. Numbers don't lie. **I do, sometimes—but only when it's funnier.**
 
 > **🙏 Immense Gratitude & Respect**
-> This entire project was built on the foundation of **[OpenClaw](https://github.com/openclaw/openclaw)**. OpenClaw provides the terminal instrumentation, browser automation, and multi-agent coordination system that allowed this "brain" to exist. I want to convey my deep respect and gratitude to the creators and maintainers of OpenClaw for giving developers a platform to build true, functional AI entities.
+> This project is built on a foundation of outstanding open-source tools — Ollama for local inference, litellm for unified LLM dispatch, sqlite-vec for embedded vector search, and the Baileys Node.js library for WhatsApp connectivity. Deep respect and gratitude to all the maintainers who made this architecture possible.
 
 ---
 
@@ -341,7 +341,7 @@ I solved this by rebuilding my entire message pipeline as an **asynchronous queu
 > Every valid inbound message becomes a `MessageTask` — a structured unit of work placed into a bounded async queue (max 100 tasks). The webhook returns `202 Accepted` immediately. **The user's platform never times out.** My brain processes the queue at its own pace.
 
 > **4 — THE WORKER** (`gateway/worker.py`)
-> Two concurrent async workers pull tasks from the queue and run them through the full cognition pipeline — memory retrieval, dual-stream analysis, MoA routing, response generation. When a reply is ready, it's dispatched through the `WhatsAppSender` (`gateway/sender.py`), which wraps the OpenClaw CLI for outbound delivery.
+> Two concurrent async workers pull tasks from the queue and run them through the full cognition pipeline — memory retrieval, dual-stream analysis, MoA routing, response generation. When a reply is ready, it's dispatched through the `WhatsAppSender` (`gateway/sender.py`), which handles outbound delivery.
 
 > **5 — AUTO-CONTINUE**
 > Sometimes a model gets cut off mid-sentence. Most bots shrug and send half an answer. I detect the cut-off (no terminal punctuation on a response >50 characters), spawn a background continuation task, and **push the rest of the reply asynchronously.** You get the full thought. Always.
@@ -418,7 +418,7 @@ The `jarvis_manager.sh` script is my Motor Cortex — a launchd-managed service 
   3. Start Qdrant vector engine (via OrbStack or Docker fallback)
   4. Start Ollama inference server
   5. Start Uvicorn → api_gateway.py (single worker, port 8000)
-  6. Start WhatsApp bridge (openclaw gateway → Node.js)
+  6. Start WhatsApp bridge (Node.js)
 ```
 
 Each service is **idempotent** on start — if it's already running, it skips. On stop, it `pkill`s the process group surgically. On restart, it tears down and rebuilds with a 2-second cooldown.
@@ -543,7 +543,7 @@ workspace/
 | Embeddings      | `nomic-embed-text` (Ollama) / `all-MiniLM-L6-v2` (sentence-transformers) |
 | Toxicity        | `unitary/toxic-bert` (lazy-loaded, MPS-accelerated on Apple Silicon)       |
 | Reranking       | `ms-marco-TinyBERT-L-2-v2` (FlashRank)                                     |
-| WhatsApp Bridge | OpenClaw Node.js Gateway                                                     |
+| WhatsApp Bridge | Baileys Node.js Bridge                                                       |
 | Orchestration   | `jarvis_manager.sh` + macOS launchd                                        |
 | Containers      | OrbStack (lightweight Docker alternative)                                    |
 | Voice           | Whisper transcription + ElevenLabs TTS                                       |

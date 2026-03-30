@@ -6,8 +6,8 @@ import sqlite3
 import sqlite_vec
 from qdrant_handler import QdrantVectorStore
 
-OPENCLAW_HOME = os.path.expanduser("~/.openclaw")
-DB_PATH = os.path.join(OPENCLAW_HOME, "workspace", "db", "memory.db")
+LEGACY_HOME = os.path.expanduser("~/.openclaw")
+DB_PATH = os.path.join(LEGACY_HOME, "workspace", "db", "memory.db")
 
 
 def migrate():

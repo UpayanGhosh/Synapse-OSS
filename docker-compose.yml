@@ -18,7 +18,7 @@ services:
     restart: unless-stopped
     volumes:
       # Persist databases and logs across container restarts
-      - synapse_data:/root/.openclaw
+      - synapse_data:/root/.synapse
 
 volumes:
   qdrant_data:

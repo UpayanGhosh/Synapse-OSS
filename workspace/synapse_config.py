@@ -1,7 +1,7 @@
 """
 synapse_config.py — Single source of truth for all paths and credentials in Synapse-OSS.
 
-All Python files use ~/.synapse/ via SynapseConfig — zero ~/.openclaw/ references remain.
+All Python files use ~/.synapse/ via SynapseConfig — zero legacy path references remain.
 This module establishes the path contract that every downstream component depends on.
 
 Usage:

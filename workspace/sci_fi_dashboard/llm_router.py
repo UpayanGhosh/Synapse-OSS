@@ -1,7 +1,7 @@
 """
 SynapseLLMRouter — unified litellm.Router dispatch layer.
 
-Replaces OpenClaw proxy (port 8080), call_gemini_direct(), and _call_antigravity().
+Replaces call_gemini_direct() and _call_antigravity().
 All LLM calls go through router.acompletion() using provider-prefixed model strings
 from synapse.json model_mappings. No hardcoded model strings in this file.
 """

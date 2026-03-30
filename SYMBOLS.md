@@ -50,7 +50,7 @@ Use `grep "^SymbolName" tags` for exact line numbers. This file is for understan
 - **ProtectionLevel** (`sbs/sentinel/manifest.py`) — enum: CRITICAL, PROTECTED, MONITORED, OPEN
 
 ### Skills & Tools
-- **LLMRouter** (`skills/llm_router.py`) — `.generate()`, `.embed()` — Ollama/OpenClaw routing
+- **LLMRouter** (`skills/llm_router.py`) — `.generate()`, `.embed()` — Ollama/litellm routing
 - **GoogleNative** (`skills/google_native.py`) — `.authenticate()`, `.search_emails()`, `.get_calendar_events()`, `.send_email()`
 - **ToolRegistry** (`db/tools.py`) — `.get_tool_schemas()`, `.search_web()` — Crawl4AI browser automation
 

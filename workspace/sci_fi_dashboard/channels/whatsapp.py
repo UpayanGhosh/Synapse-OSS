@@ -8,8 +8,8 @@ Lifecycle:
   stop()   → SIGTERM → SIGKILL after 5 s; sets status to "stopped".
 
 HTTP protocol:
-  Uses httpx.AsyncClient to POST to bridge endpoints (/send, /typing, /seen)
-  and GET from /health and /qr.  Bridge port defaults to 5010.
+  Uses httpx.AsyncClient to POST to bridge endpoints (/send, /typing, /seen, /react,
+  /logout, /relink, /groups/*)  and GET from /health and /qr.  Bridge port defaults to 5010.
 
 Windows note:
   WindowsProactorEventLoopPolicy is set at module import time so it is active
@@ -39,9 +39,6 @@ if sys.platform == "win32":
 logger = logging.getLogger(__name__)
 
 # Path: workspace/sci_fi_dashboard/channels/whatsapp.py → repo_root/baileys-bridge
-# __file__ = .../workspace/sci_fi_dashboard/channels/whatsapp.py
-# parent.parent.parent = .../workspace (3 levels)
-# parent.parent.parent.parent = repo root (4 levels)
 _BRIDGE_DIR = Path(__file__).resolve().parent.parent.parent.parent / "baileys-bridge"
 
 
@@ -56,7 +53,7 @@ class WhatsAppChannel(BaseChannel):
     """
 
     MAX_RESTARTS: int = 5
-    INITIAL_BACKOFF: float = 0.0  # first restart immediate; subsequent: 1 s → 2 s → 4 s → … → 60 s
+    INITIAL_BACKOFF: float = 0.0
 
     def __init__(
         self,
@@ -73,6 +70,16 @@ class WhatsAppChannel(BaseChannel):
         self.security_config = security_config
         self._pairing_store = pairing_store
 
+        # Connection state tracking — updated by connection-state webhook
+        self._connection_state: str = "unknown"
+        self._connected_since: str | None = None
+        self._auth_timestamp: str | None = None
+        self._restart_count: int = 0
+        self._last_disconnect_reason: str | None = None
+
+        # Retry queue reference (injected by api_gateway after construction)
+        self._retry_queue = None
+
     # ------------------------------------------------------------------
     # Identity
     # ------------------------------------------------------------------
@@ -87,12 +94,6 @@ class WhatsAppChannel(BaseChannel):
 
     @staticmethod
     def _validate_nodejs() -> None:
-        """
-        Raise RuntimeError with a clear, actionable message if Node.js 18+ is absent.
-
-        Checks PATH via shutil.which first (fast), then runs `node --version` to confirm
-        the version major is >= 18.
-        """
         node_path = shutil.which("node")
         if not node_path:
             raise RuntimeError(
@@ -102,7 +103,7 @@ class WhatsAppChannel(BaseChannel):
                 "Then restart Synapse."
             )
         result = subprocess.run(["node", "--version"], capture_output=True, text=True, timeout=5)
-        version_str = result.stdout.strip().lstrip("v")  # e.g. "22.14.0"
+        version_str = result.stdout.strip().lstrip("v")
         try:
             major = int(version_str.split(".")[0])
         except (ValueError, IndexError) as exc:
@@ -118,16 +119,6 @@ class WhatsAppChannel(BaseChannel):
     # ------------------------------------------------------------------
 
     async def start(self) -> None:
-        """
-        Supervisor loop: validate Node.js, start bridge subprocess, restart on crash.
-
-        Spawns `node baileys-bridge/index.js` with BRIDGE_PORT and PYTHON_WEBHOOK_URL
-        env vars. Restarts up to MAX_RESTARTS times with exponential backoff (doubles
-        each attempt, caps at 60 s). Runs until cancelled or exhausted.
-
-        Called by ChannelRegistry.start_all() as asyncio.create_task(channel.start()).
-        CancelledError propagates after graceful stop().
-        """
         self._validate_nodejs()
 
         attempts = 0
@@ -142,6 +133,9 @@ class WhatsAppChannel(BaseChannel):
                         **os.environ,
                         "BRIDGE_PORT": str(self._port),
                         "PYTHON_WEBHOOK_URL": self._webhook_url,
+                        "PYTHON_STATE_WEBHOOK_URL": self._webhook_url.replace(
+                            "/webhook", "/connection-state"
+                        ),
                     },
                     stdout=asyncio.subprocess.DEVNULL,
                     stderr=asyncio.subprocess.PIPE,
@@ -151,23 +145,18 @@ class WhatsAppChannel(BaseChannel):
                 self._status = "running"
                 logger.info("[WA] Bridge started — PID %d port %d", self._bridge_pid, self._port)
 
-                # Drain stderr asynchronously to prevent pipe buffer deadlock
                 asyncio.create_task(self._drain_stderr(self._proc.stderr))
 
-                await self._proc.wait()  # blocks until bridge exits
+                await self._proc.wait()
                 rc = self._proc.returncode
                 self._status = "crashed"
                 logger.warning(
                     "[WA] Bridge exited (code %d), restarting in %.1fs (attempt %d/%d)",
-                    rc,
-                    backoff,
-                    attempts + 1,
-                    self.MAX_RESTARTS,
+                    rc, backoff, attempts + 1, self.MAX_RESTARTS,
                 )
 
                 attempts += 1
                 await asyncio.sleep(backoff)
-                # After the first (immediate) restart, use exponential backoff
                 backoff = min(max(backoff * 2, 1.0), 60.0)
 
             except asyncio.CancelledError:
@@ -178,11 +167,6 @@ class WhatsAppChannel(BaseChannel):
         logger.error("[WA] Bridge failed %d times — giving up", self.MAX_RESTARTS)
 
     async def stop(self) -> None:
-        """
-        Gracefully terminate the bridge subprocess.
-
-        Sends SIGTERM and waits up to 5 s, then SIGKILL if it has not exited.
-        """
         if self._proc and self._proc.returncode is None:
             self._proc.terminate()
             try:
@@ -193,23 +177,26 @@ class WhatsAppChannel(BaseChannel):
         logger.info("[WA] Bridge stopped")
 
     # ------------------------------------------------------------------
-    # Health
+    # Connection state tracking (called by connection-state webhook)
+    # ------------------------------------------------------------------
+
+    def update_connection_state(self, payload: dict) -> None:
+        """Update internal state from bridge connection-state webhook payload."""
+        self._connection_state = payload.get("connectionState", "unknown")
+        self._connected_since = payload.get("connectedSince")
+        self._auth_timestamp = payload.get("authTimestamp")
+        self._restart_count = payload.get("restartCount", 0)
+        self._last_disconnect_reason = payload.get("lastDisconnectReason")
+
+        # If bridge reconnected and we have a retry queue, flush pending retries
+        if self._connection_state == "connected" and self._retry_queue is not None:
+            asyncio.create_task(self._retry_queue.flush())
+
+    # ------------------------------------------------------------------
+    # Health and status
     # ------------------------------------------------------------------
 
     async def health_check(self) -> dict:
-        """
-        Return a status dict describing the channel and bridge health.
-
-        Polls bridge GET /health when the subprocess appears to be running.
-        Returns:
-            {
-                "status":        "ok" | "down",
-                "channel":       "whatsapp",
-                "bridge_pid":    int | None,
-                "bridge_status": str,
-                "bridge":        dict,  # raw response from bridge GET /health
-            }
-        """
         running = self._proc is not None and self._proc.returncode is None
         bridge_health: dict = {"status": "down", "connection_state": "unknown"}
         if running:
@@ -227,12 +214,17 @@ class WhatsAppChannel(BaseChannel):
             "bridge": bridge_health,
         }
 
-    async def get_qr(self) -> str | None:
-        """
-        Fetch the QR string from bridge GET /qr for WhatsApp pairing.
+    async def get_status(self) -> dict:
+        """Enhanced health check with auth age, uptime, and connection metrics."""
+        base = await self.health_check()
+        base["connected_since"] = self._connected_since
+        base["auth_timestamp"] = self._auth_timestamp
+        base["restart_count"] = self._restart_count
+        base["last_disconnect_reason"] = self._last_disconnect_reason
+        base["connection_state"] = self._connection_state
+        return base
 
-        Returns None if already authenticated or bridge unreachable.
-        """
+    async def get_qr(self) -> str | None:
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
                 r = await client.get(f"http://127.0.0.1:{self._port}/qr")
@@ -243,20 +235,34 @@ class WhatsAppChannel(BaseChannel):
         return None
 
     # ------------------------------------------------------------------
+    # Session management
+    # ------------------------------------------------------------------
+
+    async def logout(self) -> bool:
+        """POST /logout — deregister linked device and wipe session."""
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                r = await client.post(f"http://127.0.0.1:{self._port}/logout")
+                return r.status_code == 200
+        except httpx.RequestError as exc:
+            logger.error("[WA] logout() failed: %s", exc)
+            return False
+
+    async def relink(self) -> bool:
+        """POST /relink — force fresh QR cycle without full logout."""
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                r = await client.post(f"http://127.0.0.1:{self._port}/relink")
+                return r.status_code == 200
+        except httpx.RequestError as exc:
+            logger.error("[WA] relink() failed: %s", exc)
+            return False
+
+    # ------------------------------------------------------------------
     # Messaging
     # ------------------------------------------------------------------
 
     async def send(self, chat_id: str, text: str) -> bool:
-        """
-        Send outbound message via bridge POST /send.
-
-        Args:
-            chat_id: WhatsApp JID (e.g. "1234567890@s.whatsapp.net").
-            text:    Message body.
-
-        Returns:
-            True on HTTP 200, False on any error.
-        """
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 r = await client.post(
@@ -268,8 +274,44 @@ class WhatsAppChannel(BaseChannel):
             logger.error("[WA] send() failed: %s", exc)
             return False
 
+    async def send_media(
+        self,
+        chat_id: str,
+        media_url: str,
+        media_type: str = "image",
+        caption: str = "",
+    ) -> bool:
+        """Send media (image/video/audio/document) via bridge POST /send."""
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                r = await client.post(
+                    f"http://127.0.0.1:{self._port}/send",
+                    json={
+                        "jid": chat_id,
+                        "mediaUrl": media_url,
+                        "mediaType": media_type,
+                        "caption": caption,
+                    },
+                )
+                return r.status_code == 200
+        except httpx.RequestError as exc:
+            logger.error("[WA] send_media() failed: %s", exc)
+            return False
+
+    async def send_reaction(self, chat_id: str, message_id: str, emoji: str) -> bool:
+        """Send emoji reaction to a message via bridge POST /react."""
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                r = await client.post(
+                    f"http://127.0.0.1:{self._port}/react",
+                    json={"jid": chat_id, "messageId": message_id, "reaction": emoji},
+                )
+                return r.status_code == 200
+        except httpx.RequestError as exc:
+            logger.error("[WA] send_reaction() failed: %s", exc)
+            return False
+
     async def send_typing(self, chat_id: str) -> None:
-        """Send typing indicator via bridge POST /typing."""
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
                 await client.post(
@@ -280,7 +322,6 @@ class WhatsAppChannel(BaseChannel):
             pass
 
     async def mark_read(self, chat_id: str, message_id: str) -> None:
-        """Mark message as read via bridge POST /seen."""
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
                 await client.post(
@@ -291,6 +332,65 @@ class WhatsAppChannel(BaseChannel):
             pass
 
     # ------------------------------------------------------------------
+    # Group management
+    # ------------------------------------------------------------------
+
+    async def create_group(self, subject: str, participants: list[str]) -> dict:
+        """Create a WhatsApp group. Returns bridge response dict."""
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            r = await client.post(
+                f"http://127.0.0.1:{self._port}/groups/create",
+                json={"subject": subject, "participants": participants},
+            )
+            r.raise_for_status()
+            return r.json()
+
+    async def invite_to_group(self, group_jid: str, participants: list[str]) -> bool:
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                r = await client.post(
+                    f"http://127.0.0.1:{self._port}/groups/invite",
+                    json={"jid": group_jid, "participants": participants},
+                )
+                return r.status_code == 200
+        except httpx.RequestError:
+            return False
+
+    async def leave_group(self, group_jid: str) -> bool:
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                r = await client.post(
+                    f"http://127.0.0.1:{self._port}/groups/leave",
+                    json={"jid": group_jid},
+                )
+                return r.status_code == 200
+        except httpx.RequestError:
+            return False
+
+    async def update_group_subject(self, group_jid: str, subject: str) -> bool:
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                r = await client.post(
+                    f"http://127.0.0.1:{self._port}/groups/update",
+                    json={"jid": group_jid, "subject": subject},
+                )
+                return r.status_code == 200
+        except httpx.RequestError:
+            return False
+
+    async def get_group_metadata(self, group_jid: str) -> dict | None:
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                r = await client.get(
+                    f"http://127.0.0.1:{self._port}/groups/{group_jid}"
+                )
+                if r.status_code == 200:
+                    return r.json()
+        except httpx.RequestError:
+            pass
+        return None
+
+    # ------------------------------------------------------------------
     # Inbound normalisation
     # ------------------------------------------------------------------
 
@@ -298,24 +398,37 @@ class WhatsAppChannel(BaseChannel):
         """
         Normalise a raw Baileys webhook payload to ChannelMessage.
 
-        Bridge sends:
-            {channel_id, user_id, chat_id, text, message_id,
-             is_group, timestamp (Unix seconds), sender_name, raw}
+        Handles message types: text, media (image/video/audio/document/sticker),
+        reactions, typing indicators, message status updates.
 
-        Returns None if the message is blocked by the DM security policy.
+        Returns None for non-message events (status/typing) or blocked DMs.
         """
+        payload_type = raw_payload.get("type", "message")
+
+        # Non-message events — handled by dedicated routes, not the message pipeline
+        if payload_type in ("message_status", "typing_indicator", "reaction"):
+            return None
+
         ts_raw = raw_payload.get("timestamp")
         timestamp = datetime.fromtimestamp(ts_raw) if ts_raw else datetime.now()
+
+        # Build raw dict with media metadata for MsgContext population
+        raw_extra: dict = dict(raw_payload.get("raw", {}))
+        if raw_payload.get("mediaType"):
+            raw_extra["media_type"] = raw_payload["mediaType"]
+            raw_extra["media_url"] = raw_payload.get("mediaUrl", "")
+            raw_extra["media_mime_type"] = raw_payload.get("mediaMimeType", "")
+
         cm = ChannelMessage(
             channel_id=raw_payload.get("channel_id", "whatsapp"),
             user_id=raw_payload.get("user_id", raw_payload.get("chat_id", "")),
             chat_id=raw_payload.get("chat_id", ""),
-            text=raw_payload.get("text", ""),
+            text=raw_payload.get("text", "") or raw_payload.get("mediaCaption", ""),
             timestamp=timestamp,
             is_group=raw_payload.get("is_group", False),
             message_id=raw_payload.get("message_id", ""),
             sender_name=raw_payload.get("sender_name", ""),
-            raw=raw_payload.get("raw", {}),
+            raw=raw_extra,
         )
 
         # DM security check — only for direct messages, skip groups

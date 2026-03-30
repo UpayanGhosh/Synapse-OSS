@@ -88,7 +88,7 @@ NOISE_PATTERNS = [
     r"^[WARN]",  # Error lines
     r"^\[SYSTEM\]",  # System messages
     r"^<Media omitted>",  # Media markers
-    r"^OpenClaw:",  # OpenClaw system messages
+    r"^OpenClaw:",  # legacy system messages
     r"^Cloud Code Assist",  # API errors
     r"^[OK] New session started",  # Session resets
     r"^You deleted this message",

@@ -250,3 +250,34 @@ class BaseChannel(ABC):
         Default implementation is a no-op — safe for adapters that don't need it.
         """
         ...  # default no-op; subclasses may override
+
+    # ------------------------------------------------------------------
+    # Optional capabilities (non-abstract — not all channels support these)
+    # ------------------------------------------------------------------
+
+    async def send_media(  # noqa: B027
+        self,
+        chat_id: str,
+        media_url: str,
+        media_type: str = "image",
+        caption: str = "",
+    ) -> bool:
+        """
+        Send a media message (image/video/audio/document) to the given chat.
+
+        Default returns False — override in channels that support media.
+        """
+        return False
+
+    async def send_reaction(  # noqa: B027
+        self,
+        chat_id: str,
+        message_id: str,
+        emoji: str,
+    ) -> bool:
+        """
+        Send an emoji reaction to a specific message.
+
+        Default returns False — override in channels that support reactions.
+        """
+        return False

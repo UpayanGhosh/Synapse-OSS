@@ -1086,7 +1086,7 @@ async def get_qr():
 @app.get("/api/sessions")
 def get_sessions():
     """
-    SESS-02: Return session token usage matching openclaw sessions list --json schema.
+    SESS-02: Return session token usage matching Synapse sessions list schema.
     Returns last 100 sessions, most recent first.
     Graceful degradation: returns [] if sessions table absent or DB unreadable.
     """
@@ -1136,7 +1136,19 @@ async def unified_webhook(channel_id: str, request: Request):
     except Exception as exc:
         raise HTTPException(status_code=400, detail="Invalid JSON payload") from exc
 
-    msg: ChannelMessage = await channel.receive(raw)
+    # Handle non-message event types from WhatsApp bridge (delivery, typing, reactions)
+    event_type = raw.get("type", "message")
+    if event_type in ("message_status", "typing_indicator", "reaction"):
+        logger.debug(
+            "[gateway] WhatsApp event type=%s chat=%s", event_type, raw.get("chat_id", "")
+        )
+        # Future: broadcast via WebSocket, update delivery tracking DB, etc.
+        return {"status": "accepted", "event_type": event_type}
+
+    msg: ChannelMessage | None = await channel.receive(raw)
+
+    if msg is None:
+        return {"status": "skipped", "reason": "blocked_or_filtered", "accepted": True}
 
     if dedup.is_duplicate(msg.message_id or raw.get("message_id", "")):
         return {"status": "skipped", "reason": "duplicate", "accepted": True}
@@ -1165,6 +1177,92 @@ async def whatsapp_enqueue_shim(request: Request):
 # --- WhatsApp Async Bridge ---
 # NOTE: /whatsapp/enqueue replaces the previously disabled Celery-based endpoint.
 # Messages now handled by FloodGate + TaskQueue in gateway/ via unified_webhook above.
+
+
+# ---------------------------------------------------------------------------
+# WhatsApp session management + monitoring routes
+# ---------------------------------------------------------------------------
+
+@app.get("/channels/whatsapp/status")
+async def whatsapp_status():
+    """Return enhanced WhatsApp connection status with auth age and uptime."""
+    wa_channel = channel_registry.get("whatsapp")
+    if not isinstance(wa_channel, WhatsAppChannel):
+        raise HTTPException(status_code=503, detail="WhatsApp channel not registered")
+    return await wa_channel.get_status()
+
+
+@app.post("/channels/whatsapp/logout")
+async def whatsapp_logout():
+    """Deregister linked device and wipe WhatsApp session."""
+    wa_channel = channel_registry.get("whatsapp")
+    if not isinstance(wa_channel, WhatsAppChannel):
+        raise HTTPException(status_code=503, detail="WhatsApp channel not registered")
+    ok = await wa_channel.logout()
+    if not ok:
+        raise HTTPException(status_code=503, detail="Logout failed — bridge may be down")
+    return {"ok": True, "message": "Logged out and session cleared"}
+
+
+@app.post("/channels/whatsapp/relink")
+async def whatsapp_relink():
+    """Force fresh QR cycle — wipe creds and restart Baileys socket."""
+    wa_channel = channel_registry.get("whatsapp")
+    if not isinstance(wa_channel, WhatsAppChannel):
+        raise HTTPException(status_code=503, detail="WhatsApp channel not registered")
+    ok = await wa_channel.relink()
+    if not ok:
+        raise HTTPException(status_code=503, detail="Relink failed — bridge may be down")
+    return {"ok": True, "message": "Restarting socket — poll GET /qr for new QR"}
+
+
+@app.post("/channels/whatsapp/connection-state")
+async def whatsapp_connection_state(request: Request):
+    """
+    Receive connection state change webhook from the Baileys bridge.
+    Updates WhatsAppChannel internal state and triggers retry queue flush on reconnect.
+    """
+    wa_channel = channel_registry.get("whatsapp")
+    if not isinstance(wa_channel, WhatsAppChannel):
+        return {"ok": False, "detail": "WhatsApp channel not registered"}
+    payload = await request.json()
+    wa_channel.update_connection_state(payload)
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# WhatsApp retry queue routes
+# ---------------------------------------------------------------------------
+
+@app.get("/channels/whatsapp/retry-queue")
+async def whatsapp_retry_queue_list():
+    """List pending entries in the WhatsApp message retry queue."""
+    wa_channel = channel_registry.get("whatsapp")
+    if not isinstance(wa_channel, WhatsAppChannel) or wa_channel._retry_queue is None:
+        return {"entries": []}
+    return {"entries": await wa_channel._retry_queue.list_pending()}
+
+
+@app.post("/channels/whatsapp/retry-queue/flush")
+async def whatsapp_retry_queue_flush():
+    """Force immediate retry of all pending messages in the queue."""
+    wa_channel = channel_registry.get("whatsapp")
+    if not isinstance(wa_channel, WhatsAppChannel) or wa_channel._retry_queue is None:
+        raise HTTPException(status_code=503, detail="Retry queue not available")
+    flushed = await wa_channel._retry_queue.flush()
+    return {"ok": True, "flushed": flushed}
+
+
+@app.delete("/channels/whatsapp/retry-queue/{entry_id}")
+async def whatsapp_retry_queue_delete(entry_id: int):
+    """Remove a specific entry from the retry queue."""
+    wa_channel = channel_registry.get("whatsapp")
+    if not isinstance(wa_channel, WhatsAppChannel) or wa_channel._retry_queue is None:
+        raise HTTPException(status_code=503, detail="Retry queue not available")
+    ok = await wa_channel._retry_queue.delete(entry_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Entry not found")
+    return {"ok": True}
 
 
 @app.get("/whatsapp/jobs/{message_id}")

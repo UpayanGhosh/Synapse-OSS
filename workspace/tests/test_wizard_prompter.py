@@ -124,7 +124,7 @@ def test_run_interactive_exits_cleanly_when_stub_cancels_on_first_prompt(
     )
 
     with (
-        patch("cli.onboard._check_for_openclaw", return_value=None),
+        patch("cli.onboard._check_for_legacy_install", return_value=None),
     ):
         with pytest.raises(typer.Exit) as exc_info:
             _run_interactive(prompter=stub, flow="quickstart")

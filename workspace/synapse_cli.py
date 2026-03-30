@@ -19,6 +19,42 @@ app = typer.Typer(
     no_args_is_help=True,
 )
 
+# ---------------------------------------------------------------------------
+# WhatsApp subcommand group
+# ---------------------------------------------------------------------------
+wa_app = typer.Typer(name="whatsapp", help="WhatsApp channel management", no_args_is_help=True)
+app.add_typer(wa_app)
+
+
+@wa_app.command("status")
+def whatsapp_status(
+    port: int = typer.Option(8000, "--port", help="Gateway port"),
+) -> None:
+    """Show WhatsApp connection state, uptime, and auth age."""
+    from cli.whatsapp_commands import status_command  # noqa: PLC0415
+
+    status_command(port=port)
+
+
+@wa_app.command("relink")
+def whatsapp_relink(
+    port: int = typer.Option(8000, "--port", help="Gateway port"),
+) -> None:
+    """Force a fresh QR scan — wipes saved credentials and restarts socket."""
+    from cli.whatsapp_commands import relink_command  # noqa: PLC0415
+
+    relink_command(port=port)
+
+
+@wa_app.command("logout")
+def whatsapp_logout(
+    port: int = typer.Option(8000, "--port", help="Gateway port"),
+) -> None:
+    """Deregister linked device and wipe WhatsApp session."""
+    from cli.whatsapp_commands import logout_command  # noqa: PLC0415
+
+    logout_command(port=port)
+
 
 @app.command()
 def onboard(

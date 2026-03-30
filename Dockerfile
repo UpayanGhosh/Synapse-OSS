@@ -24,7 +24,7 @@ COPY workspace/ ./workspace/
 # NOTE: Do NOT bake .env into the image. Use docker-compose env_file or -e flags at runtime.
 
 # Create required directories for databases and logs
-RUN mkdir -p /root/.openclaw/workspace/db /root/.openclaw/logs
+RUN mkdir -p /root/.synapse/workspace/db /root/.synapse/logs
 
 EXPOSE 8000
 

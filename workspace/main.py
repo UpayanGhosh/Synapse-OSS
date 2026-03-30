@@ -134,7 +134,7 @@ async def interactive_chat_loop():
                 }
 
                 headers = {}
-                token = os.environ.get("OPENCLAW_GATEWAY_TOKEN")
+                token = os.environ.get("SYNAPSE_GATEWAY_TOKEN")
                 if token:
                     headers["x-api-key"] = token
 
@@ -194,7 +194,7 @@ def optimized_vacuum():
 def main():
     load_env_file(anchor=Path(__file__))
 
-    parser = argparse.ArgumentParser(description="OpenClaw Centralized CLI")
+    parser = argparse.ArgumentParser(description="Synapse CLI")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     subparsers.add_parser("verify", help="Run system health & integrity checks")

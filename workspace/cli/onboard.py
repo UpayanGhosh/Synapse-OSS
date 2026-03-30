@@ -7,7 +7,7 @@ detection, and implements the complete non-interactive mode.
 
 Exports:
   - run_wizard()           Top-level entry point dispatching to interactive or non-interactive
-  - _check_for_openclaw() Named helper for ~/.openclaw/ detection (also imported by unit tests)
+  - _check_for_legacy_install() Named helper for legacy install detection (also imported by unit tests)
 """
 
 import asyncio
@@ -345,21 +345,21 @@ def _build_model_mappings(providers: list[str]) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# OpenClaw migration detection
+# Legacy install migration detection
 # ---------------------------------------------------------------------------
 
 
-def _check_for_openclaw(openclaw_root: Path | None = None) -> Path | None:
-    """Check whether an existing ~/.openclaw/ directory is present.
+def _check_for_legacy_install(legacy_root: Path | None = None) -> Path | None:
+    """Check whether an existing legacy install directory is present.
 
     Args:
-        openclaw_root: Override the default ~/.openclaw path. Used by tests
-                       to inject a fake directory without touching the real home.
+        legacy_root: Override the default ~/.openclaw path. Used by tests
+                     to inject a fake directory without touching the real home.
 
     Returns:
         The Path if it exists and is a directory, otherwise None.
     """
-    root = openclaw_root if openclaw_root is not None else Path.home() / ".openclaw"
+    root = legacy_root if legacy_root is not None else Path.home() / ".openclaw"
     return root if root.exists() and root.is_dir() else None
 
 
@@ -368,10 +368,10 @@ def _check_for_openclaw(openclaw_root: Path | None = None) -> Path | None:
 # ---------------------------------------------------------------------------
 
 
-def _run_migration(openclaw_root: Path, dest_root: Path) -> None:
-    """Import and run the migrate_openclaw migration script.
+def _run_migration(legacy_root: Path, dest_root: Path) -> None:
+    """Import and run the migrate_legacy migration script.
 
-    Calls mod.migrate(source_root=openclaw_root, dest_root=dest_root) using the
+    Calls mod.migrate(source_root=legacy_root, dest_root=dest_root) using the
     actual keyword argument names from migrate_openclaw.py's function signature.
 
     Falls back to a user-readable error with manual instructions on any failure.
@@ -380,17 +380,17 @@ def _run_migration(openclaw_root: Path, dest_root: Path) -> None:
         import importlib.util  # noqa: PLC0415
 
         spec = importlib.util.spec_from_file_location(
-            "migrate_openclaw",
+            "migrate_legacy",
             Path(__file__).resolve().parent.parent / "scripts" / "migrate_openclaw.py",
         )
         mod = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
         spec.loader.exec_module(mod)  # type: ignore[union-attr]
-        mod.migrate(source_root=openclaw_root, dest_root=dest_root)
+        mod.migrate(source_root=legacy_root, dest_root=dest_root)
         _print("[green]Migration complete.[/]")
     except Exception as exc:  # noqa: BLE001
         _print(f"[red]Migration failed: {exc}[/]")
         _print(
-            "You can run migration manually: python workspace/scripts/migrate_openclaw.py"
+            "You can run migration manually: python workspace/scripts/migrate_legacy.py"
         )
 
 
@@ -489,16 +489,15 @@ def _run_advanced_flow(
         import questionary  # noqa: PLC0415
 
         channel_choices = [
-            questionary.Choice("WhatsApp (QR code scan required)", value="whatsapp"),
             questionary.Choice("Telegram (bot token)", value="telegram"),
             questionary.Choice("Discord (bot token + MESSAGE_CONTENT intent)", value="discord"),
             questionary.Choice("Slack (xoxb- + xapp- tokens)", value="slack"),
         ]
     except ImportError:
-        channel_choices = ["whatsapp", "telegram", "discord", "slack"]
+        channel_choices = ["telegram", "discord", "slack"]
 
     selected_channels = prompter.multiselect(  # type: ignore[attr-defined]
-        "Select messaging channels to configure (optional — can be added later):",
+        "Select additional channels to configure (optional — can be added later):",
         choices=channel_choices,
     )
 
@@ -516,6 +515,15 @@ def _collect_provider_keys(
     selected_providers: list,
 ) -> None:
     """Collect API keys/tokens for each selected provider (Steps 5/ONB-03)."""
+    if any(p in selected_providers for p in ("anthropic", "openai")):
+        prompter.note(  # type: ignore[attr-defined]
+            "API keys \u2260 Subscriptions\n\n"
+            "Claude Pro/Max and ChatGPT Plus subscriptions do NOT include API access.\n"
+            "You need a separate API key from the provider's developer console:\n\n"
+            "  \u2022 Anthropic \u2192 console.anthropic.com\n"
+            "  \u2022 OpenAI    \u2192 platform.openai.com/api-keys\n"
+            "  \u2022 Gemini    \u2192 aistudio.google.com (free tier available)",
+        )
     for provider in selected_providers:
         _print(f"\n[bold cyan]--- {provider} ---[/]")
 
@@ -692,10 +700,17 @@ def _run_interactive(  # noqa: C901 — linear wizard, complexity is intentional
       11. Daemon install + health poll
       12. Show summary panel
     """
-    from cli.wizard_prompter import QuestionaryPrompter, WizardCancelledError  # noqa: PLC0415
+    from cli.wizard_prompter import WizardCancelledError  # noqa: PLC0415
 
     if prompter is None:
-        prompter = QuestionaryPrompter()
+        try:
+            from cli.inquirerpy_prompter import InquirerPyPrompter  # noqa: PLC0415
+
+            prompter = InquirerPyPrompter()
+        except ImportError:
+            from cli.wizard_prompter import QuestionaryPrompter  # noqa: PLC0415
+
+            prompter = QuestionaryPrompter()
 
     try:
         _run_interactive_impl(prompter=prompter, flow=flow, reset=reset)
@@ -735,9 +750,9 @@ def _run_interactive_impl(
     workspace_dir = data_root / "workspace"
 
     # --- Step 3: Migration detection (ONB-08) ---
-    detected = _check_for_openclaw()
+    detected = _check_for_legacy_install()
     if detected:
-        _print("[yellow]Found existing ~/.openclaw/ data.[/]")
+        _print("[yellow]Found existing legacy install data.[/]")
         do_migrate = prompter.confirm(  # type: ignore[attr-defined]
             "Migrate data to ~/.synapse/ now?", default=True
         )
@@ -767,8 +782,38 @@ def _run_interactive_impl(
     if not bridge_dir.exists():
         bridge_dir = _this_file.parent.parent / "baileys-bridge"
 
+    # --- Step 7a: WhatsApp (mandatory) ---
+    from cli.channel_steps import NodeJsMissingError  # noqa: PLC0415
+
+    _print("\n[bold cyan]--- WhatsApp (required) ---[/]")
+    _MAX_WA_RETRIES = 3
+    _wa_paired = False
+    for _attempt in range(1, _MAX_WA_RETRIES + 1):
+        try:
+            wa_cfg = setup_whatsapp(bridge_dir, non_interactive=False)
+        except NodeJsMissingError as exc:
+            _print(f"\n[red bold]{exc}[/]")
+            raise typer.Exit(1) from None
+
+        if wa_cfg is not None:
+            config["channels"]["whatsapp"] = wa_cfg
+            _wa_paired = True
+            break
+
+        if _attempt < _MAX_WA_RETRIES:
+            _retry = prompter.confirm(  # type: ignore[attr-defined]
+                f"WhatsApp pairing failed (attempt {_attempt}/{_MAX_WA_RETRIES}). Retry?",
+                default=True,
+            )
+            if not _retry:
+                break
+
+    if not _wa_paired:
+        _print("[red bold]WhatsApp is required for Synapse to work. Cannot continue.[/]")
+        raise typer.Exit(1)
+
+    # --- Step 7b: Optional channels ---
     channel_config_map = {
-        "whatsapp": lambda: setup_whatsapp(bridge_dir, non_interactive=False),
         "telegram": lambda: setup_telegram(non_interactive=False),
         "discord": lambda: setup_discord(non_interactive=False),
         "slack": lambda: setup_slack(non_interactive=False),

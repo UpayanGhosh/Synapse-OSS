@@ -6,9 +6,9 @@ import sqlite3
 
 import networkx as nx
 
-OPENCLAW_HOME = os.path.expanduser("~/.openclaw")
-DB_PATH = os.path.join(OPENCLAW_HOME, "workspace", "db", "memory.db")
-GRAPH_PATH = os.path.join(OPENCLAW_HOME, "workspace", "db", "knowledge_graph.json.gz")
+LEGACY_HOME = os.path.expanduser("~/.openclaw")
+DB_PATH = os.path.join(LEGACY_HOME, "workspace", "db", "memory.db")
+GRAPH_PATH = os.path.join(LEGACY_HOME, "workspace", "db", "knowledge_graph.json.gz")
 
 
 class GraphStore:

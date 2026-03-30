@@ -2,7 +2,7 @@
 """
 Change Tracker v2.0 -- Hardened Git Auto-Commit Daemon
 
-Watches the OpenClaw workspace for file changes and auto-commits them
+Watches the Synapse workspace for file changes and auto-commits them
 to the `synapse-auto-updates` branch with descriptive messages.
 
 Safety features:
@@ -83,7 +83,7 @@ IGNORE_REGEXES = [
     r".*[/\\]\.venv[/\\].*",  # Virtual environment
     # -- macOS --
     r".*[/\\]\.DS_Store$",  # macOS metadata
-    # -- OpenClaw internals (not workspace content) --
+    # -- Synapse internals (not workspace content) --
     r".*[/\\]agents[/\\].*[/\\]sessions[/\\].*",  # Agent session files
     r".*[/\\]browser[/\\].*",  # Browser automation data
     r".*[/\\]media[/\\].*",  # Media files

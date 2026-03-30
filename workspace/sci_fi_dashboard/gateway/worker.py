@@ -156,6 +156,15 @@ class MessageWorker:
                         if not ok:
                             print(f"[WORKER-{worker_id}] channel.send() failed on chunk {i+1}")
                             success = False
+                            # Enqueue failed chunk into retry queue if available
+                            retry_queue = getattr(channel, "_retry_queue", None)
+                            if retry_queue is not None:
+                                await retry_queue.enqueue(
+                                    channel_id=channel.channel_id,
+                                    chat_id=chat_id,
+                                    text=chunk,
+                                    error="send() returned False",
+                                )
                             break
                         if i < len(chunks) - 1:
                             await asyncio.sleep(0.8)

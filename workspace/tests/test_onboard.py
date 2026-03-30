@@ -10,7 +10,7 @@ Covers all 10 ONB requirements:
   ONB-05: channel validation functions raise ValueError on bad credentials
   ONB-06: WhatsApp QR flow returns False when Node.js not on PATH
   ONB-07: synapse.json written with mode 0o600 (skipped on Windows)
-  ONB-08: migration offer shown when ~/.openclaw/ exists; not shown when absent
+  ONB-08: migration offer shown when legacy install exists; not shown when absent
   ONB-09: --non-interactive exit codes: 0 (success), 1 (missing vars)
   ONB-10: GitHub Copilot uses async device flow, not password prompt
 
@@ -363,35 +363,35 @@ def test_validate_slack_prefix_check_app_token():
 
 
 def test_whatsapp_qr_flow_aborts_no_node(tmp_path):
-    """ONB-06: WhatsApp QR flow returns False when Node.js not on PATH."""
-    from cli.channel_steps import run_whatsapp_qr_flow
+    """ONB-06: WhatsApp QR flow raises NodeJsMissingError when Node.js not on PATH."""
+    from cli.channel_steps import NodeJsMissingError, run_whatsapp_qr_flow
 
     with patch("shutil.which", return_value=None):
-        result = run_whatsapp_qr_flow(bridge_dir=str(tmp_path))
-    assert result is False
+        with pytest.raises(NodeJsMissingError):
+            run_whatsapp_qr_flow(bridge_dir=str(tmp_path))
 
 
 # ===========================================================================
-# ONB-08: migration detection (_check_for_openclaw)
+# ONB-08: migration detection (_check_for_legacy_install)
 # ===========================================================================
 
 
-def test_migration_offer_shown_when_openclaw_exists(tmp_path, monkeypatch):
-    """ONB-08: _check_for_openclaw returns the path when directory exists."""
-    from cli.onboard import _check_for_openclaw
+def test_migration_offer_shown_when_legacy_exists(tmp_path, monkeypatch):
+    """ONB-08: _check_for_legacy_install returns the path when directory exists."""
+    from cli.onboard import _check_for_legacy_install
 
-    fake_openclaw = tmp_path / ".openclaw"
-    fake_openclaw.mkdir()
-    result = _check_for_openclaw(openclaw_root=fake_openclaw)
-    assert result == fake_openclaw
+    fake_legacy_dir = tmp_path / ".openclaw"
+    fake_legacy_dir.mkdir()
+    result = _check_for_legacy_install(legacy_root=fake_legacy_dir)
+    assert result == fake_legacy_dir
 
 
-def test_no_migration_offer_when_openclaw_absent(tmp_path):
-    """ONB-08: _check_for_openclaw returns None when directory does not exist."""
-    from cli.onboard import _check_for_openclaw
+def test_no_migration_offer_when_legacy_absent(tmp_path):
+    """ONB-08: _check_for_legacy_install returns None when directory does not exist."""
+    from cli.onboard import _check_for_legacy_install
 
-    fake_home = tmp_path / "no-openclaw-here"
-    result = _check_for_openclaw(openclaw_root=fake_home)
+    fake_home = tmp_path / "no-legacy-here"
+    result = _check_for_legacy_install(legacy_root=fake_home)
     assert result is None
 
 
@@ -452,30 +452,30 @@ def test_github_copilot_device_flow_polls_github(tmp_path):
 
 def test_interactive_provider_selection_writes_config(tmp_path, monkeypatch):
     """Interactive flow: selecting gemini provider → writes synapse.json."""
-    from cli.onboard import run_wizard
+    from cli.onboard import _run_interactive
 
     monkeypatch.setenv("SYNAPSE_HOME", str(tmp_path))
 
     mock_acomp = _make_mock_acompletion()
 
+    stub = MagicMock()
+    stub.confirm.return_value = False  # no reconfigure
+    stub.multiselect.side_effect = [["gemini"], []]  # providers, then channels
+    stub.text.return_value = "fake-gemini-key"
+
+    _fake_wa = {"enabled": True, "bridge_port": 5010, "dm_policy": "pairing"}
     with (
         patch("litellm.acompletion", mock_acomp),
-        patch("questionary.confirm") as mock_confirm,
-        patch("questionary.checkbox") as mock_checkbox,
-        patch("questionary.password") as mock_password,
-        patch("cli.onboard._check_for_openclaw", return_value=None),
+        patch("cli.onboard._check_for_legacy_install", return_value=None),
+        patch("cli.onboard.setup_whatsapp", return_value=_fake_wa),
+        patch("cli.onboard._wizard_daemon_install"),
+        patch("cli.workspace_seeding.ensure_agent_workspace", return_value={}),
+        patch(
+            "cli.gateway_steps.configure_gateway",
+            return_value={"port": 8000, "bind": "loopback", "token": "a" * 48},
+        ),
     ):
-        # No existing config → skip reconfigure confirm
-        mock_confirm.return_value.ask.return_value = False
-        # Provider checkbox → select gemini only; then channel checkbox → none
-        mock_checkbox.return_value.ask.side_effect = [
-            ["gemini"],  # Step 4: provider selection
-            [],  # Step 6: channel selection (none)
-        ]
-        # Password prompt → fake key
-        mock_password.return_value.ask.return_value = "fake-gemini-key"
-
-        run_wizard(force_interactive=True)
+        _run_interactive(prompter=stub)
 
     config_path = tmp_path / "synapse.json"
     assert config_path.exists(), "synapse.json should be written after interactive wizard"
@@ -488,20 +488,17 @@ def test_interactive_provider_selection_writes_config(tmp_path, monkeypatch):
 def test_interactive_aborts_on_no_providers(tmp_path, monkeypatch):
     """Interactive flow: selecting zero providers → wizard exits 0 without writing config."""
     import typer
-    from cli.onboard import run_wizard
+    from cli.onboard import _run_interactive
 
     monkeypatch.setenv("SYNAPSE_HOME", str(tmp_path))
 
-    with (
-        patch("questionary.confirm") as mock_confirm,
-        patch("questionary.checkbox") as mock_checkbox,
-        patch("cli.onboard._check_for_openclaw", return_value=None),
-    ):
-        mock_confirm.return_value.ask.return_value = False
-        mock_checkbox.return_value.ask.return_value = []  # empty selection
+    stub = MagicMock()
+    stub.confirm.return_value = False
+    stub.multiselect.return_value = []  # empty provider selection
 
+    with patch("cli.onboard._check_for_legacy_install", return_value=None):
         with pytest.raises(typer.Exit) as exc_info:
-            run_wizard(force_interactive=True)
+            _run_interactive(prompter=stub)
         assert exc_info.value.exit_code == 0, "Empty provider list should exit 0"
 
     assert not (
@@ -509,40 +506,46 @@ def test_interactive_aborts_on_no_providers(tmp_path, monkeypatch):
     ).exists(), "synapse.json must NOT be written when no providers selected"
 
 
-def test_interactive_migration_offer_on_openclaw_present(tmp_path, monkeypatch):
-    """ONB-08: Interactive flow shows migration confirm when _check_for_openclaw returns a path."""
-    from cli.onboard import run_wizard
+def test_interactive_migration_offer_on_legacy_present(tmp_path, monkeypatch):
+    """ONB-08: Interactive flow shows migration confirm when _check_for_legacy_install returns a path."""
+    from cli.onboard import _run_interactive
 
     monkeypatch.setenv("SYNAPSE_HOME", str(tmp_path))
-    fake_openclaw = tmp_path / ".openclaw"
-    fake_openclaw.mkdir()
+    fake_legacy_dir = tmp_path / ".openclaw"
+    fake_legacy_dir.mkdir()
 
     mock_acomp = _make_mock_acompletion()
     migration_confirm_called = []
 
-    def confirm_side_effect(question, **kwargs):
-        mock_ans = MagicMock()
-        if "Migrate" in question or "igrate" in question:
-            migration_confirm_called.append(question)
-            mock_ans.ask.return_value = False  # decline migration
-        else:
-            mock_ans.ask.return_value = False  # decline reconfigure
-        return mock_ans
+    stub = MagicMock()
 
+    def confirm_side_effect(message, default=True):
+        if "igrate" in message or "Migrate" in message:
+            migration_confirm_called.append(message)
+            return False  # decline migration
+        return False  # decline reconfigure
+
+    stub.confirm.side_effect = confirm_side_effect
+    stub.multiselect.side_effect = [["gemini"], []]
+    stub.text.return_value = "fake-key"
+
+    _fake_wa = {"enabled": True, "bridge_port": 5010, "dm_policy": "pairing"}
     with (
         patch("litellm.acompletion", mock_acomp),
-        patch("questionary.confirm", side_effect=confirm_side_effect),
-        patch("questionary.checkbox") as mock_checkbox,
-        patch("questionary.password") as mock_password,
-        patch("cli.onboard._check_for_openclaw", return_value=fake_openclaw),
+        patch("cli.onboard._check_for_legacy_install", return_value=fake_legacy_dir),
+        patch("cli.onboard.setup_whatsapp", return_value=_fake_wa),
+        patch("cli.onboard._wizard_daemon_install"),
+        patch("cli.workspace_seeding.ensure_agent_workspace", return_value={}),
+        patch(
+            "cli.gateway_steps.configure_gateway",
+            return_value={"port": 8000, "bind": "loopback", "token": "a" * 48},
+        ),
     ):
-        mock_checkbox.return_value.ask.side_effect = [["gemini"], []]
-        mock_password.return_value.ask.return_value = "fake-key"
-        run_wizard(force_interactive=True)
+        _run_interactive(prompter=stub)
 
     assert (
         migration_confirm_called
-    ), "Migration confirm should be shown when _check_for_openclaw returns a path"
+    ), "Migration confirm should be shown when _check_for_legacy_install returns a path"
 
 
 # ===========================================================================
@@ -552,31 +555,32 @@ def test_interactive_migration_offer_on_openclaw_present(tmp_path, monkeypatch):
 
 def test_quickstart_flow_writes_config_with_gateway_token(tmp_path, monkeypatch):
     """ONB-11: --flow quickstart does not prompt for workspace dir; gateway.token is 48 hex chars."""
+    from cli.onboard import _run_interactive
+
     monkeypatch.setenv("SYNAPSE_HOME", str(tmp_path))
 
     mock_acomp = _make_mock_acompletion()
 
+    stub = MagicMock()
+    stub.confirm.return_value = False
+    stub.multiselect.return_value = ["gemini"]  # quickstart: no channel multiselect
+    stub.text.return_value = "fake-gemini-key"
+
+    # Use a valid 48-char hex token from the mocked gateway step
+    fake_token = "ab" * 24  # 48 chars, all valid hex
+    _fake_wa = {"enabled": True, "bridge_port": 5010, "dm_policy": "pairing"}
     with (
         patch("litellm.acompletion", mock_acomp),
-        patch("questionary.confirm") as mock_confirm,
-        patch("questionary.checkbox") as mock_checkbox,
-        patch("questionary.password") as mock_password,
-        patch("questionary.text") as mock_text,
-        patch("cli.onboard._check_for_openclaw", return_value=None),
-        patch("cli.onboard._wizard_daemon_install"),  # skip daemon install
+        patch("cli.onboard._check_for_legacy_install", return_value=None),
+        patch("cli.onboard.setup_whatsapp", return_value=_fake_wa),
+        patch("cli.onboard._wizard_daemon_install"),
         patch("cli.workspace_seeding.ensure_agent_workspace", return_value={}),
+        patch(
+            "cli.gateway_steps.configure_gateway",
+            return_value={"port": 8000, "bind": "loopback", "token": fake_token},
+        ),
     ):
-        # No existing config — skip reconfigure confirm
-        mock_confirm.return_value.ask.return_value = False
-        # Provider checkbox → select gemini; no channels (quickstart has no channel prompt)
-        mock_checkbox.return_value.ask.return_value = ["gemini"]
-        mock_password.return_value.ask.return_value = "fake-gemini-key"
-        # Gateway step: token left blank → auto-generate
-        mock_text.return_value.ask.return_value = ""
-
-        from cli.onboard import run_wizard
-
-        run_wizard(flow="quickstart", force_interactive=True)
+        _run_interactive(prompter=stub, flow="quickstart")
 
     config_path = tmp_path / "synapse.json"
     assert config_path.exists(), "synapse.json should be written"
@@ -620,7 +624,7 @@ def test_advanced_flow_prompts_for_workspace_dir(tmp_path, monkeypatch):
 
     with (
         patch("litellm.acompletion", mock_acomp),
-        patch("cli.onboard._check_for_openclaw", return_value=None),
+        patch("cli.onboard._check_for_legacy_install", return_value=None),
         patch("cli.onboard._wizard_daemon_install"),
         patch("cli.workspace_seeding.ensure_agent_workspace", return_value={}),
         # Provider multiselect: return gemini; channel multiselect: return []

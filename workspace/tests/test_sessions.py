@@ -263,16 +263,11 @@ def test_no_openclaw_binary_calls_in_active_files():
       - cli/onboard.py — ONB-08 migration bridge
       - tests/test_migration.py, tests/test_onboard.py — test coverage of the above
       - tests/test_sessions.py — this file (contains pattern strings in allowed_patterns)
-      - main.py — legacy OPENCLAW_GATEWAY_TOKEN env var + "OpenClaw" description strings
-                  (cosmetic, not binary execution; deferred cleanup: no active subprocess call)
-      - monitor.py — "OpenClaw HTTP" error label string (cosmetic; deferred cleanup)
-      - synapse_config.py — module docstring mentions openclaw for context
-      - sci_fi_dashboard/api_gateway.py — docstring mentions openclaw sessions list schema
     """
     import re
 
     workspace = os.path.join(os.path.dirname(__file__), "..")
-    # Files that are ALLOWED to contain 'openclaw' (migration/cosmetic/legacy)
+    # Files that are ALLOWED to contain 'openclaw' (migration/legacy)
     allowed_patterns = [
         "scripts/migrate_openclaw",
         "scripts/v2_migration",
@@ -280,11 +275,6 @@ def test_no_openclaw_binary_calls_in_active_files():
         "tests/test_migration",
         "tests/test_onboard",
         "tests/test_sessions",
-        # Pre-existing cosmetic references deferred from Phase 7 cleanup:
-        "main.py",  # OPENCLAW_GATEWAY_TOKEN env var + description text — no binary exec
-        "monitor.py",  # "OpenClaw HTTP" error label string — no binary exec
-        "synapse_config.py",  # module docstring mention
-        "sci_fi_dashboard/api_gateway",  # docstring mention of sessions list schema
     ]
     # Patterns that indicate actual execution of the openclaw binary
     active_call_pattern = re.compile(

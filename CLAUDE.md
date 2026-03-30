@@ -55,7 +55,7 @@ Flow: FloodGate -> Dedup -> TaskQueue -> MessageWorker x2 -> Send
 | `dedup.py` | `MessageDeduplicator` | 5-min TTL duplicate filter |
 | `queue.py` | `TaskQueue` | asyncio FIFO, max 100 tasks |
 | `worker.py` | `MessageWorker` | 2 concurrent workers, processes tasks |
-| `sender.py` | `WhatsAppSender` | OpenClaw CLI outbound |
+| `sender.py` | `WhatsAppSender` | Legacy outbound sender |
 
 ### Channels (sci_fi_dashboard/channels/)
 All implement `BaseChannel` (ABC): `receive()`, `send()`, `send_typing()`, `start()`, `stop()`
@@ -64,7 +64,7 @@ All implement `BaseChannel` (ABC): `receive()`, `send()`, `send_typing()`, `star
 |------|---------|
 | `base.py` | `BaseChannel` (ABC), `ChannelMessage` (dataclass) |
 | `registry.py` | `ChannelRegistry` — register/get/start_all/stop_all |
-| `whatsapp.py` | `WhatsAppChannel` — OpenClaw bridge + Baileys HTTP |
+| `whatsapp.py` | `WhatsAppChannel` — Baileys HTTP bridge |
 | `telegram.py` | `TelegramChannel` — python-telegram-bot |
 | `discord_channel.py` | `DiscordChannel` — discord.py |
 | `slack.py` | `SlackChannel` — slack_bolt |
@@ -95,7 +95,7 @@ Profile layers: core_identity, linguistic, emotional_state, domain, interaction,
 ### Skills (workspace/skills/)
 | File | Purpose |
 |------|---------|
-| `llm_router.py` | `LLMRouter` — Ollama/OpenClaw gateway routing |
+| `llm_router.py` | `LLMRouter` — Ollama/litellm routing |
 | `google_native.py` | `GoogleNative` — Gmail, Calendar, direct Google API |
 | `language/ingest_dict.py` | Vocabulary ingestion |
 | `memory/ingest_memories.py` | Bulk memory import to API |
