@@ -47,6 +47,7 @@ class SynapseConfig:
     model_mappings: dict = field(default_factory=dict)
     gateway: dict = field(default_factory=dict)
     session: dict = field(default_factory=dict)
+    mcp: dict = field(default_factory=dict)
 
     @classmethod
     def load(cls) -> "SynapseConfig":
@@ -73,6 +74,7 @@ class SynapseConfig:
         model_mappings: dict[str, Any] = {}
         gateway: dict[str, Any] = {}
         session: dict[str, Any] = {}
+        mcp: dict[str, Any] = {}
 
         config_file = data_root / "synapse.json"
         if config_file.exists():
@@ -84,6 +86,7 @@ class SynapseConfig:
             model_mappings = raw.get("model_mappings", {})
             gateway = raw.get("gateway", {})
             session = raw.get("session", {})
+            mcp = raw.get("mcp", {})
 
         return cls(
             data_root=data_root,
@@ -95,6 +98,7 @@ class SynapseConfig:
             model_mappings=model_mappings,
             gateway=gateway,
             session=session,
+            mcp=mcp,
         )
 
 
