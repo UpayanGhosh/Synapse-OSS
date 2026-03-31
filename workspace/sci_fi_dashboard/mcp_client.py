@@ -32,6 +32,8 @@ class SynapseMCPClient:
     async def _connect_server(
         self, name: str, server_params: StdioServerParameters, *, register_unqualified: bool = False
     ) -> None:
+        ctx = None
+        session = None
         try:
             ctx = stdio_client(server_params)
             read, write = await ctx.__aenter__()
@@ -59,6 +61,12 @@ class SynapseMCPClient:
             logger.info(f"Connected to MCP server '{name}' with {len(tools)} tools")
         except Exception as e:
             logger.error(f"Failed to connect to MCP server '{name}': {e}")
+            for handle in (session, ctx):
+                if handle is not None:
+                    try:
+                        await handle.__aexit__(None, None, None)
+                    except Exception:
+                        pass
 
     async def connect_builtin_server(self, name: str, module_path: str) -> None:
         params = StdioServerParameters(command=sys.executable, args=["-m", module_path])

@@ -1,5 +1,6 @@
 import asyncio
 import contextlib
+import inspect
 import time
 import traceback
 from typing import Awaitable, Callable
@@ -52,6 +53,13 @@ class MessageWorker:
         self.channel_registry = channel_registry
         self.mcp_client = mcp_client
         self.process_fn = process_fn
+        # Detect whether process_fn accepts mcp_context as a 3rd positional arg.
+        # Allows old 2-arg consumers to keep working without modification.
+        try:
+            _sig = inspect.signature(process_fn)
+            self._process_fn_accepts_mcp = len(_sig.parameters) >= 3
+        except (ValueError, TypeError):
+            self._process_fn_accepts_mcp = False
         self.num_workers = num_workers
         self._workers: list[asyncio.Task] = []
         self._running = False
@@ -131,7 +139,10 @@ class MessageWorker:
             # STEP 4: The actual pipeline (SBS + RAG + LLM)
             # Note: mcp_context populated here by external MCP tool calls (not memory —
             # persona_chat queries memory directly via the singleton MemoryEngine).
-            response = await self.process_fn(task.user_message, chat_id, task.mcp_context)
+            if self._process_fn_accepts_mcp:
+                response = await self.process_fn(task.user_message, chat_id, task.mcp_context)
+            else:
+                response = await self.process_fn(task.user_message, chat_id)
 
             # STEP 5: Stop typing
             typing_task.cancel()
