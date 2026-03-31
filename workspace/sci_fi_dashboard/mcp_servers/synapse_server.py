@@ -96,10 +96,9 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         import httpx
         async with httpx.AsyncClient() as client:
             resp = await client.post(
-                "http://127.0.0.1:8000/api/chat",
+                "http://127.0.0.1:8000/chat",
                 json={
                     "message": arguments["message"],
-                    "session_id": arguments.get("session_id", "mcp-default"),
                 },
             )
             return [TextContent(type="text", text=resp.text)]

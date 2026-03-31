@@ -55,7 +55,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
     if name == "web_search":
         try:
             from db.tools import ToolRegistry
-            content = ToolRegistry.search_web(arguments["url"])
+            content = await ToolRegistry.search_web(arguments["url"])
             return [TextContent(type="text", text=content)]
         except Exception as e:
             return [TextContent(type="text", text=f"Web search error: {e}")]

@@ -92,7 +92,8 @@ class ProactiveAwarenessEngine:
                 result = await self.mcp_client.call_tool(
                     "get_upcoming", {"minutes": cal_src.lookahead_minutes}
                 )
-                ctx.calendar_events = json.loads(result) if result else []
+                parsed = json.loads(result) if result else []
+                ctx.calendar_events = parsed if isinstance(parsed, list) else []
             except Exception as e:
                 logger.warning(f"[PROACTIVE] Calendar poll failed: {e}")
 
@@ -103,7 +104,8 @@ class ProactiveAwarenessEngine:
                 result = await self.mcp_client.call_tool(
                     "get_unread", {"limit": gmail_src.max_unread}
                 )
-                ctx.unread_emails = json.loads(result) if result else []
+                parsed = json.loads(result) if result else []
+                ctx.unread_emails = parsed if isinstance(parsed, list) else []
             except Exception as e:
                 logger.warning(f"[PROACTIVE] Gmail poll failed: {e}")
 
@@ -112,7 +114,8 @@ class ProactiveAwarenessEngine:
         if slack_src and slack_src.proactive:
             try:
                 result = await self.mcp_client.call_tool("get_mentions", {"since_hours": 1})
-                ctx.slack_mentions = json.loads(result) if result else []
+                parsed = json.loads(result) if result else []
+                ctx.slack_mentions = parsed if isinstance(parsed, list) else []
             except Exception as e:
                 logger.warning(f"[PROACTIVE] Slack poll failed: {e}")
 
