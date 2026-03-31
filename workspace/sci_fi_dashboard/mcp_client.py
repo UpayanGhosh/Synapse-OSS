@@ -102,6 +102,32 @@ class SynapseMCPClient:
                 })
         return all_tools
 
+    async def add_server(
+        self, name: str, command: str, args: list[str], env: dict | None = None
+    ) -> bool:
+        """Dynamically add and connect to a new MCP server at runtime."""
+        if name in self._servers:
+            logger.warning(f"Server '{name}' already connected")
+            return False
+        await self.connect_custom_server(name, command, args, env)
+        return name in self._servers and self._servers[name].connected
+
+    async def remove_server(self, name: str) -> bool:
+        """Disconnect and remove an MCP server."""
+        conn = self._servers.get(name)
+        if not conn:
+            return False
+        if conn.session:
+            try:
+                await conn.session.__aexit__(None, None, None)
+            except Exception:
+                pass
+        to_remove = [k for k, (sn, _) in self._tool_map.items() if sn == name]
+        for k in to_remove:
+            del self._tool_map[k]
+        del self._servers[name]
+        return True
+
     async def connect_all(self, mcp_config) -> None:
         builtin_modules = {
             "memory": "sci_fi_dashboard.mcp_servers.memory_server",
