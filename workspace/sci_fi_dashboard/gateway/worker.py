@@ -42,7 +42,7 @@ class MessageWorker:
     def __init__(
         self,
         queue: TaskQueue,
-        process_fn: Callable[[str, str, str], Awaitable[str]],
+        process_fn: Callable[..., Awaitable[str]],  # (msg, chat_id[, mcp_context]) → str
         num_workers: int = 2,
         sender: WhatsAppSender | None = None,  # deprecated; kept for compat
         channel_registry=None,  # ChannelRegistry — preferred dispatch path
