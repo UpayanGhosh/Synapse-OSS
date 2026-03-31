@@ -595,6 +595,7 @@ async def persona_chat(
     request: ChatRequest,
     target: str,
     background_tasks: BackgroundTasks | None = None,
+    mcp_context: str = "",
 ):
     user_msg = request.message
     print(f"[MAIL] [{target.upper()}] Inbound: {user_msg[:80]}...")
@@ -677,6 +678,8 @@ async def persona_chat(
     ]
     if cognitive_context:
         messages.append({"role": "system", "content": cognitive_context})
+    if mcp_context:
+        messages.append({"role": "system", "content": mcp_context})
     messages.extend(request.history)
     messages.append({"role": "user", "content": user_msg})
 
@@ -777,7 +780,7 @@ async def persona_chat(
 # --- Async Gateway Processing Pipeline ---
 
 
-async def process_message_pipeline(user_msg: str, chat_id: str) -> str:
+async def process_message_pipeline(user_msg: str, chat_id: str, mcp_context: str = "") -> str:
     target = _resolve_target(chat_id)
 
     chat_req = ChatRequest(
@@ -785,7 +788,7 @@ async def process_message_pipeline(user_msg: str, chat_id: str) -> str:
         user_id=chat_id,
         session_type="safe",  # default
     )
-    result = await persona_chat(chat_req, target, None)
+    result = await persona_chat(chat_req, target, None, mcp_context=mcp_context)
     return result.get("reply", "")
 
 
@@ -1004,6 +1007,7 @@ async def lifespan(app: FastAPI):
         app.state.mcp_client = SynapseMCPClient()
         await app.state.mcp_client.connect_all(_mcp_config)
         logger.info(f"[MCP] Connected. Available tools: {len(app.state.mcp_client.list_all_tools())}")
+        app.state.worker.mcp_client = app.state.mcp_client
 
     # --- Proactive Awareness Engine ---
     from proactive_engine import ProactiveAwarenessEngine  # noqa: E402, PLC0415

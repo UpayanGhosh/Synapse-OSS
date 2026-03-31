@@ -138,7 +138,7 @@ class MessageWorker:
                     print(f"[WORKER-{worker_id}] [MCP] Context gathering failed: {e}")
 
             # STEP 4: The actual pipeline (SBS + RAG + LLM)
-            response = await self.process_fn(task.user_message, chat_id)
+            response = await self.process_fn(task.user_message, chat_id, task.mcp_context)
 
             # STEP 5: Stop typing
             typing_task.cancel()
