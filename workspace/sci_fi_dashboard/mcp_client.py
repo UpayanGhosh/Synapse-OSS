@@ -21,20 +21,20 @@ class MCPServerConnection:
     session: ClientSession | None = None
     tools: list[dict] = field(default_factory=list)
     connected: bool = False
+    ctx: Any = field(default=None, repr=False)
 
 
 class SynapseMCPClient:
     def __init__(self):
         self._servers: dict[str, MCPServerConnection] = {}
         self._tool_map: dict[str, tuple[str, str]] = {}  # key -> (serverName, originalToolName)
-        self._contexts: list = []  # track context managers for cleanup
 
-    async def connect_builtin_server(self, name: str, module_path: str) -> None:
-        server_params = StdioServerParameters(command=sys.executable, args=["-m", module_path])
+    async def _connect_server(
+        self, name: str, server_params: StdioServerParameters, *, register_unqualified: bool = False
+    ) -> None:
         try:
             ctx = stdio_client(server_params)
             read, write = await ctx.__aenter__()
-            self._contexts.append(ctx)
             session = ClientSession(read, write)
             await session.__aenter__()
             await session.initialize()
@@ -44,39 +44,31 @@ class SynapseMCPClient:
                 for t in tools_resp.tools
             ]
             self._servers[name] = MCPServerConnection(
-                name=name, session=session, tools=tools, connected=True
+                name=name, session=session, tools=tools, connected=True, ctx=ctx
             )
             for tool in tools:
                 self._tool_map[f"{name}__{tool['name']}"] = (name, tool["name"])
-                self._tool_map[tool["name"]] = (name, tool["name"])  # unqualified fallback
+                if register_unqualified:
+                    unqualified = tool["name"]
+                    if unqualified in self._tool_map:
+                        logger.warning(
+                            f"[MCP] Tool name conflict: '{unqualified}' already registered "
+                            f"(server: {self._tool_map[unqualified][0]}), overwriting with '{name}'"
+                        )
+                    self._tool_map[unqualified] = (name, tool["name"])
             logger.info(f"Connected to MCP server '{name}' with {len(tools)} tools")
         except Exception as e:
             logger.error(f"Failed to connect to MCP server '{name}': {e}")
 
+    async def connect_builtin_server(self, name: str, module_path: str) -> None:
+        params = StdioServerParameters(command=sys.executable, args=["-m", module_path])
+        await self._connect_server(name, params, register_unqualified=True)
+
     async def connect_custom_server(
         self, name: str, command: str, args: list[str], env: dict | None = None
     ) -> None:
-        server_params = StdioServerParameters(command=command, args=args, env=env)
-        try:
-            ctx = stdio_client(server_params)
-            read, write = await ctx.__aenter__()
-            self._contexts.append(ctx)
-            session = ClientSession(read, write)
-            await session.__aenter__()
-            await session.initialize()
-            tools_resp = await session.list_tools()
-            tools = [
-                {"name": t.name, "description": t.description, "inputSchema": t.inputSchema}
-                for t in tools_resp.tools
-            ]
-            self._servers[name] = MCPServerConnection(
-                name=name, session=session, tools=tools, connected=True
-            )
-            for tool in tools:
-                self._tool_map[f"{name}__{tool['name']}"] = (name, tool["name"])
-            logger.info(f"Connected to custom MCP server '{name}' with {len(tools)} tools")
-        except Exception as e:
-            logger.error(f"Failed to connect to custom MCP server '{name}': {e}")
+        params = StdioServerParameters(command=command, args=args, env=env)
+        await self._connect_server(name, params, register_unqualified=False)
 
     async def call_tool(self, tool_name: str, arguments: dict) -> str:
         if tool_name not in self._tool_map:
@@ -122,6 +114,11 @@ class SynapseMCPClient:
                 await conn.session.__aexit__(None, None, None)
             except Exception:
                 pass
+        if conn.ctx:
+            try:
+                await conn.ctx.__aexit__(None, None, None)
+            except Exception:
+                pass
         to_remove = [k for k, (sn, _) in self._tool_map.items() if sn == name]
         for k in to_remove:
             del self._tool_map[k]
@@ -137,11 +134,17 @@ class SynapseMCPClient:
             "calendar": "sci_fi_dashboard.mcp_servers.calendar_server",
             "slack": "sci_fi_dashboard.mcp_servers.slack_server",
         }
-        for name, cfg in mcp_config.builtin_servers.items():
-            if cfg.enabled and name in builtin_modules:
-                await self.connect_builtin_server(name, builtin_modules[name])
-        for name, cfg in mcp_config.custom_servers.items():
-            await self.connect_custom_server(name, cfg.command, cfg.args, cfg.env or None)
+        tasks = [
+            self.connect_builtin_server(name, builtin_modules[name])
+            for name, cfg in mcp_config.builtin_servers.items()
+            if cfg.enabled and name in builtin_modules
+        ]
+        tasks += [
+            self.connect_custom_server(name, cfg.command, cfg.args, cfg.env or None)
+            for name, cfg in mcp_config.custom_servers.items()
+        ]
+        if tasks:
+            await asyncio.gather(*tasks)
 
     async def disconnect_all(self) -> None:
         for conn in self._servers.values():
@@ -150,11 +153,10 @@ class SynapseMCPClient:
                     await conn.session.__aexit__(None, None, None)
                 except Exception:
                     pass
-        for ctx in self._contexts:
-            try:
-                await ctx.__aexit__(None, None, None)
-            except Exception:
-                pass
+            if conn.ctx:
+                try:
+                    await conn.ctx.__aexit__(None, None, None)
+                except Exception:
+                    pass
         self._servers.clear()
         self._tool_map.clear()
-        self._contexts.clear()

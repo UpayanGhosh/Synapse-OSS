@@ -145,7 +145,7 @@ class MessageWorker:
             with contextlib.suppress(asyncio.CancelledError):
                 await typing_task
 
-            # STEP 5: Check if still the latest generation before sending
+            # STEP 6: Check if still the latest generation before sending
             async with self._gen_lock:
                 latest_gen = self._chat_generations.get(chat_id, task.generation)
 

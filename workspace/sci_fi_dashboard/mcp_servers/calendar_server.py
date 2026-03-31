@@ -5,6 +5,7 @@ Run standalone: python -m sci_fi_dashboard.mcp_servers.calendar_server
 import asyncio
 import json
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
@@ -26,7 +27,7 @@ def _get_calendar_service():
         cal_cfg = mcp_cfg.builtin_servers.get("calendar")
         if not cal_cfg:
             raise RuntimeError("Calendar not configured in synapse.json")
-        token_path = cal_cfg.token_path.replace("~", str(cfg.data_root.parent))
+        token_path = str(Path(cal_cfg.token_path).expanduser())
         creds = Credentials.from_authorized_user_file(token_path, [
             "https://www.googleapis.com/auth/calendar.readonly",
             "https://www.googleapis.com/auth/calendar.events",

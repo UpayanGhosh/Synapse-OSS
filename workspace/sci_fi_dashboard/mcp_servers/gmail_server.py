@@ -6,6 +6,7 @@ import asyncio
 import json
 import base64
 import email.mime.text
+from pathlib import Path
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
@@ -27,7 +28,7 @@ def _get_gmail_service():
         gmail_cfg = mcp_cfg.builtin_servers.get("gmail")
         if not gmail_cfg:
             raise RuntimeError("Gmail not configured in synapse.json mcp.builtin_servers.gmail")
-        token_path = gmail_cfg.token_path.replace("~", str(cfg.data_root.parent))
+        token_path = str(Path(gmail_cfg.token_path).expanduser())
         creds = Credentials.from_authorized_user_file(token_path, [
             "https://www.googleapis.com/auth/gmail.readonly",
             "https://www.googleapis.com/auth/gmail.send",
