@@ -70,7 +70,7 @@ class SynapseMCPClient:
         params = StdioServerParameters(command=command, args=args, env=env)
         await self._connect_server(name, params, register_unqualified=False)
 
-    async def call_tool(self, tool_name: str, arguments: dict) -> str:
+    async def call_tool(self, tool_name: str, arguments: dict, timeout: float = 10.0) -> str:
         if tool_name not in self._tool_map:
             return json.dumps({"error": f"Unknown tool: {tool_name}"})
         server_name, original_name = self._tool_map[tool_name]
@@ -78,8 +78,12 @@ class SynapseMCPClient:
         if not conn or not conn.connected or not conn.session:
             return json.dumps({"error": f"Server '{server_name}' not connected"})
         try:
-            result = await conn.session.call_tool(original_name, arguments)
+            result = await asyncio.wait_for(
+                conn.session.call_tool(original_name, arguments), timeout=timeout
+            )
             return "\n".join(c.text for c in result.content if hasattr(c, "text"))
+        except asyncio.TimeoutError:
+            return json.dumps({"error": f"Tool call timed out after {timeout}s: {tool_name}"})
         except Exception as e:
             return json.dumps({"error": f"Tool call failed: {e}"})
 

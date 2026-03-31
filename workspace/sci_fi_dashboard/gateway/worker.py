@@ -2,6 +2,7 @@ import asyncio
 import contextlib
 import time
 import traceback
+from typing import Awaitable, Callable
 
 from .queue import MessageTask, TaskQueue
 from .sender import (
@@ -40,7 +41,7 @@ class MessageWorker:
     def __init__(
         self,
         queue: TaskQueue,
-        process_fn,
+        process_fn: Callable[[str, str, str], Awaitable[str]],
         num_workers: int = 2,
         sender: WhatsAppSender | None = None,  # deprecated; kept for compat
         channel_registry=None,  # ChannelRegistry — preferred dispatch path
@@ -127,17 +128,9 @@ class MessageWorker:
             # STEP 2: Typing indicator
             typing_task = asyncio.create_task(self._keep_typing(chat_id, channel))
 
-            # STEP 3: Gather MCP context (memory enrichment)
-            if self.mcp_client:
-                try:
-                    memory_result = await self.mcp_client.call_tool(
-                        "query_memory", {"query": task.user_message, "limit": 5}
-                    )
-                    task.mcp_context = f"\n[MCP_MEMORY]\n{memory_result}\n"
-                except Exception as e:
-                    print(f"[WORKER-{worker_id}] [MCP] Context gathering failed: {e}")
-
             # STEP 4: The actual pipeline (SBS + RAG + LLM)
+            # Note: mcp_context populated here by external MCP tool calls (not memory —
+            # persona_chat queries memory directly via the singleton MemoryEngine).
             response = await self.process_fn(task.user_message, chat_id, task.mcp_context)
 
             # STEP 5: Stop typing
