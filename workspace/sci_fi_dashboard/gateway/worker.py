@@ -44,10 +44,12 @@ class MessageWorker:
         num_workers: int = 2,
         sender: WhatsAppSender | None = None,  # deprecated; kept for compat
         channel_registry=None,  # ChannelRegistry — preferred dispatch path
+        mcp_client=None,  # SynapseMCPClient — optional MCP context gathering
     ):
         self.queue = queue
         self.sender = sender  # fallback if no channel_registry or channel not found
         self.channel_registry = channel_registry
+        self.mcp_client = mcp_client
         self.process_fn = process_fn
         self.num_workers = num_workers
         self._workers: list[asyncio.Task] = []
@@ -125,10 +127,20 @@ class MessageWorker:
             # STEP 2: Typing indicator
             typing_task = asyncio.create_task(self._keep_typing(chat_id, channel))
 
-            # STEP 3: The actual pipeline (SBS + RAG + LLM)
+            # STEP 3: Gather MCP context (memory enrichment)
+            if self.mcp_client:
+                try:
+                    memory_result = await self.mcp_client.call_tool(
+                        "query_memory", {"query": task.user_message, "limit": 5}
+                    )
+                    task.mcp_context = f"\n[MCP_MEMORY]\n{memory_result}\n"
+                except Exception as e:
+                    print(f"[WORKER-{worker_id}] [MCP] Context gathering failed: {e}")
+
+            # STEP 4: The actual pipeline (SBS + RAG + LLM)
             response = await self.process_fn(task.user_message, chat_id)
 
-            # STEP 4: Stop typing
+            # STEP 5: Stop typing
             typing_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await typing_task

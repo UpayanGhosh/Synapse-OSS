@@ -990,11 +990,24 @@ async def lifespan(app: FastAPI):
         models_catalog_path=catalog_path,
     )
 
+    # --- MCP Client Initialization ---
+    from mcp_config import load_mcp_config  # noqa: E402, PLC0415
+    from mcp_client import SynapseMCPClient  # noqa: E402, PLC0415
+
+    _mcp_config = load_mcp_config(_synapse_cfg.mcp)
+    app.state.mcp_client = None
+    if _mcp_config.enabled:
+        app.state.mcp_client = SynapseMCPClient()
+        await app.state.mcp_client.connect_all(_mcp_config)
+        logger.info(f"[MCP] Connected. Available tools: {len(app.state.mcp_client.list_all_tools())}")
+
     yield
 
     print("[STOP] Shutting down...")
     brain.save_graph()
     worker_task.cancel()
+    if hasattr(app.state, "mcp_client") and app.state.mcp_client:
+        await app.state.mcp_client.disconnect_all()
     if hasattr(app.state, "retry_queue"):
         await app.state.retry_queue.stop()
     await channel_registry.stop_all()  # NEW: stop all channels before worker
