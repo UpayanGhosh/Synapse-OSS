@@ -332,6 +332,9 @@ from sci_fi_dashboard.llm_router import SynapseLLMRouter  # noqa: E402
 _synapse_cfg = SynapseConfig.load()
 synapse_llm_router = SynapseLLMRouter(_synapse_cfg)
 
+# Module-level proactive engine reference — set in lifespan after engine starts
+_proactive_engine = None
+
 # --- Phase 5: Telegram, Discord, Slack — opt-in channel registration ---
 # Each channel is registered only if its token(s) are present in synapse.json.
 # Missing token = INFO log + skip (never raises at startup).
@@ -663,7 +666,8 @@ async def persona_chat(
     user_msg_id = user_log.get("msg_id")
 
     base_instructions = "You are Synapse. Follow the persona profile below precisely."
-    system_prompt = sbs_orchestrator.get_system_prompt(base_instructions)
+    proactive_block = _proactive_engine.get_prompt_injection() if _proactive_engine else ""
+    system_prompt = sbs_orchestrator.get_system_prompt(base_instructions, proactive_block)
     messages = [
         {"role": "system", "content": system_prompt},
         {
@@ -1001,11 +1005,26 @@ async def lifespan(app: FastAPI):
         await app.state.mcp_client.connect_all(_mcp_config)
         logger.info(f"[MCP] Connected. Available tools: {len(app.state.mcp_client.list_all_tools())}")
 
+    # --- Proactive Awareness Engine ---
+    from proactive_engine import ProactiveAwarenessEngine  # noqa: E402, PLC0415
+
+    app.state.proactive_engine = None
+    if _mcp_config.enabled and _mcp_config.proactive.enabled and app.state.mcp_client:
+        app.state.proactive_engine = ProactiveAwarenessEngine(
+            app.state.mcp_client, _mcp_config.proactive
+        )
+        await app.state.proactive_engine.start()
+        global _proactive_engine
+        _proactive_engine = app.state.proactive_engine
+        logger.info("[PROACTIVE] Engine started")
+
     yield
 
     print("[STOP] Shutting down...")
     brain.save_graph()
     worker_task.cancel()
+    if hasattr(app.state, "proactive_engine") and app.state.proactive_engine:
+        await app.state.proactive_engine.stop()
     if hasattr(app.state, "mcp_client") and app.state.mcp_client:
         await app.state.mcp_client.disconnect_all()
     if hasattr(app.state, "retry_queue"):

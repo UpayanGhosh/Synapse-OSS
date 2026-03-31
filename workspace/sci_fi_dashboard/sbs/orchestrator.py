@@ -116,15 +116,19 @@ class SBSOrchestrator:
 
         return rt_results
 
-    def get_system_prompt(self, base_instructions: str = "") -> str:
+    def get_system_prompt(self, base_instructions: str = "", proactive_context: str = "") -> str:
         """
         Returns the complete system prompt with injected persona profile.
+        Optionally appends a proactive awareness block from the ProactiveAwarenessEngine.
         """
         persona_block = self.compiler.compile()
-
+        parts = []
         if base_instructions:
-            return f"{base_instructions}\n\n---\n\n{persona_block}"
-        return persona_block
+            parts.append(base_instructions)
+        parts.append(persona_block)
+        if proactive_context:
+            parts.append(proactive_context)
+        return "\n\n---\n\n".join(parts)
 
     def force_batch(self, full_rebuild: bool = False):
         self.batch.run(full_rebuild=full_rebuild)
