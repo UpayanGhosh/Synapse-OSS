@@ -281,3 +281,16 @@ class BaseChannel(ABC):
         Default returns False — override in channels that support reactions.
         """
         return False
+
+    async def send_payload(self, chat_id: str, payload: ReplyPayload) -> bool:
+        """Route a ReplyPayload to send_media() or send() based on media_url presence.
+
+        Default covers the common case; channels may override for richer behaviour.
+        """
+        if payload.media_url:
+            return await self.send_media(
+                chat_id,
+                media_url=payload.media_url,
+                caption=payload.text,
+            )
+        return await self.send(chat_id, payload.text)
