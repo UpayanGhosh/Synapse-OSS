@@ -19,7 +19,11 @@ from .constants import (
     max_bytes_for_kind,
     media_kind_from_mime,
 )
+from .chat_attachments import ParsedMessage, parse_message_with_attachments
+from .delivery_queue import DeliveryQueue, QueuedDelivery
+from .fetch import MediaFetchError, fetch_media
 from .mime import detect_mime
+from .outbound_attachment import MediaResolutionError, resolve_media_path
 from .ssrf import download_to_file, is_ssrf_blocked
 from .store import SavedMedia, clean_old_media, save_media_buffer
 
@@ -46,4 +50,16 @@ __all__ = [
     "SavedMedia",
     "clean_old_media",
     "save_media_buffer",
+    # fetch
+    "MediaFetchError",
+    "fetch_media",
+    # chat_attachments
+    "ParsedMessage",
+    "parse_message_with_attachments",
+    # delivery_queue
+    "DeliveryQueue",
+    "QueuedDelivery",
+    # outbound_attachment
+    "MediaResolutionError",
+    "resolve_media_path",
 ]
