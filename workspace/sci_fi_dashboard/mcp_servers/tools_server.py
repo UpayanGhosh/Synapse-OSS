@@ -61,16 +61,16 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             return [TextContent(type="text", text=f"Web search error: {e}")]
     elif name == "read_file":
         try:
-            from sbs.sentinel.gateway import Sentinel
-            result = Sentinel().agent_read_file(arguments["path"])
+            from sbs.sentinel.tools import agent_read_file
+            result = agent_read_file(arguments["path"])
             return [TextContent(type="text", text=result if result else "DENIED: Sentinel blocked read")]
         except Exception as e:
             return [TextContent(type="text", text=f"Read error: {e}")]
     elif name == "write_file":
         try:
-            from sbs.sentinel.gateway import Sentinel
-            success = Sentinel().agent_write_file(arguments["path"], arguments["content"])
-            return [TextContent(type="text", text="Written" if success else "DENIED: Sentinel blocked write")]
+            from sbs.sentinel.tools import agent_write_file
+            result = agent_write_file(arguments["path"], arguments["content"])
+            return [TextContent(type="text", text=result)]
         except Exception as e:
             return [TextContent(type="text", text=f"Write error: {e}")]
     return [TextContent(type="text", text=f"Unknown tool: {name}")]
