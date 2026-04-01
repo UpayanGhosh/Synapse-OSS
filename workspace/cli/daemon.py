@@ -374,31 +374,34 @@ class WindowsTaskService(GatewayService):
             "/F",  # Force overwrite if exists
         ]
 
+    @staticmethod
+    def _is_admin() -> bool:
+        try:
+            import ctypes
+            return bool(ctypes.windll.shell32.IsUserAnAdmin())
+        except Exception:
+            return False
+
     def install(self, opts: InstallOpts) -> None:
         opts.log_dir.mkdir(parents=True, exist_ok=True)
-        try:
-            result = subprocess.run(
-                self._schtasks_command(opts),
-                capture_output=True,
-                text=True,
-                timeout=10,
-                check=False,
-            )
-            if result.returncode == 0:
-                print(
-                    f"Synapse Gateway registered as Windows scheduled task '{_WINDOWS_TASK_NAME}'."
+        if self._is_admin():
+            try:
+                result = subprocess.run(
+                    self._schtasks_command(opts),
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                    check=False,
                 )
-                return
-            else:
-                print(
-                    f"schtasks returned error (code {result.returncode}): {result.stderr.strip()}"
-                )
-        except subprocess.TimeoutExpired:
-            print("schtasks timed out — falling back to Startup folder shortcut.")
-        except FileNotFoundError:
-            print("schtasks not found — falling back to Startup folder shortcut.")
+                if result.returncode == 0:
+                    print(
+                        f"Synapse Gateway registered as Windows scheduled task '{_WINDOWS_TASK_NAME}'."
+                    )
+                    return
+            except (subprocess.TimeoutExpired, FileNotFoundError):
+                pass  # fall through to Startup folder
 
-        # Fallback: write .bat to Startup folder
+        # Non-admin or schtasks failed: write .bat to Startup folder
         bat_path = self._startup_bat_path
         bat_path.parent.mkdir(parents=True, exist_ok=True)
         bat_path.write_text(self._build_bat_content(opts), encoding="utf-8")

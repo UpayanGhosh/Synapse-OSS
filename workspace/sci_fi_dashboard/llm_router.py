@@ -12,6 +12,7 @@ import re
 import sqlite3
 import sys
 import uuid
+from dataclasses import dataclass
 from enum import StrEnum
 
 # Ensure workspace root on path for SynapseConfig import
@@ -32,6 +33,18 @@ from litellm import (  # noqa: E402
 from synapse_config import SynapseConfig  # noqa: E402
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class LLMResult:
+    """Structured result from an LLM call, carrying text + usage metadata."""
+
+    text: str
+    model: str
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
+    finish_reason: str | None = None
 
 # --- Provider key injection ---
 
@@ -95,6 +108,44 @@ _OLLAMA_CHAT_PREFIX = "ollama_chat/"  # allowed: constant-definition
 # --- Router builder ---
 
 
+def _get_copilot_token() -> str:
+    """Get a valid GitHub Copilot API token, refreshing automatically if expired."""
+    from litellm.llms.github_copilot.authenticator import Authenticator  # noqa: PLC0415
+
+    try:
+        return Authenticator().get_api_key()
+    except Exception as exc:
+        logger.warning("GitHub Copilot token refresh failed: %s", exc)
+        return "missing"
+
+
+def _copilot_litellm_params(model_suffix: str) -> dict:
+    """Build litellm_params for a github_copilot/ model via the openai/ shim.
+
+    litellm's Router doesn't apply Copilot auth headers automatically, so we
+    rewrite github_copilot/gpt-4o → openai/gpt-4o with the Copilot API base
+    and required headers injected directly.
+    """
+    from litellm.llms.github_copilot.common_utils import (  # noqa: PLC0415
+        GITHUB_COPILOT_API_BASE,
+        get_copilot_default_headers,
+    )
+
+    api_key = _get_copilot_token()
+
+    return {
+        "model": f"openai/{model_suffix}",
+        "api_key": api_key,
+        "api_base": GITHUB_COPILOT_API_BASE,
+        "extra_headers": get_copilot_default_headers(api_key),
+        "timeout": 60,
+        "stream": False,
+    }
+
+
+_GITHUB_COPILOT_PREFIX = "github_copilot/"
+
+
 def build_router(model_mappings: dict, providers: dict) -> Router:
     """
     Build a litellm.Router from synapse.json model_mappings.
@@ -117,9 +168,12 @@ def build_router(model_mappings: dict, providers: dict) -> Router:
     for role, cfg in model_mappings.items():
         primary_model: str = cfg["model"]
 
-        # Ollama: validate prefix and inject api_base
-        litellm_params: dict = {"model": primary_model, "timeout": 60, "stream": False}
-        if primary_model.startswith(_OLLAMA_CHAT_PREFIX):
+        if primary_model.startswith(_GITHUB_COPILOT_PREFIX):
+            litellm_params = _copilot_litellm_params(
+                primary_model[len(_GITHUB_COPILOT_PREFIX):]
+            )
+        elif primary_model.startswith(_OLLAMA_CHAT_PREFIX):
+            litellm_params = {"model": primary_model, "timeout": 60, "stream": False}
             litellm_params["api_base"] = ollama_api_base
         elif primary_model.startswith("ollama/"):
             raise ValueError(
@@ -127,11 +181,13 @@ def build_router(model_mappings: dict, providers: dict) -> Router:
                 f"Got: {primary_model}"
             )
         elif primary_model.startswith("hosted_vllm/"):
+            litellm_params = {"model": primary_model, "timeout": 60, "stream": False}
             litellm_params["api_base"] = vllm_api_base
         elif primary_model.startswith("openai/") and providers.get("qianfan") and role == "qianfan":
-            # Baidu Qianfan uses openai/ + api_base override
-            # Only applied when provider config is "qianfan" role
+            litellm_params = {"model": primary_model, "timeout": 60, "stream": False}
             litellm_params["api_base"] = qianfan_api_base
+        else:
+            litellm_params = {"model": primary_model, "timeout": 60, "stream": False}
 
         model_list.append({"model_name": role, "litellm_params": litellm_params})
 
@@ -139,9 +195,14 @@ def build_router(model_mappings: dict, providers: dict) -> Router:
         fallback_model = cfg.get("fallback")
         if fallback_model:
             fallback_role = f"{role}_fallback"
-            fallback_params: dict = {"model": fallback_model, "timeout": 60, "stream": False}
-            if fallback_model.startswith(_OLLAMA_CHAT_PREFIX):
-                fallback_params["api_base"] = ollama_api_base
+            if fallback_model.startswith(_GITHUB_COPILOT_PREFIX):
+                fallback_params = _copilot_litellm_params(
+                    fallback_model[len(_GITHUB_COPILOT_PREFIX):]
+                )
+            else:
+                fallback_params = {"model": fallback_model, "timeout": 60, "stream": False}
+                if fallback_model.startswith(_OLLAMA_CHAT_PREFIX):
+                    fallback_params["api_base"] = ollama_api_base
             model_list.append({"model_name": fallback_role, "litellm_params": fallback_params})
             fallbacks.append({role: [fallback_role]})
 
@@ -364,24 +425,30 @@ class SynapseLLMRouter:
         self._config = config or SynapseConfig.load()
         _inject_provider_keys(self._config.providers)
         self._router = build_router(self._config.model_mappings, self._config.providers)
+        self._uses_copilot = any(
+            v.get("model", "").startswith(_GITHUB_COPILOT_PREFIX)
+            for v in self._config.model_mappings.values()
+        )
         logger.info(
             "SynapseLLMRouter initialized with %d roles",
             len(self._config.model_mappings),
         )
 
-    async def call(
+    def _rebuild_router(self) -> None:
+        """Rebuild the litellm Router (e.g. after a Copilot token refresh)."""
+        self._router = build_router(self._config.model_mappings, self._config.providers)
+        logger.info("Router rebuilt with fresh credentials")
+
+    async def _do_call(
         self,
         role: str,
         messages: list[dict],
         temperature: float = 0.7,
         max_tokens: int = 1000,
-    ) -> str:
+    ):
         """
-        Route to the litellm model for the given role (e.g., 'casual', 'vault').
-        Falls back to fallback model on AuthenticationError or RateLimitError.
-        Returns extracted text string; raises on unrecoverable errors.
-
-        stream=False enforced — Phase 2 does not stream (see 02-RESEARCH.md Pitfall 4).
+        Internal: route to the litellm model for the given role and return the raw
+        litellm response object. Handles error classification and session tracking.
         """
         try:
             response = await self._router.acompletion(
@@ -394,7 +461,6 @@ class SynapseLLMRouter:
             finish_reason = choice.finish_reason
             if finish_reason not in ("stop", "end_turn", "length", None):
                 logger.warning("Unexpected finish_reason '%s' for role '%s'", finish_reason, role)
-            text = choice.message.content or ""
             # SESS-01: Write token usage to sessions table (non-fatal side effect)
             try:
                 _write_session(
@@ -404,7 +470,7 @@ class SynapseLLMRouter:
                 )
             except Exception as session_exc:
                 logger.debug("Session write failed (non-fatal): %s", session_exc)
-            return text
+            return response
         except AuthenticationError as exc:
             logger.error("Auth failed for role '%s': %s", role, exc)
             raise
@@ -420,6 +486,58 @@ class SynapseLLMRouter:
         except BadRequestError as exc:
             logger.error("Bad request for role '%s': %s", role, exc)
             raise
+        except Exception as exc:
+            # Copilot tokens are short-lived — on "forbidden" errors, refresh
+            # the token and retry once before giving up.
+            if self._uses_copilot and "forbidden" in str(exc).lower():
+                logger.warning("Copilot token rejected — refreshing and retrying")
+                _get_copilot_token()  # triggers Authenticator refresh
+                self._rebuild_router()
+                return await self._router.acompletion(
+                    model=role,
+                    messages=messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                )
+            raise
+
+    async def call(
+        self,
+        role: str,
+        messages: list[dict],
+        temperature: float = 0.7,
+        max_tokens: int = 1000,
+    ) -> str:
+        """
+        Route to the litellm model for the given role (e.g., 'casual', 'vault').
+        Falls back to fallback model on AuthenticationError or RateLimitError.
+        Returns extracted text string; raises on unrecoverable errors.
+
+        stream=False enforced — Phase 2 does not stream (see 02-RESEARCH.md Pitfall 4).
+        """
+        response = await self._do_call(role, messages, temperature, max_tokens)
+        return response.choices[0].message.content or ""
+
+    async def call_with_metadata(
+        self,
+        role: str,
+        messages: list[dict],
+        temperature: float = 0.7,
+        max_tokens: int = 1000,
+    ) -> LLMResult:
+        """
+        Same as call() but returns an LLMResult with text + usage metadata.
+        """
+        response = await self._do_call(role, messages, temperature, max_tokens)
+        usage = getattr(response, "usage", None)
+        return LLMResult(
+            text=response.choices[0].message.content or "",
+            model=response.model or "unknown",
+            prompt_tokens=getattr(usage, "prompt_tokens", 0) or 0,
+            completion_tokens=getattr(usage, "completion_tokens", 0) or 0,
+            total_tokens=getattr(usage, "total_tokens", 0) or 0,
+            finish_reason=response.choices[0].finish_reason,
+        )
 
     async def call_model(
         self,

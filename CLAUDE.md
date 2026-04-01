@@ -1,197 +1,171 @@
-# CLAUDE.md — Synapse-OSS (optimized for local models)
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Commands
+
 ```bash
 # Start/Stop
 ./synapse_start.sh          # Start all (Mac/Linux)
 synapse_start.bat           # Start all (Windows)
 ./synapse_stop.sh           # Stop all
 
-# API server
+# API server only
 cd workspace/sci_fi_dashboard && uvicorn api_gateway:app --host 0.0.0.0 --port 8000 --reload
+
+# Baileys WhatsApp bridge only (Node.js subprocess — normally auto-spawned by WhatsAppChannel)
+cd baileys-bridge && npm install && node index.js
 
 # CLI
 cd workspace && python main.py chat|ingest|vacuum|verify
 
-# Tests
+# Tests — run from workspace/
 cd workspace && pytest tests/ -v
-pytest tests/ -m unit|integration|smoke
+pytest tests/ -m unit|integration|smoke          # filter by marker
+pytest tests/test_flood.py -v                    # single file
+pytest tests/test_flood.py::TestFloodGate::test_batch -v  # single test
 
 # Lint
 ruff check workspace/ && black workspace/   # line-length 100, py311
 ```
 
-## File Map (workspace/)
+## Architecture
+
+### Request Flow (full happy path)
+```
+Channel (WA/TG/Discord/Slack)
+  → ChannelRegistry
+  → FloodGate (3s batch)
+  → MessageDeduplicator (5-min TTL)
+  → TaskQueue (asyncio FIFO, max 100)
+  → MessageWorker x2
+  → persona_chat() in api_gateway.py
+      ├── SBS: get_prompt()          # assembled ~1500-token persona segment
+      ├── MemoryEngine: query()      # hybrid RAG: vector + FTS + rerank
+      ├── DualCognitionEngine: think()  # inner monologue + tension score
+      ├── route_traffic_cop()        # classifies → CASUAL/CODING/ANALYSIS/REVIEW/SPICY
+      └── SynapseLLMRouter: call()   # litellm.Router → cloud or local Ollama
+  → registry.get(channel_id).send()
+```
+
+### LLM Routing (Traffic Cop → MoA)
+`route_traffic_cop()` in `api_gateway.py` auto-classifies every message before the LLM call. The LLM is **never** given tools during `persona_chat()` — no function calling in the chat path.
+
+| Role | Model | Trigger |
+|------|-------|---------|
+| casual | Gemini Flash | default / Banglish |
+| code | Claude Sonnet (thinking) | code detected |
+| analysis | Gemini Pro | deep reasoning |
+| vault | Local Ollama | private/spicy content — zero cloud leakage |
+| review | configurable | explicit review tasks |
+
+Model strings are provider-prefixed (`gemini/gemini-2.0-flash-exp`, `anthropic/claude-3-5-sonnet-20241022`, `ollama_chat/mistral`) and come from `synapse.json → model_mappings`. Each role can declare a `fallback` model.
+
+### Soul-Brain Sync (SBS) Persona Engine
+Pipeline: `RawMessage → RealtimeProcessor → BatchProcessor (every 50 msgs or 6h) → PromptCompiler → system prompt`
+
+Two SBS instances run simultaneously: `sbs_the_creator` (primary user, casual/sibling) and `sbs_the_partner` (partner, warm/PA). Each tracks 8 profile layers: `core_identity`, `linguistic`, `emotional_state`, `domain`, `interaction`, `vocabulary`, `exemplars`, `meta`.
+
+`ImplicitFeedbackDetector` watches every message for correction signals ("too long", "be more casual") and adjusts profile layers immediately without explicit commands. Patterns loaded from `sbs/feedback/language_patterns.yaml` — editable without touching Python.
+
+### Memory (Hybrid RAG)
+- `memory.db` — SQLite + sqlite-vec, documents + embeddings, WAL mode
+- `knowledge_graph.db` — subject–predicate–object triples (SQLiteGraph)
+- Qdrant at `:6333` — high-speed ANN search
+
+Retrieval: embed (Ollama `nomic-embed-text`) → ANN+FTS → FlashRank rerank (ms-marco-TinyBERT-L-2-v2). Fast Gate skips reranker if ≥ limit results score > 0.80. DBs live at `~/.synapse/workspace/db/`.
+
+Dual hemispheres: `hemisphere_tag = "safe"|"spicy"`. The Vault role only ever touches the `spicy` hemisphere — enforces zero cloud leakage for private sessions.
+
+### Additional Pipeline Features
+- **Auto-Continue**: if a reply has no terminal punctuation, a `BackgroundTask` requests a continuation and sends it as a second message.
+- **Voice messages**: WhatsApp OGG/MP3 → `AudioProcessor` (Groq Whisper-Large-v3) → transcribed text enters the normal pipeline. Cloud transcription avoids loading local Whisper on 8 GB RAM hosts.
+- **Media pipeline** (`sci_fi_dashboard/media/`): MIME detection (magic bytes > header > extension), size limits (image 6 MB / audio+video 16 MB / doc 100 MB), 120s TTL cleanup, SSRF guard rejects private/loopback IPs.
+- **Gentle Worker Loop**: runs maintenance only when plugged in AND CPU < 20%. Prunes stale graph triples every 10 min, VACUUMs DBs every 30 min.
+
+### WebSocket Gateway
+- Endpoint: `ws://127.0.0.1:8000/ws`, auth via `SYNAPSE_GATEWAY_TOKEN` (optional)
+- Methods: `chat.send`, `channels.status`, `models.list`, `sessions.list`, `sessions.reset`
+- Heartbeat tick every 30s
+
+### DM Access Control (`channels/security.py`)
+Per-channel policy via `DmPolicy` enum: `pairing | allowlist | open | disabled`. `PairingStore` persists approved senders at `~/.synapse/state/pairing/<channel_id>.jsonl`. `resolve_dm_access()` is a pure function returning `"allow" / "deny" / "pending_approval"`.
+
+### MCP Servers (`sci_fi_dashboard/mcp_servers/`)
+| Server | Port | Purpose |
+|--------|------|---------|
+| `tools_server.py` | 8989 | `read_file`, `write_file` (Sentinel-gated), `web_search` |
+| `memory_server.py` | — | knowledge base query + fact ingest |
+| `synapse_server.py` | — | chat pipeline, profile queries |
+| `gmail_server.py`, `calendar_server.py`, `slack_server.py` | — | external integrations |
+
+MCP tools are **not** offered to the LLM during persona chat — they are only called by `ProactiveAwarenessEngine` or external MCP clients.
+
+**Known bug in `tools_server.py`**: `read_file`/`write_file` call `Sentinel().agent_read_file()` which is incorrect — `agent_read_file` is a module-level function in `sbs/sentinel/tools.py`, not a method on `Sentinel`. These tools raise `TypeError` at runtime until fixed.
+
+## Key Files
 
 ### Entry Points
 | File | Purpose |
 |------|---------|
-| `main.py` | CLI: chat, ingest, vacuum, verify |
-| `sci_fi_dashboard/api_gateway.py` | FastAPI app (~1200 lines), all singletons init here |
+| `workspace/main.py` | CLI: chat, ingest, vacuum, verify |
+| `workspace/sci_fi_dashboard/api_gateway.py` | FastAPI app (~1200 lines), all singletons init here |
+| `workspace/synapse_config.py` | Root config — imported by 50+ files, edit carefully |
 
-### Core Modules (sci_fi_dashboard/)
-| File | Class/Purpose |
-|------|---------------|
-| `db.py` | `DatabaseManager` — SQLite+sqlite-vec, WAL mode, schema lifecycle |
-| `memory_engine.py` | `MemoryEngine` — hybrid RAG (vector+FTS+rerank) |
-| `retriever.py` | `RetrievalPipeline` — embed via Ollama/sentence-transformers, ANN+FTS search |
-| `llm_router.py` | `SynapseLLMRouter` — litellm dispatch (Gemini/Claude/Ollama/OpenRouter) |
-| `dual_cognition.py` | `DualCognitionEngine` — inner monologue, tension scoring (self-contained) |
-| `sqlite_graph.py` | `SQLiteGraph` — knowledge graph (nodes/edges, subject-predicate-object) |
-| `ingest.py` | `ingest_atomic()` — shadow table swap, hash dedup |
-| `conflict_resolver.py` | `ConflictManager` — relationship/context conflicts |
-| `emotional_trajectory.py` | `EmotionalTrajectory` — mood tracking over time |
-| `toxic_scorer_lazy.py` | `LazyToxicScorer` — Toxic-BERT, auto-unloads after 30s idle |
-| `persona.py` | `PersonaManager` — system prompt, dictionary |
-| `chat_parser.py` | `ChatParser` — intent/sentiment from messages |
-| `models_catalog.py` | `ModelsCatalog` — Ollama discovery, context window guard, `models_catalog.json` |
-
-### Gateway Pipeline (sci_fi_dashboard/gateway/)
-Flow: FloodGate -> Dedup -> TaskQueue -> MessageWorker x2 -> Send
-
+### Core Modules (workspace/sci_fi_dashboard/)
 | File | Class | Purpose |
 |------|-------|---------|
-| `flood.py` | `FloodGate` | 3s message batching per user |
-| `dedup.py` | `MessageDeduplicator` | 5-min TTL duplicate filter |
-| `queue.py` | `TaskQueue` | asyncio FIFO, max 100 tasks |
-| `worker.py` | `MessageWorker` | 2 concurrent workers, processes tasks |
-| `sender.py` | `WhatsAppSender` | Legacy outbound sender |
-
-### Channels (sci_fi_dashboard/channels/)
-All implement `BaseChannel` (ABC): `receive()`, `send()`, `send_typing()`, `start()`, `stop()`
-
-| File | Channel |
-|------|---------|
-| `base.py` | `BaseChannel` (ABC), `ChannelMessage` (dataclass) |
-| `registry.py` | `ChannelRegistry` — register/get/start_all/stop_all |
-| `whatsapp.py` | `WhatsAppChannel` — Baileys HTTP bridge |
-| `telegram.py` | `TelegramChannel` — python-telegram-bot |
-| `discord_channel.py` | `DiscordChannel` — discord.py |
-| `slack.py` | `SlackChannel` — slack_bolt |
-| `stub.py` | `StubChannel` — testing mock |
-| `security.py` | DM access control — `DmPolicy`, `PairingStore`, `resolve_dm_access()` |
-
-### Soul-Brain Sync (sci_fi_dashboard/sbs/)
-Pipeline: RawMessage -> RealtimeProcessor -> BatchProcessor (every 50 msgs/6h) -> PromptCompiler -> system prompt
-
-| File | Class | Purpose |
-|------|-------|---------|
-| `orchestrator.py` | `SBSOrchestrator` | Master coordinator |
-| `ingestion/schema.py` | `RawMessage` | Pydantic message DTO |
-| `ingestion/logger.py` | `ConversationLogger` | JSONL+SQLite message log |
-| `processing/realtime.py` | `RealtimeProcessor` | Sentiment, language, mood per message |
-| `processing/batch.py` | `BatchProcessor` | Distill into 8 profile layers |
-| `processing/selectors/exemplar.py` | `ExemplarSelector` | Few-shot example selection |
-| `injection/compiler.py` | `PromptCompiler` | Profile -> ~1500-token prompt segment |
-| `profile/manager.py` | `ProfileManager` | Load/save 8 JSON profile layers |
-| `feedback/implicit.py` | `ImplicitFeedbackDetector` | Regex-based correction detection |
-| `sentinel/gateway.py` | `Sentinel` | Fail-closed file access control |
-| `sentinel/manifest.py` | `ProtectionLevel` | CRITICAL/PROTECTED/MONITORED/OPEN zones |
-| `sentinel/audit.py` | `AuditLogger` | JSONL access trail |
-| `vacuum.py` | — | SBS data compaction |
-
-Profile layers: core_identity, linguistic, emotional_state, domain, interaction, vocabulary, exemplars, meta
-
-### Skills (workspace/skills/)
-| File | Purpose |
-|------|---------|
-| `llm_router.py` | `LLMRouter` — Ollama/litellm routing |
-| `google_native.py` | `GoogleNative` — Gmail, Calendar, direct Google API |
-| `language/ingest_dict.py` | Vocabulary ingestion |
-| `memory/ingest_memories.py` | Bulk memory import to API |
-
-### CLI (workspace/cli/)
-| File | Purpose |
-|------|---------|
-| `onboard.py` | Interactive setup wizard (questionary+typer) |
-| `channel_steps.py` | WhatsApp QR, Discord/Slack/Telegram setup |
-| `provider_steps.py` | LLM provider validation |
-
-## Architecture
-
-### Request Flow
-```
-WhatsApp -> POST /whatsapp/enqueue -> FloodGate(3s) -> Dedup(5min) -> TaskQueue(max100) -> Worker x2 -> SBS+RAG+DualCognition -> LLM -> Send
-```
-
-### LLM Routing
-- Default/Banglish: Gemini Flash
-- Code: Claude Sonnet (thinking)
-- Deep analysis: Gemini Pro
-- Private (The Vault): Local Ollama — air-gapped spicy hemisphere
-- Fallback: OpenRouter
-
-### Security (DM Access Control)
-Per-channel DM policy via `DmPolicy` enum (`pairing` | `allowlist` | `open` | `disabled`).
-- `ChannelSecurityConfig` — dataclass with policy + allow-from lists
-- `PairingStore` — JSONL-backed approved-senders at `~/.synapse/state/pairing/<channel_id>.jsonl`
-- `resolve_dm_access()` — pure function returning `"allow"` / `"deny"` / `"pending_approval"`
-- Source: `sci_fi_dashboard/channels/security.py`
-
-### Media Pipeline
-Inbound media handling via `sci_fi_dashboard/media/`:
-- MIME detection: `python-magic` (magic bytes) > HTTP header > extension > `application/octet-stream`
-- Size limits: image 6 MB, audio/video 16 MB, document 100 MB
-- TTL cleanup: default 120s, storage at `~/.synapse/state/media/`
-- SSRF guard: `is_ssrf_blocked()` rejects private/loopback IPs before fetch
-
-### WebSocket Gateway
-- Endpoint: `ws://127.0.0.1:8000/ws`
-- Auth: `SYNAPSE_GATEWAY_TOKEN` env var (optional)
-- Protocol: connect-first handshake, JSON frames (req/res/event)
-- Methods: `chat.send`, `channels.status`, `models.list`, `sessions.list`, `sessions.reset`
-- Heartbeat: tick event every 30s
-
-### Memory (Hybrid RAG)
-DBs in `~/.synapse/workspace/db/`:
-1. `memory.db` — documents + sqlite-vec embeddings (WAL mode)
-2. `knowledge_graph.db` — subject-predicate-object triples
-
-Retrieval: embed(Ollama nomic-embed-text) -> ANN+FTS -> FlashRank rerank -> inject into prompt
-Dual hemispheres: `hemisphere_tag = "safe"|"spicy"`. Vault uses spicy only.
-
-### Key Singletons (init in api_gateway.py)
-Brain, memory_engine, dual_cognition, sqlite_graph, sbs_orchestrator, task_queue, message_worker
-
-### Ports
-API:8000 | Tools:8989 | Qdrant:6333 | Ollama:11434 | OAuth:8080 | WS:18789
-
-### Environment
-Key env vars: `GEMINI_API_KEY`, `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `GROQ_API_KEY`, `WHATSAPP_BRIDGE_TOKEN`, `SYNAPSE_GATEWAY_TOKEN` (optional WebSocket gateway auth token)
-
-#### `synapse.json` — `session` block schema
-The optional `session` top-level key controls per-user session scoping and identity linking:
-```json
-{
-  "session": {
-    "dmScope": "per-channel-peer",
-    "identityLinks": {
-      "alice": ["919876543210", "telegram:123456789"]
-    }
-  }
-}
-```
-- `dmScope` — one of `"main"` (default), `"per-peer"`, `"per-channel-peer"`, `"per-account-channel-peer"`
-- `identityLinks` — maps a canonical name to a list of raw peer IDs (bare or `channel:id` prefixed); the same person across channels resolves to one session key
-
-## Dependencies (what breaks if you edit...)
-
-### High-Impact Files (edit carefully)
-- `synapse_config.py` -> imported by 50+ files (root config)
-- `api_gateway.py` -> central hub, imports everything
-- `db.py` -> all memory/vector operations funnel through here
-- `memory_engine.py` -> RAG pipeline, affects search quality
+| `llm_router.py` | `SynapseLLMRouter` | litellm.Router wrapper, copilot token shim, LLMResult dataclass |
+| `memory_engine.py` | `MemoryEngine` | Hybrid RAG (vector+FTS+rerank) — affects search quality |
+| `db.py` | `DatabaseManager` | SQLite+sqlite-vec, WAL mode, schema lifecycle |
+| `retriever.py` | `RetrievalPipeline` | Embed via Ollama/sentence-transformers, ANN+FTS |
+| `dual_cognition.py` | `DualCognitionEngine` | Inner monologue + tension scoring (self-contained, no internal deps) |
+| `sqlite_graph.py` | `SQLiteGraph` | Knowledge graph (nodes/edges, subject-predicate-object) |
+| `persona.py` | `PersonaManager` | System prompt assembly, dictionary |
+| `toxic_scorer_lazy.py` | `LazyToxicScorer` | Toxic-BERT, auto-unloads after 30s idle |
+| `models_catalog.py` | `ModelsCatalog` | Ollama discovery, context window guard |
 
 ### Isolated Modules (safe to edit independently)
-- `dual_cognition.py` — no internal imports
-- `gateway/flood.py`, `dedup.py`, `queue.py` — self-contained
-- `channels/*.py` — loosely coupled via BaseChannel ABC
-- `sbs/profile/manager.py` — standalone JSON CRUD
-- `narrative.py`, `conflict_resolver.py` — minimal deps
+`dual_cognition.py`, `gateway/flood.py`, `gateway/dedup.py`, `gateway/queue.py`, `channels/*.py` (via BaseChannel ABC), `sbs/profile/manager.py`, `narrative.py`, `conflict_resolver.py`
 
-### Symbol Lookup
-Use `grep "^SYMBOL_NAME\t" tags` to find any class/function/variable definition instantly.
-The `tags` file indexes 1215 symbols across all Python files.
+## Configuration
+
+### `synapse.json`
+Primary runtime config. Key sections:
+- `model_mappings` — per-role model + optional fallback
+- `providers` — API keys and `api_base` for each provider
+- `gateway_token` — token for `POST /chat/the_creator` and WebSocket auth
+- `session.dmScope` — one of `"main"` (default), `"per-peer"`, `"per-channel-peer"`, `"per-account-channel-peer"`
+- `session.identityLinks` — maps canonical name to raw peer IDs across channels
+
+### Environment Variables
+`GEMINI_API_KEY`, `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `GROQ_API_KEY`, `WHATSAPP_BRIDGE_TOKEN`, `SYNAPSE_GATEWAY_TOKEN`
+
+Keys can also be stored in `synapse.json → providers` — `_inject_provider_keys()` writes them to `os.environ` at startup.
+
+## Ports
+API:8000 | Baileys Bridge:5010 (internal) | Tools MCP:8989 | Qdrant:6333 | Ollama:11434 | OAuth:8080
+
+## Critical Gotchas
+
+1. **litellm Router ≠ litellm.acompletion for GitHub Copilot** — `litellm.Router` does NOT apply Copilot auth headers. Workaround in `llm_router.py`: rewrite `github_copilot/` prefix to `openai/` + inject `api_base=GITHUB_COPILOT_API_BASE` + `extra_headers`. Token from `~/.config/litellm/github_copilot/api-key.json`. Auto-refresh on 403 is built into `_do_call()`.
+
+2. **Copilot `ghu_` tokens are short-lived and can be revoked before `expires_at`** — don't trust the expiry timestamp; the auto-refresh handles this.
+
+3. **`/chat` vs `/chat/{user}` endpoints** — `POST /chat` is async webhook (returns `{"status": "queued"}`). `POST /chat/the_creator` is synchronous persona chat. Always use the correct one.
+
+4. **Kill the gateway process after code changes** — it won't reload automatically unless started with `--reload`.
+
+5. **Windows cp1252 can't print emoji** — all preview strings in the gateway must be ASCII-encoded with `replace` error handling.
+
+6. **Ollama models require `ollama_chat/` prefix** in `synapse.json`, not `ollama/`. The `api_base` is pulled from `providers.ollama.api_base`.
+
+7. **`synapse_config.py` is imported by 50+ files** — even small changes there have wide blast radius.
+
+## Symbol Lookup
+```bash
+grep "^SYMBOL_NAME	" workspace/tags   # find any class/function/variable (1215 symbols indexed)
+```
 
 ## Code Style
-Python 3.11 | line-length 100 | ruff + black | asyncio (no Redis/Celery) | SQLite WAL mode
+Python 3.11 | line-length 100 | ruff + black | asyncio throughout (no Redis/Celery) | SQLite WAL mode

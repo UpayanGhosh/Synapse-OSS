@@ -19,6 +19,7 @@ import os
 import socket
 import sqlite3
 import sys
+import time
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 from typing import Any
@@ -325,7 +326,7 @@ validate_env()  # ENV-01, ENV-02, ENV-03 -- hard-fail or warn before singletons
 
 from synapse_config import SynapseConfig  # noqa: E402
 
-from sci_fi_dashboard.llm_router import SynapseLLMRouter  # noqa: E402
+from sci_fi_dashboard.llm_router import LLMResult, SynapseLLMRouter  # noqa: E402
 
 # --- LLM Client (Phase 2: litellm via SynapseLLMRouter) ---
 # Model strings come from synapse.json model_mappings — no hardcoded strings here.
@@ -653,7 +654,8 @@ async def persona_chat(
         print(
             f"[MEM] Cognitive State: {cognitive_merge.tension_type} (tension={cognitive_merge.tension_level:.2f})"
         )
-        print(f"[THOUGHT] Inner thought: {cognitive_merge.inner_monologue[:100]}")
+        _safe_thought = cognitive_merge.inner_monologue[:100].encode("ascii", errors="replace").decode()
+        print(f"[THOUGHT] Inner thought: {_safe_thought}")
 
     except Exception as e:
         print(f"[WARN] Dual cognition failed: {e}")
@@ -683,21 +685,26 @@ async def persona_chat(
     messages.extend(request.history)
     messages.append({"role": "user", "content": user_msg})
 
+    t0 = time.perf_counter()
+
     if session_mode == "spicy":
         # === THE VAULT (Local Stheno) ===
         print("[HOT] Routing to THE VAULT (Local Stheno)")
-        # Translate first? Stheno understands Banglish moderately well, but translation helps RAG.
-        # But for "Authentic" spicy chat, we might want raw Banglish.
-        # Let's keep raw for Stheno to maintain flavor, unless requested otherwise.
 
         full_prompt = f"{system_prompt}\n\nUser: {user_msg}\n\nSynapse:"
         try:
-            reply = await call_local_spicy(full_prompt)
-            model_used = "The Vault (Stheno)"
+            result = await synapse_llm_router.call_with_metadata("vault", messages)
+            reply = result.text
         except Exception as e:
             print(f"[WARN] Vault failed: {e}. Falling back to OpenRouter.")
             reply = await call_or_fallback(full_prompt)
-            model_used = "The Vault (OpenRouter Fallback)"
+            result = LLMResult(
+                text=reply,
+                model="OpenRouter Fallback",
+                prompt_tokens=0,
+                completion_tokens=0,
+                total_tokens=0,
+            )
 
     else:
         # === SAFE HEMISPHERE (MoA Routing) ===
@@ -707,43 +714,61 @@ async def persona_chat(
         if "CODING" in classification:
             # === THE HACKER (Claude Sonnet 4.5) ===
             print("[CMD] Routing to THE HACKER (Claude Sonnet 4.5)")
-            reply = await call_ag_code(messages)
-            model_used = "The Hacker (Sonnet 4.5 [Placeholder])"
+            result = await synapse_llm_router.call_with_metadata("code", messages)
+            reply = result.text
 
         elif "ANALYSIS" in classification:
             # === THE ARCHITECT (Gemini 3 Pro) ===
             print("[BLDG] Routing to THE ARCHITECT (Gemini 3 Pro)")
-            reply = await call_ag_oracle(messages)
-            model_used = "The Architect (Gemini 3 Pro)"
+            result = await synapse_llm_router.call_with_metadata("analysis", messages)
+            reply = result.text
 
         elif "REVIEW" in classification:
             # === THE PHILOSOPHER (Claude Opus 4.6) ===
             print("[THINK] Routing to THE PHILOSOPHER (Claude Opus 4.6)")
-            reply = await call_ag_review(messages)
-            model_used = "The Philosopher (Opus 4.6 [Placeholder])"
+            result = await synapse_llm_router.call_with_metadata("review", messages)
+            reply = result.text
 
         else:
             # === AG_CASUAL (Gemini Flash) ===
             print("[GREEN] Routing to AG_CASUAL (Gemini Flash)")
-            reply = await call_gemini_flash(messages, temperature=0.85)
-            model_used = "Traffic Cop / Casual (Gemini Flash)"
+            result = await synapse_llm_router.call_with_metadata(
+                "casual", messages, temperature=0.85
+            )
+            reply = result.text
 
     # --- Programmatic Footer Injection (Memory Check) ---
     # We inject this here to ensure it ALWAYS appears, rather than relying on LLM hallucination.
 
-    # Estimate tokens (rough char count / 4)
-    out_tokens = len(reply) // 4
-    in_tokens = sum(len(m.get("content", "")) for m in messages) // 4
-    total_tokens = in_tokens + out_tokens
+    elapsed = time.perf_counter() - t0
+    out_tokens = result.completion_tokens
+    in_tokens = result.prompt_tokens
+    total_tokens = result.total_tokens
+    actual_model = result.model
+    model_used = actual_model
 
-    # Context Usage (Mocked max for now, or based on model)
-    max_context = 1_000_000  # 1M for Gemini Flash
-    usage_pct = (total_tokens / max_context) * 100
+    max_context = 1_000_000  # default
+    try:
+        from litellm import get_model_info
 
-    stats_footer = f"\n\n---\n**Context Usage:** {total_tokens // 1000}k / {max_context // 1000000}m ({usage_pct:.2f}%)\n**Model:** {model_used}\n**Turn Total Tokens:** {total_tokens:,}\n**Response Time:** [Calc in Node]"
+        info = get_model_info(actual_model)
+        max_context = info.get("max_input_tokens", 1_000_000)
+    except Exception:
+        pass
+
+    usage_pct = (total_tokens / max_context) * 100 if max_context else 0
+
+    stats_footer = (
+        f"\n\n---\n"
+        f"**Context Usage:** {total_tokens:,} / {max_context:,} ({usage_pct:.1f}%)\n"
+        f"**Model:** {actual_model}\n"
+        f"**Tokens:** {in_tokens:,} in / {out_tokens:,} out / {total_tokens:,} total\n"
+        f"**Response Time:** {elapsed:.1f}s"
+    )
 
     final_reply = reply + stats_footer
-    print(f"[SPARK] [{target.upper()}] Response via {model_used}: {final_reply[:60]}...")
+    _safe_preview = final_reply[:60].encode("ascii", errors="replace").decode()
+    print(f"[SPARK] [{target.upper()}] Response via {model_used}: {_safe_preview}...")
 
     # Log assistant message
     sbs_orchestrator = get_sbs_for_target(target)
@@ -855,8 +880,8 @@ def validate_bridge_token(request: Request) -> None:
 
 
 def validate_api_key(request: Request) -> None:
-    """Validates the API key for protected endpoints."""
-    api_key = os.environ.get("GEMINI_API_KEY")
+    """Validates the gateway token for protected endpoints."""
+    api_key = _synapse_cfg.gateway.get("token", "")
     if api_key:
         provided = request.headers.get("x-api-key")
         if provided != api_key:

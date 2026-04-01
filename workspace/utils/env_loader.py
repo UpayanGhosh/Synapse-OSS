@@ -70,7 +70,7 @@ def load_env_file(anchor: Path | None = None) -> None:
         return
 
     print(f"[WEB] Loading .env from {env_path}")
-    with open(env_path) as f:
+    with open(env_path, encoding="utf-8") as f:
         for raw_line in f:
             line = raw_line.strip()
             if "=" in line and not line.startswith("#"):

@@ -16,6 +16,7 @@ import contextlib
 import json
 import os
 import stat
+import sys
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -134,8 +135,10 @@ def _verify_permissions(path: Path) -> None:
     """Warn if the given path is readable by group or other.
 
     This is a best-effort advisory — not a security enforcement.  On Windows,
-    stat mode bits behave differently; warnings may fire incorrectly there.
+    stat mode bits don't map to Unix semantics so we skip the check entirely.
     """
+    if sys.platform == "win32":
+        return
     mode = path.stat().st_mode
     if mode & (stat.S_IRGRP | stat.S_IROTH):
         warnings.warn(

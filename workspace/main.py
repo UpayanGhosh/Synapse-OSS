@@ -135,11 +135,15 @@ async def interactive_chat_loop():
 
                 headers = {}
                 token = os.environ.get("SYNAPSE_GATEWAY_TOKEN")
+                if not token:
+                    from synapse_config import SynapseConfig, gateway_token  # noqa: PLC0415
+
+                    token = gateway_token(SynapseConfig.load())
                 if token:
                     headers["x-api-key"] = token
 
                 async with session.post(
-                    "http://127.0.0.1:8000/chat", json=payload, headers=headers
+                    "http://127.0.0.1:8000/chat/the_creator", json=payload, headers=headers
                 ) as resp:
                     if resp.status == 200:
                         data = await resp.json()

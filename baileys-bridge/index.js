@@ -13,9 +13,11 @@ const {
   useMultiFileAuthState,
   DisconnectReason,
   downloadMediaMessage,
+  fetchLatestBaileysVersion,
 } = require('@whiskeysockets/baileys');
 const writeFileAtomic = require('write-file-atomic');
 const pino = require('pino');
+const qrcodeTerminal = require('qrcode-terminal');
 const path = require('path');
 const fs = require('fs');
 
@@ -66,6 +68,7 @@ setInterval(() => {
 // ---------------------------------------------------------------------------
 /** @type {import('@whiskeysockets/baileys').WASocket | null} */
 let sock = null;
+let baileysVersion = null; // fetched once; reused on reconnects
 let qrData = null;
 let connectionState = 'disconnected';
 let connectedSince = null;       // ISO string — when session last connected
@@ -235,6 +238,15 @@ async function startSocket() {
   fs.mkdirSync(AUTH_DIR, { recursive: true });
 
   const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
+  if (!baileysVersion) {
+    try {
+      const result = await fetchLatestBaileysVersion();
+      baileysVersion = result.version;
+    } catch (err) {
+      console.warn('[BRIDGE] fetchLatestBaileysVersion failed, using fallback:', err.message);
+      baileysVersion = [2, 3000, 1035194821];
+    }
+  }
 
   const atomicSaveCredsWrapper = async () => {
     await saveCreds();
@@ -242,9 +254,10 @@ async function startSocket() {
   };
 
   sock = makeWASocket({
+    version: baileysVersion,
     auth: state,
     logger: pino({ level: 'silent' }),
-    printQRInTerminal: true,            // print QR directly so terminal sees it immediately
+    browser: ['Synapse', 'Chrome', '1.0.0'],
     cachedGroupMetadata: async (jid) => groupCache.get(jid),
     markOnlineOnConnect: false,
   });
@@ -271,6 +284,7 @@ async function startSocket() {
       qrData = qr;
       connectionState = 'awaiting_qr';
       console.log('[BRIDGE] QR ready — scan with WhatsApp');
+      qrcodeTerminal.generate(qr, { small: true });
       notifyStateChange('awaiting_qr');
     }
 

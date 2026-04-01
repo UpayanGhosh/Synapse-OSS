@@ -312,30 +312,125 @@ def _handle_reset(reset_scope: str, data_root: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Known models per provider (curated list — update when providers add models)
+# ---------------------------------------------------------------------------
+
+_KNOWN_MODELS: dict[str, list[dict[str, str]]] = {
+    "gemini": [
+        {"value": "gemini/gemini-2.5-flash", "label": "Gemini 2.5 Flash (fast, cheap)"},
+        {"value": "gemini/gemini-2.5-pro", "label": "Gemini 2.5 Pro (best quality)"},
+        {"value": "gemini/gemini-2.0-flash", "label": "Gemini 2.0 Flash"},
+    ],
+    "openai": [
+        {"value": "openai/gpt-4o", "label": "GPT-4o (flagship)"},
+        {"value": "openai/gpt-4o-mini", "label": "GPT-4o Mini (fast, cheap)"},
+        {"value": "openai/o3-mini", "label": "o3-mini (reasoning)"},
+        {"value": "openai/o4-mini", "label": "o4-mini (reasoning)"},
+    ],
+    "github_copilot": [
+        {"value": "github_copilot/gpt-4.1", "label": "GPT-4.1 (flagship)"},
+        {"value": "github_copilot/gpt-4.1-mini", "label": "GPT-4.1 Mini (fast)"},
+        {"value": "github_copilot/gpt-4.1-nano", "label": "GPT-4.1 Nano (fastest)"},
+        {"value": "github_copilot/gpt-4o", "label": "GPT-4o"},
+        {"value": "github_copilot/gpt-4o-mini", "label": "GPT-4o Mini"},
+        {"value": "github_copilot/o3-mini", "label": "o3-mini (reasoning)"},
+        {"value": "github_copilot/o4-mini", "label": "o4-mini (reasoning)"},
+        {"value": "github_copilot/claude-sonnet-4", "label": "Claude Sonnet 4"},
+        {"value": "github_copilot/gemini-2.0-flash", "label": "Gemini 2.0 Flash"},
+    ],
+    "anthropic": [
+        {"value": "anthropic/claude-sonnet-4-6", "label": "Claude Sonnet 4.6 (balanced)"},
+        {"value": "anthropic/claude-haiku-4-5", "label": "Claude Haiku 4.5 (fast, cheap)"},
+        {"value": "anthropic/claude-opus-4-6", "label": "Claude Opus 4.6 (best quality)"},
+    ],
+    "groq": [
+        {"value": "groq/llama-3.3-70b-versatile", "label": "Llama 3.3 70B Versatile"},
+        {"value": "groq/llama-3.1-8b-instant", "label": "Llama 3.1 8B Instant (fastest)"},
+    ],
+    "openrouter": [
+        {"value": "openrouter/auto", "label": "Auto (best available)"},
+        {"value": "openrouter/google/gemini-2.5-flash", "label": "Gemini 2.5 Flash"},
+        {"value": "openrouter/anthropic/claude-sonnet-4", "label": "Claude Sonnet 4"},
+    ],
+    "mistral": [
+        {"value": "mistral/mistral-large-latest", "label": "Mistral Large (flagship)"},
+        {"value": "mistral/mistral-small-latest", "label": "Mistral Small (fast)"},
+    ],
+    "xai": [
+        {"value": "xai/grok-3", "label": "Grok 3"},
+        {"value": "xai/grok-3-mini", "label": "Grok 3 Mini (fast)"},
+    ],
+}
+
+# Roles with descriptions and default preference order
+_ROLES: list[tuple[str, str, list[str]]] = [
+    ("casual", "Casual chat — fast, everyday", ["gemini", "openai", "github_copilot", "groq", "anthropic"]),
+    ("code", "Code generation & debugging", ["anthropic", "openai", "github_copilot", "groq"]),
+    ("analysis", "Analysis & deep research", ["gemini", "openai", "github_copilot", "anthropic"]),
+    ("review", "Code review & critique", ["anthropic", "openai", "github_copilot", "gemini"]),
+]
+
+
+def _auto_pick(providers: list[str], prefs: list[str], models_map: dict) -> str | None:
+    """Return the first available model for the first matching provider."""
+    for prov in prefs:
+        if prov in providers and prov in models_map:
+            return models_map[prov][0]["value"]
+    return None
+
+
 def _build_model_mappings(providers: list[str]) -> dict:
-    """Generate sensible model_mappings based on which providers were configured."""
+    """Generate sensible model_mappings automatically (QuickStart / non-interactive)."""
     mappings: dict = {}
+    for role, _desc, prefs in _ROLES:
+        model = _auto_pick(providers, prefs, _KNOWN_MODELS)
+        if model:
+            mappings[role] = {"model": model, "fallback": None}
 
-    # casual: gemini > openai > groq > anthropic
-    for cand, model in [
-        ("gemini", "gemini/gemini-2.0-flash"),
-        ("openai", "openai/gpt-4o-mini"),
-        ("groq", "groq/llama-3.3-70b-versatile"),
-        ("anthropic", "anthropic/claude-haiku-4-5"),
-    ]:
-        if cand in providers:
-            mappings["casual"] = {"model": model, "fallback": None}
-            break
+    # vault: always ollama (local-only by design)
+    if "ollama" in providers:
+        mappings["vault"] = {"model": "ollama_chat/llama3.3", "fallback": None}
 
-    # code: anthropic > openai > groq
-    for cand, model in [
-        ("anthropic", "anthropic/claude-sonnet-4-6"),
-        ("openai", "openai/gpt-4o"),
-        ("groq", "groq/llama-3.3-70b-versatile"),
-    ]:
-        if cand in providers:
-            mappings["code"] = {"model": model, "fallback": None}
-            break
+    return mappings
+
+
+def _build_model_mappings_interactive(providers: list[str], prompter: "object") -> dict:
+    """Let the user pick a model for each role from their configured providers."""
+    # Build choices from all configured providers
+    available: list = []
+    try:
+        import questionary  # noqa: PLC0415
+
+        for prov in providers:
+            models = _KNOWN_MODELS.get(prov)
+            if not models:
+                continue
+            available.append(questionary.Separator(f"--- {prov} ---"))
+            for m in models:
+                available.append(questionary.Choice(m["label"], value=m["value"]))
+    except ImportError:
+        # No questionary — flat list of values
+        for prov in providers:
+            for m in _KNOWN_MODELS.get(prov, []):
+                available.append(m["value"])
+
+    if not available:
+        _print("[yellow]No known models for selected providers. Using defaults.[/]")
+        return _build_model_mappings(providers)
+
+    _print("\n[bold cyan]--- Model Selection ---[/]")
+    _print("Choose a model for each role. You can use the same model for multiple roles.\n")
+
+    mappings: dict = {}
+    for role, desc, prefs in _ROLES:
+        default = _auto_pick(providers, prefs, _KNOWN_MODELS)
+        selected = prompter.select(  # type: ignore[attr-defined]
+            f"{role} ({desc}):",
+            choices=available,
+            default=default,
+        )
+        mappings[role] = {"model": selected, "fallback": None}
 
     # vault: always ollama (local-only by design)
     if "ollama" in providers:
@@ -851,7 +946,12 @@ def _run_interactive_impl(
     config["gateway"] = gw_cfg
 
     # --- Step 9: Generate model_mappings ---
-    config["model_mappings"] = _build_model_mappings(list(config["providers"].keys()))
+    if flow == "advanced":
+        config["model_mappings"] = _build_model_mappings_interactive(
+            list(config["providers"].keys()), prompter
+        )
+    else:
+        config["model_mappings"] = _build_model_mappings(list(config["providers"].keys()))
 
     # --- Step 10: Write config (ONB-07) ---
     write_config(data_root, config)
