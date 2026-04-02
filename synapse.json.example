@@ -51,5 +51,10 @@
       "model": "openrouter/meta-llama/llama-3.3-70b-instruct",
       "fallback": "groq/llama-3.3-70b-versatile"
     }
+  },
+
+  "session": {
+    "dual_cognition_enabled": true,
+    "dual_cognition_timeout": 5.0
   }
 }

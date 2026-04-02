@@ -196,7 +196,10 @@ async def continue_conversation(target: str, messages: list[dict], last_reply: s
 
 
 from sci_fi_dashboard.conflict_resolver import ConflictManager  # noqa: E402
-from sci_fi_dashboard.dual_cognition import DualCognitionEngine  # noqa: E402
+from sci_fi_dashboard.dual_cognition import (  # noqa: E402
+    CognitiveMerge,
+    DualCognitionEngine,
+)
 from sci_fi_dashboard.emotional_trajectory import EmotionalTrajectory  # noqa: E402
 from sci_fi_dashboard.memory_engine import MemoryEngine  # noqa: E402
 from sci_fi_dashboard.retriever import (  # noqa: E402
@@ -640,25 +643,39 @@ async def persona_chat(
         # For now, sticking to requested mode to avoid surprises.
 
     # 2.5 DUAL COGNITION: Think before speaking
-    try:
-        cognitive_merge = await dual_cognition.think(
-            user_message=user_msg,
-            chat_id=request.user_id or "default",
-            conversation_history=request.history,
-            target=target,
-            llm_fn=call_gemini_flash,  # Use the fast model for thinking
-        )
+    if _synapse_cfg.session.get("dual_cognition_enabled", True):
+        dc_timeout = _synapse_cfg.session.get("dual_cognition_timeout", 5.0)
+        try:
+            cognitive_merge = await asyncio.wait_for(
+                dual_cognition.think(
+                    user_message=user_msg,
+                    chat_id=request.user_id or "default",
+                    conversation_history=request.history,
+                    target=target,
+                    llm_fn=call_gemini_flash,  # Use the fast model for thinking
+                ),
+                timeout=dc_timeout,
+            )
 
-        cognitive_context = dual_cognition.build_cognitive_context(cognitive_merge)
+            cognitive_context = dual_cognition.build_cognitive_context(cognitive_merge)
 
-        print(
-            f"[MEM] Cognitive State: {cognitive_merge.tension_type} (tension={cognitive_merge.tension_level:.2f})"
-        )
-        _safe_thought = cognitive_merge.inner_monologue[:100].encode("ascii", errors="replace").decode()
-        print(f"[THOUGHT] Inner thought: {_safe_thought}")
+            print(
+                f"[MEM] Cognitive State: {cognitive_merge.tension_type} "
+                f"(tension={cognitive_merge.tension_level:.2f})"
+            )
+            _safe_thought = cognitive_merge.inner_monologue[:100].encode("ascii", errors="replace").decode()
+            print(f"[THOUGHT] Inner thought: {_safe_thought}")
 
-    except Exception as e:
-        print(f"[WARN] Dual cognition failed: {e}")
+        except asyncio.TimeoutError:
+            print(f"[WARN] Dual cognition timed out after {dc_timeout}s")
+            cognitive_merge = CognitiveMerge()
+            cognitive_context = ""
+        except Exception as e:
+            print(f"[WARN] Dual cognition failed: {e}")
+            cognitive_merge = CognitiveMerge()
+            cognitive_context = ""
+    else:
+        cognitive_merge = CognitiveMerge()
         cognitive_context = ""
 
     # 3. Assemble System Prompt
