@@ -568,6 +568,17 @@ async def translate_banglish(text: str) -> str:
 
 # --- Routing Logic ---
 
+# Maps dual-cognition response_strategy -> traffic-cop classification.
+# When a match exists we skip the traffic-cop LLM call (~50 % of messages).
+STRATEGY_TO_ROLE: dict[str, str] = {
+    "acknowledge": "CASUAL",
+    "support": "CASUAL",
+    "celebrate": "CASUAL",
+    "redirect": "CASUAL",
+    "challenge": "ANALYSIS",
+    "quiz": "ANALYSIS",
+}
+
 
 async def route_traffic_cop(user_message: str) -> str:
     """
@@ -644,6 +655,7 @@ async def persona_chat(
         # For now, sticking to requested mode to avoid surprises.
 
     # 2.5 DUAL COGNITION: Think before speaking
+    cognitive_merge = None
     if _synapse_cfg.session.get("dual_cognition_enabled", True):
         dc_timeout = _synapse_cfg.session.get("dual_cognition_timeout", 5.0)
         try:
@@ -727,8 +739,19 @@ async def persona_chat(
 
     else:
         # === SAFE HEMISPHERE (MoA Routing) ===
-        # 1. Traffic Cop
-        classification = await route_traffic_cop(user_msg)
+        # 1. Traffic Cop — skip LLM call when cognitive strategy already maps
+        classification = None
+        if cognitive_merge is not None:
+            strategy = cognitive_merge.response_strategy
+            mapped = STRATEGY_TO_ROLE.get(strategy)
+            if mapped:
+                classification = mapped
+                print(
+                    f"[SIGNAL] Traffic Cop SKIPPED — strategy "
+                    f"'{strategy}' -> {classification}"
+                )
+        if classification is None:
+            classification = await route_traffic_cop(user_msg)
 
         if "CODING" in classification:
             # === THE HACKER (Claude Sonnet 4.5) ===

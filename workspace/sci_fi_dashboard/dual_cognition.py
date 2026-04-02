@@ -184,20 +184,17 @@ class DualCognitionEngine:
                     self.trajectory.record(merge, present.topics)
                 return merge
 
-            # DEEP PATH: intent extraction + targeted recall + CoT merge (3-4 LLM calls)
-            # Step 1: Extract search intent
-            search_query = await self._extract_search_intent(
-                user_message, conversation_history, llm_fn
-            )
-            recall_query = search_query if search_query else user_message
-
-            # Step 2: Run analysis + targeted recall in parallel
-            # Note: pre_cached_memory is only usable if recall_query == user_message,
-            # otherwise the deep path extracted a different search query and we must re-query.
-            usable_cache = pre_cached_memory if recall_query == user_message else None
-            present, memory = await asyncio.gather(
+            # DEEP PATH: intent extraction + analysis + recall + CoT merge (3-4 LLM calls)
+            # Run all three operations in parallel to save 2-3s:
+            # - search intent extraction (LLM call)
+            # - present analysis (LLM call)
+            # - memory recall using original message with pre-cached results (no LLM, fast)
+            search_intent, present, memory = await asyncio.gather(
+                self._extract_search_intent(
+                    user_message, conversation_history, llm_fn
+                ),
                 self._analyze_present(user_message, conversation_history, llm_fn),
-                self._recall_memory(recall_query, chat_id, target, usable_cache),
+                self._recall_memory(user_message, chat_id, target, pre_cached_memory),
             )
 
             # Step 3: CoT merge
