@@ -15,10 +15,12 @@ Routes:
 
 import asyncio
 import json
+import logging
 import os
 import socket
 import sqlite3
 import sys
+import time
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 from typing import Any
@@ -207,7 +209,29 @@ from sci_fi_dashboard.smart_entity import EntityGate  # noqa: E402
 from sci_fi_dashboard.sqlite_graph import SQLiteGraph  # noqa: E402
 from sci_fi_dashboard.toxic_scorer_lazy import LazyToxicScorer  # noqa: E402
 
+# --- Phase 3: Tool Execution Loop ---
+try:
+    from sci_fi_dashboard.tool_registry import (  # noqa: E402
+        ToolRegistry,
+        ToolContext,
+        ToolResult,
+        SynapseTool,
+        register_builtin_tools,
+    )
+
+    _TOOL_REGISTRY_AVAILABLE = True
+except ImportError:
+    _TOOL_REGISTRY_AVAILABLE = False
+
+# Tool execution loop constants
+MAX_TOOL_ROUNDS = 5
+TOOL_RESULT_MAX_CHARS = 4000
+MAX_TOTAL_TOOL_RESULT_CHARS = 20_000
+
+_tool_logger = logging.getLogger(__name__ + ".tools")
+
 # --- Singletons (Optimized v3) ---
+tool_registry: "ToolRegistry | None" = None  # initialized in lifespan if available
 brain = SQLiteGraph()
 gate = EntityGate(entities_file="entities.json")
 conflicts = ConflictManager(conflicts_file="conflicts.json")
@@ -585,6 +609,39 @@ async def route_traffic_cop(user_message: str) -> str:
         return "CASUAL"
 
 
+# --- Tool Execution Helpers (Phase 3) ---
+
+
+async def _execute_tool_call(tc, registry) -> "ToolResult":
+    """Execute a single tool call, parsing JSON arguments.
+
+    Returns a ToolResult — on JSON parse failure the result has is_error=True.
+    """
+    try:
+        args = json.loads(tc.arguments)
+    except (json.JSONDecodeError, TypeError):
+        return ToolResult(
+            content=json.dumps({"error": f"Invalid JSON arguments for {tc.name}"}),
+            is_error=True,
+        )
+    return await registry.execute(tc.name, args)
+
+
+def _is_serial_tool(tool_name: str, tools: list) -> bool:
+    """Return True if *tool_name* is marked serial in the resolved tool list."""
+    for t in tools:
+        if t.name == tool_name:
+            return getattr(t, "serial", False)
+    return False
+
+
+def _is_owner_sender(user_id: str | None) -> bool:
+    """Heuristic: treat the_creator / the_partner (or absent user_id) as owner."""
+    if not user_id:
+        return True
+    return user_id.lower() in {"the_creator", "the_partner"}
+
+
 # --- Persona Chat Handler (MoA Version) ---
 
 
@@ -676,13 +733,33 @@ async def persona_chat(
     messages.extend(request.history)
     messages.append({"role": "user", "content": user_msg})
 
+    # --- Phase 3: Tool Context & Schema Resolution ---
+    # Skip tools for vault/spicy (local Ollama often lacks function-calling)
+    use_tools = (
+        session_mode != "spicy"
+        and tool_registry is not None
+        and _TOOL_REGISTRY_AVAILABLE
+    )
+    session_tools: list = []
+    tool_schemas: list | None = None
+
+    if use_tools:
+        tool_context = ToolContext(
+            chat_id=request.user_id or "unknown",
+            sender_id=request.user_id or "unknown",
+            sender_is_owner=_is_owner_sender(request.user_id),
+            workspace_dir=str(WORKSPACE_ROOT),
+            config=_synapse_cfg.session,
+            channel_id="api",
+        )
+        session_tools = tool_registry.resolve(tool_context)
+        tool_schemas = (
+            tool_registry.get_schemas(session_tools) if session_tools else None
+        )
+
     if session_mode == "spicy":
         # === THE VAULT (Local Stheno) ===
         print("[HOT] Routing to THE VAULT (Local Stheno)")
-        # Translate first? Stheno understands Banglish moderately well, but translation helps RAG.
-        # But for "Authentic" spicy chat, we might want raw Banglish.
-        # Let's keep raw for Stheno to maintain flavor, unless requested otherwise.
-
         full_prompt = f"{system_prompt}\n\nUser: {user_msg}\n\nSynapse:"
         try:
             reply = await call_local_spicy(full_prompt)
@@ -694,32 +771,189 @@ async def persona_chat(
 
     else:
         # === SAFE HEMISPHERE (MoA Routing) ===
-        # 1. Traffic Cop
         classification = await route_traffic_cop(user_msg)
 
         if "CODING" in classification:
-            # === THE HACKER (Claude Sonnet 4.5) ===
-            print("[CMD] Routing to THE HACKER (Claude Sonnet 4.5)")
-            reply = await call_ag_code(messages)
+            role = "code"
             model_used = "The Hacker (Sonnet 4.5 [Placeholder])"
-
         elif "ANALYSIS" in classification:
-            # === THE ARCHITECT (Gemini 3 Pro) ===
-            print("[BLDG] Routing to THE ARCHITECT (Gemini 3 Pro)")
-            reply = await call_ag_oracle(messages)
+            role = "analysis"
             model_used = "The Architect (Gemini 3 Pro)"
-
         elif "REVIEW" in classification:
-            # === THE PHILOSOPHER (Claude Opus 4.6) ===
-            print("[THINK] Routing to THE PHILOSOPHER (Claude Opus 4.6)")
-            reply = await call_ag_review(messages)
+            role = "review"
             model_used = "The Philosopher (Opus 4.6 [Placeholder])"
-
         else:
-            # === AG_CASUAL (Gemini Flash) ===
-            print("[GREEN] Routing to AG_CASUAL (Gemini Flash)")
-            reply = await call_gemini_flash(messages, temperature=0.85)
+            role = "casual"
             model_used = "Traffic Cop / Casual (Gemini Flash)"
+
+        print(f"[ROUTE] Classification={classification} -> role={role}")
+
+        # --- Tool Execution Loop (Phase 3) ---
+        reply = ""
+        tools_used: list[str] = []
+        total_tool_time = 0.0
+        total_result_chars = 0
+        result = None  # last LLM result for the for-else fallback
+
+        for round_num in range(MAX_TOOL_ROUNDS):
+            try:
+                if tool_schemas and hasattr(synapse_llm_router, "call_with_tools"):
+                    result = await synapse_llm_router.call_with_tools(
+                        role,
+                        messages,
+                        tools=tool_schemas,
+                        temperature=0.7 if role != "code" else 0.2,
+                        max_tokens=1500,
+                    )
+                else:
+                    # No tools path — single call, same as legacy
+                    if role == "code":
+                        reply = await call_ag_code(messages)
+                    elif role == "analysis":
+                        reply = await call_ag_oracle(messages)
+                    elif role == "review":
+                        reply = await call_ag_review(messages)
+                    else:
+                        reply = await call_gemini_flash(
+                            messages, temperature=0.85
+                        )
+                    break
+            except Exception as e:
+                error_str = str(e).lower()
+                if "context" in error_str or "token" in error_str:
+                    _tool_logger.warning(
+                        "Context overflow in round %d — retrying without tools",
+                        round_num,
+                    )
+                    tool_schemas = None
+                    continue
+                elif "rate" in error_str:
+                    _tool_logger.warning(
+                        "Rate limit in round %d — waiting 2s", round_num
+                    )
+                    await asyncio.sleep(2)
+                    continue
+                else:
+                    _tool_logger.error(
+                        "LLM call failed in round %d: %s", round_num, e
+                    )
+                    reply = (
+                        "I encountered an error processing your request. "
+                        "Please try again."
+                    )
+                    break
+
+            # If the result has no tool_calls we are done
+            tool_calls = getattr(result, "tool_calls", None) or []
+            if not tool_calls:
+                reply = getattr(result, "text", "") or ""
+                break
+
+            # Append assistant message containing the tool_calls
+            messages.append({
+                "role": "assistant",
+                "content": getattr(result, "text", None) or None,
+                "tool_calls": [
+                    {
+                        "id": tc.id,
+                        "type": "function",
+                        "function": {
+                            "name": tc.name,
+                            "arguments": tc.arguments,
+                        },
+                    }
+                    for tc in tool_calls
+                ],
+            })
+
+            # Execute tools — parallel first, then serial
+            serial_calls = [
+                tc for tc in tool_calls
+                if _is_serial_tool(tc.name, session_tools)
+            ]
+            parallel_calls = [
+                tc for tc in tool_calls
+                if not _is_serial_tool(tc.name, session_tools)
+            ]
+
+            tool_results: dict = {}
+
+            if parallel_calls:
+                tasks = [
+                    _execute_tool_call(tc, tool_registry)
+                    for tc in parallel_calls
+                ]
+                parallel_results = await asyncio.gather(
+                    *tasks, return_exceptions=True
+                )
+                for tc, res in zip(parallel_calls, parallel_results):
+                    if isinstance(res, Exception):
+                        tool_results[tc.id] = ToolResult(
+                            content=json.dumps({"error": str(res)}),
+                            is_error=True,
+                        )
+                    else:
+                        tool_results[tc.id] = res
+
+            for tc in serial_calls:
+                try:
+                    tool_results[tc.id] = await _execute_tool_call(
+                        tc, tool_registry
+                    )
+                except Exception as exc:
+                    tool_results[tc.id] = ToolResult(
+                        content=json.dumps({"error": str(exc)}),
+                        is_error=True,
+                    )
+
+            # Append tool results as messages
+            for tc in tool_calls:
+                tr = tool_results[tc.id]
+                t0 = time.time()
+                content = tr.content
+                if len(content) > TOOL_RESULT_MAX_CHARS:
+                    content = (
+                        content[:TOOL_RESULT_MAX_CHARS] + "\n... [truncated]"
+                    )
+                total_result_chars += len(content)
+                total_tool_time += time.time() - t0
+                tools_used.append(tc.name)
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tc.id,
+                    "content": content,
+                })
+
+            # Context overflow guard
+            if total_result_chars > MAX_TOTAL_TOOL_RESULT_CHARS:
+                _tool_logger.warning(
+                    "Tool result limit reached (%d chars) — disabling tools",
+                    total_result_chars,
+                )
+                tool_schemas = None
+                messages.append({
+                    "role": "system",
+                    "content": (
+                        "Tool result limit reached. Respond with the "
+                        "information gathered so far."
+                    ),
+                })
+        else:
+            # MAX_TOOL_ROUNDS exhausted
+            reply = (
+                getattr(result, "text", "") if result is not None else ""
+            ) or "I wasn't able to complete that request."
+            _tool_logger.warning(
+                "Tool loop exhausted after %d rounds", MAX_TOOL_ROUNDS
+            )
+
+        if tools_used:
+            _tool_logger.info(
+                "Tool loop completed: %d tools in %.2fs — %s",
+                len(tools_used),
+                total_tool_time,
+                ", ".join(tools_used),
+            )
 
     # --- Programmatic Footer Injection (Memory Check) ---
     # We inject this here to ensure it ALWAYS appears, rather than relying on LLM hallucination.
@@ -733,7 +967,21 @@ async def persona_chat(
     max_context = 1_000_000  # 1M for Gemini Flash
     usage_pct = (total_tokens / max_context) * 100
 
-    stats_footer = f"\n\n---\n**Context Usage:** {total_tokens // 1000}k / {max_context // 1000000}m ({usage_pct:.2f}%)\n**Model:** {model_used}\n**Turn Total Tokens:** {total_tokens:,}\n**Response Time:** [Calc in Node]"
+    # Include tool usage info in footer when tools were executed
+    tools_footer = ""
+    try:
+        if session_mode != "spicy" and tools_used:
+            tools_footer = f"\n**Tools Used:** {', '.join(tools_used)}"
+    except NameError:
+        pass  # tools_used not defined (spicy path)
+    stats_footer = (
+        f"\n\n---\n**Context Usage:** {total_tokens // 1000}k / "
+        f"{max_context // 1000000}m ({usage_pct:.2f}%)\n"
+        f"**Model:** {model_used}\n"
+        f"**Turn Total Tokens:** {total_tokens:,}\n"
+        f"**Response Time:** [Calc in Node]"
+        f"{tools_footer}"
+    )
 
     final_reply = reply + stats_footer
     print(f"[SPARK] [{target.upper()}] Response via {model_used}: {final_reply[:60]}...")
@@ -762,12 +1010,20 @@ async def persona_chat(
             print("[WARN] No BackgroundTasks object available. Using asyncio.create_task.")
             asyncio.create_task(continue_conversation(request.user_id, messages, reply))
 
-    return {
+    result_dict = {
         "reply": final_reply,
         "persona": f"synapse_{target}",
         "memory_method": retrieval_method,
         "model": model_used,
     }
+    # Attach tool metadata when the execution loop ran
+    try:
+        if session_mode != "spicy" and tools_used:
+            result_dict["tools_used"] = tools_used
+            result_dict["tool_rounds"] = round_num + 1
+    except NameError:
+        pass  # tools_used / round_num not defined (spicy path)
+    return result_dict
 
 
 # --- Async Gateway Processing Pipeline ---
@@ -957,6 +1213,23 @@ async def lifespan(app: FastAPI):
     )
     await app.state.worker.start()
     print("[INFO] Async Gateway Pipeline started.")
+
+    # Phase 3: Initialize ToolRegistry (if available from parallel worktree)
+    global tool_registry
+    if _TOOL_REGISTRY_AVAILABLE:
+        try:
+            tool_registry = ToolRegistry()
+            register_builtin_tools(tool_registry, memory_engine, WORKSPACE_ROOT)
+            _tool_logger.info(
+                "ToolRegistry initialized with %d tools", len(tool_registry.list_tools())
+            )
+        except Exception as exc:
+            _tool_logger.warning("ToolRegistry init failed (non-fatal): %s", exc)
+            tool_registry = None
+    else:
+        _tool_logger.info(
+            "tool_registry module not available — tool execution loop disabled"
+        )
 
     # Initialize SessionActorQueue
     from gateway.session_actor import SessionActorQueue  # noqa: E402, PLC0415
