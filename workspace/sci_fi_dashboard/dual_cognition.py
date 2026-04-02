@@ -184,15 +184,12 @@ class DualCognitionEngine:
                     self.trajectory.record(merge, present.topics)
                 return merge
 
-            # DEEP PATH: intent extraction + analysis + recall + CoT merge (3-4 LLM calls)
-            # Run all three operations in parallel to save 2-3s:
-            # - search intent extraction (LLM call)
+            # DEEP PATH: analysis + recall + CoT merge (2-3 LLM calls)
+            # L-01: Removed _extract_search_intent — result was never used downstream.
+            # Run both operations in parallel to save latency:
             # - present analysis (LLM call)
             # - memory recall using original message with pre-cached results (no LLM, fast)
-            search_intent, present, memory = await asyncio.gather(
-                self._extract_search_intent(
-                    user_message, conversation_history, llm_fn
-                ),
+            present, memory = await asyncio.gather(
                 self._analyze_present(user_message, conversation_history, llm_fn),
                 self._recall_memory(user_message, chat_id, target, pre_cached_memory),
             )
@@ -305,8 +302,9 @@ JSON only:"""
         try:
             target_name = "primary_partner" if "the_partner" in target.lower() else "primary_user"
             memory.relationship_context = self.graph.get_entity_neighborhood(target_name)
-        except Exception:
-            pass
+        except Exception as e:
+            # L-05: Log instead of silently dropping graph errors
+            logger.debug("Graph neighborhood lookup failed: %s", e)
 
         return memory
 

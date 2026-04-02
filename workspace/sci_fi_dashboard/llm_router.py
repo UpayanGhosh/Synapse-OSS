@@ -590,6 +590,8 @@ class SynapseLLMRouter:
             v.get("model", "").startswith(_GITHUB_COPILOT_PREFIX)
             for v in self._config.model_mappings.values()
         )
+        # C-09: Lock to prevent concurrent Copilot token refresh races
+        self._copilot_refresh_lock = asyncio.Lock()
         logger.info(
             "SynapseLLMRouter initialized with %d roles",
             len(self._config.model_mappings),
@@ -675,10 +677,19 @@ class SynapseLLMRouter:
         except Exception as exc:
             # Copilot tokens are short-lived — on "forbidden" errors, refresh
             # the token and retry once before giving up.
+            # C-09: Use lock to prevent concurrent double-refresh races.
             if self._uses_copilot and "forbidden" in str(exc).lower():
-                logger.warning("Copilot token rejected — refreshing and retrying")
-                _get_copilot_token()  # triggers Authenticator refresh
-                self._rebuild_router()
+                if self._copilot_refresh_lock.locked():
+                    # Another coroutine is already refreshing — wait for it
+                    async with self._copilot_refresh_lock:
+                        pass
+                else:
+                    async with self._copilot_refresh_lock:
+                        logger.warning(
+                            "Copilot token rejected — refreshing and retrying"
+                        )
+                        _get_copilot_token()  # triggers Authenticator refresh
+                        self._rebuild_router()
                 return await self._router.acompletion(
                     model=role,
                     messages=messages,
@@ -825,6 +836,22 @@ class SynapseLLMRouter:
         except BadRequestError as exc:
             logger.error("Bad request for role '%s' (tools): %s", role, exc)
             raise
+        except Exception as exc:
+            # M-03: Copilot 403 refresh — same logic as _do_call()
+            if self._uses_copilot and "forbidden" in str(exc).lower():
+                if self._copilot_refresh_lock.locked():
+                    async with self._copilot_refresh_lock:
+                        pass
+                else:
+                    async with self._copilot_refresh_lock:
+                        logger.warning(
+                            "Copilot token rejected (tools) — refreshing"
+                        )
+                        _get_copilot_token()
+                        self._rebuild_router()
+                response = await self._router.acompletion(**kwargs)
+            else:
+                raise
 
         message = response.choices[0].message
         usage = getattr(response, "usage", None) or type(
