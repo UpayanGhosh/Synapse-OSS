@@ -605,6 +605,7 @@ async def persona_chat(
     print(f"[MAIL] [{target.upper()}] Inbound: {user_msg[:80]}...")
 
     # 1. Memory Retrieval (Phoenix v3 Unified Engine)
+    mem_response = None
     try:
         env_session = os.environ.get("SESSION_TYPE", "safe")
         session_mode = request.session_type or env_session
@@ -612,7 +613,7 @@ async def persona_chat(
             session_mode = "safe"
 
         # Using the new MemoryEngine for hybrid search + graph context
-        mem_response = memory_engine.query(user_msg, limit=5)
+        mem_response = memory_engine.query(user_msg, limit=5, with_graph=True)
 
         # Format results for the prompt
         results_list = mem_response.get("results", [])
@@ -653,6 +654,7 @@ async def persona_chat(
                     conversation_history=request.history,
                     target=target,
                     llm_fn=call_gemini_flash,  # Use the fast model for thinking
+                    pre_cached_memory=mem_response,  # Reuse memory from step 1 (M3 perf fix)
                 ),
                 timeout=dc_timeout,
             )

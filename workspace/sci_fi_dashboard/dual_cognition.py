@@ -156,6 +156,7 @@ class DualCognitionEngine:
         conversation_history: list = None,
         target: str = "the_creator",
         llm_fn=None,
+        pre_cached_memory: dict = None,
     ) -> CognitiveMerge:
         """Main entry: routes through fast/standard/deep paths based on complexity."""
 
@@ -176,7 +177,7 @@ class DualCognitionEngine:
             if complexity == "standard":
                 present, memory = await asyncio.gather(
                     self._analyze_present(user_message, conversation_history, llm_fn),
-                    self._recall_memory(user_message, chat_id, target),
+                    self._recall_memory(user_message, chat_id, target, pre_cached_memory),
                 )
                 merge = await self._merge_streams(present, memory, target, llm_fn, use_cot=False)
                 if self.trajectory:
@@ -191,9 +192,12 @@ class DualCognitionEngine:
             recall_query = search_query if search_query else user_message
 
             # Step 2: Run analysis + targeted recall in parallel
+            # Note: pre_cached_memory is only usable if recall_query == user_message,
+            # otherwise the deep path extracted a different search query and we must re-query.
+            usable_cache = pre_cached_memory if recall_query == user_message else None
             present, memory = await asyncio.gather(
                 self._analyze_present(user_message, conversation_history, llm_fn),
-                self._recall_memory(recall_query, chat_id, target),
+                self._recall_memory(recall_query, chat_id, target, usable_cache),
             )
 
             # Step 3: CoT merge
@@ -280,12 +284,20 @@ JSON only:"""
 
         return present
 
-    async def _recall_memory(self, message: str, chat_id: str, target: str) -> MemoryStream:
-        """Stream 2: Query memory."""
+    async def _recall_memory(
+        self,
+        message: str,
+        chat_id: str,
+        target: str,
+        pre_cached_memory: dict = None,
+    ) -> MemoryStream:
+        """Stream 2: Query memory. Uses pre_cached_memory if available to avoid duplicate queries."""
         memory = MemoryStream()
 
         try:
-            results = self.memory.query(message, limit=5, with_graph=True)
+            results = pre_cached_memory if pre_cached_memory else self.memory.query(
+                message, limit=5, with_graph=True
+            )
             memory.relevant_facts = [r["content"] for r in results.get("results", [])]
             memory.graph_connections = results.get("graph_context", "")
         except (KeyError, IndexError, ValueError) as e:
