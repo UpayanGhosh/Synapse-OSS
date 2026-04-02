@@ -538,8 +538,8 @@ def main():
         # would cause the next start to be on 'main', and auto-commits
         # would go to the wrong branch. Stay on synapse-auto-updates.
 
-    log.info("[BYE] Tracker stopped (staying on synapse-auto-updates).")
-    sys.exit(0)
+        log.info("[BYE] Tracker stopped (staying on synapse-auto-updates).")
+        sys.exit(0)
 
     signal.signal(signal.SIGINT, shutdown)
     signal.signal(signal.SIGTERM, shutdown)

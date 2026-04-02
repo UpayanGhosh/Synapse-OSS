@@ -1,5 +1,6 @@
 import json
 import shutil
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -183,12 +184,23 @@ class ProfileManager:
         # Save current core_identity before rollback
         core = self.load_layer("core_identity")
 
-        # Replace current with archived version
-        shutil.rmtree(self.current_dir)
-        shutil.copytree(target, self.current_dir)
-
-        # Restore core_identity (immutable, survives rollback)
-        self._write_json(self.current_dir / "core_identity.json", core)
+        # Copy archive to a temp dir first, then atomically swap
+        tmp_dir = Path(tempfile.mkdtemp(dir=str(self.profile_dir)))
+        try:
+            staged = tmp_dir / "staged_current"
+            shutil.copytree(target, staged)
+            # Restore core_identity (immutable, survives rollback)
+            self._write_json(staged / "core_identity.json", core)
+            # Atomic swap: remove current, rename staged → current
+            shutil.rmtree(self.current_dir)
+            staged.rename(self.current_dir)
+        except Exception:
+            # Clean up temp dir on failure; current_dir is untouched
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+            raise
+        finally:
+            # Clean up the temp parent if it still exists
+            shutil.rmtree(tmp_dir, ignore_errors=True)
 
         print(f"[PROFILE] Rolled back to version {version_num}")
 

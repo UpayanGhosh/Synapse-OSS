@@ -9,7 +9,7 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import Tool, TextContent
 
-from .base import setup_logging, logger
+from .base import setup_logging, logger, check_mcp_auth
 
 server = Server("synapse-tools")
 
@@ -115,6 +115,10 @@ async def list_tools() -> list[Tool]:
 
 @server.call_tool()
 async def call_tool(name: str, arguments: dict) -> list[TextContent]:
+    auth_err = check_mcp_auth(arguments)
+    if auth_err:
+        return [TextContent(type="text", text=json.dumps({"error": auth_err}))]
+
     if name == "web_search":
         try:
             from db.tools import ToolRegistry

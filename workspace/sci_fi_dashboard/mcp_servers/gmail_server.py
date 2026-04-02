@@ -11,7 +11,7 @@ from pathlib import Path
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import Tool, TextContent
-from .base import setup_logging, logger
+from .base import setup_logging, logger, check_mcp_auth
 
 _gmail_service = None
 
@@ -88,66 +88,103 @@ async def list_tools() -> list[Tool]:
     ]
 
 
+def _search_emails(svc, arguments: dict) -> list[TextContent]:
+    results = svc.users().messages().list(
+        userId="me", q=arguments["query"], maxResults=arguments.get("max_results", 10)
+    ).execute()
+    summaries = []
+    for msg in results.get("messages", []):
+        detail = svc.users().messages().get(
+            userId="me", id=msg["id"], format="metadata"
+        ).execute()
+        headers = {
+            h["name"]: h["value"]
+            for h in detail.get("payload", {}).get("headers", [])
+        }
+        summaries.append({
+            "id": msg["id"],
+            "from": headers.get("From", ""),
+            "subject": headers.get("Subject", ""),
+            "date": headers.get("Date", ""),
+            "snippet": detail.get("snippet", ""),
+        })
+    return [TextContent(type="text", text=json.dumps(summaries, indent=2))]
+
+
+def _read_email(svc, arguments: dict) -> list[TextContent]:
+    msg = svc.users().messages().get(
+        userId="me", id=arguments["message_id"], format="full"
+    ).execute()
+    payload = msg.get("payload", {})
+    body = ""
+    if "parts" in payload:
+        for part in payload["parts"]:
+            if part["mimeType"] == "text/plain":
+                body = base64.urlsafe_b64decode(part["body"]["data"]).decode("utf-8")
+                break
+    elif "body" in payload and "data" in payload["body"]:
+        body = base64.urlsafe_b64decode(payload["body"]["data"]).decode("utf-8")
+    headers = {h["name"]: h["value"] for h in payload.get("headers", [])}
+    return [TextContent(type="text", text=json.dumps({
+        "from": headers.get("From"),
+        "subject": headers.get("Subject"),
+        "date": headers.get("Date"),
+        "body": body[:3000],
+    }, indent=2))]
+
+
+def _get_unread(svc, arguments: dict) -> list[TextContent]:
+    results = svc.users().messages().list(
+        userId="me", q="is:unread", maxResults=arguments.get("limit", 5)
+    ).execute()
+    summaries = []
+    for msg in results.get("messages", []):
+        detail = svc.users().messages().get(
+            userId="me", id=msg["id"], format="metadata"
+        ).execute()
+        headers = {
+            h["name"]: h["value"]
+            for h in detail.get("payload", {}).get("headers", [])
+        }
+        summaries.append({
+            "id": msg["id"],
+            "from": headers.get("From", ""),
+            "subject": headers.get("Subject", ""),
+            "snippet": detail.get("snippet", ""),
+        })
+    return [TextContent(type="text", text=json.dumps(summaries, indent=2))]
+
+
+def _send_email(svc, arguments: dict) -> list[TextContent]:
+    mime_msg = email.mime.text.MIMEText(arguments["body"])
+    mime_msg["to"] = arguments["to"]
+    mime_msg["subject"] = arguments["subject"]
+    raw = base64.urlsafe_b64encode(mime_msg.as_bytes()).decode()
+    svc.users().messages().send(userId="me", body={"raw": raw}).execute()
+    return [TextContent(type="text", text="Email sent")]
+
+
 @server.call_tool()
 async def call_tool(name: str, arguments: dict) -> list[TextContent]:
-    svc = _get_gmail_service()
-    if name == "search_emails":
-        results = svc.users().messages().list(
-            userId="me", q=arguments["query"], maxResults=arguments.get("max_results", 10)
-        ).execute()
-        summaries = []
-        for msg in results.get("messages", []):
-            detail = svc.users().messages().get(userId="me", id=msg["id"], format="metadata").execute()
-            headers = {h["name"]: h["value"] for h in detail.get("payload", {}).get("headers", [])}
-            summaries.append({
-                "id": msg["id"],
-                "from": headers.get("From", ""),
-                "subject": headers.get("Subject", ""),
-                "date": headers.get("Date", ""),
-                "snippet": detail.get("snippet", ""),
-            })
-        return [TextContent(type="text", text=json.dumps(summaries, indent=2))]
-    elif name == "read_email":
-        msg = svc.users().messages().get(userId="me", id=arguments["message_id"], format="full").execute()
-        payload = msg.get("payload", {})
-        body = ""
-        if "parts" in payload:
-            for part in payload["parts"]:
-                if part["mimeType"] == "text/plain":
-                    body = base64.urlsafe_b64decode(part["body"]["data"]).decode("utf-8")
-                    break
-        elif "body" in payload and "data" in payload["body"]:
-            body = base64.urlsafe_b64decode(payload["body"]["data"]).decode("utf-8")
-        headers = {h["name"]: h["value"] for h in payload.get("headers", [])}
-        return [TextContent(type="text", text=json.dumps({
-            "from": headers.get("From"),
-            "subject": headers.get("Subject"),
-            "date": headers.get("Date"),
-            "body": body[:3000],
-        }, indent=2))]
-    elif name == "get_unread":
-        results = svc.users().messages().list(
-            userId="me", q="is:unread", maxResults=arguments.get("limit", 5)
-        ).execute()
-        summaries = []
-        for msg in results.get("messages", []):
-            detail = svc.users().messages().get(userId="me", id=msg["id"], format="metadata").execute()
-            headers = {h["name"]: h["value"] for h in detail.get("payload", {}).get("headers", [])}
-            summaries.append({
-                "id": msg["id"],
-                "from": headers.get("From", ""),
-                "subject": headers.get("Subject", ""),
-                "snippet": detail.get("snippet", ""),
-            })
-        return [TextContent(type="text", text=json.dumps(summaries, indent=2))]
-    elif name == "send_email":
-        mime_msg = email.mime.text.MIMEText(arguments["body"])
-        mime_msg["to"] = arguments["to"]
-        mime_msg["subject"] = arguments["subject"]
-        raw = base64.urlsafe_b64encode(mime_msg.as_bytes()).decode()
-        svc.users().messages().send(userId="me", body={"raw": raw}).execute()
-        return [TextContent(type="text", text="Email sent")]
-    return [TextContent(type="text", text=f"Unknown tool: {name}")]
+    auth_err = check_mcp_auth(arguments)
+    if auth_err:
+        return [TextContent(type="text", text=json.dumps({"error": auth_err}))]
+
+    try:
+        svc = _get_gmail_service()
+        _HANDLERS = {
+            "search_emails": _search_emails,
+            "read_email": _read_email,
+            "get_unread": _get_unread,
+            "send_email": _send_email,
+        }
+        handler = _HANDLERS.get(name)
+        if not handler:
+            return [TextContent(type="text", text=f"Unknown tool: {name}")]
+        return await asyncio.to_thread(handler, svc, arguments)
+    except Exception as e:
+        logger.exception("Gmail tool %s failed", name)
+        return [TextContent(type="text", text=json.dumps({"error": str(e)}))]
 
 
 async def main():

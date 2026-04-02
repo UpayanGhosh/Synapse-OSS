@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import re
 from datetime import datetime
@@ -57,11 +58,26 @@ class SBSOrchestrator:
         self._check_startup_batch()
 
     def _run_batch_safe(self):
-        """Wrapper around batch.run() with error handling for fire-and-forget threads."""
+        """Wrapper around batch.run() with error handling for fire-and-forget execution."""
         try:
             self.batch.run()
         except Exception as e:
             logging.getLogger("sbs").error(f"Batch processing failed: {e}", exc_info=True)
+
+    def _schedule_batch(self):
+        """Schedule batch processing on a background thread safely.
+
+        Attempts to use the running asyncio loop's executor to avoid
+        unsynchronized threading issues. Falls back to a daemon thread
+        if no loop is available.
+        """
+        try:
+            loop = asyncio.get_running_loop()
+            loop.run_in_executor(None, self._run_batch_safe)
+        except RuntimeError:
+            # No running event loop — fall back to a daemon thread
+            import threading
+            threading.Thread(target=self._run_batch_safe, daemon=True).start()
 
     def _check_startup_batch(self):
         meta = self.profile_mgr.load_layer("meta")
@@ -76,9 +92,7 @@ class SBSOrchestrator:
             window_hours = self._sbs_config.batch_window_hours
             if datetime.now() - last_run > timedelta(hours=window_hours):
                 print(f"[SBS] Startup trigger: >{window_hours} hrs since last batch. Running now.")
-                import threading
-
-                threading.Thread(target=self._run_batch_safe, daemon=True).start()
+                self._schedule_batch()
         except ValueError:
             pass
 
@@ -135,9 +149,7 @@ class SBSOrchestrator:
         # M1: Trigger batch processing with error handling
         self._unbatched_count += 1
         if self._unbatched_count >= self.BATCH_THRESHOLD:
-            import threading
-
-            threading.Thread(target=self._run_batch_safe, daemon=True).start()
+            self._schedule_batch()
             self._unbatched_count = 0
 
         return rt_results
@@ -168,9 +180,9 @@ class SBSOrchestrator:
         return {
             "current_mood": profile["emotional_state"]["current_dominant_mood"],
             "sentiment": profile["emotional_state"]["current_sentiment_avg"],
-            "primary_language_ratio": profile["linguistic"]
+            "banglish_ratio": profile["linguistic"]
             .get("current_style", {})
-            .get("primary_language_ratio"),
+            .get("banglish_ratio"),
             "vocab_size": profile["vocabulary"].get("total_unique_words", 0),
             "profile_version": profile["meta"].get("current_version", 0),
             "total_messages": profile["meta"].get("total_messages_processed", 0),

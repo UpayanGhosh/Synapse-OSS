@@ -35,7 +35,7 @@ class PersonaManager:
     def load_dictionary(self):
         try:
             if os.path.exists(self.dict_path):
-                with open(self.dict_path) as f:
+                with open(self.dict_path, encoding="utf-8") as f:
                     return json.load(f)
         except Exception:
             # print(f"[WARN] Persona Error: Could not load Banglish dict: {e}")
@@ -46,7 +46,7 @@ class PersonaManager:
         path = self.files.get(key)
         if path and os.path.exists(path):
             try:
-                with open(path) as f:
+                with open(path, encoding="utf-8") as f:
                     return f.read()
             except Exception as e:
                 return f"<!-- Error reading {key}: {e} -->"

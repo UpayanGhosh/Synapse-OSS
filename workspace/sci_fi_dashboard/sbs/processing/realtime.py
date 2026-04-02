@@ -1,4 +1,5 @@
 import re
+import time
 
 from ..ingestion.schema import RawMessage
 from ..profile.manager import ProfileManager
@@ -13,18 +14,18 @@ BANGLISH_MARKERS = {
     r"cha+[iy]": "chai",
     r"bh+a+i": "the_brother",
     r"ar+[ea]y?": "arey",
-    r"ki\\s*kor(chi|bo|ish)": "ki_korchi_family",
+    r"ki\s*kor(chi|bo|ish)": "ki_korchi_family",
     r"achh?[io]s?h?": "acchis",
     # ... extend as discovered
 }
 
 MOOD_KEYWORDS = {
-    "stressed": [r"pressure", r"deadline", r"pagol", r"er\\s*upor", r"jhame+la"],
+    "stressed": [r"pressure", r"deadline", r"pagol", r"er\s*upor", r"jhame+la"],
     "playful": [r"lol", r"haha+", r"[LOL]", r"[ROFL]", r"moja", r"maza"],
     "tired": [r"l[yi]a+dh", r"ghu+m", r"thak", r"uff+", r"[SLEEP]"],
     "focused": [r"implement", r"build", r"code", r"debug", r"fix", r"deploy"],
-    "excited": [r"!!+", r"[FIRE]", r"daru+n", r"jhakkas", r"let'?s\\s*go"],
-    "frustrated": [r"wtf", r"keno", r"kaaj\\s*kor(che)?\\s*na", r"broken", r"error"],
+    "excited": [r"!!+", r"[FIRE]", r"daru+n", r"jhakkas", r"let'?s\s*go"],
+    "frustrated": [r"wtf", r"keno", r"kaaj\s*kor(che)?\s*na", r"broken", r"error"],
 }
 
 COMPILED_BANGLISH = {re.compile(k, re.IGNORECASE): v for k, v in BANGLISH_MARKERS.items()}
@@ -50,9 +51,15 @@ class RealtimeProcessor:
     - Style drift detection (batch)
     """
 
+    # Flush emotional state to disk at most every N seconds
+    _FLUSH_INTERVAL = 10  # seconds
+    _FLUSH_BATCH = 5  # or every N mood updates
+
     def __init__(self, profile_manager: ProfileManager):
         self.profile_mgr = profile_manager
         self._sentiment_lexicon = self._load_sentiment_lexicon()
+        self._mood_buffer: list[dict] = []
+        self._last_flush: float = time.monotonic()
 
     def _load_sentiment_lexicon(self) -> dict:
         """
@@ -163,27 +170,38 @@ class RealtimeProcessor:
 
     def _hot_update_emotional_state(self, mood: str, sentiment: float, timestamp):
         """
-        Immediately update the emotional_state profile layer.
-        This is the ONLY profile layer updated in real-time.
-        Everything else waits for batch.
+        Buffer mood updates and flush to disk periodically to avoid
+        writing JSON on every single mood message.
         """
-        emotional = self.profile_mgr.load_layer("emotional_state")
-
-        # Sliding window of last 10 mood signals
-        mood_history = emotional.get("mood_history", [])
-        mood_history.append(
+        self._mood_buffer.append(
             {"mood": mood, "sentiment": sentiment, "timestamp": timestamp.isoformat()}
         )
+
+        now = time.monotonic()
+        should_flush = (
+            len(self._mood_buffer) >= self._FLUSH_BATCH
+            or (now - self._last_flush) >= self._FLUSH_INTERVAL
+        )
+        if should_flush:
+            self._flush_emotional_state()
+
+    def _flush_emotional_state(self):
+        """Write buffered mood updates to the emotional_state profile layer."""
+        if not self._mood_buffer:
+            return
+
+        from collections import Counter
+
+        emotional = self.profile_mgr.load_layer("emotional_state")
+
+        mood_history = emotional.get("mood_history", [])
+        mood_history.extend(self._mood_buffer)
         # Keep only last 10
         mood_history = mood_history[-10:]
-
-        # Compute dominant mood from recent history
-        from collections import Counter
 
         recent_moods = [m["mood"] for m in mood_history[-5:]]
         dominant = Counter(recent_moods).most_common(1)[0][0] if recent_moods else "neutral"
 
-        # Compute average sentiment
         avg_sentiment = sum(m["sentiment"] for m in mood_history[-5:]) / max(
             len(mood_history[-5:]), 1
         )
@@ -191,6 +209,8 @@ class RealtimeProcessor:
         emotional["mood_history"] = mood_history
         emotional["current_dominant_mood"] = dominant
         emotional["current_sentiment_avg"] = round(avg_sentiment, 3)
-        emotional["last_updated"] = timestamp.isoformat()
+        emotional["last_updated"] = self._mood_buffer[-1]["timestamp"]
 
         self.profile_mgr.save_layer("emotional_state", emotional)
+        self._mood_buffer.clear()
+        self._last_flush = time.monotonic()

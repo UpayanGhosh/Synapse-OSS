@@ -25,14 +25,17 @@ def vacuum_sbs(data_dir: str = "./data", retain_days: int = 30, keep_versions: i
 
     # 1. Vacuum SQLite
     print("[PKG] Rebuilding SQLite indices and reclaiming space...")
-    with sqlite3.connect(db_path) as conn:
-        before_size = db_path.stat().st_size
-        # SQLite VACUUM physically reconstructs the database file
-        conn.execute("VACUUM")
-        after_size = db_path.stat().st_size
+    try:
+        with sqlite3.connect(db_path) as conn:
+            before_size = db_path.stat().st_size
+            # SQLite VACUUM physically reconstructs the database file
+            conn.execute("VACUUM")
+            after_size = db_path.stat().st_size
 
-        saved = (before_size - after_size) / 1024
-        print(f"   Done. Saved: {saved:.1f} KB")
+            saved = (before_size - after_size) / 1024
+            print(f"   Done. Saved: {saved:.1f} KB")
+    except sqlite3.OperationalError as e:
+        print(f"[WARN] VACUUM failed (may be WAL mode or locked): {e}. Continuing.")
 
     # 2. Prune old profile archives
     if profiles_archive.exists():

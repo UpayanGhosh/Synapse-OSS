@@ -156,6 +156,19 @@ class BatchProcessor:
                         "last_seen": data["last_seen"],
                     }
 
+        # Cap vocabulary registry to prevent unbounded growth
+        _MAX_VOCAB = 10000
+        if len(word_registry) > _MAX_VOCAB:
+            # Evict entries with the lowest effective_weight
+            sorted_words = sorted(
+                word_registry.items(),
+                key=lambda kv: kv[1].get("effective_weight", 0),
+            )
+            evict_count = len(word_registry) - _MAX_VOCAB
+            for word, _ in sorted_words[:evict_count]:
+                del word_registry[word]
+            vocab["archived_count"] = vocab.get("archived_count", 0) + evict_count
+
         vocab["registry"] = word_registry
         vocab["top_banglish"] = dict(
             sorted(banglish_terms.items(), key=lambda x: x[1]["weight"], reverse=True)[:30]
@@ -421,12 +434,29 @@ class BatchProcessor:
     # --- Helper queries ---
 
     def _fetch_all_user_messages(self) -> list[dict]:
+        """Fetch all messages in paginated batches to avoid OOM."""
+        _PAGE_SIZE = 1000
+        results: list[dict] = []
+        last_ts = ""
+        last_id = ""
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
-            return [
-                dict(r)
-                for r in conn.execute("SELECT * FROM messages ORDER BY timestamp ASC").fetchall()
-            ]
+            while True:
+                rows = conn.execute(
+                    "SELECT * FROM messages "
+                    "WHERE (timestamp, msg_id) > (?, ?) "
+                    "ORDER BY timestamp ASC, msg_id ASC "
+                    "LIMIT ?",
+                    (last_ts, last_id, _PAGE_SIZE),
+                ).fetchall()
+                if not rows:
+                    break
+                for r in rows:
+                    d = dict(r)
+                    results.append(d)
+                    last_ts = d["timestamp"]
+                    last_id = d["msg_id"]
+        return results
 
     def _fetch_messages_since(self, since: str) -> list[dict]:
         with sqlite3.connect(self.db_path) as conn:

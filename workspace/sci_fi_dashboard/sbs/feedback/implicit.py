@@ -110,15 +110,15 @@ class ImplicitFeedbackDetector:
         style = linguistic.get("current_style", {})
 
         if signal_type == "correction_formal":
-            # Increase primary language ratio, reduce average length slightly
-            current_ratio = style.get("primary_language_ratio", 0.3)
-            style["primary_language_ratio"] = min(1.0, current_ratio + 0.2)
+            # Increase banglish ratio (more casual/banglish)
+            current_ratio = style.get("banglish_ratio", 0.3)
+            style["banglish_ratio"] = min(1.0, current_ratio + 0.2)
             needs_linguistic_update = True
 
         elif signal_type == "correction_casual":
-            # Decrease primary language ratio
-            current_ratio = style.get("primary_language_ratio", 0.3)
-            style["primary_language_ratio"] = max(0.0, current_ratio - 0.2)
+            # Decrease banglish ratio (more formal/english)
+            current_ratio = style.get("banglish_ratio", 0.3)
+            style["banglish_ratio"] = max(0.0, current_ratio - 0.2)
             needs_linguistic_update = True
 
         elif signal_type == "correction_length":

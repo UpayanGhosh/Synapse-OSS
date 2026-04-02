@@ -9,7 +9,7 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import Tool, TextContent, ResourceTemplate
 
-from .base import setup_logging, logger
+from .base import setup_logging, logger, check_mcp_auth
 
 _engine = None
 
@@ -61,20 +61,28 @@ async def list_tools() -> list[Tool]:
 
 @server.call_tool()
 async def call_tool(name: str, arguments: dict) -> list[TextContent]:
-    engine = _get_engine()
-    if name == "query_memory":
-        result = engine.query(
-            text=arguments["query"],
-            limit=arguments.get("limit", 5),
-            with_graph=arguments.get("with_graph", True),
-        )
-        return [TextContent(type="text", text=json.dumps(result, indent=2, default=str))]
-    elif name == "add_memory":
-        result = engine.add_memory(
-            arguments["content"], arguments.get("category", "direct_entry")
-        )
-        return [TextContent(type="text", text=json.dumps(result, default=str))]
-    return [TextContent(type="text", text=f"Unknown tool: {name}")]
+    auth_err = check_mcp_auth(arguments)
+    if auth_err:
+        return [TextContent(type="text", text=json.dumps({"error": auth_err}))]
+
+    try:
+        engine = _get_engine()
+        if name == "query_memory":
+            result = engine.query(
+                text=arguments["query"],
+                limit=arguments.get("limit", 5),
+                with_graph=arguments.get("with_graph", True),
+            )
+            return [TextContent(type="text", text=json.dumps(result, indent=2, default=str))]
+        elif name == "add_memory":
+            result = engine.add_memory(
+                arguments["content"], arguments.get("category", "direct_entry")
+            )
+            return [TextContent(type="text", text=json.dumps(result, default=str))]
+        return [TextContent(type="text", text=f"Unknown tool: {name}")]
+    except Exception as e:
+        logger.exception("Memory tool %s failed", name)
+        return [TextContent(type="text", text=json.dumps({"error": str(e)}))]
 
 
 @server.list_resource_templates()

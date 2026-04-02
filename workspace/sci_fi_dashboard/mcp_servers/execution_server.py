@@ -427,7 +427,11 @@ async def _handle_exec(args: dict) -> list[TextContent]:
         spawn_kwargs["start_new_session"] = True
 
     try:
-        proc = await asyncio.create_subprocess_shell(command, **spawn_kwargs)
+        if _IS_WIN:
+            cmd_args = command.strip().split()
+        else:
+            cmd_args = shlex.split(command)
+        proc = await asyncio.create_subprocess_exec(*cmd_args, **spawn_kwargs)
     except Exception as e:
         _sessions.pop(session.id, None)
         return _err(str(e))
@@ -593,12 +597,24 @@ async def _handle_process(args: dict) -> list[TextContent]:
     return _err(f"unknown action: {action!r}")
 
 
+_cleanup_task: asyncio.Task | None = None
+
+
 async def main():
+    global _cleanup_task
     setup_logging()
     logger.info("Starting Synapse Execution MCP Server")
-    asyncio.create_task(_ttl_cleanup())
-    async with stdio_server() as (read_stream, write_stream):
-        await server.run(read_stream, write_stream, server.create_initialization_options())
+    _cleanup_task = asyncio.create_task(_ttl_cleanup())
+    try:
+        async with stdio_server() as (read_stream, write_stream):
+            await server.run(read_stream, write_stream, server.create_initialization_options())
+    finally:
+        if _cleanup_task and not _cleanup_task.done():
+            _cleanup_task.cancel()
+            try:
+                await _cleanup_task
+            except asyncio.CancelledError:
+                pass
 
 
 if __name__ == "__main__":

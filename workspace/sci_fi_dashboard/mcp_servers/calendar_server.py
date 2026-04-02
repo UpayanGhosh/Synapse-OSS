@@ -10,7 +10,7 @@ from pathlib import Path
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import Tool, TextContent
-from .base import setup_logging, logger
+from .base import setup_logging, logger, check_mcp_auth
 
 _cal_service = None
 
@@ -79,57 +79,85 @@ async def list_tools() -> list[Tool]:
     ]
 
 
+def _get_upcoming(svc, arguments: dict) -> list[TextContent]:
+    now = datetime.now(timezone.utc)
+    end = now + timedelta(minutes=arguments.get("minutes", 30))
+    events = svc.events().list(
+        calendarId="primary",
+        timeMin=now.isoformat(),
+        timeMax=end.isoformat(),
+        singleEvents=True,
+        orderBy="startTime",
+    ).execute().get("items", [])
+    result = [
+        {
+            "summary": e.get("summary", "No title"),
+            "start": e["start"].get("dateTime", e["start"].get("date")),
+            "attendees": [a.get("email") for a in e.get("attendees", [])],
+            "hangout_link": e.get("hangoutLink", ""),
+        }
+        for e in events
+    ]
+    return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+
+def _list_events(svc, arguments: dict) -> list[TextContent]:
+    date_str = arguments.get("date", datetime.now().strftime("%Y-%m-%d"))
+    day_start = datetime.fromisoformat(f"{date_str}T00:00:00").replace(tzinfo=timezone.utc)
+    events = svc.events().list(
+        calendarId="primary",
+        timeMin=day_start.isoformat(),
+        timeMax=(day_start + timedelta(days=1)).isoformat(),
+        singleEvents=True,
+        orderBy="startTime",
+        maxResults=arguments.get("max_results", 10),
+    ).execute().get("items", [])
+    result = [
+        {
+            "summary": e.get("summary"),
+            "start": e["start"].get("dateTime", e["start"].get("date")),
+        }
+        for e in events
+    ]
+    return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+
+def _create_event(svc, arguments: dict) -> list[TextContent]:
+    body = {
+        "summary": arguments["summary"],
+        "start": {"dateTime": arguments["start"]},
+        "end": {"dateTime": arguments["end"]},
+        "description": arguments.get("description", ""),
+    }
+    if arguments.get("attendees"):
+        body["attendees"] = [{"email": a} for a in arguments["attendees"]]
+    created = svc.events().insert(calendarId="primary", body=body).execute()
+    return [TextContent(
+        type="text",
+        text=json.dumps({"id": created["id"], "link": created.get("htmlLink", "")}),
+    )]
+
+
 @server.call_tool()
 async def call_tool(name: str, arguments: dict) -> list[TextContent]:
-    svc = _get_calendar_service()
-    if name == "get_upcoming":
-        now = datetime.now(timezone.utc)
-        end = now + timedelta(minutes=arguments.get("minutes", 30))
-        events = svc.events().list(
-            calendarId="primary",
-            timeMin=now.isoformat(),
-            timeMax=end.isoformat(),
-            singleEvents=True,
-            orderBy="startTime",
-        ).execute().get("items", [])
-        result = [
-            {
-                "summary": e.get("summary", "No title"),
-                "start": e["start"].get("dateTime", e["start"].get("date")),
-                "attendees": [a.get("email") for a in e.get("attendees", [])],
-                "hangout_link": e.get("hangoutLink", ""),
-            }
-            for e in events
-        ]
-        return [TextContent(type="text", text=json.dumps(result, indent=2))]
-    elif name == "list_events":
-        date_str = arguments.get("date", datetime.now().strftime("%Y-%m-%d"))
-        day_start = datetime.fromisoformat(f"{date_str}T00:00:00").replace(tzinfo=timezone.utc)
-        events = svc.events().list(
-            calendarId="primary",
-            timeMin=day_start.isoformat(),
-            timeMax=(day_start + timedelta(days=1)).isoformat(),
-            singleEvents=True,
-            orderBy="startTime",
-            maxResults=arguments.get("max_results", 10),
-        ).execute().get("items", [])
-        result = [
-            {"summary": e.get("summary"), "start": e["start"].get("dateTime", e["start"].get("date"))}
-            for e in events
-        ]
-        return [TextContent(type="text", text=json.dumps(result, indent=2))]
-    elif name == "create_event":
-        body = {
-            "summary": arguments["summary"],
-            "start": {"dateTime": arguments["start"]},
-            "end": {"dateTime": arguments["end"]},
-            "description": arguments.get("description", ""),
+    auth_err = check_mcp_auth(arguments)
+    if auth_err:
+        return [TextContent(type="text", text=json.dumps({"error": auth_err}))]
+
+    try:
+        svc = _get_calendar_service()
+        _HANDLERS = {
+            "get_upcoming": _get_upcoming,
+            "list_events": _list_events,
+            "create_event": _create_event,
         }
-        if arguments.get("attendees"):
-            body["attendees"] = [{"email": a} for a in arguments["attendees"]]
-        created = svc.events().insert(calendarId="primary", body=body).execute()
-        return [TextContent(type="text", text=json.dumps({"id": created["id"], "link": created.get("htmlLink", "")}))]
-    return [TextContent(type="text", text=f"Unknown tool: {name}")]
+        handler = _HANDLERS.get(name)
+        if not handler:
+            return [TextContent(type="text", text=f"Unknown tool: {name}")]
+        return await asyncio.to_thread(handler, svc, arguments)
+    except Exception as e:
+        logger.exception("Calendar tool %s failed", name)
+        return [TextContent(type="text", text=json.dumps({"error": str(e)}))]
 
 
 async def main():
