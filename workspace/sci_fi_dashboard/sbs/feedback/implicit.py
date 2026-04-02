@@ -1,4 +1,5 @@
 import re
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -133,14 +134,17 @@ class ImplicitFeedbackDetector:
             needs_interaction_update = True
 
         elif signal_type == "praise":
-            # Reinforce current behavior - hard to do deterministically without LLM,
-            # but we can log it for the batch processor's exemplar selector.
-            pass
+            # Reinforce current linguistic settings by narrowing variance
+            style["confirmed_at"] = datetime.utcnow().isoformat()
+            style["praise_count"] = style.get("praise_count", 0) + 1
+            needs_linguistic_update = True
 
         elif signal_type == "rejection":
-            # We could trigger a rollback here if the rejection is strong enough,
-            # but for now, we'll just log it.
-            pass
+            # Flag that current style needs review on next batch
+            meta = self.profile_mgr.load_layer("meta")
+            meta["rejection_pending"] = True
+            meta["last_rejection"] = datetime.utcnow().isoformat()
+            self.profile_mgr.save_layer("meta", meta)
 
         if needs_linguistic_update:
             linguistic["current_style"] = style

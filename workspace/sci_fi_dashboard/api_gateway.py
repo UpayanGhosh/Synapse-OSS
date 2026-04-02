@@ -1096,6 +1096,15 @@ async def lifespan(app: FastAPI):
 
     print("[STOP] Shutting down...")
     brain.save_graph()
+
+    # Snapshot SBS profiles on shutdown
+    for persona_id, sbs in sbs_registry.items():
+        try:
+            sbs.profile_mgr.snapshot_version()
+            print(f"[SBS] Shutdown snapshot saved for {persona_id}")
+        except Exception as e:
+            print(f"[SBS] Shutdown snapshot failed for {persona_id}: {e}")
+
     worker_task.cancel()
     if hasattr(app.state, "proactive_engine") and app.state.proactive_engine:
         await app.state.proactive_engine.stop()
