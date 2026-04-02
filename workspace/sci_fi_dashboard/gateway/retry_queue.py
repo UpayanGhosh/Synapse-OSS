@@ -112,7 +112,7 @@ class RetryQueue:
                 conn.commit()
                 return cur.lastrowid
 
-        entry_id = await asyncio.get_event_loop().run_in_executor(None, _insert)
+        entry_id = await asyncio.get_running_loop().run_in_executor(None, _insert)
         logger.info("[RetryQueue] Enqueued entry %d for %s → %s", entry_id, channel_id, chat_id)
         return entry_id
 
@@ -127,7 +127,7 @@ class RetryQueue:
                 )
                 conn.commit()
 
-        await asyncio.get_event_loop().run_in_executor(None, _mark_due)
+        await asyncio.get_running_loop().run_in_executor(None, _mark_due)
         return await self._retry_due()
 
     async def list_pending(self) -> list[dict]:
@@ -140,7 +140,7 @@ class RetryQueue:
                 ).fetchall()
             return [dict(r) for r in rows]
 
-        return await asyncio.get_event_loop().run_in_executor(None, _query)
+        return await asyncio.get_running_loop().run_in_executor(None, _query)
 
     async def delete(self, entry_id: int) -> bool:
         """Delete a specific queue entry. Returns True if found and deleted."""
@@ -152,7 +152,7 @@ class RetryQueue:
                 conn.commit()
                 return cur.rowcount > 0
 
-        return await asyncio.get_event_loop().run_in_executor(None, _delete)
+        return await asyncio.get_running_loop().run_in_executor(None, _delete)
 
     async def _poll_loop(self) -> None:
         """Background task: retry due messages every POLL_INTERVAL seconds."""
@@ -180,7 +180,7 @@ class RetryQueue:
                     (now,),
                 ).fetchall()
 
-        rows = await asyncio.get_event_loop().run_in_executor(None, _fetch_due)
+        rows = await asyncio.get_running_loop().run_in_executor(None, _fetch_due)
         attempted = 0
 
         for row in rows:
@@ -237,4 +237,4 @@ class RetryQueue:
                     )
                 conn.commit()
 
-        await asyncio.get_event_loop().run_in_executor(None, _update, success, attempt, error)
+        await asyncio.get_running_loop().run_in_executor(None, _update, success, attempt, error)

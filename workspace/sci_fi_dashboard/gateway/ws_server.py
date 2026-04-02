@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hmac
 import json
 import logging
 import os
@@ -132,7 +133,7 @@ class GatewayWebSocket:
                 params = frame.get("params", {})
                 auth = params.get("auth", {}) if isinstance(params, dict) else {}
                 token = auth.get("token", "") if isinstance(auth, dict) else ""
-                if token != self._gateway_token:
+                if not hmac.compare_digest(token, self._gateway_token):
                     logger.warning("WS %s: invalid gateway token", conn_id)
                     await websocket.close(code=4001, reason="Invalid token")
                     return
@@ -170,6 +171,16 @@ class GatewayWebSocket:
             try:
                 while True:
                     raw = await websocket.receive_text()
+                    if len(raw.encode("utf-8")) > MAX_PAYLOAD_BYTES:
+                        logger.warning(
+                            "WS %s: payload exceeds %d bytes, closing",
+                            conn_id,
+                            MAX_PAYLOAD_BYTES,
+                        )
+                        await websocket.close(
+                            code=4002, reason="Payload exceeds max size"
+                        )
+                        return
                     req = parse_frame(raw)
                     if req is None:
                         # Silently ignore non-req frames (e.g. pong, unknown)

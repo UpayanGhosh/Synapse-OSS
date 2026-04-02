@@ -112,9 +112,9 @@ class WhatsAppSender:
                 chunks.append(text)
                 break
 
-            break_point = text.rfind("\\n\\n", 0, chunk_size)
+            break_point = text.rfind("\n\n", 0, chunk_size)
             if break_point == -1:
-                break_point = text.rfind("\\n", 0, chunk_size)
+                break_point = text.rfind("\n", 0, chunk_size)
             if break_point == -1:
                 break_point = text.rfind(" ", 0, chunk_size)
             if break_point == -1:

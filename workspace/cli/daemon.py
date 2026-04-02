@@ -237,7 +237,7 @@ class SystemdUserService(GatewayService):
     def _build_unit(self, opts: InstallOpts) -> str:
         args_str = " ".join(opts.args)
         env_lines = "\n".join(
-            f"Environment={k}={v}" for k, v in opts.env.items()
+            f'Environment="{k}={v}"' for k, v in opts.env.items()
         )
         return _SYSTEMD_UNIT_TEMPLATE.format(
             exec_path=opts.exec_path,

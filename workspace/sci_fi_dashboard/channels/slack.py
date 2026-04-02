@@ -36,6 +36,7 @@ from slack_bolt.async_app import AsyncApp
 from slack_sdk.web.async_client import AsyncWebClient
 
 from .base import BaseChannel, ChannelMessage
+from .security import ChannelSecurityConfig, PairingStore, resolve_dm_access
 
 logger = logging.getLogger(__name__)
 
@@ -106,6 +107,8 @@ class SlackChannel(BaseChannel):
         bot_token: str,  # xoxb- prefix: for API calls
         app_token: str,  # xapp- prefix: for Socket Mode WebSocket
         enqueue_fn=None,  # async callable(ChannelMessage) -> None
+        security_config: ChannelSecurityConfig | None = None,
+        pairing_store: PairingStore | None = None,
     ) -> None:
         """
         Initialize SlackChannel with token validation.
@@ -115,6 +118,8 @@ class SlackChannel(BaseChannel):
             app_token:  Slack app-level token (xapp- prefix). Used for Socket Mode.
             enqueue_fn: Async callable receiving a ChannelMessage; routes into the
                         pipeline. Pass None in tests / when channel is wired separately.
+            security_config: Optional DM access control config.
+            pairing_store:   Optional pairing store for DM access control.
 
         Raises:
             ValueError: If bot_token or app_token has wrong prefix (fail-fast at init).
@@ -127,6 +132,8 @@ class SlackChannel(BaseChannel):
         self._handler: AsyncSocketModeHandler | None = None
         self._status: str = "stopped"
         self._web_client = AsyncWebClient(token=bot_token)
+        self.security_config = security_config
+        self._pairing_store = pairing_store
 
         # Thread tracking -------------------------------------------------
         # Maps thread_ts → last-activity monotonic timestamp for threads the
@@ -383,6 +390,14 @@ class SlackChannel(BaseChannel):
         ts = event.get("ts", "")
         thread_ts = event.get("thread_ts")
         chat_id = event.get("channel", "")
+        user_id = event.get("user", "")
+
+        # DM security check — only for direct messages, skip group mentions
+        if self.security_config and self._pairing_store and not is_group:
+            access = resolve_dm_access(user_id, self.security_config, self._pairing_store)
+            if access != "allow":
+                logger.info("[Slack] DM from %s blocked (%s)", user_id, access)
+                return
 
         # Build raw dict — include thread_ts for MsgContext population
         raw = dict(event)
@@ -391,7 +406,7 @@ class SlackChannel(BaseChannel):
 
         msg = ChannelMessage(
             channel_id="slack",
-            user_id=event.get("user", ""),
+            user_id=user_id,
             chat_id=chat_id,
             text=event.get("text", ""),
             timestamp=datetime.now(),

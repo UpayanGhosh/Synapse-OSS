@@ -41,6 +41,7 @@ from datetime import datetime
 import discord
 
 from .base import BaseChannel, ChannelMessage
+from .security import ChannelSecurityConfig, PairingStore, resolve_dm_access
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +72,8 @@ class DiscordChannel(BaseChannel):
         token: str,
         allowed_channel_ids: list[int] | None = None,
         enqueue_fn=None,
+        security_config: ChannelSecurityConfig | None = None,
+        pairing_store: PairingStore | None = None,
     ) -> None:
         """
         Args:
@@ -80,12 +83,17 @@ class DiscordChannel(BaseChannel):
                                  silently ignored. Has no effect on DMs.
             enqueue_fn:          Async callable(ChannelMessage) -> None. Called for
                                  each accepted inbound message.
+            security_config:     Optional DM access control config.
+            pairing_store:       Optional pairing store for DM access control.
         """
         self._token = token
         self._allowed_channel_ids: list[int] = allowed_channel_ids or []
         self._enqueue_fn = enqueue_fn  # async callable(ChannelMessage) -> None
         self._client: discord.Client | None = None
         self._status: str = "stopped"
+        self._shutdown_task: asyncio.Task | None = None
+        self.security_config = security_config
+        self._pairing_store = pairing_store
 
         # Sent-message LRU cache: internal_message_id → Discord message.id
         self._sent_message_cache: OrderedDict[str, int] = OrderedDict()
@@ -165,7 +173,10 @@ class DiscordChannel(BaseChannel):
                     message.author,
                 )
                 self._status = "failed"
-                asyncio.create_task(self.stop())
+                self._shutdown_task = asyncio.create_task(self.stop())
+                self._shutdown_task.add_done_callback(
+                    lambda t: t.result() if not t.cancelled() and not t.exception() else None
+                )
                 return
 
             # Detect thread context
@@ -186,6 +197,8 @@ class DiscordChannel(BaseChannel):
                     "thread_id": thread_id,
                 }
             )
+            if channel_msg is None:
+                return  # blocked by DM access control
             if self._enqueue_fn:
                 await self._enqueue_fn(channel_msg)
 
@@ -556,7 +569,7 @@ class DiscordChannel(BaseChannel):
     # Inbound normalisation
     # ------------------------------------------------------------------
 
-    async def receive(self, raw_payload: dict) -> ChannelMessage:
+    async def receive(self, raw_payload: dict) -> ChannelMessage | None:
         """
         Normalise a raw on_message event dict into a ChannelMessage.
 
@@ -568,14 +581,26 @@ class DiscordChannel(BaseChannel):
             message_id         : str   — Discord message snowflake ID
             is_group           : bool  — True for server messages, False for DMs
             reply_callable     : any   — stored as-is in raw for downstream threading
+
+        Returns None for blocked DMs.
         """
+        is_group = raw_payload.get("is_group", False)
+        user_id = raw_payload.get("author_id", "")
+
+        # DM security check — only for direct messages, skip groups
+        if self.security_config and self._pairing_store and not is_group:
+            access = resolve_dm_access(user_id, self.security_config, self._pairing_store)
+            if access != "allow":
+                logger.info("[DIS] DM from %s blocked (%s)", user_id, access)
+                return None
+
         return ChannelMessage(
             channel_id="discord",
-            user_id=raw_payload.get("author_id", ""),
+            user_id=user_id,
             chat_id=str(raw_payload.get("channel_discord_id", "")),
             text=raw_payload.get("content", ""),
             timestamp=datetime.now(),
-            is_group=raw_payload.get("is_group", False),
+            is_group=is_group,
             message_id=raw_payload.get("message_id", ""),
             sender_name=raw_payload.get("author_name", ""),
             raw=raw_payload,

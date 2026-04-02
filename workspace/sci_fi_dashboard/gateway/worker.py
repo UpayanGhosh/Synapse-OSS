@@ -1,14 +1,16 @@
 import asyncio
 import contextlib
 import inspect
+import logging
 import time
-import traceback
 from typing import Awaitable, Callable
 
 from .queue import MessageTask, TaskQueue
 from .sender import (
     WhatsAppSender,  # kept for backwards-compat constructor param; Phase 4 removes it
 )
+
+logger = logging.getLogger(__name__)
 
 # ChannelRegistry imported lazily to avoid circular imports at module load time
 
@@ -79,7 +81,7 @@ class MessageWorker:
         channel_id = getattr(task, "channel_id", None) or "whatsapp"
         channel = self.channel_registry.get(channel_id)
         if channel is None:
-            print(f"[WORKER] No channel registered for '{channel_id}' — task will fail")
+            logger.warning("No channel registered for '%s' -- task will fail", channel_id)
         return channel
 
     async def start(self):
@@ -87,7 +89,7 @@ class MessageWorker:
         for i in range(self.num_workers):
             task = asyncio.create_task(self._worker_loop(i), name=f"msg-worker-{i}")
             self._workers.append(task)
-        print(f"[WORKER] Started {self.num_workers} workers.")
+        logger.info("Started %d workers", self.num_workers)
 
     async def stop(self):
         self._running = False
@@ -95,7 +97,7 @@ class MessageWorker:
             w.cancel()
         await asyncio.gather(*self._workers, return_exceptions=True)
         self._workers.clear()
-        print("[WORKER] All workers stopped.")
+        logger.info("All workers stopped")
 
     async def _worker_loop(self, worker_id: int):
         while self._running:
@@ -105,8 +107,7 @@ class MessageWorker:
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                print(f"[WORKER-{worker_id}] Loop error: {e}")
-                traceback.print_exc()
+                logger.error("Worker-%d loop error: %s", worker_id, e, exc_info=True)
                 await asyncio.sleep(1)
 
     async def _handle_task(self, task: MessageTask, worker_id: int):
@@ -119,9 +120,9 @@ class MessageWorker:
             self._chat_generations[chat_id] = new_gen
             task.generation = new_gen
 
-        print(
-            f"[WORKER-{worker_id}] gen={task.generation} Processing: "
-            f'"{task.user_message[:60]}..." from {task.sender_name}'
+        logger.info(
+            "Worker-%d gen=%d Processing: \"%.60s...\" from %s",
+            worker_id, task.generation, task.user_message, task.sender_name,
         )
 
         channel = self._get_channel(task)
@@ -155,9 +156,9 @@ class MessageWorker:
 
             if task.generation != latest_gen:
                 self.queue.supersede(task)
-                print(
-                    f"[WORKER-{worker_id}] gen={task.generation} superseded by "
-                    f"gen={latest_gen} for chat {chat_id}. Dropping response silently."
+                logger.info(
+                    "Worker-%d gen=%d superseded by gen=%d for chat %s, dropping",
+                    worker_id, task.generation, latest_gen, chat_id,
                 )
                 return
 
@@ -170,7 +171,10 @@ class MessageWorker:
                     for i, chunk in enumerate(chunks):
                         ok = await channel.send(chat_id, chunk)
                         if not ok:
-                            print(f"[WORKER-{worker_id}] channel.send() failed on chunk {i+1}")
+                            logger.warning(
+                                "Worker-%d channel.send() failed on chunk %d",
+                                worker_id, i + 1,
+                            )
                             success = False
                             # Enqueue failed chunk into retry queue if available
                             retry_queue = getattr(channel, "_retry_queue", None)
@@ -187,15 +191,15 @@ class MessageWorker:
                 elif self.sender:
                     success = await self.sender.send_long_message(target=chat_id, message=response)
                 else:
-                    print(f"[WORKER-{worker_id}] No channel or sender — dropping response")
+                    logger.warning("Worker-%d no channel or sender -- dropping response", worker_id)
                     success = False
 
                 processing_time_ms = int((time.time() - start_time) * 1000)
                 if success:
                     self.queue.complete(task, response)
-                    print(
-                        f"[WORKER-{worker_id}] gen={task.generation} Delivered in "
-                        f"{processing_time_ms}ms"
+                    logger.info(
+                        "Worker-%d gen=%d delivered in %dms",
+                        worker_id, task.generation, processing_time_ms,
                     )
                 else:
                     self.queue.fail(task, "Send failed")
@@ -210,18 +214,17 @@ class MessageWorker:
 
             if task.generation != latest_gen:
                 self.queue.supersede(task)
-                print(
-                    f"[WORKER-{worker_id}] gen={task.generation} error after superseded by "
-                    f"gen={latest_gen} for {chat_id}. Dropping silently."
+                logger.info(
+                    "Worker-%d gen=%d error after superseded by gen=%d for %s, dropping",
+                    worker_id, task.generation, latest_gen, chat_id,
                 )
                 return
 
             self.queue.fail(task, error_msg)
-            print(f"[WORKER-{worker_id}] Task failed: {error_msg}")
-            traceback.print_exc()
+            logger.error("Worker-%d task failed: %s", worker_id, error_msg, exc_info=True)
 
-            # Notify user of error
-            warn_msg = "[WARN] A technical glitch occurred. Please try again. [WRENCH]"
+            # Notify user of error (ASCII-safe for Windows cp1252)
+            warn_msg = "[WARN] A technical glitch occurred. Please try again."
             if channel:
                 await channel.send(chat_id, warn_msg)
             elif self.sender:

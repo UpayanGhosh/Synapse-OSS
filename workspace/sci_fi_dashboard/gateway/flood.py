@@ -33,5 +33,5 @@ class FloodGate:
         self._tasks.pop(chat_id, None)
 
         if buffer_data and self._callback:
-            combined_message = "\\n\\n".join(buffer_data["messages"])
+            combined_message = "\n\n".join(buffer_data["messages"])
             await self._callback(chat_id, combined_message, buffer_data["metadata"])

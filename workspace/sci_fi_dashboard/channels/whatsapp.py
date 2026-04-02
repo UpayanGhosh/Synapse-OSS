@@ -103,7 +103,7 @@ class WhatsAppChannel(BaseChannel):
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _validate_nodejs() -> None:
+    async def _validate_nodejs() -> None:
         node_path = shutil.which("node")
         if not node_path:
             raise RuntimeError(
@@ -112,7 +112,13 @@ class WhatsAppChannel(BaseChannel):
                 "Install from: https://nodejs.org/en/download/\n"
                 "Then restart Synapse."
             )
-        result = subprocess.run(["node", "--version"], capture_output=True, text=True, timeout=5)
+        result = await asyncio.to_thread(
+            subprocess.run,
+            ["node", "--version"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
         version_str = result.stdout.strip().lstrip("v")
         try:
             major = int(version_str.split(".")[0])
@@ -129,7 +135,7 @@ class WhatsAppChannel(BaseChannel):
     # ------------------------------------------------------------------
 
     async def start(self) -> None:
-        self._validate_nodejs()
+        await self._validate_nodejs()
 
         attempts = 0
         backoff = self.INITIAL_BACKOFF

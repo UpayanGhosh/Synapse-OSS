@@ -45,8 +45,8 @@ class TaskQueue:
         self._max_history = max_history
 
     async def enqueue(self, task: MessageTask):
-        self._active_tasks[task.task_id] = task
         await self._queue.put(task)
+        self._active_tasks[task.task_id] = task
 
     async def dequeue(self) -> MessageTask:
         task = await self._queue.get()
