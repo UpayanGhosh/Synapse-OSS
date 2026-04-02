@@ -67,3 +67,20 @@ def media_kind_from_mime(mime: str) -> MediaKind:
 def max_bytes_for_kind(kind: MediaKind) -> int:
     """Return the maximum allowed byte size for the given ``MediaKind``."""
     return _LIMIT_BY_KIND.get(kind, MAX_DOCUMENT_BYTES)
+
+
+# ---------------------------------------------------------------------------
+# Vision support
+# ---------------------------------------------------------------------------
+
+VISION_CAPABLE_PREFIXES: frozenset[str] = frozenset({
+    "gemini/gemini-2", "gemini/gemini-1.5",
+    "anthropic/claude-3", "anthropic/claude-4",
+    "openai/gpt-4o", "openai/gpt-4-vision", "openai/o",
+    "github_copilot/gpt-4o",
+})
+
+
+def model_supports_vision(model_id: str) -> bool:
+    """Check if a model ID is known to support vision/image input."""
+    return any(model_id.startswith(prefix) for prefix in VISION_CAPABLE_PREFIXES)

@@ -5,6 +5,7 @@ Provides MIME detection, size-enforced disk storage with TTL cleanup, and an
 SSRF guard for safe remote downloads.
 """
 
+from .audio_preflight import AudioPreflightResult, check_audio_preflight
 from .constants import (
     CLEANUP_THROTTLE_SECONDS,
     DEFAULT_TTL_MS,
@@ -15,9 +16,11 @@ from .constants import (
     MEDIA_DIR_MODE,
     MEDIA_FILE_MODE,
     MEDIA_MAX_BYTES,
+    VISION_CAPABLE_PREFIXES,
     MediaKind,
     max_bytes_for_kind,
     media_kind_from_mime,
+    model_supports_vision,
 )
 from .chat_attachments import ParsedMessage, parse_message_with_attachments
 from .delivery_queue import DeliveryQueue, QueuedDelivery
@@ -28,6 +31,9 @@ from .ssrf import download_to_file, is_ssrf_blocked, safe_httpx_client
 from .store import SavedMedia, clean_old_media, save_media_buffer
 
 __all__ = [
+    # audio_preflight
+    "AudioPreflightResult",
+    "check_audio_preflight",
     # constants
     "CLEANUP_THROTTLE_SECONDS",
     "DEFAULT_TTL_MS",
@@ -38,9 +44,11 @@ __all__ = [
     "MEDIA_DIR_MODE",
     "MEDIA_FILE_MODE",
     "MEDIA_MAX_BYTES",
+    "VISION_CAPABLE_PREFIXES",
     "MediaKind",
     "max_bytes_for_kind",
     "media_kind_from_mime",
+    "model_supports_vision",
     # mime
     "detect_mime",
     # ssrf

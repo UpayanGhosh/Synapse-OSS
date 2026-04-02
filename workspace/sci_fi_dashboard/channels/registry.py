@@ -9,6 +9,8 @@ owns the event loop and calling asyncio.run() inside an existing loop raises Run
 import asyncio
 
 from .base import BaseChannel
+from .ids import resolve_channel_id
+from .plugin import ChannelCapabilities
 
 
 class ChannelRegistry:
@@ -55,17 +57,48 @@ class ChannelRegistry:
         """
         Return the channel adapter for the given id, or None if not registered.
 
+        Applies alias resolution first, so ``registry.get("wa")`` finds WhatsApp.
+
         Args:
-            channel_id: The stable string identifier used during register().
+            channel_id: A canonical channel ID or a known alias (e.g. ``"wa"``).
 
         Returns:
             The BaseChannel instance or None.
         """
+        resolved = resolve_channel_id(channel_id)
+        result = self._channels.get(resolved)
+        if result is not None:
+            return result
         return self._channels.get(channel_id)
 
     def list_ids(self) -> list[str]:
         """Return a list of all registered channel IDs (insertion order)."""
         return list(self._channels.keys())
+
+    # ------------------------------------------------------------------
+    # Metadata
+    # ------------------------------------------------------------------
+
+    def get_meta(self, channel_id: str) -> ChannelCapabilities | None:
+        """Return capabilities for a registered channel, or None.
+
+        Resolves aliases before lookup. Returns None if the channel is not
+        registered or does not expose a ``capabilities`` attribute.
+        """
+        resolved = resolve_channel_id(channel_id)
+        channel = self._channels.get(resolved) or self._channels.get(channel_id)
+        if channel is None:
+            return None
+        return getattr(channel, "capabilities", None)
+
+    def list_meta(self) -> dict[str, ChannelCapabilities]:
+        """Return ``{channel_id: capabilities}`` for all channels that expose them."""
+        result: dict[str, ChannelCapabilities] = {}
+        for cid, channel in self._channels.items():
+            caps = getattr(channel, "capabilities", None)
+            if caps is not None:
+                result[cid] = caps
+        return result
 
     # ------------------------------------------------------------------
     # Lifecycle

@@ -22,6 +22,8 @@ class ChannelCapabilities:
     media: bool = False
     native_commands: bool = False
     block_streaming: bool = False
+    markdown_capable: bool = True
+    max_message_length: int = 4000
 
 
 @runtime_checkable

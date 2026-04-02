@@ -14,7 +14,15 @@ HTTP protocol:
 Windows note:
   WindowsProactorEventLoopPolicy is set at module import time so it is active
   before uvicorn (which imports api_gateway.py at module level) starts its loop.
+
+Polling resilience (Phase 5):
+  - wait_for_qr_login(): CLI-friendly QR polling with terminal rendering.
+  - update_connection_state(): handles code 515 (restart-after-pairing).
+  - health_check(): clears auth cache on 401 errors from bridge.
+  - Network error classification via network_errors for smarter send retries.
 """
+
+from __future__ import annotations
 
 import asyncio
 import logging
@@ -28,6 +36,7 @@ from pathlib import Path
 import httpx
 
 from .base import BaseChannel, ChannelMessage
+from .network_errors import is_safe_to_retry_send
 from .security import ChannelSecurityConfig, PairingStore, resolve_dm_access
 
 # ---------------------------------------------------------------------------
@@ -40,6 +49,7 @@ logger = logging.getLogger(__name__)
 
 # Path: workspace/sci_fi_dashboard/channels/whatsapp.py → repo_root/baileys-bridge
 _BRIDGE_DIR = Path(__file__).resolve().parent.parent.parent.parent / "baileys-bridge"
+_AUTH_STATE_DIR = _BRIDGE_DIR / "auth_state"
 
 
 class WhatsAppChannel(BaseChannel):
@@ -176,17 +186,41 @@ class WhatsAppChannel(BaseChannel):
         self._status = "stopped"
         logger.info("[WA] Bridge stopped")
 
+    async def _restart_bridge(self) -> None:
+        """Stop and restart the bridge subprocess.
+
+        Used after code 515 (restart-after-pairing) when Baileys needs a fresh
+        connection with the newly saved auth state.
+        """
+        logger.info("[WA] Restarting bridge (code-515 restart-after-pairing)")
+        await self.stop()
+        # start() is normally run as a task — spawn it as a background task
+        asyncio.create_task(self.start())
+
     # ------------------------------------------------------------------
     # Connection state tracking (called by connection-state webhook)
     # ------------------------------------------------------------------
 
-    def update_connection_state(self, payload: dict) -> None:
-        """Update internal state from bridge connection-state webhook payload."""
+    async def update_connection_state(self, payload: dict) -> None:
+        """Update internal state from bridge connection-state webhook payload.
+
+        Handles code 515 (restart-after-pairing): when Baileys signals that the
+        session was freshly paired and needs a restart, we wait briefly for the
+        auth_state to be written to disk, then restart the bridge.
+        """
         self._connection_state = payload.get("connectionState", "unknown")
         self._connected_since = payload.get("connectedSince")
         self._auth_timestamp = payload.get("authTimestamp")
         self._restart_count = payload.get("restartCount", 0)
         self._last_disconnect_reason = payload.get("lastDisconnectReason")
+
+        # Code 515: restart-after-pairing
+        disconnect_reason = payload.get("lastDisconnectReason")
+        if disconnect_reason == 515 or disconnect_reason == "515":
+            logger.info("[WA] Code 515 detected — scheduling bridge restart after auth_state write")
+            await asyncio.sleep(2)  # wait for auth_state write
+            await self._restart_bridge()
+            return
 
         # If bridge reconnected and we have a retry queue, flush pending retries
         if self._connection_state == "connected" and self._retry_queue is not None:
@@ -197,13 +231,25 @@ class WhatsAppChannel(BaseChannel):
     # ------------------------------------------------------------------
 
     async def health_check(self) -> dict:
+        """Return bridge health, clearing auth cache on 401 errors."""
         running = self._proc is not None and self._proc.returncode is None
         bridge_health: dict = {"status": "down", "connection_state": "unknown"}
         if running:
             try:
                 async with httpx.AsyncClient(timeout=2.0) as client:
                     r = await client.get(f"http://127.0.0.1:{self._port}/health")
-                    bridge_health = r.json()
+                    if r.status_code == 401:
+                        logger.warning(
+                            "[WA] Health check returned 401 — clearing stale auth cache"
+                        )
+                        self._clear_auth_cache()
+                        bridge_health = {
+                            "status": "degraded",
+                            "error": "auth_expired",
+                            "hint": "Run /relink or scan QR again",
+                        }
+                    else:
+                        bridge_health = r.json()
             except httpx.RequestError:
                 bridge_health = {"status": "degraded", "error": "bridge_unreachable"}
         return {
@@ -213,6 +259,16 @@ class WhatsAppChannel(BaseChannel):
             "bridge_status": self._status,
             "bridge": bridge_health,
         }
+
+    def _clear_auth_cache(self) -> None:
+        """Remove stale auth_state directory so the next restart triggers a fresh QR."""
+        if _AUTH_STATE_DIR.exists():
+            try:
+                import shutil as _shutil
+                _shutil.rmtree(_AUTH_STATE_DIR, ignore_errors=True)
+                logger.info("[WA] Cleared auth_state at %s", _AUTH_STATE_DIR)
+            except OSError as exc:
+                logger.warning("[WA] Failed to clear auth_state: %s", exc)
 
     async def get_status(self) -> dict:
         """Enhanced health check with auth age, uptime, and connection metrics."""
@@ -233,6 +289,56 @@ class WhatsAppChannel(BaseChannel):
         except httpx.RequestError:
             pass
         return None
+
+    # ------------------------------------------------------------------
+    # QR Login CLI (Phase 5)
+    # ------------------------------------------------------------------
+
+    async def wait_for_qr_login(self, timeout: int = 120) -> bool:
+        """Poll the bridge ``/qr`` endpoint until connected or timeout.
+
+        Prints QR data to the terminal so the user can scan with their phone.
+        Returns ``True`` if the bridge transitions to ``connected`` state
+        within *timeout* seconds, ``False`` otherwise.
+
+        Args:
+            timeout: Maximum seconds to wait for a successful scan.
+
+        Returns:
+            True if connected, False if timed out.
+        """
+        logger.info("[WA] Waiting for QR login (timeout=%ds)", timeout)
+        poll_interval = 3.0
+        elapsed = 0.0
+        last_qr: str | None = None
+
+        while elapsed < timeout:
+            # Check if already connected
+            try:
+                async with httpx.AsyncClient(timeout=3.0) as client:
+                    r = await client.get(f"http://127.0.0.1:{self._port}/health")
+                    if r.status_code == 200:
+                        health = r.json()
+                        if health.get("connection_state") == "connected" or health.get(
+                            "status"
+                        ) == "connected":
+                            logger.info("[WA] QR login successful — bridge connected")
+                            return True
+            except httpx.RequestError:
+                pass
+
+            # Fetch and display QR
+            qr_data = await self.get_qr()
+            if qr_data and qr_data != last_qr:
+                last_qr = qr_data
+                print(f"\n[WA] Scan this QR code with WhatsApp:\n{qr_data}\n")
+                logger.info("[WA] New QR code displayed — waiting for scan...")
+
+            await asyncio.sleep(poll_interval)
+            elapsed += poll_interval
+
+        logger.warning("[WA] QR login timed out after %ds", timeout)
+        return False
 
     # ------------------------------------------------------------------
     # Session management
@@ -263,6 +369,7 @@ class WhatsAppChannel(BaseChannel):
     # ------------------------------------------------------------------
 
     async def send(self, chat_id: str, text: str) -> bool:
+        """Send a text message, with network error classification for retry logic."""
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 r = await client.post(
@@ -271,7 +378,12 @@ class WhatsAppChannel(BaseChannel):
                 )
                 return r.status_code == 200
         except httpx.RequestError as exc:
-            logger.error("[WA] send() failed: %s", exc)
+            if is_safe_to_retry_send(exc):
+                logger.warning(
+                    "[WA] send() pre-connect failure (retryable): %s", exc
+                )
+            else:
+                logger.error("[WA] send() failed: %s", exc)
             return False
 
     async def send_media(

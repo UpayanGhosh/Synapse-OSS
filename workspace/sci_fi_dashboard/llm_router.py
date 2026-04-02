@@ -4,18 +4,28 @@ SynapseLLMRouter — unified litellm.Router dispatch layer.
 Replaces call_gemini_direct() and _call_antigravity().
 All LLM calls go through router.acompletion() using provider-prefixed model strings
 from synapse.json model_mappings. No hardcoded model strings in this file.
+
+InferenceLoop wraps _do_call() with retry logic driven by classify_llm_error():
+context overflow → compact → retry, rate limited → exponential backoff,
+auth failed → rotate auth profile, server error → retry once,
+model not found → try fallback model.
 """
 
+import asyncio
 import copy
 import json
 import logging
 import os
+import random
 import re
 import sqlite3
 import sys
+import time
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import Any
 from uuid import uuid4
 
 # Ensure workspace root on path for SynapseConfig import
@@ -542,6 +552,22 @@ async def execute_with_api_key_rotation(
     raise RuntimeError(f"No API keys available for {provider}")  # pragma: no cover
 
 
+# --- Helpers ---
+
+
+def _provider_from_model(model_string: str) -> str | None:
+    """Extract the provider prefix from a litellm model string.
+
+    e.g. "gemini/gemini-2.0-flash" -> "gemini",
+         "ollama_chat/mistral" -> "ollama"
+    Returns None if no prefix found.
+    """
+    if "/" in model_string:
+        prefix = model_string.split("/", 1)[0]
+        return "ollama" if prefix == "ollama_chat" else prefix
+    return None
+
+
 # --- SynapseLLMRouter ---
 
 
@@ -573,6 +599,31 @@ class SynapseLLMRouter:
         """Rebuild the litellm Router (e.g. after a Copilot token refresh)."""
         self._router = build_router(self._config.model_mappings, self._config.providers)
         logger.info("Router rebuilt with fresh credentials")
+
+    def _model_string_for_role(self, role: str) -> str | None:
+        """Return the provider-prefixed model string for a role, or None."""
+        cfg = self._config.model_mappings.get(role)
+        return cfg.get("model") if cfg else None
+
+    def _apply_profile_credentials(self, profile, role: str) -> None:
+        """Inject credentials from an AuthProfile into os.environ.
+
+        litellm reads API keys from os.environ at call time, so overwriting
+        the env var before the acompletion() call rotates the active key.
+        """
+        model_str = self._model_string_for_role(role)
+        if not model_str:
+            return
+        provider = _provider_from_model(model_str)
+        if not provider:
+            return
+        api_key = profile.credentials.get("api_key") or profile.credentials.get("access_token")
+        if not api_key:
+            return
+        env_var = _KEY_MAP.get(provider)
+        if env_var:
+            os.environ[env_var] = api_key
+            logger.debug("Applied credentials from profile %s to %s", profile.id, env_var)
 
     async def _do_call(
         self,
@@ -800,4 +851,247 @@ class SynapseLLMRouter:
             completion_tokens=usage.completion_tokens,
             total_tokens=usage.total_tokens,
             finish_reason=response.choices[0].finish_reason,
+        )
+
+
+# --- Inference Loop ---
+
+
+class InferenceLoop:
+    """Multi-attempt inference loop wrapping SynapseLLMRouter._do_call().
+
+    Drives retry decisions based on classify_llm_error():
+    - CONTEXT_OVERFLOW (FORMAT with context cues): compact_fn → retry
+    - RATE_LIMIT: exponential backoff (2s, 4s, 8s + jitter) → retry
+    - AUTH / AUTH_PERMANENT: rotate auth profile via AuthProfileStore → retry
+    - OVERLOADED / TIMEOUT: retry once with backoff
+    - MODEL_NOT_FOUND: try fallback model, no retry
+    - FORMAT / BILLING / UNKNOWN: raise immediately
+
+    Args:
+        router: The SynapseLLMRouter instance to use for calls.
+        max_attempts: Maximum number of retry attempts (default 3).
+        compact_fn: Optional async callable to compact messages on context overflow.
+            Signature: async (messages: list[dict]) -> list[dict].
+            If None, context overflow retries are skipped.
+        tool_loop_cb: Optional callback invoked after each attempt (for observability).
+            Signature: (attempt: int, error: Exception | None) -> None.
+        auth_store: Optional AuthProfileStore for auth profile rotation.
+    """
+
+    def __init__(
+        self,
+        router: SynapseLLMRouter,
+        max_attempts: int = 3,
+        compact_fn: Callable | None = None,
+        tool_loop_cb: Callable | None = None,
+        auth_store: Any | None = None,  # AuthProfileStore — lazy import to avoid circular
+    ) -> None:
+        self._router = router
+        self._max_attempts = max(1, max_attempts)
+        self._compact_fn = compact_fn
+        self._tool_loop_cb = tool_loop_cb
+        self._auth_store = auth_store
+
+    @staticmethod
+    def _is_context_overflow(error: Exception) -> bool:
+        """Detect context overflow from error message heuristics.
+
+        litellm maps context overflow to BadRequestError (FORMAT), so we
+        inspect the message for common overflow indicators.
+        """
+        msg = str(error).lower()
+        indicators = [
+            "context_length_exceeded",
+            "context length",
+            "maximum context",
+            "too many tokens",
+            "token limit",
+            "max_tokens",
+            "content too large",
+            "request too large",
+        ]
+        return any(ind in msg for ind in indicators)
+
+    @staticmethod
+    def _is_model_not_found(error: Exception) -> bool:
+        """Detect model-not-found errors from message heuristics."""
+        msg = str(error).lower()
+        indicators = [
+            "model_not_found",
+            "model not found",
+            "does not exist",
+            "no such model",
+            "invalid model",
+            "unknown model",
+        ]
+        return any(ind in msg for ind in indicators)
+
+    async def run(
+        self,
+        role: str,
+        messages: list[dict],
+        **kwargs: Any,
+    ) -> LLMResult:
+        """Execute an LLM call with automatic retries and error-driven recovery.
+
+        Args:
+            role: The router role (e.g., "casual", "code", "vault").
+            messages: The chat messages to send.
+            **kwargs: Additional kwargs passed to _do_call (temperature, max_tokens).
+
+        Returns:
+            LLMResult with text and usage metadata.
+
+        Raises:
+            The last exception encountered if all attempts are exhausted.
+        """
+        last_error: Exception | None = None
+        current_messages = list(messages)  # shallow copy — compact_fn may mutate
+        server_error_retried = False
+
+        # Select and apply the initial auth profile BEFORE the first call.
+        # active_profile tracks which profile's credentials are in os.environ
+        # so we report success/failure against the correct profile.
+        active_profile = None
+        if self._auth_store is not None:
+            active_profile = self._auth_store.select_best(role)
+            if active_profile is not None:
+                self._router._apply_profile_credentials(active_profile, role)
+
+        for attempt in range(self._max_attempts):
+            try:
+                response = await self._router._do_call(
+                    role, current_messages, **kwargs
+                )
+                # Build LLMResult from raw response
+                usage = getattr(response, "usage", None)
+                result = LLMResult(
+                    text=response.choices[0].message.content or "",
+                    model=response.model or "unknown",
+                    prompt_tokens=getattr(usage, "prompt_tokens", 0) or 0,
+                    completion_tokens=getattr(usage, "completion_tokens", 0) or 0,
+                    total_tokens=getattr(usage, "total_tokens", 0) or 0,
+                    finish_reason=response.choices[0].finish_reason,
+                )
+
+                # Report success for the profile that actually handled the call
+                if self._auth_store is not None and active_profile is not None:
+                    self._auth_store.report_success(active_profile.id, model=role)
+
+                if self._tool_loop_cb is not None:
+                    self._tool_loop_cb(attempt, None)
+
+                return result
+
+            except Exception as exc:
+                last_error = exc
+                reason = classify_llm_error(exc)
+
+                if self._tool_loop_cb is not None:
+                    self._tool_loop_cb(attempt, exc)
+
+                logger.warning(
+                    "InferenceLoop attempt %d/%d for role=%s failed: %s (%s)",
+                    attempt + 1,
+                    self._max_attempts,
+                    role,
+                    reason.value,
+                    exc,
+                )
+
+                # --- Context overflow (FORMAT with context cues) ---
+                if reason == AuthProfileFailureReason.FORMAT and self._is_context_overflow(exc):
+                    if self._compact_fn is not None:
+                        logger.info("Context overflow — compacting messages")
+                        current_messages = await self._compact_fn(current_messages)
+                        continue
+                    else:
+                        logger.error("Context overflow but no compact_fn — raising")
+                        raise
+
+                # --- Model not found ---
+                if reason == AuthProfileFailureReason.FORMAT and self._is_model_not_found(exc):
+                    # Try fallback role if it exists, but don't retry
+                    fallback_role = f"{role}_fallback"
+                    try:
+                        response = await self._router._do_call(
+                            fallback_role, current_messages, **kwargs
+                        )
+                        usage = getattr(response, "usage", None)
+                        return LLMResult(
+                            text=response.choices[0].message.content or "",
+                            model=response.model or "unknown",
+                            prompt_tokens=getattr(usage, "prompt_tokens", 0) or 0,
+                            completion_tokens=getattr(usage, "completion_tokens", 0) or 0,
+                            total_tokens=getattr(usage, "total_tokens", 0) or 0,
+                            finish_reason=response.choices[0].finish_reason,
+                        )
+                    except Exception:
+                        raise exc from None  # raise original model_not_found
+
+                # --- Rate limited ---
+                if reason == AuthProfileFailureReason.RATE_LIMIT:
+                    if attempt < self._max_attempts - 1:
+                        base_delay = 2 ** (attempt + 1)  # 2, 4, 8
+                        jitter = random.uniform(0, base_delay * 0.5)
+                        delay = base_delay + jitter
+                        logger.info(
+                            "Rate limited — backing off %.1fs before retry", delay
+                        )
+                        if self._auth_store is not None and active_profile is not None:
+                            self._auth_store.report_failure(
+                                active_profile.id,
+                                AuthProfileFailureReason.RATE_LIMIT,
+                                model=role,
+                            )
+                        await asyncio.sleep(delay)
+                        continue
+                    raise
+
+                # --- Auth failed ---
+                if reason == AuthProfileFailureReason.AUTH:
+                    if self._auth_store is not None and active_profile is not None:
+                        self._auth_store.report_failure(
+                            active_profile.id,
+                            AuthProfileFailureReason.AUTH,
+                            model=role,
+                        )
+                        next_profile = self._auth_store.select_best(role)
+                        if next_profile is not None:
+                            active_profile = next_profile
+                            self._router._apply_profile_credentials(
+                                active_profile, role
+                            )
+                            logger.info(
+                                "Auth failed — rotated to profile %s",
+                                active_profile.id,
+                            )
+                            continue
+                    raise
+
+                # --- Server error / overloaded / timeout ---
+                if reason in (
+                    AuthProfileFailureReason.OVERLOADED,
+                    AuthProfileFailureReason.TIMEOUT,
+                ):
+                    if not server_error_retried and attempt < self._max_attempts - 1:
+                        server_error_retried = True
+                        delay = 2.0 + random.uniform(0, 1.0)
+                        logger.info(
+                            "Server error — backing off %.1fs before single retry",
+                            delay,
+                        )
+                        await asyncio.sleep(delay)
+                        continue
+                    raise
+
+                # --- Non-retryable (FORMAT without context cues, BILLING, UNKNOWN) ---
+                raise
+
+        # All attempts exhausted
+        if last_error is not None:
+            raise last_error
+        raise RuntimeError(
+            f"InferenceLoop exhausted {self._max_attempts} attempts for role={role}"
         )

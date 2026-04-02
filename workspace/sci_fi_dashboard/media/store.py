@@ -53,25 +53,75 @@ class SavedMedia:
 _UNSAFE_CHARS = re.compile(r"[^a-zA-Z0-9._-]")
 
 
-def _sanitize_filename(name: str) -> str:
-    """Strip unsafe characters and truncate to 60 characters."""
+def _sanitize_filename(name: str, max_len: int = 60) -> str:
+    """Strip unsafe characters and truncate to *max_len* characters."""
     safe = _UNSAFE_CHARS.sub("_", name)
-    return safe[:60] if safe else "file"
+    return safe[:max_len] if safe else "file"
+
+
+def _sanitize_original(name: str) -> str:
+    """Sanitize a user-supplied original filename for safe disk storage.
+
+    Strips path separators, null bytes, and unsafe characters, then
+    truncates to 100 characters.
+    """
+    # Strip path components — keep only the basename
+    name = name.replace("/", "_").replace("\\", "_").replace("\x00", "")
+    safe = _UNSAFE_CHARS.sub("_", name)
+    return safe[:100] if safe else ""
 
 
 def _ext_from_mime(mime: str) -> str:
     """Derive a file extension from a MIME type (best effort)."""
     mapping: dict[str, str] = {
+        # Images
         "image/jpeg": ".jpg",
         "image/png": ".png",
         "image/gif": ".gif",
         "image/webp": ".webp",
+        "image/heic": ".heic",
+        "image/heif": ".heif",
+        "image/avif": ".avif",
+        "image/tiff": ".tiff",
+        "image/bmp": ".bmp",
+        "image/svg+xml": ".svg",
+        # Video
         "video/mp4": ".mp4",
+        "video/quicktime": ".mov",
+        "video/x-msvideo": ".avi",
+        "video/x-matroska": ".mkv",
+        "video/webm": ".webm",
+        "video/x-flv": ".flv",
+        "video/x-ms-wmv": ".wmv",
+        # Audio
         "audio/ogg": ".ogg",
         "audio/mpeg": ".mp3",
+        "audio/mp4": ".m4a",
+        "audio/flac": ".flac",
+        "audio/aac": ".aac",
+        "audio/x-ms-wma": ".wma",
+        "audio/wav": ".wav",
+        "audio/opus": ".opus",
+        # Documents
         "application/pdf": ".pdf",
         "application/msword": ".doc",
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+        "application/vnd.openxmlformats-officedocument"
+        ".wordprocessingml.document": ".docx",
+        "application/vnd.ms-excel": ".xls",
+        "application/vnd.openxmlformats-officedocument"
+        ".spreadsheetml.sheet": ".xlsx",
+        "application/vnd.ms-powerpoint": ".ppt",
+        "application/vnd.openxmlformats-officedocument"
+        ".presentationml.presentation": ".pptx",
+        "text/csv": ".csv",
+        "application/rtf": ".rtf",
+        "application/epub+zip": ".epub",
+        # Archives
+        "application/zip": ".zip",
+        "application/gzip": ".gz",
+        "application/x-tar": ".tar",
+        "application/x-7z-compressed": ".7z",
+        "application/vnd.rar": ".rar",
     }
     return mapping.get(mime, ".bin")
 
@@ -86,6 +136,9 @@ def clean_old_media(media_dir: Path, ttl_ms: int = DEFAULT_TTL_MS) -> int:
 
     Returns the number of files removed.  Errors on individual files are
     logged and swallowed so one bad entry does not block the rest.
+
+    After cleaning, if the directory is empty it is pruned via
+    ``os.rmdir`` (safe — only removes empty directories).
     """
     if not media_dir.is_dir():
         return 0
@@ -105,6 +158,15 @@ def clean_old_media(media_dir: Path, ttl_ms: int = DEFAULT_TTL_MS) -> int:
 
     if removed:
         logger.debug("clean_old_media: removed %d expired file(s) from %s", removed, media_dir)
+        # Prune the directory if it is now empty (race-safe).
+        # Only attempt after actual removals — an empty dir that was just
+        # created by save_media_buffer() must NOT be pruned.
+        try:
+            os.rmdir(str(media_dir))
+            logger.debug("clean_old_media: pruned empty directory %s", media_dir)
+        except OSError:
+            # Directory is not empty or was already removed — both are fine.
+            pass
 
     return removed
 
@@ -120,6 +182,7 @@ def save_media_buffer(
     subdir: str = "inbound",
     max_bytes: int | None = None,
     data_root: Path | None = None,
+    original_filename: str | None = None,
 ) -> SavedMedia:
     """Write *buffer* to disk and return a :class:`SavedMedia` descriptor.
 
@@ -136,6 +199,10 @@ def save_media_buffer(
         When *None*, no size check is performed.
     data_root:
         Override for ``~/.synapse``.
+    original_filename:
+        Optional original filename from the sender.  When provided it is
+        sanitized and used as a human-readable prefix in the stored
+        filename (``{sanitized}---{media_id}{ext}``).
 
     Returns
     -------
@@ -178,8 +245,12 @@ def save_media_buffer(
     # --- generate filename ---
     media_id = uuid.uuid4().hex[:12]
     ext = _ext_from_mime(mime)
-    safe_name = _sanitize_filename(subdir)
-    filename = f"{safe_name}---{media_id}{ext}"
+
+    # Use the sanitized original filename as prefix when available,
+    # falling back to the subdir name.
+    sanitized_orig = _sanitize_original(original_filename) if original_filename else ""
+    prefix = sanitized_orig if sanitized_orig else _sanitize_filename(subdir)
+    filename = f"{prefix}---{media_id}{ext}"
 
     dest = media_dir / filename
 

@@ -14,6 +14,7 @@ Usage:
 
 import contextlib
 import json
+import logging
 import os
 import stat
 import sys
@@ -21,6 +22,8 @@ import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+_logger = logging.getLogger(__name__)
 
 # Module-level default only — never evaluated at import time except as a constant.
 _DEFAULT_SYNAPSE_HOME = Path.home() / ".synapse"
@@ -75,6 +78,7 @@ class SynapseConfig:
     session: dict = field(default_factory=dict)
     mcp: dict = field(default_factory=dict)
     sbs: SBSConfig = field(default_factory=SBSConfig)
+    validated_schema: Any = field(default=None, repr=False)
 
     @classmethod
     def load(cls) -> "SynapseConfig":
@@ -105,10 +109,16 @@ class SynapseConfig:
         sbs_raw: dict[str, Any] = {}
 
         config_file = data_root / "synapse.json"
+        validated = None
         if config_file.exists():
             _verify_permissions(config_file)
             with open(config_file, encoding="utf-8-sig") as fh:
                 raw = json.load(fh)
+
+            # --- Phase 2 config pipeline (includes → env → migrate → validate) ---
+            raw = _apply_config_pipeline(raw, config_file)
+            validated = _try_validate(raw)
+
             providers = raw.get("providers", {})
             channels = raw.get("channels", {})
             model_mappings = raw.get("model_mappings", {})
@@ -135,6 +145,7 @@ class SynapseConfig:
             session=session,
             mcp=mcp,
             sbs=sbs_config,
+            validated_schema=validated,
         )
 
 
@@ -180,6 +191,54 @@ def _verify_permissions(path: Path) -> None:
             f"{path} is readable by group/other (mode {oct(mode)}). " f"Run: chmod 600 {path}",
             stacklevel=3,
         )
+
+
+def _apply_config_pipeline(raw: dict, config_file: Path) -> dict:
+    """Run the Phase 2 config pipeline: includes → env substitution → migration.
+
+    Each step is guarded so a failure in one step logs a warning but does not
+    prevent the remaining steps or the overall load from succeeding.
+    """
+    # Step 1: resolve $include directives
+    try:
+        from config.includes import resolve_includes
+
+        raw = resolve_includes(raw, config_file.parent)
+    except Exception:
+        _logger.debug("config.includes unavailable or failed — skipping", exc_info=True)
+
+    # Step 2: expand ${ENV_VAR} references
+    try:
+        from config.env_substitution import substitute_env_vars
+
+        raw = substitute_env_vars(raw)
+    except Exception:
+        _logger.debug("config.env_substitution unavailable or failed — skipping", exc_info=True)
+
+    # Step 3: apply legacy migrations
+    try:
+        from config.migration import migrate_legacy_config
+
+        raw = migrate_legacy_config(raw)
+    except Exception:
+        _logger.debug("config.migration unavailable or failed — skipping", exc_info=True)
+
+    return raw
+
+
+def _try_validate(raw: dict) -> Any:
+    """Attempt Pydantic validation of *raw*.  Returns the validated schema on
+    success or ``None`` on failure (with a warning)."""
+    try:
+        from config.schema import SynapseConfigSchema
+
+        return SynapseConfigSchema(**raw)
+    except Exception as exc:
+        _logger.warning(
+            "Pydantic validation of synapse.json failed — falling back to raw dicts: %s",
+            exc,
+        )
+        return None
 
 
 def write_config(data_root: Path, config: dict) -> None:

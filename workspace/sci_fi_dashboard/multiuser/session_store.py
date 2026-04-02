@@ -2,7 +2,7 @@
 
 Locking layers (innermost → outermost):
     asyncio.Lock   (in-process serialisation per store path)
-    filelock.FileLock (cross-process serialisation)
+    SynapseFileLock (cross-process serialisation with stale-lock reclaim)
     tempfile.mkstemp + os.replace  (atomic write)
 
 Module-level state
@@ -18,6 +18,7 @@ Mirrors the pending-count cleanup pattern from
 from __future__ import annotations
 
 import asyncio
+import atexit
 import contextlib
 import json
 import logging
@@ -34,6 +35,18 @@ import filelock
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
+# Optional psutil for PID-recycling detection
+# ---------------------------------------------------------------------------
+
+try:
+    import psutil
+
+    _HAS_PSUTIL = True
+except ImportError:
+    psutil = None  # type: ignore[assignment]
+    _HAS_PSUTIL = False
+
+# ---------------------------------------------------------------------------
 # Module-level concurrency state
 # ---------------------------------------------------------------------------
 
@@ -43,6 +56,301 @@ _STORE_PENDING: dict[str, int] = {}
 # LRU cache: key → (SessionEntry, expiry_epoch_seconds)
 _CACHE: OrderedDict[str, tuple[SessionEntry, float]] = OrderedDict()
 _CACHE_MAX_SIZE: int = 200
+
+# Track all SynapseFileLock instances for atexit cleanup.
+_ACTIVE_LOCKS: list[SynapseFileLock] = []
+
+# ---------------------------------------------------------------------------
+# SynapseFileLock — stale-lock reclaim + watchdog
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class LockMetadata:
+    """Metadata written alongside the lock file for stale-lock detection."""
+
+    pid: int
+    created_at: float  # time.monotonic() at acquisition
+    starttime: float  # process start time for PID-recycling detection
+
+
+class SynapseFileLock:
+    """Cross-process file lock with stale-lock reclaim.
+
+    Wraps ``filelock.FileLock`` and adds:
+    - PID-alive check via ``os.kill(pid, 0)``
+    - PID-recycling check via ``psutil.Process(pid).create_time()`` (optional)
+    - Age check: locks held longer than ``MAX_LOCK_AGE_S`` are reclaimed
+    - Metadata sidecar file (``.lock.meta``) for diagnostics
+    - atexit handler to release lock + delete metadata on interpreter exit
+    """
+
+    MAX_LOCK_AGE_S: float = 1800  # 30 minutes
+    WATCHDOG_INTERVAL_S: float = 60
+    _WATCHDOG_FORCE_RELEASE_S: float = 300  # 5 minutes for watchdog
+
+    def __init__(self, lock_path: Path, timeout: float = 30.0) -> None:
+        self._lock_path = Path(lock_path)
+        self._meta_path = Path(f"{lock_path}.meta")
+        self._timeout = timeout
+        self._fl = filelock.FileLock(str(lock_path), timeout=timeout)
+        self._acquired = False
+        _ACTIVE_LOCKS.append(self)
+
+    # ------------------------------------------------------------------
+    # Context manager protocol
+    # ------------------------------------------------------------------
+
+    def __enter__(self) -> SynapseFileLock:
+        self.acquire()
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.release()
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
+    def acquire(self) -> None:
+        """Acquire the file lock, reclaiming stale locks on contention."""
+        try:
+            self._fl.acquire(timeout=0)
+        except filelock.Timeout:
+            # Contention — check if the current holder is dead or stale.
+            if self._is_stale():
+                logger.info(
+                    "SynapseFileLock: reclaiming stale lock at %s", self._lock_path
+                )
+                self._force_release()
+                self._fl.acquire(timeout=self._timeout)
+            else:
+                # Not stale — wait with the configured timeout.
+                self._fl.acquire(timeout=self._timeout)
+
+        self._acquired = True
+        self._write_metadata()
+
+    def release(self) -> None:
+        """Release the lock and clean up metadata."""
+        if self._acquired:
+            self._acquired = False
+            with contextlib.suppress(OSError):
+                if self._meta_path.exists():
+                    self._meta_path.unlink()
+            self._fl.release()
+
+    # ------------------------------------------------------------------
+    # Stale detection
+    # ------------------------------------------------------------------
+
+    def _is_stale(self) -> bool:
+        """Return ``True`` if the lock holder is dead, recycled, or too old."""
+        meta = self._read_metadata()
+        if meta is None:
+            # No metadata — treat age-based: if lock file is old, consider stale.
+            try:
+                stat = self._lock_path.stat()
+                age = time.time() - stat.st_mtime
+                return age > self.MAX_LOCK_AGE_S
+            except OSError:
+                return False
+
+        # 1. PID alive check.
+        if not _is_pid_alive(meta.pid):
+            return True
+
+        # 2. PID recycling check (psutil only).
+        if _HAS_PSUTIL:
+            try:
+                proc = psutil.Process(meta.pid)
+                if abs(proc.create_time() - meta.starttime) > 2.0:
+                    # PID was recycled — different process now owns this PID.
+                    return True
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                return True
+
+        # 3. Age check.
+        # created_at is monotonic, so compare against file mtime for cross-process.
+        try:
+            stat = self._lock_path.stat()
+            age = time.time() - stat.st_mtime
+            return age > self.MAX_LOCK_AGE_S
+        except OSError:
+            return False
+
+    def _force_release(self) -> None:
+        """Forcibly remove the lock file and metadata."""
+        with contextlib.suppress(OSError):
+            if self._meta_path.exists():
+                self._meta_path.unlink()
+        with contextlib.suppress(OSError):
+            if self._lock_path.exists():
+                self._lock_path.unlink()
+        # Re-create the underlying FileLock object so it can acquire fresh.
+        self._fl = filelock.FileLock(str(self._lock_path), timeout=self._timeout)
+
+    # ------------------------------------------------------------------
+    # Metadata I/O
+    # ------------------------------------------------------------------
+
+    def _write_metadata(self) -> None:
+        """Write lock metadata to the sidecar file."""
+        pid = os.getpid()
+        starttime = _get_process_starttime(pid)
+        meta = {
+            "pid": pid,
+            "created_at": time.monotonic(),
+            "starttime": starttime,
+        }
+        try:
+            with open(self._meta_path, "w", encoding="utf-8") as fh:
+                json.dump(meta, fh)
+        except OSError:
+            logger.debug("SynapseFileLock: failed to write metadata at %s", self._meta_path)
+
+    def _read_metadata(self) -> LockMetadata | None:
+        """Read lock metadata from the sidecar file, or ``None`` if unavailable."""
+        try:
+            with open(self._meta_path, encoding="utf-8") as fh:
+                data = json.load(fh)
+            return LockMetadata(
+                pid=int(data["pid"]),
+                created_at=float(data["created_at"]),
+                starttime=float(data["starttime"]),
+            )
+        except (OSError, json.JSONDecodeError, KeyError, ValueError):
+            return None
+
+
+def _is_pid_alive(pid: int) -> bool:
+    """Check whether process *pid* is still running.
+
+    Uses ``os.kill(pid, 0)`` which works on both Unix and Windows.
+    """
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+
+
+def _get_process_starttime(pid: int) -> float:
+    """Return the start time of process *pid*.
+
+    Uses psutil if available; otherwise returns ``time.time()`` as a
+    best-effort fallback.
+    """
+    if _HAS_PSUTIL:
+        try:
+            return psutil.Process(pid).create_time()
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            pass
+    return time.time()
+
+
+def clean_stale_lock_files(sessions_dir: Path) -> int:
+    """Scan *sessions_dir* for stale ``.lock`` files and remove them.
+
+    Intended for startup cleanup.  Returns the number of stale locks removed.
+    """
+    removed = 0
+    if not sessions_dir.exists():
+        return removed
+    for lock_file in sessions_dir.glob("*.lock"):
+        meta_file = Path(f"{lock_file}.meta")
+        meta = None
+        try:
+            if meta_file.exists():
+                with open(meta_file, encoding="utf-8") as fh:
+                    data = json.load(fh)
+                meta = LockMetadata(
+                    pid=int(data["pid"]),
+                    created_at=float(data["created_at"]),
+                    starttime=float(data["starttime"]),
+                )
+        except (OSError, json.JSONDecodeError, KeyError, ValueError):
+            pass
+
+        is_stale = False
+        if meta is not None:
+            if not _is_pid_alive(meta.pid):
+                is_stale = True
+            elif _HAS_PSUTIL:
+                try:
+                    proc = psutil.Process(meta.pid)
+                    if abs(proc.create_time() - meta.starttime) > 2.0:
+                        is_stale = True
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    is_stale = True
+        else:
+            # No metadata — check age via mtime.
+            try:
+                age = time.time() - lock_file.stat().st_mtime
+                if age > SynapseFileLock.MAX_LOCK_AGE_S:
+                    is_stale = True
+            except OSError:
+                continue
+
+        if is_stale:
+            with contextlib.suppress(OSError):
+                lock_file.unlink()
+            with contextlib.suppress(OSError):
+                meta_file.unlink()
+            removed += 1
+            logger.info("clean_stale_lock_files: removed stale lock %s", lock_file)
+
+    return removed
+
+
+async def _watchdog_loop(sessions_dir: Path) -> None:
+    """Background watchdog that force-releases locks held > 300s.
+
+    Runs every ``SynapseFileLock.WATCHDOG_INTERVAL_S`` seconds.  Designed
+    to be launched as an ``asyncio.Task`` at startup.
+    """
+    while True:
+        await asyncio.sleep(SynapseFileLock.WATCHDOG_INTERVAL_S)
+        try:
+            if not sessions_dir.exists():
+                continue
+            for lock_file in sessions_dir.glob("*.lock"):
+                meta_file = Path(f"{lock_file}.meta")
+                try:
+                    if not meta_file.exists():
+                        continue
+                    with open(meta_file, encoding="utf-8") as fh:
+                        data = json.load(fh)
+                    # Use file mtime for age since monotonic is per-process.
+                    age = time.time() - lock_file.stat().st_mtime
+                    if age > SynapseFileLock._WATCHDOG_FORCE_RELEASE_S:
+                        logger.warning(
+                            "watchdog: force-releasing lock held for %.0fs: %s",
+                            age,
+                            lock_file,
+                        )
+                        with contextlib.suppress(OSError):
+                            lock_file.unlink()
+                        with contextlib.suppress(OSError):
+                            meta_file.unlink()
+                except (OSError, json.JSONDecodeError, KeyError):
+                    continue
+        except Exception:
+            logger.debug("watchdog: scan error", exc_info=True)
+
+
+def _atexit_release_all() -> None:
+    """Release all SynapseFileLock instances on interpreter exit."""
+    for lock in _ACTIVE_LOCKS:
+        try:
+            lock.release()
+        except Exception:
+            pass
+    _ACTIVE_LOCKS.clear()
+
+
+atexit.register(_atexit_release_all)
+
 
 # ---------------------------------------------------------------------------
 # TTL resolution (env var is in milliseconds, default 45 000 ms = 45 s)
@@ -235,7 +543,7 @@ class SessionStore:
 
     def _update_sync(self, norm_key: str, patch: dict) -> SessionEntry:
         """Synchronous portion of update — runs inside asyncio.to_thread."""
-        fl = filelock.FileLock(str(self._path) + ".lock", timeout=30)
+        fl = SynapseFileLock(Path(str(self._path) + ".lock"), timeout=30)
         with fl:
             store = _load_store_sync(self._path)
             existing = store.get(norm_key)
