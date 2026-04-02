@@ -7,8 +7,11 @@ Merge:              Detect tension, alignment, or contradiction.
 
 import asyncio
 import json
+import logging
 import re
 from dataclasses import dataclass, field
+
+logger = logging.getLogger("dual_cognition")
 
 
 @dataclass
@@ -78,7 +81,7 @@ class DualCognitionEngine:
     def __init__(self, memory_engine, graph, toxic_scorer=None, emotional_trajectory=None):
         self.memory = memory_engine
         self.graph = graph
-        self.toxic_scorer = toxic_scorer
+        # toxic_scorer param kept for caller compatibility; unused in this module
         self.trajectory = emotional_trajectory
 
     def classify_complexity(self, message: str, history: list = None) -> str:
@@ -200,7 +203,7 @@ class DualCognitionEngine:
             return merge
 
         except Exception as e:
-            print(f"[WARN] Dual cognition failed: {e}")
+            logger.warning("Dual cognition failed: %s", e)
             return CognitiveMerge(
                 inner_monologue="I'm having trouble thinking through this right now.",
                 tension_level=0.0,
@@ -220,8 +223,13 @@ class DualCognitionEngine:
         # Inject last 3 messages as context for pattern detection
         recent_context = ""
         if history and len(history) > 0:
-            last_3 = history[-3:]
-            recent_context = "\n".join(f"{m['role']}: {m['content'][:100]}" for m in last_3)
+            last_3 = [
+                m for m in (history or [])[-3:]
+                if isinstance(m, dict) and "role" in m and "content" in m
+            ]
+            recent_context = "\n".join(
+                f"{m['role']}: {m['content'][:100]}" for m in last_3
+            )
 
         prompt = f"""Analyze this message IN CONTEXT. Return JSON only.
 
@@ -254,7 +262,9 @@ JSON only:"""
                 text = text.split("[/THINKING]")[-1].strip()
 
             if "```" in text:
-                text = text.split("```")[1].replace("json", "").strip()
+                parts = text.split("```")
+                if len(parts) > 1:
+                    text = parts[1].replace("json", "").strip()
             start = text.find("{")
             end = text.rfind("}") + 1
             if start >= 0 and end > start:
@@ -266,7 +276,7 @@ JSON only:"""
                 present.topics = data.get("topics", [])
                 present.conversational_pattern = data.get("conversational_pattern", "single_turn")
         except Exception as e:
-            print(f"[WARN] Present stream failed: {e}")
+            logger.warning("Present stream analysis failed: %s", e)
 
         return present
 
@@ -278,8 +288,10 @@ JSON only:"""
             results = self.memory.query(message, limit=5, with_graph=True)
             memory.relevant_facts = [r["content"] for r in results.get("results", [])]
             memory.graph_connections = results.get("graph_context", "")
+        except (KeyError, IndexError, ValueError) as e:
+            logger.debug("Memory recall returned no results: %s", e)
         except Exception as e:
-            print(f"[WARN] Memory recall failed: {e}")
+            logger.warning("Memory recall failed (database/connection error): %s", e)
 
         try:
             target_name = "primary_partner" if "the_partner" in target.lower() else "primary_user"
@@ -362,7 +374,9 @@ JSON only:"""
 
             text = result.strip()
             if "```" in text:
-                text = text.split("```")[1].replace("json", "").strip()
+                parts = text.split("```")
+                if len(parts) > 1:
+                    text = parts[1].replace("json", "").strip()
             start = text.find("{")
             end = text.rfind("}") + 1
             if start >= 0 and end > start:
@@ -377,7 +391,7 @@ JSON only:"""
                 merge.inner_monologue = data.get("inner_monologue", "")
                 merge.memory_insights = memory.relevant_facts[:3]
         except Exception as e:
-            print(f"[WARN] Merge failed: {e}")
+            logger.warning("Merge failed: %s", e)
 
         return merge
 
@@ -388,7 +402,13 @@ JSON only:"""
         if not llm_fn:
             return ""
 
-        recent = "\n".join(f"{m['role']}: {m['content'][:80]}" for m in (history or [])[-3:])
+        safe_history = [
+            m for m in (history or [])[-3:]
+            if isinstance(m, dict) and "role" in m and "content" in m
+        ]
+        recent = "\n".join(
+            f"{m['role']}: {m['content'][:80]}" for m in safe_history
+        )
         prompt = (
             "What specific topics/events is the user referring to?\n"
             f"Recent conversation:\n{recent}\n"
@@ -404,7 +424,9 @@ JSON only:"""
             )
             text = result.strip()
             if "```" in text:
-                text = text.split("```")[1].replace("json", "").strip()
+                parts = text.split("```")
+                if len(parts) > 1:
+                    text = parts[1].replace("json", "").strip()
             start = text.find("[")
             end = text.rfind("]") + 1
             if start >= 0 and end > start:
@@ -412,7 +434,7 @@ JSON only:"""
                 if isinstance(terms, list):
                     return " ".join(str(t) for t in terms[:3])
         except Exception as e:
-            print(f"[WARN] Search intent extraction failed: {e}")
+            logger.warning("Search intent extraction failed: %s", e)
 
         return ""
 
