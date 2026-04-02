@@ -229,23 +229,27 @@ def test_state_no_subprocess_calls(monkeypatch):
 
 
 def test_health_endpoint_has_databases_key():
-    """HLTH-01: GET /health response includes 'databases' key."""
-    with open(
-        os.path.join(os.path.dirname(__file__), "..", "sci_fi_dashboard", "api_gateway.py")
-    ) as fh:
-        src = fh.read()
-    assert "_check_databases" in src, "_check_databases helper not in api_gateway.py"
-    assert '"databases"' in src or "'databases'" in src, "'databases' key not in /health response"
+    """HLTH-01: GET /health response includes memory health check."""
+    # M-19: /health was redacted — no longer exposes 'databases' dict with paths.
+    # Now uses 'memory_ok' boolean from get_db_stats().
+    health_route = os.path.join(
+        os.path.dirname(__file__), "..", "sci_fi_dashboard", "routes", "health.py"
+    )
+    with open(health_route) as fh:
+        src_health = fh.read()
+    assert "memory_ok" in src_health, "'memory_ok' key not in /health response"
 
 
 def test_health_endpoint_has_llm_key():
-    """HLTH-01: GET /health response includes 'llm' key."""
-    with open(
-        os.path.join(os.path.dirname(__file__), "..", "sci_fi_dashboard", "api_gateway.py")
-    ) as fh:
-        src = fh.read()
-    assert "_check_llm_provider" in src, "_check_llm_provider helper not in api_gateway.py"
-    assert '"llm"' in src or "'llm'" in src, "'llm' key not in /health response"
+    """HLTH-01: GET /health response includes LLM configuration status."""
+    # M-19: /health was redacted — uses 'llm_configured' boolean instead of
+    # the old 'llm' dict that exposed model names and provider details.
+    health_route = os.path.join(
+        os.path.dirname(__file__), "..", "sci_fi_dashboard", "routes", "health.py"
+    )
+    with open(health_route) as fh:
+        src_health = fh.read()
+    assert "llm_configured" in src_health, "'llm_configured' key not in /health response"
 
 
 # ---------------------------------------------------------------------------
