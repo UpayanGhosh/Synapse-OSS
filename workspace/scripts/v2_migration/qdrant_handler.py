@@ -5,9 +5,15 @@ from qdrant_client.http import models
 
 
 class QdrantVectorStore:
-    def __init__(self, host: str = "localhost", port: int = 6333):
+    def __init__(
+        self,
+        host: str = "localhost",
+        port: int = 6333,
+        embedding_dimensions: int = 768,
+    ):
         self.client = QdrantClient(host=host, port=port)
         self.collection_name = "atomic_facts"
+        self._embedding_dimensions = embedding_dimensions
         self._ensure_collection()
 
     def _ensure_collection(self):
@@ -19,7 +25,7 @@ class QdrantVectorStore:
                 self.client.create_collection(
                     collection_name=self.collection_name,
                     vectors_config=models.VectorParams(
-                        size=768,  # nomic-embed-text
+                        size=self._embedding_dimensions,
                         distance=models.Distance.COSINE,
                         on_disk=True,  # Forced on-disk for 8GB M1
                     ),
