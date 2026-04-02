@@ -6,6 +6,8 @@ All LLM calls go through router.acompletion() using provider-prefixed model stri
 from synapse.json model_mappings. No hardcoded model strings in this file.
 """
 
+import copy
+import json
 import logging
 import os
 import re
@@ -14,6 +16,7 @@ import sys
 import uuid
 from dataclasses import dataclass
 from enum import StrEnum
+from uuid import uuid4
 
 # Ensure workspace root on path for SynapseConfig import
 _DIR = os.path.dirname(os.path.abspath(__file__))
@@ -45,6 +48,138 @@ class LLMResult:
     completion_tokens: int
     total_tokens: int
     finish_reason: str | None = None
+
+
+# --- Tool-call dataclasses ---
+
+
+@dataclass
+class ToolCall:
+    """Normalized tool call — provider-agnostic."""
+
+    id: str
+    name: str
+    arguments: str  # raw JSON string
+
+
+@dataclass
+class LLMToolResult:
+    """Result from an LLM call that may include tool invocations."""
+
+    text: str
+    tool_calls: list[ToolCall]
+    model: str
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
+    finish_reason: str | None = None
+
+# --- Tool schema normalization ---
+
+
+def normalize_tool_schemas(tools: list[dict], provider: str) -> list[dict]:
+    """Apply provider-specific schema fixes that litellm doesn't handle.
+
+    Each provider has quirks in what JSON Schema keywords it accepts:
+    - Gemini rejects ``$schema``, ``$id``, ``examples``, ``default``, ``$defs``
+    - xAI / Grok rejects numeric range keywords (``minLength``, ``maximum``, etc.)
+    - OpenAI strict mode requires ``additionalProperties: false`` on object schemas
+
+    Args:
+        tools: OpenAI-format tool definitions (``{"type": "function", ...}``).
+        provider: Provider prefix string (e.g. ``"gemini"``, ``"xai"``).
+
+    Returns:
+        Deep-copied list with provider-specific keys removed/added.
+    """
+    if not tools:
+        return tools
+    normalized = []
+    for tool in tools:
+        t = copy.deepcopy(tool)
+        schema = t.get("function", {}).get("parameters", {})
+        if "gemini" in provider:
+            _strip_keys_recursive(
+                schema, {"$schema", "$id", "examples", "default", "$defs"}
+            )
+        if "xai" in provider or "grok" in provider:
+            _strip_keys_recursive(
+                schema,
+                {"minLength", "maxLength", "minimum", "maximum", "multipleOf"},
+            )
+        if "openai" in provider:
+            if (
+                schema.get("type") == "object"
+                and "additionalProperties" not in schema
+            ):
+                schema["additionalProperties"] = False
+        normalized.append(t)
+    return normalized
+
+
+def _strip_keys_recursive(obj: dict, keys: set) -> None:
+    """Remove *keys* from *obj* and all nested dicts/lists, in place."""
+    if not isinstance(obj, dict):
+        return
+    for key in keys:
+        obj.pop(key, None)
+    for value in obj.values():
+        if isinstance(value, dict):
+            _strip_keys_recursive(value, keys)
+        elif isinstance(value, list):
+            for item in value:
+                if isinstance(item, dict):
+                    _strip_keys_recursive(item, keys)
+
+
+# --- Tool call response normalization ---
+
+
+def normalize_tool_calls(raw_tool_calls: list | None) -> list[ToolCall]:
+    """Parse litellm tool-call objects into provider-agnostic :class:`ToolCall` list.
+
+    Handles missing IDs (generates one), whitespace in function names, and
+    malformed JSON in arguments (attempts lightweight repair).
+    """
+    if not raw_tool_calls:
+        return []
+    calls: list[ToolCall] = []
+    for tc in raw_tool_calls:
+        name = (tc.function.name or "").strip()
+        if not name:
+            continue
+        args = tc.function.arguments or "{}"
+        try:
+            json.loads(args)
+        except json.JSONDecodeError:
+            args = _attempt_json_repair(args)
+        calls.append(
+            ToolCall(
+                id=tc.id or f"call_{uuid4().hex[:8]}",
+                name=name,
+                arguments=args,
+            )
+        )
+    return calls
+
+
+def _attempt_json_repair(raw: str) -> str:
+    """Best-effort fix for truncated JSON from streaming tool calls.
+
+    Adds missing closing braces.  Returns ``"{}"`` when repair fails.
+    """
+    raw = raw.rstrip()
+    if not raw.endswith("}"):
+        raw += "}"
+    open_count = raw.count("{") - raw.count("}")
+    if open_count > 0:
+        raw += "}" * open_count
+    try:
+        json.loads(raw)
+        return raw
+    except json.JSONDecodeError:
+        return "{}"
+
 
 # --- Provider key injection ---
 
@@ -567,3 +702,102 @@ class SynapseLLMRouter:
         response = await litellm.acompletion(**kwargs)
         choice = response.choices[0]
         return choice.message.content or ""
+
+    # --- Tool execution support (Phase 2) ---
+
+    def _resolve_provider(self, role: str) -> str:
+        """Extract the provider prefix from the model string mapped to *role*.
+
+        Returns the portion before the first ``/`` (e.g. ``"gemini"`` for
+        ``"gemini/gemini-2.0-flash"``), or ``"unknown"`` if no slash is present.
+        """
+        mapping = self._config.model_mappings.get(role, {})
+        model_str = mapping.get("model", "")
+        return model_str.split("/")[0] if "/" in model_str else "unknown"
+
+    async def call_with_tools(
+        self,
+        role: str,
+        messages: list[dict],
+        tools: list[dict],
+        temperature: float = 0.7,
+        max_tokens: int = 1000,
+        tool_choice: str = "auto",
+    ) -> LLMToolResult:
+        """Route an LLM call that includes tool definitions.
+
+        Normalizes tool schemas for the target provider, forwards the call
+        through ``litellm.Router.acompletion``, and parses any tool-call
+        objects in the response into provider-agnostic :class:`ToolCall`
+        instances.
+
+        Args:
+            role: Router role name (must exist in ``model_mappings``).
+            messages: Chat-format message list.
+            tools: OpenAI-format tool definitions.
+            temperature: Sampling temperature.
+            max_tokens: Max completion tokens.
+            tool_choice: ``"auto"`` | ``"none"`` | ``"required"`` | specific
+                tool name dict.
+
+        Returns:
+            :class:`LLMToolResult` with text, parsed tool calls, and usage.
+        """
+        provider = self._resolve_provider(role)
+        normalized_tools = normalize_tool_schemas(tools, provider)
+
+        kwargs: dict = {
+            "model": role,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "tools": normalized_tools,
+            "tool_choice": tool_choice,
+        }
+
+        try:
+            response = await self._router.acompletion(**kwargs)
+        except AuthenticationError as exc:
+            logger.error("Auth failed for role '%s' (tools): %s", role, exc)
+            raise
+        except RateLimitError as exc:
+            logger.warning("Rate limit for role '%s' (tools): %s", role, exc)
+            raise
+        except Timeout as exc:
+            logger.error("Timeout for role '%s' (tools): %s", role, exc)
+            raise
+        except (APIConnectionError, ServiceUnavailableError) as exc:
+            logger.error(
+                "Provider unavailable for role '%s' (tools): %s", role, exc
+            )
+            raise
+        except BadRequestError as exc:
+            logger.error("Bad request for role '%s' (tools): %s", role, exc)
+            raise
+
+        message = response.choices[0].message
+        usage = getattr(response, "usage", None) or type(
+            "U",
+            (),
+            {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+        )()
+
+        # SESS-01: Write token usage (non-fatal)
+        try:
+            _write_session(
+                role=role,
+                model=response.model or role,
+                usage=usage,
+            )
+        except Exception as session_exc:
+            logger.debug("Session write failed (non-fatal): %s", session_exc)
+
+        return LLMToolResult(
+            text=message.content or "",
+            tool_calls=normalize_tool_calls(message.tool_calls),
+            model=response.model or "unknown",
+            prompt_tokens=usage.prompt_tokens,
+            completion_tokens=usage.completion_tokens,
+            total_tokens=usage.total_tokens,
+            finish_reason=response.choices[0].finish_reason,
+        )
