@@ -6,18 +6,15 @@ import json
 import sqlite3
 import subprocess
 
-import requests
 import sqlite_vec
 from synapse_config import SynapseConfig
+from sci_fi_dashboard.embedding import get_provider
 
 DB_PATH = str(SynapseConfig.load().db_dir / "memory.db")
-OLLAMA_URL = "http://127.0.0.1:11434/api/embeddings"
-EMBED_MODEL = "nomic-embed-text:latest"
 
 
 def get_embedding(text):
-    response = requests.post(OLLAMA_URL, json={"model": EMBED_MODEL, "prompt": text})
-    return response.json()["embedding"]
+    return get_provider().embed_documents([text])[0]
 
 
 def extract_facts_with_gemini(content):

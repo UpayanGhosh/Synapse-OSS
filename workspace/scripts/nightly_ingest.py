@@ -9,6 +9,9 @@ import time
 from datetime import datetime
 
 from synapse_config import SynapseConfig
+from sci_fi_dashboard.embedding import get_provider
+from qdrant_client import QdrantClient
+from qdrant_client.http import models
 
 try:
     import ollama
@@ -17,21 +20,13 @@ try:
 except ImportError:
     HAS_OLLAMA = False
 
-if not HAS_OLLAMA:
-    print("[ERROR] nightly_ingest.py requires Ollama. Install from https://ollama.com")
-    _sys.exit(1)
-from qdrant_client import QdrantClient
-from qdrant_client.http import models
-
 # --- CONFIGURATION ---
 DB_PATH = str(SynapseConfig.load().db_dir / "memory.db")
-EMBEDDING_MODEL = "nomic-embed-text"
 THINK_MODEL = "llama3.2:3b"
 
 
 def get_embedding(text):
-    response = ollama.embeddings(model=EMBEDDING_MODEL, prompt=text)
-    return response["embedding"]
+    return get_provider().embed_documents([text])[0]
 
 
 def extract_structured_data(content):

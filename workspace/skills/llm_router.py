@@ -166,9 +166,15 @@ class LLMRouter:
         return "Error: All backends failed."
 
     def embed(self, text, model="text-embedding-004") -> list:  # noqa: ARG002
-        """Return embedding vector for text using local Ollama nomic-embed-text."""
-        if HAS_OLLAMA:
-            return ollama.embeddings(model="nomic-embed-text", prompt=text)["embedding"]
+        """Return embedding vector for text using the configured embedding provider."""
+        try:
+            from sci_fi_dashboard.embedding import get_provider
+
+            provider = get_provider()
+            if provider is not None:
+                return provider.embed_query(text)
+        except Exception:  # noqa: BLE001
+            pass
         return []
 
 

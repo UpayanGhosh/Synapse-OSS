@@ -27,6 +27,10 @@ InquirerPy>=0.3.4               # Preferred terminal UI: better Windows compat +
 # --- Database & Vector Search ---
 sqlite-vec>=0.1.1
 
+# --- Embeddings ---
+fastembed>=0.4.0                 # ONNX-based local embeddings (default provider)
+# sentence-transformers kept for Toxic-BERT (toxic_scorer_lazy.py) — NOT used for embeddings
+
 # --- LLM Routing ---
 litellm>=1.40.0                  # Unified LLM API (Gemini, Claude, Ollama, OpenRouter dispatch)
 
