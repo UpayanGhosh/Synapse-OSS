@@ -108,6 +108,56 @@ class TestSQLiteGraph:
         assert "Bob" in result
         assert "Dave" in result
 
+    def test_find_connection_path(self, graph):
+        """Should find shortest path between two nodes."""
+        graph.add_edge("A", "B", "knows")
+        graph.add_edge("B", "C", "knows")
+        graph.add_edge("C", "D", "knows")
+
+        path = graph.find_connection_path("A", "D", max_depth=4)
+        assert path == ["A", "B", "C", "D"]
+
+    def test_find_connection_path_no_path(self, graph):
+        """Should return empty list when no path exists."""
+        graph.add_edge("A", "B", "knows")
+        graph.add_edge("C", "D", "knows")
+
+        path = graph.find_connection_path("A", "D", max_depth=4)
+        assert path == []
+
+    def test_find_connection_path_direct(self, graph):
+        """Should find direct 1-hop connection."""
+        graph.add_edge("X", "Y", "links")
+
+        path = graph.find_connection_path("X", "Y", max_depth=4)
+        assert path == ["X", "Y"]
+
+    def test_find_connection_path_respects_max_depth(self, graph):
+        """Should not find path beyond max_depth."""
+        graph.add_edge("A", "B", "knows")
+        graph.add_edge("B", "C", "knows")
+        graph.add_edge("C", "D", "knows")
+
+        path = graph.find_connection_path("A", "D", max_depth=2)
+        assert path == []
+
+    def test_find_connection_path_no_cycles(self, graph):
+        """Should not get stuck in cycles."""
+        graph.add_edge("A", "B", "knows")
+        graph.add_edge("B", "A", "knows")
+        graph.add_edge("B", "C", "knows")
+
+        path = graph.find_connection_path("A", "C", max_depth=4)
+        assert path == ["A", "B", "C"]
+
+    def test_find_connection_path_special_chars(self, graph):
+        """Should handle node names with commas, percents, and underscores."""
+        graph.add_edge("Ghosh, Upayan", "100% done", "achieved")
+        graph.add_edge("100% done", "item_final", "leads_to")
+
+        path = graph.find_connection_path("Ghosh, Upayan", "item_final", max_depth=4)
+        assert path == ["Ghosh, Upayan", "100% done", "item_final"]
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
