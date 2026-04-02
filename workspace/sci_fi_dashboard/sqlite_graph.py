@@ -23,95 +23,102 @@ class SQLiteGraph:
     def __init__(self, db_path: str = DB_PATH):
         self.db_path = db_path
         os.makedirs(os.path.dirname(db_path), exist_ok=True)
+        # Persistent connection -- reused across all method calls
+        self._persistent_conn = self._create_conn()
         self._init_schema()
 
-    def _conn(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.db_path)
+    def _create_conn(self) -> sqlite3.Connection:
+        """Create a new configured SQLite connection."""
+        conn = sqlite3.connect(self.db_path, check_same_thread=False)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA synchronous=NORMAL")
         return conn
 
+    def _conn(self) -> sqlite3.Connection:
+        """Return the persistent connection, reconnecting if closed."""
+        try:
+            # Quick liveness check
+            self._persistent_conn.execute("SELECT 1")
+        except (sqlite3.ProgrammingError, sqlite3.OperationalError):
+            self._persistent_conn = self._create_conn()
+        return self._persistent_conn
+
+    def close(self):
+        """Close the persistent connection. Call during shutdown."""
+        try:
+            self._persistent_conn.close()
+        except Exception:
+            pass
+
     def _init_schema(self):
         conn = self._conn()
-        try:
-            conn.executescript("""
-                CREATE TABLE IF NOT EXISTS nodes (
-                    name TEXT PRIMARY KEY,
-                    type TEXT DEFAULT 'entity',
-                    properties TEXT DEFAULT '{}',
-                    created_at REAL,
-                    updated_at REAL
-                );
-                CREATE TABLE IF NOT EXISTS edges (
-                    source TEXT NOT NULL,
-                    target TEXT NOT NULL,
-                    relation TEXT NOT NULL,
-                    weight REAL DEFAULT 1.0,
-                    evidence TEXT DEFAULT '',
-                    created_at REAL,
-                    PRIMARY KEY (source, target, relation),
-                    FOREIGN KEY (source) REFERENCES nodes(name),
-                    FOREIGN KEY (target) REFERENCES nodes(name)
-                );
-                CREATE INDEX IF NOT EXISTS idx_edges_source ON edges(source);
-                CREATE INDEX IF NOT EXISTS idx_edges_target ON edges(target);
-                CREATE INDEX IF NOT EXISTS idx_edges_relation ON edges(relation);
-                CREATE INDEX IF NOT EXISTS idx_nodes_type ON nodes(type);
-            """)
-            conn.commit()
-        finally:
-            conn.close()
+        conn.executescript("""
+            CREATE TABLE IF NOT EXISTS nodes (
+                name TEXT PRIMARY KEY,
+                type TEXT DEFAULT 'entity',
+                properties TEXT DEFAULT '{}',
+                created_at REAL,
+                updated_at REAL
+            );
+            CREATE TABLE IF NOT EXISTS edges (
+                source TEXT NOT NULL,
+                target TEXT NOT NULL,
+                relation TEXT NOT NULL,
+                weight REAL DEFAULT 1.0,
+                evidence TEXT DEFAULT '',
+                created_at REAL,
+                PRIMARY KEY (source, target, relation),
+                FOREIGN KEY (source) REFERENCES nodes(name),
+                FOREIGN KEY (target) REFERENCES nodes(name)
+            );
+            CREATE INDEX IF NOT EXISTS idx_edges_source ON edges(source);
+            CREATE INDEX IF NOT EXISTS idx_edges_target ON edges(target);
+            CREATE INDEX IF NOT EXISTS idx_edges_relation ON edges(relation);
+            CREATE INDEX IF NOT EXISTS idx_nodes_type ON nodes(type);
+        """)
+        conn.commit()
 
     def add_node(self, name: str, node_type: str = "entity", **properties):
         now = time.time()
         conn = self._conn()
-        try:
-            conn.execute(
-                """INSERT INTO nodes (name, type, properties, created_at, updated_at)
-                   VALUES (?, ?, ?, ?, ?)
-                   ON CONFLICT(name) DO UPDATE SET
-                       properties = ?, updated_at = ?""",
-                (name, node_type, json.dumps(properties), now, now, json.dumps(properties), now),
-            )
-            conn.commit()
-        finally:
-            conn.close()
+        conn.execute(
+            """INSERT INTO nodes (name, type, properties, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?)
+               ON CONFLICT(name) DO UPDATE SET
+                   properties = ?, updated_at = ?""",
+            (name, node_type, json.dumps(properties), now, now, json.dumps(properties), now),
+        )
+        conn.commit()
 
     def add_edge(
         self, source: str, target: str, relation: str, weight: float = 1.0, evidence: str = ""
     ):
         now = time.time()
         conn = self._conn()
-        try:
-            for node in (source, target):
-                conn.execute(
-                    "INSERT OR IGNORE INTO nodes (name, created_at, updated_at) VALUES (?, ?, ?)",
-                    (node, now, now),
-                )
+        for node in (source, target):
             conn.execute(
-                """INSERT INTO edges (source, target, relation, weight, evidence, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?)
-                   ON CONFLICT(source, target, relation) DO UPDATE SET
-                       weight = ?, evidence = evidence || ' | ' || ?""",
-                (source, target, relation, weight, evidence, now, weight, evidence),
+                "INSERT OR IGNORE INTO nodes (name, created_at, updated_at) VALUES (?, ?, ?)",
+                (node, now, now),
             )
-            conn.commit()
-        finally:
-            conn.close()
+        conn.execute(
+            """INSERT INTO edges (source, target, relation, weight, evidence, created_at)
+               VALUES (?, ?, ?, ?, ?, ?)
+               ON CONFLICT(source, target, relation) DO UPDATE SET
+                   weight = ?, evidence = evidence || ' | ' || ?""",
+            (source, target, relation, weight, evidence, now, weight, evidence),
+        )
+        conn.commit()
 
     def get_entity_neighborhood(self, entity: str, hops: int = 1) -> str:
         conn = self._conn()
-        try:
-            rows = conn.execute(
-                """SELECT source, relation, target, weight
-                   FROM edges
-                   WHERE source = ? OR target = ?
-                   ORDER BY weight DESC LIMIT 20""",
-                (entity, entity),
-            ).fetchall()
-        finally:
-            conn.close()
+        rows = conn.execute(
+            """SELECT source, relation, target, weight
+               FROM edges
+               WHERE source = ? OR target = ?
+               ORDER BY weight DESC LIMIT 20""",
+            (entity, entity),
+        ).fetchall()
 
         if not rows:
             return ""
@@ -124,51 +131,39 @@ class SQLiteGraph:
 
     def find_connection_path(self, start: str, end: str, max_depth: int = 4) -> list:
         conn = self._conn()
-        try:
-            visited = {start}
-            queue = [(start, [start])]
-            for _ in range(max_depth):
-                next_queue = []
-                for current, path in queue:
-                    rows = conn.execute(
-                        "SELECT target FROM edges WHERE source = ?",
-                        (current,),
-                    ).fetchall()
-                    for row in rows:
-                        neighbor = row["target"]
-                        if neighbor == end:
-                            return path + [neighbor]
-                        if neighbor not in visited:
-                            visited.add(neighbor)
-                            next_queue.append((neighbor, path + [neighbor]))
-                queue = next_queue
-                if not queue:
-                    break
-        finally:
-            conn.close()
+        visited = {start}
+        queue = [(start, [start])]
+        for _ in range(max_depth):
+            next_queue = []
+            for current, path in queue:
+                rows = conn.execute(
+                    "SELECT target FROM edges WHERE source = ?",
+                    (current,),
+                ).fetchall()
+                for row in rows:
+                    neighbor = row["target"]
+                    if neighbor == end:
+                        return path + [neighbor]
+                    if neighbor not in visited:
+                        visited.add(neighbor)
+                        next_queue.append((neighbor, path + [neighbor]))
+            queue = next_queue
+            if not queue:
+                break
         return []
 
     def get_all_node_names(self) -> list[str]:
         conn = self._conn()
-        try:
-            rows = conn.execute("SELECT name FROM nodes").fetchall()
-            return [r["name"] for r in rows]
-        finally:
-            conn.close()
+        rows = conn.execute("SELECT name FROM nodes").fetchall()
+        return [r["name"] for r in rows]
 
     def number_of_nodes(self) -> int:
         conn = self._conn()
-        try:
-            return conn.execute("SELECT COUNT(*) FROM nodes").fetchone()[0]
-        finally:
-            conn.close()
+        return conn.execute("SELECT COUNT(*) FROM nodes").fetchone()[0]
 
     def number_of_edges(self) -> int:
         conn = self._conn()
-        try:
-            return conn.execute("SELECT COUNT(*) FROM edges").fetchone()[0]
-        finally:
-            conn.close()
+        return conn.execute("SELECT COUNT(*) FROM edges").fetchone()[0]
 
     # -- NetworkX Compatibility Layer --
     # These methods allow drop-in replacement in api_gateway.py
@@ -182,22 +177,16 @@ class SQLiteGraph:
     def has_node(self, name: str) -> bool:
         """Check if a node exists."""
         conn = self._conn()
-        try:
-            row = conn.execute("SELECT 1 FROM nodes WHERE name = ? LIMIT 1", (name,)).fetchone()
-            return row is not None
-        finally:
-            conn.close()
+        row = conn.execute("SELECT 1 FROM nodes WHERE name = ? LIMIT 1", (name,)).fetchone()
+        return row is not None
 
     def neighbors(self, node: str) -> list[str]:
         """Get all nodes connected to this node (outgoing edges)."""
         conn = self._conn()
-        try:
-            rows = conn.execute(
-                "SELECT DISTINCT target FROM edges WHERE source = ?", (node,)
-            ).fetchall()
-            return [r["target"] for r in rows]
-        finally:
-            conn.close()
+        rows = conn.execute(
+            "SELECT DISTINCT target FROM edges WHERE source = ?", (node,)
+        ).fetchall()
+        return [r["target"] for r in rows]
 
     @property
     def graph(self):
@@ -206,13 +195,10 @@ class SQLiteGraph:
 
     def prune_weak_edges(self, min_weight: float = 0.1):
         conn = self._conn()
-        try:
-            deleted = conn.execute("DELETE FROM edges WHERE weight < ?", (min_weight,)).rowcount
-            conn.commit()
-            if deleted:
-                print(f"[CUT] Pruned {deleted} weak edges")
-        finally:
-            conn.close()
+        deleted = conn.execute("DELETE FROM edges WHERE weight < ?", (min_weight,)).rowcount
+        conn.commit()
+        if deleted:
+            print(f"[CUT] Pruned {deleted} weak edges")
 
     def prune_graph(self):
         """Drop-in for TransparentBrain.prune_graph()"""

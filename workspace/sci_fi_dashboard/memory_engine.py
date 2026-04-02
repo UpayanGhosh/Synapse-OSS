@@ -132,10 +132,35 @@ class MemoryEngine:
             self._st_model = SentenceTransformer("all-MiniLM-L6-v2")
         return tuple(self._st_model.encode(text).tolist())
 
-    @lru_cache(maxsize=500)  # noqa: B019
-    def get_embedding(self, text: str) -> tuple:
+    def __init_embedding_cache(self):
+        """Initialize manual embedding cache (not using @lru_cache to avoid caching failures)."""
+        if not hasattr(self, "_embedding_cache"):
+            self._embedding_cache = {}
+            self._embedding_cache_maxsize = 500
+
+    def get_embedding(self, text: str) -> tuple | None:
+        self.__init_embedding_cache()
+
+        if text in self._embedding_cache:
+            return self._embedding_cache[text]
+
+        result = self._compute_embedding(text)
+        if result is not None:
+            # Evict oldest entry if cache is full
+            if len(self._embedding_cache) >= self._embedding_cache_maxsize:
+                oldest_key = next(iter(self._embedding_cache))
+                del self._embedding_cache[oldest_key]
+            self._embedding_cache[text] = result
+        return result
+
+    def _compute_embedding(self, text: str) -> tuple | None:
+        """Compute embedding, returning None on failure (never caches failures)."""
         if not OLLAMA_AVAILABLE:
-            return self._sentence_transformer_embed(text)
+            try:
+                return self._sentence_transformer_embed(text)
+            except Exception as e:
+                print(f"[WARN] Sentence-transformer embedding failed: {e}")
+                return None
         try:
             response = ollama.embeddings(
                 model=EMBEDDING_MODEL,
@@ -145,7 +170,7 @@ class MemoryEngine:
             return tuple(response["embedding"])
         except Exception as e:
             print(f"[WARN] Embedding generation failed: {e}")
-            return tuple([0.0] * 768)
+            return None
 
     def _get_ranker(self) -> Ranker:
         if self._ranker is None:
@@ -170,6 +195,7 @@ class MemoryEngine:
         text: str,
         limit: int = 5,
         with_graph: bool = True,
+        hemisphere: str = "safe",
     ) -> dict:
         start = time.time()
 
@@ -201,9 +227,48 @@ class MemoryEngine:
             else:
                 routing = "Default (Hybrid)"
 
-            # Qdrant search
-            query_vec = list(self.get_embedding(text))
-            q_results = self.qdrant_store.search(query_vec, limit=limit * 3)
+            # Qdrant search with hemisphere filtering
+            query_vec_tuple = self.get_embedding(text)
+            if query_vec_tuple is None:
+                return {
+                    "results": [],
+                    "tier": "error",
+                    "entities": entities,
+                    "graph_context": graph_context,
+                    "error": "Embedding generation failed",
+                }
+            query_vec = list(query_vec_tuple)
+
+            # Build hemisphere filter for Qdrant
+            # Spicy sessions see both safe + spicy; safe sessions see only safe
+            from qdrant_client.http import models as qdrant_models
+
+            if hemisphere == "spicy":
+                hemisphere_filter = qdrant_models.Filter(
+                    should=[
+                        qdrant_models.FieldCondition(
+                            key="hemisphere_tag",
+                            match=qdrant_models.MatchValue(value="safe"),
+                        ),
+                        qdrant_models.FieldCondition(
+                            key="hemisphere_tag",
+                            match=qdrant_models.MatchValue(value="spicy"),
+                        ),
+                    ]
+                )
+            else:
+                hemisphere_filter = qdrant_models.Filter(
+                    must=[
+                        qdrant_models.FieldCondition(
+                            key="hemisphere_tag",
+                            match=qdrant_models.MatchValue(value="safe"),
+                        )
+                    ]
+                )
+
+            q_results = self.qdrant_store.search(
+                query_vec, limit=limit * 3, query_filter=hemisphere_filter
+            )
 
             # Apply 3-factor scoring: relevance + temporal + importance
             for r in q_results:
@@ -276,7 +341,9 @@ class MemoryEngine:
             }
 
     @with_retry(retries=5, delay=0.1)
-    def add_memory(self, content: str, category: str = "direct_entry") -> dict:
+    def add_memory(
+        self, content: str, category: str = "direct_entry", hemisphere: str = "safe"
+    ) -> dict:
         try:
             # Backup
             os.makedirs(os.path.dirname(BACKUP_FILE), exist_ok=True)
@@ -289,14 +356,52 @@ class MemoryEngine:
             cursor = conn.cursor()
             importance = self._score_importance_heuristic(content)
             cursor.execute(
-                "INSERT INTO documents (filename, content, processed, unix_timestamp, importance)"
-                " VALUES (?, ?, 0, ?, ?)",
-                (category, content, int(time.time()), importance),
+                "INSERT INTO documents"
+                " (filename, content, hemisphere_tag, processed, unix_timestamp, importance)"
+                " VALUES (?, ?, ?, 0, ?, ?)",
+                (category, content, hemisphere, int(time.time()), importance),
             )
             doc_id = cursor.lastrowid
+
+            # Generate embedding and store in vec_items so doc is visible
+            # to semantic search immediately
+            embedding = self.get_embedding(content)
+            if embedding is not None:
+                import struct
+
+                vec_blob = struct.pack(f"{len(embedding)}f", *embedding)
+                try:
+                    cursor.execute(
+                        "INSERT INTO vec_items (document_id, embedding) VALUES (?, ?)",
+                        (doc_id, vec_blob),
+                    )
+                except Exception as vec_err:
+                    print(f"[WARN] vec_items insert failed (vector search disabled?): {vec_err}")
+
+                # Also upsert to Qdrant for ANN search
+                try:
+                    self.qdrant_store.upsert_facts([{
+                        "id": doc_id,
+                        "vector": list(embedding),
+                        "metadata": {
+                            "text": content,
+                            "hemisphere_tag": hemisphere,
+                            "unix_timestamp": int(time.time()),
+                            "importance": importance,
+                        },
+                    }])
+                except Exception as qdrant_err:
+                    print(f"[WARN] Qdrant upsert failed: {qdrant_err}")
+
+                cursor.execute(
+                    "UPDATE documents SET processed = 1 WHERE id = ?", (doc_id,)
+                )
+            else:
+                print(f"[WARN] Embedding failed for doc {doc_id}; queued for later processing")
+
             conn.commit()
             conn.close()
-            return {"status": "queued", "id": doc_id}
+            return {"status": "stored", "id": doc_id, "embedded": embedding is not None}
         except Exception as e:
             return {"error": str(e)}
 

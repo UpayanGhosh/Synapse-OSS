@@ -223,20 +223,27 @@ def query_memories(
                 words = [w for w in sanitized.split() if len(w) > 2]
                 if words:
                     fts_query = " OR ".join(words)
-                    # For FTS, we do a post-filter join since FTS table doesn't have tags directly usually
-                    # But checking schema, documents_fts is context=documents.
-                    # We can join on rowid.
+                    # For FTS, we do a post-filter join since FTS table doesn't have tags
+                    # directly. documents_fts is content=documents so we join on rowid.
+                    # Hierarchy: spicy sessions see safe+spicy; safe sees only safe.
+                    if session_type == "spicy":
+                        hemisphere_clause = "d.hemisphere_tag IN ('safe', 'spicy')"
+                        fts_params = (fts_query, limit)
+                    else:
+                        hemisphere_clause = "d.hemisphere_tag = ?"
+                        fts_params = (fts_query, "safe", limit)
+
                     cursor.execute(
-                        """
+                        f"""
                         SELECT d.content, fts.rank
                         FROM documents_fts fts
                         JOIN documents d ON fts.rowid = d.id
                         WHERE documents_fts MATCH ?
-                        AND d.hemisphere_tag = ?
+                        AND {hemisphere_clause}
                         ORDER BY rank
                         LIMIT ?
                     """,
-                        (fts_query, session_type, limit),
+                        fts_params,
                     )
 
                     for row in cursor.fetchall():

@@ -43,15 +43,22 @@ class QdrantVectorStore:
         self.client.upsert(collection_name=self.collection_name, points=points)
 
     def search(
-        self, query_vector: list[float], limit: int = 5, score_threshold: float = 0.0
+        self,
+        query_vector: list[float],
+        limit: int = 5,
+        score_threshold: float = 0.0,
+        query_filter=None,
     ) -> list[dict[str, Any]]:
-        results = self.client.query_points(
+        kwargs = dict(
             collection_name=self.collection_name,
             query=query_vector,
             limit=limit,
             score_threshold=score_threshold,
             with_payload=True,
-        ).points
+        )
+        if query_filter is not None:
+            kwargs["query_filter"] = query_filter
+        results = self.client.query_points(**kwargs).points
         return [{"id": r.id, "score": r.score, "metadata": r.payload} for r in results]
 
 
