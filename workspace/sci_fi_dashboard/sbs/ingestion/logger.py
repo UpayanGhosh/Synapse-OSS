@@ -60,13 +60,14 @@ class ConversationLogger:
                 CREATE INDEX IF NOT EXISTS idx_role
                 ON messages(role)
             """)
+            conn.commit()
 
     def log(self, message: RawMessage):
         """Atomic dual-write: JSONL + SQLite."""
 
         # 1. Append to JSONL (with file lock for safety)
         with self.lock, open(self.jsonl_path, "a", encoding="utf-8") as f:
-            f.write(message.model_dump_json() + "\\n")
+            f.write(message.model_dump_json() + "\n")
 
         # 2. Insert into SQLite index
         with sqlite3.connect(self.db_path) as conn:
@@ -94,6 +95,7 @@ class ConversationLogger:
                     message.rt_mood_signal,
                 ),
             )
+            conn.commit()
 
     def update_realtime_fields(self, msg_id: str, sentiment: float, language: str, mood: str):
         """Called by realtime processor after initial analysis."""
