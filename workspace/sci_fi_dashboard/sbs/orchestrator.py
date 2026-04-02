@@ -14,28 +14,46 @@ class SBSOrchestrator:
     Soul-Brain Sync Orchestrator (Phase 1 Skeleton).
     """
 
-    def __init__(self, data_dir: str = "./data"):
+    def __init__(self, data_dir: str = "./data", sbs_config=None):
         self.data_dir = Path(data_dir)
 
+        # Resolve SBS configuration (use defaults if none provided)
+        if sbs_config is None:
+            from synapse_config import SBSConfig
+
+            sbs_config = SBSConfig()
+        self._sbs_config = sbs_config
+
         # Initialize all components
-        self.profile_mgr = ProfileManager(self.data_dir / "profiles")
+        self.profile_mgr = ProfileManager(
+            self.data_dir / "profiles",
+            max_versions=sbs_config.max_profile_versions,
+        )
         self.logger = ConversationLogger(self.data_dir)
         from .processing.realtime import RealtimeProcessor
 
         self.realtime = RealtimeProcessor(self.profile_mgr)
         from .processing.batch import BatchProcessor
 
-        self.batch = BatchProcessor(self.logger.db_path, self.profile_mgr)
+        self.batch = BatchProcessor(
+            self.logger.db_path,
+            self.profile_mgr,
+            vocabulary_decay=sbs_config.vocabulary_decay,
+            exemplar_pairs=sbs_config.exemplar_pairs,
+        )
         from .feedback.implicit import ImplicitFeedbackDetector
 
         self.feedback = ImplicitFeedbackDetector(self.profile_mgr)
-        self.compiler = PromptCompiler(self.profile_mgr)
+        self.compiler = PromptCompiler(
+            self.profile_mgr,
+            max_chars=sbs_config.prompt_max_chars,
+        )
 
         # Track unbatched messages
         self._unbatched_count = 0
-        self.BATCH_THRESHOLD = 50
+        self.BATCH_THRESHOLD = sbs_config.batch_threshold
 
-        # Startup batch trigger (if > 6 hours)
+        # Startup batch trigger (configurable window)
         self._check_startup_batch()
 
     def _run_batch_safe(self):
@@ -55,8 +73,9 @@ class SBSOrchestrator:
 
         try:
             last_run = datetime.fromisoformat(last_run_str)
-            if datetime.now() - last_run > timedelta(hours=6):
-                print("[SBS] Startup trigger: >6 hrs since last batch. Running now.")
+            window_hours = self._sbs_config.batch_window_hours
+            if datetime.now() - last_run > timedelta(hours=window_hours):
+                print(f"[SBS] Startup trigger: >{window_hours} hrs since last batch. Running now.")
                 import threading
 
                 threading.Thread(target=self._run_batch_safe, daemon=True).start()

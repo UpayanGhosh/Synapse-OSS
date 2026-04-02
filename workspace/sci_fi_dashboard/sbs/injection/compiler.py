@@ -17,11 +17,11 @@ class PromptCompiler:
     7. Interaction Notes       (~50 tokens)  -- first to be trimmed
     """
 
-    MAX_TOKENS_ESTIMATE = 1500  # Conservative estimate (4 chars per token)
-    MAX_CHARS = MAX_TOKENS_ESTIMATE * 4  # ~6000 chars
+    DEFAULT_MAX_CHARS = 6000  # ~1500 tokens at 4 chars per token
 
-    def __init__(self, profile_manager: ProfileManager):
+    def __init__(self, profile_manager: ProfileManager, max_chars: int = 0):
         self.profile_mgr = profile_manager
+        self.MAX_CHARS = max_chars if max_chars > 0 else self.DEFAULT_MAX_CHARS
 
     def compile(self) -> str:
         """

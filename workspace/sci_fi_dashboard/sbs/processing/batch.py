@@ -26,9 +26,17 @@ class BatchProcessor:
     6. Temporal Decay Sweep -- demote stale patterns
     """
 
-    def __init__(self, db_path: Path, profile_manager: ProfileManager):
+    def __init__(
+        self,
+        db_path: Path,
+        profile_manager: ProfileManager,
+        vocabulary_decay: float = 0.5,
+        exemplar_pairs: int = 14,
+    ):
         self.db_path = db_path
         self.profile_mgr = profile_manager
+        self.vocabulary_decay = vocabulary_decay
+        self.exemplar_pairs = exemplar_pairs
         self.exemplar_selector = ExemplarSelector(db_path)
 
     def run(self, full_rebuild: bool = False):
@@ -377,7 +385,7 @@ class BatchProcessor:
 
     def _reselect_exemplars(self):
         """Delegate to ExemplarSelector for principled few-shot selection."""
-        exemplars = self.exemplar_selector.select(max_exemplars=14)
+        exemplars = self.exemplar_selector.select(max_exemplars=self.exemplar_pairs)
         self.profile_mgr.save_layer(
             "exemplars",
             {
@@ -392,7 +400,7 @@ class BatchProcessor:
         vocab = self.profile_mgr.load_layer("vocabulary")
         registry = vocab.get("registry", {})
 
-        decay_threshold = 0.5
+        decay_threshold = self.vocabulary_decay
         archived = []
         active = {}
 

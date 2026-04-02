@@ -27,6 +27,31 @@ _DEFAULT_SYNAPSE_HOME = Path.home() / ".synapse"
 
 
 @dataclass(frozen=True)
+class SBSConfig:
+    """Configuration for the Soul-Brain Sync subsystem.
+
+    All values have sensible defaults matching the original hardcoded behaviour.
+    Override via the ``"sbs"`` key in ``synapse.json``.
+
+    Attributes:
+        batch_threshold:      Number of unbatched messages before triggering a batch run.
+        batch_window_hours:   Hours of inactivity before a startup batch is triggered.
+        max_profile_versions: Maximum archived profile snapshots to retain.
+        vocabulary_decay:     Effective-weight threshold below which vocabulary entries
+                              are archived during the decay sweep.
+        prompt_max_chars:     Character budget for the compiled persona prompt segment.
+        exemplar_pairs:       Maximum number of few-shot exemplar pairs to select.
+    """
+
+    batch_threshold: int = 50
+    batch_window_hours: int = 6
+    max_profile_versions: int = 30
+    vocabulary_decay: float = 0.5
+    prompt_max_chars: int = 6000
+    exemplar_pairs: int = 14
+
+
+@dataclass(frozen=True)
 class SynapseConfig:
     """Immutable configuration snapshot for a single Synapse-OSS process.
 
@@ -49,6 +74,7 @@ class SynapseConfig:
     gateway: dict = field(default_factory=dict)
     session: dict = field(default_factory=dict)
     mcp: dict = field(default_factory=dict)
+    sbs: SBSConfig = field(default_factory=SBSConfig)
 
     @classmethod
     def load(cls) -> "SynapseConfig":
@@ -76,6 +102,7 @@ class SynapseConfig:
         gateway: dict[str, Any] = {}
         session: dict[str, Any] = {}
         mcp: dict[str, Any] = {}
+        sbs_raw: dict[str, Any] = {}
 
         config_file = data_root / "synapse.json"
         if config_file.exists():
@@ -88,6 +115,13 @@ class SynapseConfig:
             gateway = raw.get("gateway", {})
             session = raw.get("session", {})
             mcp = raw.get("mcp", {})
+            sbs_raw = raw.get("sbs", {})
+
+        # Build SBSConfig from the "sbs" key (missing keys use dataclass defaults)
+        sbs_config = SBSConfig(**{
+            k: v for k, v in sbs_raw.items()
+            if k in SBSConfig.__dataclass_fields__
+        })
 
         return cls(
             data_root=data_root,
@@ -100,6 +134,7 @@ class SynapseConfig:
             gateway=gateway,
             session=session,
             mcp=mcp,
+            sbs=sbs_config,
         )
 
 

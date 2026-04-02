@@ -39,10 +39,11 @@ class ProfileManager:
         "meta",
     ]
 
-    def __init__(self, profile_dir: Path):
+    def __init__(self, profile_dir: Path, max_versions: int = 30):
         self.profile_dir = profile_dir
         self.current_dir = profile_dir / "current"
         self.archive_dir = profile_dir / "archive"
+        self.max_versions = max_versions
 
         self.current_dir.mkdir(parents=True, exist_ok=True)
         self.archive_dir.mkdir(parents=True, exist_ok=True)
@@ -163,8 +164,8 @@ class ProfileManager:
         layer_path = self.current_dir / "meta.json"
         self._write_json(layer_path, meta)
 
-        # Keep only last 30 versions
-        self._prune_archive(keep=30)
+        # Keep only last N versions (configurable via max_versions)
+        self._prune_archive(keep=self.max_versions)
 
         return version_num
 
