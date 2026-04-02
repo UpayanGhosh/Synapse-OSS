@@ -261,7 +261,10 @@ from sbs.sentinel.tools import init_sentinel  # noqa: E402
 init_sentinel(project_root=Path(__file__).parent)  # noqa: E402
 
 # --- SBS Orchestrator (Phase 1) ---
-SBS_DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "synapse_data")
+from synapse_config import SynapseConfig as _SbsConfig  # noqa: E402
+
+SBS_DATA_DIR = str(_SbsConfig.load().sbs_dir)
+os.makedirs(SBS_DATA_DIR, exist_ok=True)
 
 
 def _load_personas_config() -> dict:

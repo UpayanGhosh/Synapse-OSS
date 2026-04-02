@@ -13,6 +13,7 @@ Protection Levels:
   OPEN      -- No restrictions (default for writable zones).
 """
 
+import os
 from enum import Enum
 
 
@@ -89,6 +90,7 @@ WRITABLE_ZONES: set[str] = {
     "data/exports/",  # User-requested exports
     "generated/",  # Any generated content
     "logs/",  # Application logs
+    os.path.expanduser("~/.synapse/"),  # User data dir (SBS data lives here now)
 }
 
 # ============================================================
