@@ -86,8 +86,17 @@ def resolve_media_path(
         return str(matches[0])
 
     else:
-        # Plain file path
-        path = Path(uri)
-        if not path.exists():
+        # Plain file path — must resolve within media_root
+        resolved = Path(uri).resolve()
+        resolved_root = root.resolve()
+
+        try:
+            resolved.relative_to(resolved_root)
+        except ValueError:
+            raise MediaResolutionError(
+                f"Path {uri!r} resolves outside media root {resolved_root}"
+            )
+
+        if not resolved.exists():
             raise MediaResolutionError(f"File not found: {uri!r}")
-        return str(path.resolve())
+        return str(resolved)

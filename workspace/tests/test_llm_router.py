@@ -56,10 +56,13 @@ try:
 except ImportError:
     ROUTER_AVAILABLE = False
 
-pytestmark = pytest.mark.skipif(
-    not ROUTER_AVAILABLE,
-    reason="SynapseLLMRouter not yet implemented — RED phase (Plan 02 will create it)",
-)
+pytestmark = [
+    pytest.mark.asyncio,
+    pytest.mark.skipif(
+        not ROUTER_AVAILABLE,
+        reason="SynapseLLMRouter not yet implemented — RED phase (Plan 02 will create it)",
+    ),
+]
 
 
 # ---------------------------------------------------------------------------

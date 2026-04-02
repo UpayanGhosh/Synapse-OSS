@@ -125,9 +125,10 @@ async def wait_for(
     timeout_ms = min(timeout_ms, 30_000)
 
     if text is not None:
-        safe = text.replace("'", "\\'")
+        # Pass text as an argument to avoid JS injection via f-string interpolation.
         await page.wait_for_function(
-            f"document.body.innerText.includes('{safe}')",
+            "(t) => document.body.innerText.includes(t)",
+            arg=text,
             timeout=timeout_ms,
         )
         return {"ok": True, "condition": "text"}
@@ -143,6 +144,55 @@ async def wait_for(
     return {"ok": False, "condition": "none_specified"}
 
 
+_MAX_EVAL_RESULT_CHARS = 50_000
+
+# Patterns that indicate dangerous JS API usage.  This is a defence-in-depth
+# heuristic — not a sandbox replacement — but it blocks the most common
+# data-exfiltration and same-origin-bypass vectors.
+_BLOCKED_JS_PATTERNS: list[re.Pattern] = [
+    re.compile(r"\bfetch\s*\(", re.IGNORECASE),
+    re.compile(r"\bXMLHttpRequest\b", re.IGNORECASE),
+    re.compile(r"\bdocument\s*\.\s*cookie\b", re.IGNORECASE),
+    re.compile(r"\blocalStorage\b", re.IGNORECASE),
+    re.compile(r"\bsessionStorage\b", re.IGNORECASE),
+    re.compile(r"\bindexedDB\b", re.IGNORECASE),
+    re.compile(r"\bnavigator\s*\.\s*sendBeacon\b", re.IGNORECASE),
+    re.compile(r"\bimportScripts\b", re.IGNORECASE),
+    re.compile(r"\bWebSocket\b", re.IGNORECASE),
+    re.compile(r"\beval\s*\(", re.IGNORECASE),
+    re.compile(r"\bFunction\s*\(", re.IGNORECASE),
+]
+
+
 async def evaluate_js(page: Page, expression: str) -> dict:
+    """Execute a JS expression in page context and return the result.
+
+    Security boundary
+    -----------------
+    * A blocklist rejects expressions that reference common exfiltration or
+      persistence APIs (fetch, XHR, cookies, storage, WebSocket, eval, etc.).
+    * The stringified result is truncated to ``_MAX_EVAL_RESULT_CHARS``.
+
+    This is **not** a sandbox.  The caller is responsible for ensuring that
+    ``expression`` comes from a trusted source (e.g. an MCP tool invocation
+    with appropriate access controls), not from untrusted user input.
+    """
+    for pattern in _BLOCKED_JS_PATTERNS:
+        if pattern.search(expression):
+            return {
+                "ok": False,
+                "error": (
+                    f"Expression blocked: matches restricted pattern "
+                    f"{pattern.pattern!r}.  Avoid fetch, XHR, cookies, "
+                    f"storage, WebSocket, eval, and Function()."
+                ),
+            }
+
     result = await page.evaluate(expression)
-    return {"ok": True, "result": str(result)}
+    text = str(result)
+    truncated = len(text) > _MAX_EVAL_RESULT_CHARS
+    return {
+        "ok": True,
+        "result": text[:_MAX_EVAL_RESULT_CHARS],
+        "truncated": truncated,
+    }

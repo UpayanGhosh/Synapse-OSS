@@ -118,6 +118,7 @@ def test_channel_id_is_slack():
     assert _make_channel().channel_id == "slack"
 
 
+@pytest.mark.asyncio
 async def test_health_check_stopped():
     """SLK-01: health_check returns 'down' when status is 'stopped'."""
     ch = _make_channel()
@@ -128,6 +129,7 @@ async def test_health_check_stopped():
     assert "socket_mode" in result
 
 
+@pytest.mark.asyncio
 async def test_health_check_running():
     """SLK-01: health_check returns 'ok' when status is 'running'."""
     ch = _make_channel()
@@ -142,6 +144,7 @@ async def test_health_check_running():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.asyncio
 async def test_start_calls_connect_async():
     """SLK-01: start() must call connect_async() rather than start_async().
 
@@ -199,6 +202,7 @@ async def test_start_calls_connect_async():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.asyncio
 async def test_receive_normalizes_dm_event():
     """SLK-02: receive() normalizes a DM event correctly."""
     ch = _make_channel()
@@ -212,6 +216,7 @@ async def test_receive_normalizes_dm_event():
     assert msg.message_id == "1234.5"
 
 
+@pytest.mark.asyncio
 async def test_receive_normalizes_group_event():
     """SLK-02: receive() normalizes a group/mention event with is_group=True."""
     ch = _make_channel()
@@ -228,6 +233,7 @@ async def test_receive_normalizes_group_event():
     assert msg.text == "hello team"
 
 
+@pytest.mark.asyncio
 async def test_receive_handles_missing_fields():
     """SLK-02: receive() uses sensible defaults when fields are absent."""
     ch = _make_channel()
@@ -243,6 +249,7 @@ async def test_receive_handles_missing_fields():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.asyncio
 async def test_dm_event_dispatches_to_enqueue_fn():
     """SLK-02: _dispatch() with is_group=False enqueues a ChannelMessage with correct fields."""
     enqueue_fn = AsyncMock()
@@ -261,6 +268,7 @@ async def test_dm_event_dispatches_to_enqueue_fn():
     assert channel_msg.user_id == "U1"
 
 
+@pytest.mark.asyncio
 async def test_mention_event_dispatches_to_enqueue_fn():
     """SLK-02: _dispatch() with is_group=True enqueues a ChannelMessage with is_group=True."""
     enqueue_fn = AsyncMock()
@@ -277,6 +285,7 @@ async def test_mention_event_dispatches_to_enqueue_fn():
     assert channel_msg.channel_id == "slack"
 
 
+@pytest.mark.asyncio
 async def test_dispatch_no_enqueue_fn_does_not_raise():
     """SLK-02: _dispatch() with no enqueue_fn completes without error."""
     ch = _make_channel(enqueue_fn=None)
@@ -289,6 +298,7 @@ async def test_dispatch_no_enqueue_fn_does_not_raise():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.asyncio
 async def test_send_calls_chat_post_message():
     """SLK-03: send() calls AsyncWebClient.chat_postMessage with correct args."""
     ch = _make_channel()
@@ -301,6 +311,7 @@ async def test_send_calls_chat_post_message():
     assert result is True
 
 
+@pytest.mark.asyncio
 async def test_send_returns_false_on_error():
     """SLK-03: send() returns False when chat_postMessage raises an exception."""
     ch = _make_channel()
@@ -316,12 +327,14 @@ async def test_send_returns_false_on_error():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.asyncio
 async def test_send_typing_is_noop():
     """SLK-03: send_typing() completes without raising — Slack API typing is unreliable."""
     ch = _make_channel()
     await ch.send_typing("C12345")  # must not raise
 
 
+@pytest.mark.asyncio
 async def test_mark_read_is_noop():
     """SLK-03: mark_read() completes without raising — Slack bots cannot mark messages read."""
     ch = _make_channel()
@@ -360,6 +373,7 @@ class TestSlackFloodGateIntegration:
 
         return _enqueue
 
+    @pytest.mark.asyncio
     async def test_slack_dm_reaches_flood_gate(self):
         """SLK-01: Slack DM dispatched via enqueue_fn adapter — not silently dropped."""
         collected = []
@@ -379,6 +393,7 @@ class TestSlackFloodGateIntegration:
         assert collected[0]["channel_id"] == "slack"
         assert collected[0]["text"] == "hello slack"
 
+    @pytest.mark.asyncio
     async def test_slack_enqueue_fn_receives_channel_message_shape(self):
         """SLK-03: Adapter receives ChannelMessage with correct fields — no task_id crash."""
         from sci_fi_dashboard.channels.base import ChannelMessage

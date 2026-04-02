@@ -104,6 +104,7 @@ def test_bridge_files_exist():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.asyncio
 async def test_start_tracks_pid(monkeypatch):
     """WA-02: After start(), channel._bridge_pid must equal the mock subprocess PID."""
     mock_proc = _make_mock_process(returncode_after_start=None)
@@ -189,6 +190,7 @@ def test_cached_group_metadata_enabled():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.asyncio
 async def test_supervisor_restarts_on_crash(monkeypatch):
     """WA-06: supervisor loop must restart the bridge subprocess after an unexpected exit."""
     call_count = 0
@@ -247,6 +249,7 @@ def test_qr_endpoint_routed():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.asyncio
 async def test_nodejs_missing_raises_clear_error(monkeypatch):
     """WA-08: If Node.js is not on PATH, start() must raise RuntimeError mentioning 'Node.js'."""
     import shutil
@@ -265,6 +268,7 @@ async def test_nodejs_missing_raises_clear_error(monkeypatch):
 
 
 @pytest.mark.skipif(not WA_AVAILABLE, reason="WhatsApp channel not available")
+@pytest.mark.asyncio
 async def test_gateway_get_qr_returns_qr_string(monkeypatch):
     """WA-07: GET /qr on the gateway returns {"qr": <string>} when bridge is running."""
     try:
@@ -301,6 +305,7 @@ async def test_gateway_get_qr_returns_qr_string(monkeypatch):
 
 
 @pytest.mark.skipif(not WA_AVAILABLE, reason="WhatsApp channel not available")
+@pytest.mark.asyncio
 async def test_gateway_get_qr_returns_503_when_bridge_down(monkeypatch):
     """WA-07: GET /qr returns 503 when bridge not running (get_qr() returns None)."""
     try:
@@ -335,6 +340,7 @@ async def test_gateway_get_qr_returns_503_when_bridge_down(monkeypatch):
 
 
 @pytest.mark.skipif(not WA_AVAILABLE, reason="WhatsApp channel not available")
+@pytest.mark.asyncio
 async def test_gateway_get_qr_returns_503_when_whatsapp_not_registered(monkeypatch):
     """WA-07: GET /qr returns 503 when WhatsApp channel not registered in registry."""
     try:

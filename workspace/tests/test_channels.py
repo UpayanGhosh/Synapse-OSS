@@ -35,6 +35,8 @@ try:
 except ImportError:
     CHANNELS_AVAILABLE = False
 
+pytestmark = pytest.mark.asyncio
+
 _channels_skip = pytest.mark.skipif(
     not CHANNELS_AVAILABLE,
     reason="channels/ subpackage not yet implemented — RED phase (Plan 03-01 will create it)",

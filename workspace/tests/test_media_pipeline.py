@@ -279,46 +279,178 @@ class TestSSRFGuard:
     """is_ssrf_blocked() — SSRF protection."""
 
     @_skip_ssrf
+    @pytest.mark.asyncio
     async def test_loopback_blocked(self):
         """127.0.0.1 is blocked."""
         assert await is_ssrf_blocked("http://127.0.0.1") is True
 
     @_skip_ssrf
+    @pytest.mark.asyncio
     async def test_private_10_blocked(self):
         """10.0.0.1 is blocked."""
         assert await is_ssrf_blocked("http://10.0.0.1") is True
 
     @_skip_ssrf
+    @pytest.mark.asyncio
     async def test_private_192_blocked(self):
         """192.168.x.x is blocked."""
         assert await is_ssrf_blocked("http://192.168.1.1/secret") is True
 
     @_skip_ssrf
+    @pytest.mark.asyncio
     async def test_private_172_blocked(self):
         """172.16.x.x is blocked."""
         assert await is_ssrf_blocked("http://172.16.0.1") is True
 
     @_skip_ssrf
+    @pytest.mark.asyncio
     async def test_link_local_blocked(self):
         """169.254.x.x link-local is blocked."""
         assert await is_ssrf_blocked("http://169.254.1.1") is True
 
     @_skip_ssrf
+    @pytest.mark.asyncio
     async def test_localhost_hostname_blocked(self):
         """'localhost' hostname is blocked."""
         assert await is_ssrf_blocked("http://localhost:8080") is True
 
     @_skip_ssrf
+    @pytest.mark.asyncio
     async def test_public_url_allowed(self):
         """A public URL like api.openai.com is NOT blocked."""
         assert await is_ssrf_blocked("https://api.openai.com") is False
 
     @_skip_ssrf
+    @pytest.mark.asyncio
     async def test_empty_url_blocked(self):
         """Empty/malformed URL is blocked (fail-closed)."""
         assert await is_ssrf_blocked("") is True
 
     @_skip_ssrf
+    @pytest.mark.asyncio
     async def test_no_hostname_blocked(self):
         """URL without hostname is blocked (fail-closed)."""
         assert await is_ssrf_blocked("file:///etc/passwd") is True
+
+    @_skip_ssrf
+    @pytest.mark.asyncio
+    async def test_file_scheme_blocked(self):
+        """file:// scheme is blocked even with a valid path."""
+        assert await is_ssrf_blocked("file:///etc/shadow") is True
+
+    @_skip_ssrf
+    @pytest.mark.asyncio
+    async def test_gopher_scheme_blocked(self):
+        """gopher:// scheme is blocked."""
+        assert await is_ssrf_blocked("gopher://evil.com:25/") is True
+
+    @_skip_ssrf
+    @pytest.mark.asyncio
+    async def test_zero_ip_blocked(self):
+        """0.0.0.0 is blocked (resolves to localhost on most OS)."""
+        assert await is_ssrf_blocked("http://0.0.0.0") is True
+
+    @_skip_ssrf
+    @pytest.mark.asyncio
+    async def test_ipv6_loopback_blocked(self):
+        """IPv6 loopback ::1 is blocked."""
+        assert await is_ssrf_blocked("http://[::1]") is True
+
+    @_skip_ssrf
+    @pytest.mark.asyncio
+    async def test_metadata_hostname_blocked(self):
+        """Cloud metadata hostname is blocked."""
+        assert await is_ssrf_blocked("http://metadata.google.internal/") is True
+
+    @_skip_ssrf
+    @pytest.mark.asyncio
+    async def test_dot_local_suffix_blocked(self):
+        """.local suffix hostname is blocked."""
+        assert await is_ssrf_blocked("http://myhost.local/") is True
+
+
+class TestSSRFRedirectHook:
+    """safe_httpx_client() redirect-hop validation."""
+
+    @_skip_ssrf
+    @pytest.mark.asyncio
+    async def test_redirect_to_loopback_blocked(self):
+        """Redirect to 127.0.0.1 is caught by the event hook."""
+        import httpx
+
+        from sci_fi_dashboard.media.ssrf import safe_httpx_client
+
+        # Use httpx's MockTransport to simulate a redirect to a loopback IP
+        def handler(request: httpx.Request) -> httpx.Response:
+            if "example.com" in str(request.url):
+                return httpx.Response(
+                    302,
+                    headers={"location": "http://127.0.0.1/secret"},
+                )
+            return httpx.Response(200, text="ok")
+
+        transport = httpx.MockTransport(handler)
+
+        with pytest.raises(PermissionError, match="SSRF blocked on redirect"):
+            async with safe_httpx_client(transport=transport) as client:
+                await client.get("http://example.com/image.png")
+
+
+class TestSaveMediaBufferPathTraversal:
+    """save_media_buffer() — path traversal guard."""
+
+    @_skip_store
+    def test_subdir_traversal_blocked(self, tmp_path):
+        """subdir='../../etc' is rejected."""
+        with pytest.raises(ValueError, match="escapes media root"):
+            save_media_buffer(
+                b"payload",
+                content_type="image/jpeg",
+                subdir="../../etc",
+                data_root=tmp_path,
+            )
+
+    @_skip_store
+    def test_subdir_normal_allowed(self, tmp_path):
+        """Normal subdir like 'inbound' is accepted."""
+        result = save_media_buffer(
+            b"data",
+            content_type="image/jpeg",
+            subdir="inbound",
+            data_root=tmp_path,
+        )
+        assert result.path.exists()
+
+
+class TestOutboundAttachmentSandbox:
+    """resolve_media_path() — sandbox enforcement for plain paths."""
+
+    def test_plain_path_outside_media_root_blocked(self, tmp_path):
+        """Plain path outside media root is rejected."""
+        from sci_fi_dashboard.media.outbound_attachment import (
+            MediaResolutionError,
+            resolve_media_path,
+        )
+
+        # Create a file outside media_root
+        outside_file = tmp_path / "outside" / "secret.txt"
+        outside_file.parent.mkdir(parents=True)
+        outside_file.write_text("secret")
+
+        media_root = tmp_path / "media"
+        media_root.mkdir()
+
+        with pytest.raises(MediaResolutionError, match="resolves outside media root"):
+            resolve_media_path(str(outside_file), media_root=media_root)
+
+    def test_plain_path_inside_media_root_allowed(self, tmp_path):
+        """Plain path inside media root is accepted."""
+        from sci_fi_dashboard.media.outbound_attachment import resolve_media_path
+
+        media_root = tmp_path / "media"
+        media_root.mkdir()
+        test_file = media_root / "test.jpg"
+        test_file.write_bytes(b"image data")
+
+        result = resolve_media_path(str(test_file), media_root=media_root)
+        assert result == str(test_file.resolve())

@@ -61,6 +61,16 @@ def agent_delete_file(path: str, reason: str = "") -> str:
         return f"[SENTINEL DENIED]: {str(e)}"
 
 
+def agent_check_write_access(path: str, reason: str = "") -> "Path":
+    """
+    Tool-level write gate. Returns the resolved Path if write is allowed,
+    raises RuntimeError / SentinelError otherwise.
+    """
+    if not _sentinel:
+        raise RuntimeError("Sentinel not initialized")
+    return _sentinel.check_access(path, "write", reason)
+
+
 def agent_list_directory(path: str, reason: str = "") -> str:
     """
     Tool: List files in a directory.
@@ -68,9 +78,7 @@ def agent_list_directory(path: str, reason: str = "") -> str:
     if not _sentinel:
         raise RuntimeError("Sentinel not initialized")
     try:
-        _sentinel.check_access(path, "list", reason)
-        resolved = _sentinel._resolve_path(path)
-        items = [str(p.name) for p in resolved.iterdir()]
-        return "\\n".join(items)
+        items = _sentinel.safe_list(path, reason)
+        return "\n".join(items)
     except SentinelError as e:
         return f"[SENTINEL DENIED]: {str(e)}"

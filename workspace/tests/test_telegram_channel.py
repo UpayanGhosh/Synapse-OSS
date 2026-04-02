@@ -154,6 +154,7 @@ def test_initial_status_is_stopped():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.asyncio
 async def test_start_calls_delete_webhook(monkeypatch):
     """TEL-01: delete_webhook() must be awaited exactly once before start_polling."""
     mock_app = _make_mock_app()
@@ -180,6 +181,7 @@ async def test_start_calls_delete_webhook(monkeypatch):
     mock_app.bot.delete_webhook.assert_awaited_once()
 
 
+@pytest.mark.asyncio
 async def test_conflict_error_sets_failed_status(monkeypatch):
     """TEL-01/M1: Conflict (409) must set _status='failed' and NOT re-raise."""
     mock_app = _make_mock_app()
@@ -198,6 +200,7 @@ async def test_conflict_error_sets_failed_status(monkeypatch):
     assert channel._status == "failed"
 
 
+@pytest.mark.asyncio
 async def test_invalid_token_sets_failed_status(monkeypatch):
     """TEL-01: InvalidToken must set _status='failed' and NOT re-raise."""
     mock_app = _make_mock_app()
@@ -216,6 +219,7 @@ async def test_invalid_token_sets_failed_status(monkeypatch):
     assert channel._status == "failed"
 
 
+@pytest.mark.asyncio
 async def test_telegram_error_sets_failed_status(monkeypatch):
     """TEL-01: Generic TelegramError must set _status='failed' and NOT re-raise."""
     mock_app = _make_mock_app()
@@ -239,6 +243,7 @@ async def test_telegram_error_sets_failed_status(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.asyncio
 async def test_dm_dispatched_to_enqueue_fn():
     """TEL-02: _dispatch() must call enqueue_fn with a ChannelMessage."""
     enqueue_fn = AsyncMock()
@@ -254,6 +259,7 @@ async def test_dm_dispatched_to_enqueue_fn():
     assert channel_msg.is_group is False
 
 
+@pytest.mark.asyncio
 async def test_group_mention_dispatched():
     """TEL-02: _on_group_message() dispatches when @botname is in the text."""
     enqueue_fn = AsyncMock()
@@ -269,6 +275,7 @@ async def test_group_mention_dispatched():
     enqueue_fn.assert_awaited_once()
 
 
+@pytest.mark.asyncio
 async def test_group_non_mention_ignored():
     """TEL-02: _on_group_message() must NOT dispatch when bot is not @mentioned."""
     enqueue_fn = AsyncMock()
@@ -284,6 +291,7 @@ async def test_group_non_mention_ignored():
     enqueue_fn.assert_not_awaited()
 
 
+@pytest.mark.asyncio
 async def test_dispatch_sets_is_group_for_supergroup():
     """TEL-02: is_group must be True for supergroup chat type."""
     enqueue_fn = AsyncMock()
@@ -296,6 +304,7 @@ async def test_dispatch_sets_is_group_for_supergroup():
     assert channel_msg.is_group is True
 
 
+@pytest.mark.asyncio
 async def test_dispatch_no_enqueue_fn_does_not_raise():
     """TEL-02: _dispatch() must not raise when enqueue_fn is None (test-safe mode)."""
     channel = TelegramChannel(token="x", enqueue_fn=None)
@@ -308,6 +317,7 @@ async def test_dispatch_no_enqueue_fn_does_not_raise():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.asyncio
 async def test_send_calls_bot_send_message():
     """TEL-03: send() must call bot.send_message with chat_id as int."""
     channel = TelegramChannel(token="x")
@@ -319,6 +329,7 @@ async def test_send_calls_bot_send_message():
     assert result is True
 
 
+@pytest.mark.asyncio
 async def test_send_typing_calls_chat_action():
     """TEL-03: send_typing() must call send_chat_action with TYPING action."""
     channel = TelegramChannel(token="x")
@@ -331,6 +342,7 @@ async def test_send_typing_calls_chat_action():
     )
 
 
+@pytest.mark.asyncio
 async def test_send_returns_false_on_error():
     """TEL-03: send() must return False if bot.send_message raises TelegramError."""
     channel = TelegramChannel(token="x")
@@ -343,6 +355,7 @@ async def test_send_returns_false_on_error():
     assert result is False
 
 
+@pytest.mark.asyncio
 async def test_send_returns_false_when_app_not_initialized():
     """TEL-03: send() must return False immediately when _app is None."""
     channel = TelegramChannel(token="x")
@@ -352,12 +365,14 @@ async def test_send_returns_false_when_app_not_initialized():
     assert result is False
 
 
+@pytest.mark.asyncio
 async def test_send_typing_noop_when_app_not_initialized():
     """TEL-03: send_typing() must not raise when _app is None."""
     channel = TelegramChannel(token="x")
     await channel.send_typing("12345")  # must not raise
 
 
+@pytest.mark.asyncio
 async def test_mark_read_is_noop():
     """TEL-03: mark_read() must not raise — Telegram has no read-receipt API."""
     channel = TelegramChannel(token="x")
@@ -369,6 +384,7 @@ async def test_mark_read_is_noop():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.asyncio
 async def test_health_check_when_stopped():
     """TEL-04: health_check() must return 'down' when status is 'stopped'."""
     channel = TelegramChannel(token="x")
@@ -379,6 +395,7 @@ async def test_health_check_when_stopped():
     assert "polling_status" in result
 
 
+@pytest.mark.asyncio
 async def test_health_check_when_running():
     """TEL-04: health_check() must return 'ok' when _status is 'running'."""
     channel = TelegramChannel(token="x")
@@ -392,6 +409,7 @@ async def test_health_check_when_running():
     assert result["bot_info"]["username"] == "testbot"
 
 
+@pytest.mark.asyncio
 async def test_health_check_failed_status_returns_down():
     """TEL-04: health_check() must return 'down' when _status is 'failed'."""
     channel = TelegramChannel(token="x")
@@ -402,6 +420,7 @@ async def test_health_check_failed_status_returns_down():
     assert result["status"] == "down"
 
 
+@pytest.mark.asyncio
 async def test_receive_raises_not_implemented():
     """TEL-04: receive() must raise NotImplementedError — PTB uses handlers not webhooks."""
     channel = TelegramChannel(token="x")
@@ -441,6 +460,7 @@ class TestTelegramFloodGateIntegration:
 
         return _enqueue
 
+    @pytest.mark.asyncio
     async def test_dispatch_routes_via_flood_adapter(self):
         """TEL-01: _dispatch() routes ChannelMessage to the adapter — not directly to task_queue.
 
@@ -467,6 +487,7 @@ class TestTelegramFloodGateIntegration:
         assert collected[0]["chat_id"] == "456"
         assert collected[0]["sender_name"] == "TestUser"
 
+    @pytest.mark.asyncio
     async def test_dispatch_no_task_id_attribute_error(self):
         """TEL-01: Adapter receives ChannelMessage — task_id is absent (proves old bug was real).
 
@@ -499,6 +520,7 @@ class TestTelegramFloodGateIntegration:
 
         assert len(received) == 1
 
+    @pytest.mark.asyncio
     async def test_dispatch_no_enqueue_fn_logs_warning(self):
         """TEL-01: When enqueue_fn=None, message is dropped with a warning (not a crash)."""
         ch = TelegramChannel(token="fake-token", enqueue_fn=None)

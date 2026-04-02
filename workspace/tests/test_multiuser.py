@@ -62,6 +62,8 @@ try:
 except ImportError:
     AVAILABLE = False
 
+pytestmark = pytest.mark.asyncio
+
 _skip = pytest.mark.skipif(
     not AVAILABLE,
     reason="sci_fi_dashboard/multiuser not yet available",

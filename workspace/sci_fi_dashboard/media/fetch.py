@@ -8,7 +8,7 @@ from typing import Literal
 
 import httpx
 
-from .ssrf import is_ssrf_blocked
+from .ssrf import is_ssrf_blocked, safe_httpx_client
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +58,7 @@ async def fetch_media(
         raise MediaFetchError(f"SSRF blocked: {url}")
 
     try:
-        async with httpx.AsyncClient(follow_redirects=True, timeout=timeout) as client:
+        async with safe_httpx_client(timeout=timeout) as client:
             async with client.stream("GET", url) as resp:
                 if resp.status_code >= 300:
                     raise MediaFetchError(f"HTTP {resp.status_code} fetching {url}")
@@ -86,6 +86,8 @@ async def fetch_media(
 
     except MediaFetchError:
         raise
+    except PermissionError as exc:
+        raise MediaFetchError(f"SSRF blocked on redirect: {exc}") from exc
     except httpx.TimeoutException as exc:
         raise MediaFetchError(f"Timeout after {timeout}s fetching {url}: {exc}") from exc
     except httpx.HTTPError as exc:

@@ -86,30 +86,35 @@ def _make_mock_message(
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.asyncio
 async def test_channel_id_is_discord():
     """DIS-01: channel_id property must return the string 'discord'."""
     ch = DiscordChannel(token="fake")
     assert ch.channel_id == "discord"
 
 
+@pytest.mark.asyncio
 async def test_token_stored_from_constructor():
     """DIS-04: Constructor must store the token for later use by start()."""
     ch = DiscordChannel(token="Bot TOKEN")
     assert ch._token == "Bot TOKEN"
 
 
+@pytest.mark.asyncio
 async def test_allowed_channel_ids_stored():
     """DIS-04: Constructor must store allowed_channel_ids list."""
     ch = DiscordChannel(token="t", allowed_channel_ids=[123, 456])
     assert ch._allowed_channel_ids == [123, 456]
 
 
+@pytest.mark.asyncio
 async def test_allowed_channel_ids_defaults_to_empty():
     """DIS-04: allowed_channel_ids defaults to empty list when not provided."""
     ch = DiscordChannel(token="t")
     assert ch._allowed_channel_ids == []
 
 
+@pytest.mark.asyncio
 async def test_login_failure_sets_status_failed(monkeypatch):
     """DIS-01: LoginFailure during start() must set _status='failed' without crashing."""
     import discord
@@ -125,6 +130,7 @@ async def test_login_failure_sets_status_failed(monkeypatch):
     assert ch._status == "failed"
 
 
+@pytest.mark.asyncio
 async def test_initial_status_is_stopped():
     """DIS-01: Freshly constructed channel must have _status == 'stopped'."""
     ch = DiscordChannel(token="t")
@@ -136,6 +142,7 @@ async def test_initial_status_is_stopped():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.asyncio
 async def test_receive_normalizes_to_channel_message():
     """DIS-02: receive() must produce a ChannelMessage with correct field mapping."""
     ch = DiscordChannel(token="t")
@@ -158,6 +165,7 @@ async def test_receive_normalizes_to_channel_message():
     assert msg.is_group is False
 
 
+@pytest.mark.asyncio
 async def test_receive_sets_is_group_true_for_server_message():
     """DIS-02: receive() with is_group=True must set ChannelMessage.is_group == True."""
     ch = DiscordChannel(token="t")
@@ -171,6 +179,7 @@ async def test_receive_sets_is_group_true_for_server_message():
     assert msg.is_group is True
 
 
+@pytest.mark.asyncio
 async def test_receive_handles_missing_optional_fields():
     """DIS-02: receive() with empty payload must not raise — all fields have safe defaults."""
     ch = DiscordChannel(token="t")
@@ -186,6 +195,7 @@ async def test_receive_handles_missing_optional_fields():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.asyncio
 async def test_dm_message_dispatches_to_enqueue_fn():
     """DIS-02: DM message (guild is None) must be normalised and dispatched to enqueue_fn."""
     enqueue_fn = unittest.mock.AsyncMock()
@@ -211,6 +221,7 @@ async def test_dm_message_dispatches_to_enqueue_fn():
     assert args[0].is_group is False
 
 
+@pytest.mark.asyncio
 async def test_server_mention_dispatches_to_enqueue_fn():
     """DIS-02: Server @mention (guild set, bot in mentions) must be dispatched."""
     enqueue_fn = unittest.mock.AsyncMock()
@@ -233,6 +244,7 @@ async def test_server_mention_dispatches_to_enqueue_fn():
     assert enqueue_fn.call_args[0][0].is_group is True
 
 
+@pytest.mark.asyncio
 async def test_server_non_mention_ignored():
     """DIS-02: Server message without @mention must NOT be dispatched to enqueue_fn."""
     enqueue_fn = unittest.mock.AsyncMock()
@@ -255,6 +267,7 @@ async def test_server_non_mention_ignored():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.asyncio
 async def test_empty_content_sets_status_failed():
     """
     DIS-02/M2: When DM/@mention has empty content, _status must become 'failed'.
@@ -271,6 +284,7 @@ async def test_empty_content_sets_status_failed():
     assert result["bot_status"] == "failed"
 
 
+@pytest.mark.asyncio
 async def test_health_check_reflects_failed_status():
     """DIS-04: health_check() must return 'down' when _status is 'failed' (no live client)."""
     ch = DiscordChannel(token="t")
@@ -286,6 +300,7 @@ async def test_health_check_reflects_failed_status():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.asyncio
 async def test_send_calls_channel_send():
     """DIS-03: send() must call discord channel.send() and return True on success."""
     ch = DiscordChannel(token="t")
@@ -302,6 +317,7 @@ async def test_send_calls_channel_send():
     mock_discord_channel.send.assert_awaited_once_with("Hello Discord!")
 
 
+@pytest.mark.asyncio
 async def test_send_uses_fetch_channel_when_not_in_cache():
     """DIS-03: send() must fall back to fetch_channel() when get_channel() returns None."""
     ch = DiscordChannel(token="t")
@@ -320,6 +336,7 @@ async def test_send_uses_fetch_channel_when_not_in_cache():
     mock_discord_channel.send.assert_awaited_once_with("fallback send")
 
 
+@pytest.mark.asyncio
 async def test_send_returns_false_when_not_connected():
     """DIS-03: send() must return False immediately if _client is None."""
     ch = DiscordChannel(token="t")
@@ -329,6 +346,7 @@ async def test_send_returns_false_when_not_connected():
     assert result is False
 
 
+@pytest.mark.asyncio
 async def test_send_returns_false_on_not_found():
     """DIS-03: send() must return False when channel is not found (discord.NotFound)."""
     import discord
@@ -350,6 +368,7 @@ async def test_send_returns_false_on_not_found():
     assert result is False
 
 
+@pytest.mark.asyncio
 async def test_send_returns_false_on_http_exception():
     """DIS-03: send() must return False on generic HTTPException from discord API."""
     import discord
@@ -371,6 +390,7 @@ async def test_send_returns_false_on_http_exception():
     assert result is False
 
 
+@pytest.mark.asyncio
 async def test_send_typing_is_noop():
     """DIS-03: send_typing() must not raise — it is a deliberate no-op."""
     ch = DiscordChannel(token="t")
@@ -378,6 +398,7 @@ async def test_send_typing_is_noop():
     await ch.send_typing("111222333")
 
 
+@pytest.mark.asyncio
 async def test_mark_read_is_noop():
     """DIS-03: mark_read() must not raise — Discord bots cannot mark messages as read."""
     ch = DiscordChannel(token="t")
@@ -389,6 +410,7 @@ async def test_mark_read_is_noop():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.asyncio
 async def test_health_check_stopped():
     """DIS-04: health_check() with _client=None must return status='down' and channel='discord'."""
     ch = DiscordChannel(token="t")
@@ -400,6 +422,7 @@ async def test_health_check_stopped():
     assert result["guilds"] == 0
 
 
+@pytest.mark.asyncio
 async def test_health_check_running():
     """DIS-04: health_check() with connected client must return status='ok'."""
     ch = DiscordChannel(token="t")
@@ -419,6 +442,7 @@ async def test_health_check_running():
     assert result["guilds"] == 2
 
 
+@pytest.mark.asyncio
 async def test_health_check_closed_client_is_down():
     """DIS-04: health_check() with closed client must return status='down'."""
     ch = DiscordChannel(token="t")
@@ -431,6 +455,7 @@ async def test_health_check_closed_client_is_down():
     assert result["status"] == "down"
 
 
+@pytest.mark.asyncio
 async def test_health_check_no_user_is_down():
     """DIS-04: health_check() when client.user is None (not yet logged in) returns 'down'."""
     ch = DiscordChannel(token="t")
@@ -481,6 +506,7 @@ class TestDiscordFloodGateIntegration:
 
         return _enqueue
 
+    @pytest.mark.asyncio
     async def test_dm_message_reaches_flood_gate(self):
         """DIS-01: DM inbound message dispatched via enqueue_fn adapter (not dropped)."""
         collected = []
@@ -504,6 +530,7 @@ class TestDiscordFloodGateIntegration:
         assert collected[0]["channel_id"] == "discord"
         assert collected[0]["text"] == "hello"
 
+    @pytest.mark.asyncio
     async def test_server_mention_reaches_flood_gate(self):
         """DIS-01: Server @mention dispatched via adapter."""
         collected = []
@@ -524,6 +551,7 @@ class TestDiscordFloodGateIntegration:
         assert len(collected) == 1
         assert collected[0]["text"] == "hey bot"
 
+    @pytest.mark.asyncio
     async def test_enqueue_fn_receives_channel_message_shape(self):
         """DIS-03: Adapter receives ChannelMessage with correct fields (no AttributeError on task_id)."""
         from sci_fi_dashboard.channels.base import ChannelMessage

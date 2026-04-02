@@ -29,6 +29,8 @@ try:
 except ImportError:
     AVAILABLE = False
 
+pytestmark = pytest.mark.asyncio
+
 _skip = pytest.mark.skipif(
     not AVAILABLE,
     reason="gateway/session_actor.py not yet available",

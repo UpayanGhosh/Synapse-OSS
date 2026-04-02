@@ -35,6 +35,8 @@ from sci_fi_dashboard.channels.base import ChannelMessage
 from sci_fi_dashboard.gateway.flood import FloodGate
 from sci_fi_dashboard.gateway.queue import MessageTask, TaskQueue
 
+pytestmark = pytest.mark.asyncio
+
 # ---------------------------------------------------------------------------
 # Shared helpers
 # ---------------------------------------------------------------------------

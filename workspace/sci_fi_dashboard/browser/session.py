@@ -16,7 +16,11 @@ from weakref import WeakKeyDictionary
 
 from playwright.async_api import async_playwright, Browser, Page, Playwright
 
-from .navigation_guard import assert_navigation_allowed, assert_navigation_result_allowed
+from .navigation_guard import (
+    assert_navigation_allowed,
+    assert_navigation_result_allowed,
+    redirect_guard,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +34,7 @@ _pages: dict[str, Page] = {}
 _page_states: WeakKeyDictionary = WeakKeyDictionary()
 _session_tabs: dict[str, list[str]] = {}
 
+_MAX_TABS = 20
 _CONSOLE_CAP = 500
 _ERROR_CAP = 200
 
@@ -83,38 +88,63 @@ async def start_browser() -> dict:
         return {"status": "already_running"}
 
     _playwright = await async_playwright().start()
-    _browser = await _playwright.chromium.launch(headless=True)
+    _browser = await _playwright.chromium.launch(
+        headless=True,
+        args=[
+            "--disable-dev-shm-usage",
+            "--disable-gpu",
+            "--disable-extensions",
+            "--disable-background-networking",
+        ],
+    )
     logger.info("Browser started (chromium headless)")
     return {"status": "started", "browser_type": "chromium"}
 
 
 async def stop_browser() -> dict:
-    """Close all pages, close browser, reset all state."""
+    """Close all pages, close browser, reset all state.
+
+    Logs exceptions rather than swallowing them silently, and uses
+    try/finally to ensure state is always reset even on error.
+    """
     global _playwright, _browser, _pages, _page_states, _session_tabs
 
-    for tab_id, page in list(_pages.items()):
-        try:
-            await page.close()
-        except Exception:
-            pass
+    errors: list[str] = []
 
-    if _browser is not None:
-        try:
-            await _browser.close()
-        except Exception:
-            pass
+    try:
+        for tab_id, page in list(_pages.items()):
+            try:
+                await page.close()
+            except Exception as exc:
+                errors.append(f"page {tab_id}: {exc}")
+                logger.warning("Failed to close page %s: %s", tab_id, exc)
 
-    if _playwright is not None:
-        try:
-            await _playwright.stop()
-        except Exception:
-            pass
+        if _browser is not None:
+            try:
+                await _browser.close()
+            except Exception as exc:
+                errors.append(f"browser: {exc}")
+                logger.warning("Failed to close browser: %s", exc)
 
-    _playwright = None
-    _browser = None
-    _pages = {}
-    _page_states = WeakKeyDictionary()
-    _session_tabs = {}
+        if _playwright is not None:
+            try:
+                await _playwright.stop()
+            except Exception as exc:
+                errors.append(f"playwright: {exc}")
+                logger.warning("Failed to stop playwright: %s", exc)
+    finally:
+        # Always reset state to avoid leaking stale references
+        _playwright = None
+        _browser = None
+        _pages = {}
+        _page_states = WeakKeyDictionary()
+        _session_tabs = {}
+
+    if errors:
+        logger.error(
+            "Browser stopped with %d cleanup error(s): %s",
+            len(errors), "; ".join(errors),
+        )
 
     logger.info("Browser stopped")
     return {"status": "stopped"}
@@ -127,7 +157,15 @@ async def get_status() -> dict:
 
 
 async def open_tab(url: str, session_key: str = "default") -> dict:
-    """Open a new page and navigate to *url*."""
+    """Open a new page and navigate to *url*.
+
+    Raises ``RuntimeError`` if the number of open tabs has reached ``_MAX_TABS``.
+    """
+    if len(_pages) >= _MAX_TABS:
+        raise RuntimeError(
+            f"Tab limit reached ({_MAX_TABS}). Close unused tabs before opening new ones."
+        )
+
     await assert_navigation_allowed(url)
 
     if _browser is None or not _browser.is_connected():
@@ -136,7 +174,8 @@ async def open_tab(url: str, session_key: str = "default") -> dict:
     page = await _browser.new_page()
     _attach_listeners(page)
 
-    await page.goto(url, wait_until="domcontentloaded")
+    async with redirect_guard(page):
+        await page.goto(url, wait_until="domcontentloaded")
     await assert_navigation_result_allowed(page.url)
 
     tab_id = str(uuid.uuid4())
@@ -188,7 +227,8 @@ async def navigate(tab_id: str, url: str) -> dict:
     if page is None:
         raise KeyError(f"tab_id not found: {tab_id}")
 
-    await page.goto(url, wait_until="domcontentloaded")
+    async with redirect_guard(page):
+        await page.goto(url, wait_until="domcontentloaded")
     await assert_navigation_result_allowed(page.url)
 
     return {"url": page.url, "title": await page.title()}

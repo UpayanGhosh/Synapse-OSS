@@ -24,7 +24,7 @@ from .delivery_queue import DeliveryQueue, QueuedDelivery
 from .fetch import MediaFetchError, fetch_media
 from .mime import detect_mime
 from .outbound_attachment import MediaResolutionError, resolve_media_path
-from .ssrf import download_to_file, is_ssrf_blocked
+from .ssrf import download_to_file, is_ssrf_blocked, safe_httpx_client
 from .store import SavedMedia, clean_old_media, save_media_buffer
 
 __all__ = [
@@ -46,6 +46,7 @@ __all__ = [
     # ssrf
     "download_to_file",
     "is_ssrf_blocked",
+    "safe_httpx_client",
     # store
     "SavedMedia",
     "clean_old_media",

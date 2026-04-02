@@ -8,6 +8,10 @@ any resolution error also returns ``True``.
 
 ``download_to_file`` streams a remote URL to disk with an SSRF check,
 size enforcement, and symlink rejection.
+
+``safe_httpx_client`` returns an ``httpx.AsyncClient`` with event hooks
+that validate every redirect hop against the SSRF blocklist, closing the
+redirect-bypass vulnerability.
 """
 
 from __future__ import annotations
@@ -27,10 +31,17 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
+# Allowed URL schemes
+# ---------------------------------------------------------------------------
+
+_ALLOWED_SCHEMES = frozenset({"http", "https"})
+
+# ---------------------------------------------------------------------------
 # Blocked IP networks (RFC 1918, loopback, link-local, ULA)
 # ---------------------------------------------------------------------------
 
 _BLOCKED_NETS = [
+    ipaddress.ip_network("0.0.0.0/8"),
     ipaddress.ip_network("127.0.0.0/8"),
     ipaddress.ip_network("10.0.0.0/8"),
     ipaddress.ip_network("172.16.0.0/12"),
@@ -38,6 +49,7 @@ _BLOCKED_NETS = [
     ipaddress.ip_network("169.254.0.0/16"),
     ipaddress.ip_network("::1/128"),
     ipaddress.ip_network("fc00::/7"),
+    ipaddress.ip_network("fe80::/10"),
 ]
 
 # Hostnames that are always blocked regardless of DNS resolution
@@ -58,14 +70,45 @@ _BLOCKED_HOSTNAMES = frozenset({
 # ---------------------------------------------------------------------------
 
 
+def _is_ip_blocked(addr: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    """Return ``True`` if *addr* falls within any blocked network.
+
+    Handles IPv6-mapped IPv4 addresses (e.g. ``::ffff:127.0.0.1``) by
+    extracting the embedded IPv4 address and checking it separately.
+    """
+    # Check the address directly against all blocked networks
+    for net in _BLOCKED_NETS:
+        if addr in net:
+            return True
+
+    # IPv6-mapped IPv4: extract and re-check the embedded IPv4
+    if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped:
+        for net in _BLOCKED_NETS:
+            if addr.ipv4_mapped in net:
+                return True
+
+    return False
+
+
 async def is_ssrf_blocked(url: str) -> bool:
     """Return ``True`` if *url* resolves to a private / loopback address.
 
     Uses ``asyncio.get_running_loop().getaddrinfo()`` for non-blocking DNS
     resolution.  Fail-closed: any resolution error returns ``True``.
+
+    Also blocks non-HTTP(S) schemes (``file://``, ``gopher://``, etc.).
     """
     try:
         parsed = urlparse(url)
+
+        # Scheme restriction — only http and https allowed
+        if parsed.scheme.lower() not in _ALLOWED_SCHEMES:
+            logger.debug(
+                "is_ssrf_blocked: scheme %r not allowed — blocking %s",
+                parsed.scheme, url,
+            )
+            return True
+
         hostname = parsed.hostname
         if not hostname:
             return True
@@ -89,13 +132,12 @@ async def is_ssrf_blocked(url: str) -> bool:
             except ValueError:
                 # Unparseable IP — fail closed
                 return True
-            for net in _BLOCKED_NETS:
-                if addr in net:
-                    logger.debug(
-                        "is_ssrf_blocked: %s resolved to %s (in %s) — blocked",
-                        url, ip_str, net,
-                    )
-                    return True
+            if _is_ip_blocked(addr):
+                logger.debug(
+                    "is_ssrf_blocked: %s resolved to %s — blocked",
+                    url, ip_str,
+                )
+                return True
 
         return False
 
@@ -103,6 +145,40 @@ async def is_ssrf_blocked(url: str) -> bool:
         # Fail-closed: DNS failure, malformed URL, etc.
         logger.debug("is_ssrf_blocked: resolution failed for %s — blocking", url)
         return True
+
+
+def safe_httpx_client(**kwargs) -> "httpx.AsyncClient":
+    """Return an ``httpx.AsyncClient`` with SSRF-safe redirect validation.
+
+    Every redirect hop is checked against the SSRF blocklist by injecting an
+    ``httpx`` event hook on ``response``.  If a redirect target resolves to a
+    blocked IP, the request is aborted with ``PermissionError``.
+
+    Any extra *kwargs* are forwarded to ``httpx.AsyncClient``.
+    """
+    import httpx  # noqa: F811
+
+    async def _check_redirect(response: httpx.Response) -> None:
+        """Validate each redirect hop's Location header against the SSRF guard."""
+        if response.is_redirect:
+            location = response.headers.get("location")
+            if location:
+                # Resolve relative redirects against the request URL
+                redirect_url = str(response.next_request.url) if response.next_request else location
+                if await is_ssrf_blocked(redirect_url):
+                    await response.aclose()
+                    raise PermissionError(f"SSRF blocked on redirect: {redirect_url}")
+
+    # Merge caller-provided event hooks with our redirect guard
+    event_hooks = kwargs.pop("event_hooks", {})
+    existing_response_hooks = list(event_hooks.get("response", []))
+    existing_response_hooks.insert(0, _check_redirect)
+    event_hooks["response"] = existing_response_hooks
+
+    kwargs.setdefault("follow_redirects", True)
+    kwargs.setdefault("timeout", 30.0)
+
+    return httpx.AsyncClient(event_hooks=event_hooks, **kwargs)
 
 
 async def download_to_file(
@@ -132,7 +208,7 @@ async def download_to_file(
     Raises
     ------
     PermissionError
-        If the URL is SSRF-blocked.
+        If the URL is SSRF-blocked (including redirect hops).
     ValueError
         If the download exceeds *max_bytes*.
     OSError
@@ -144,7 +220,7 @@ async def download_to_file(
     from .mime import detect_mime
     from .store import SavedMedia
 
-    # SSRF guard
+    # SSRF guard on the initial URL
     if await is_ssrf_blocked(url):
         raise PermissionError(f"SSRF blocked: {url}")
 
@@ -158,7 +234,7 @@ async def download_to_file(
     tmp = dest.with_suffix(dest.suffix + ".tmp")
 
     async with (
-        httpx.AsyncClient(follow_redirects=True, timeout=30.0) as client,
+        safe_httpx_client(timeout=30.0) as client,
         client.stream("GET", url, headers=headers or {}) as resp,
     ):
         resp.raise_for_status()

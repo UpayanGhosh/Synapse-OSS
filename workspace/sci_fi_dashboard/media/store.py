@@ -149,7 +149,17 @@ def save_media_buffer(
 
     # --- resolve paths ---
     root = data_root or (Path.home() / ".synapse")
-    media_dir = root / "state" / "media" / subdir
+    media_base = root / "state" / "media"
+    media_dir = (media_base / subdir).resolve()
+
+    # Path traversal guard — subdir must not escape media_base
+    try:
+        media_dir.relative_to(media_base.resolve())
+    except ValueError:
+        raise ValueError(
+            f"subdir {subdir!r} escapes media root {media_base}"
+        )
+
     media_dir.mkdir(parents=True, exist_ok=True)
 
     # Best-effort directory permission (advisory on Windows)

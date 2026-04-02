@@ -2,6 +2,8 @@ import asyncio
 import json
 import sys
 
+from sci_fi_dashboard.media.ssrf import is_ssrf_blocked
+
 
 class ToolRegistry:
     @staticmethod
@@ -44,6 +46,9 @@ class ToolRegistry:
     async def _search_web_crawl4ai(url: str) -> str:
         from crawl4ai import AsyncWebCrawler  # lazy import -- only on Mac/Linux
 
+        if await is_ssrf_blocked(url):
+            return f"Blocked: URL resolves to a private or loopback address: {url}"
+
         print(f"[Crawl4AI] Navigating to: {url}...")
         try:
             async with AsyncWebCrawler() as crawler:
@@ -59,10 +64,19 @@ class ToolRegistry:
     async def _search_web_playwright(url: str) -> str:
         from playwright.async_api import async_playwright  # lazy import -- only on Windows
 
+        if await is_ssrf_blocked(url):
+            return f"Blocked: URL resolves to a private or loopback address: {url}"
+
         print(f"[Playwright] Navigating to: {url}...")
         try:
             async with async_playwright() as p:
-                browser = await p.chromium.launch(headless=True)
+                browser = await p.chromium.launch(
+                    headless=True,
+                    args=[
+                        "--disable-dev-shm-usage",
+                        "--disable-gpu",
+                    ],
+                )
                 page = await browser.new_page()
                 await page.goto(url, timeout=15000)
                 # inner_text("body") returns visible text -- closest equivalent to crawl4ai markdown output
