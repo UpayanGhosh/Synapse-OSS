@@ -125,25 +125,23 @@ class SQLiteGraph:
     def find_connection_path(self, start: str, end: str, max_depth: int = 4) -> list:
         conn = self._conn()
         try:
-            visited = {start}
-            queue = [(start, [start])]
-            for _ in range(max_depth):
-                next_queue = []
-                for current, path in queue:
-                    rows = conn.execute(
-                        "SELECT target FROM edges WHERE source = ?",
-                        (current,),
-                    ).fetchall()
-                    for row in rows:
-                        neighbor = row["target"]
-                        if neighbor == end:
-                            return path + [neighbor]
-                        if neighbor not in visited:
-                            visited.add(neighbor)
-                            next_queue.append((neighbor, path + [neighbor]))
-                queue = next_queue
-                if not queue:
-                    break
+            row = conn.execute(
+                """
+                WITH RECURSIVE path(node, depth, trail) AS (
+                    SELECT ?, 0, ?
+                    UNION ALL
+                    SELECT e.target, p.depth + 1, p.trail || ',' || e.target
+                    FROM path p
+                    JOIN edges e ON e.source = p.node
+                    WHERE p.depth < ?
+                      AND (',' || p.trail || ',') NOT LIKE '%,' || e.target || ',%'
+                )
+                SELECT trail FROM path WHERE node = ? LIMIT 1
+                """,
+                (start, start, max_depth, end),
+            ).fetchone()
+            if row:
+                return row[0].split(",")
         finally:
             conn.close()
         return []
