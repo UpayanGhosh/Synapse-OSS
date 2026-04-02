@@ -79,6 +79,7 @@ class SynapseConfig:
     mcp: dict = field(default_factory=dict)
     sbs: SBSConfig = field(default_factory=SBSConfig)
     validated_schema: Any = field(default=None, repr=False)
+    embedding: dict = field(default_factory=dict)
 
     @classmethod
     def load(cls) -> "SynapseConfig":
@@ -107,6 +108,7 @@ class SynapseConfig:
         session: dict[str, Any] = {}
         mcp: dict[str, Any] = {}
         sbs_raw: dict[str, Any] = {}
+        embedding: dict[str, Any] = {}
 
         config_file = data_root / "synapse.json"
         validated = None
@@ -126,6 +128,7 @@ class SynapseConfig:
             session = raw.get("session", {})
             mcp = raw.get("mcp", {})
             sbs_raw = raw.get("sbs", {})
+            embedding = raw.get("embedding", {})
 
         # Build SBSConfig from the "sbs" key (missing keys use dataclass defaults)
         sbs_config = SBSConfig(**{
@@ -146,6 +149,7 @@ class SynapseConfig:
             mcp=mcp,
             sbs=sbs_config,
             validated_schema=validated,
+            embedding=embedding,
         )
 
 

@@ -53,6 +53,24 @@ register_optional_channels()
 # App Lifecycle
 # ---------------------------------------------------------------------------
 
+# --- Embedding Provider Status ---
+try:
+    from sci_fi_dashboard.embedding import get_provider as _get_emb_provider  # noqa: E402
+
+    _emb_provider = _get_emb_provider()
+    if _emb_provider:
+        _info = _emb_provider.info()
+        logger.info(
+            "[Embedding] Provider: %s | Model: %s | Dims: %s",
+            _info.name,
+            _info.model,
+            _info.dimensions,
+        )
+    else:
+        logger.warning("[Embedding] No provider available -- semantic search disabled")
+except Exception as _emb_exc:
+    logger.warning("[Embedding] Provider init failed: %s", _emb_exc)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

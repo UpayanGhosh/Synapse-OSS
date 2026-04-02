@@ -56,5 +56,12 @@
   "session": {
     "dual_cognition_enabled": true,
     "dual_cognition_timeout": 5.0
+  },
+
+  "embedding": {
+    "provider": "auto",
+    "model": null,
+    "cache_dir": null,
+    "threads": null
   }
 }
