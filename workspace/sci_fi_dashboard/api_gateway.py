@@ -14,6 +14,8 @@ Routes:
 """
 
 import asyncio
+import collections
+import hmac
 import json
 import logging
 import os
@@ -27,7 +29,7 @@ from typing import Any
 
 import psutil
 import uvicorn
-from fastapi import BackgroundTasks, FastAPI, HTTPException, Request, WebSocket
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request, WebSocket
 from pydantic import BaseModel
 
 # from celery import Celery  # REMOVED -- using async workers
@@ -153,44 +155,54 @@ def _extract_cli_send_route(raw_stdout: str) -> str:
 # send_via_cli() removed — Phase 4 replaces with Baileys HTTP bridge
 
 
-async def continue_conversation(target: str, messages: list[dict], last_reply: str):
+async def continue_conversation(
+    target: str,
+    messages: list[dict],
+    last_reply: str,
+    channel_id: str = "whatsapp",
+):
     """
-    Background task to generate and send the rest of the message.
+    H-10: Background task to generate continuation and send it via the channel.
     """
     print(f"[REFRESH] [AUTO-CONTINUE] Handling cut-off response for {target}...")
 
     # 1. Update History
-    # We clone messages to avoid mutating the original reference if reused
     new_history = [m.copy() for m in messages]
     new_history.append({"role": "assistant", "content": last_reply})
     new_history.append(
         {
             "role": "user",
-            "content": "You were cut off. Continue exactly from where you stopped. Do not repeat what you already said. Just write the rest.",
+            "content": (
+                "You were cut off. Continue exactly from where you stopped. "
+                "Do not repeat what you already said. Just write the rest."
+            ),
         }
     )
 
     # 2. Call Model (Gemini Flash for speed/cost)
-    # We use a larger token limit here since it's async push
     try:
         continuation = await call_gemini_flash(new_history, temperature=0.7, max_tokens=2000)
 
-        # 3. Check emptiness
         if not continuation.strip():
             print("[WARN] Continuation was empty.")
             return
 
-        # 4. Clean up (sometimes models repeat the last sentence)
-        # For now, just send it.
-
-        # 5. Send continuation — Phase 4 will implement Baileys HTTP bridge here
-        print(
-            f"[AUTO-CONTINUE] Continuation ready ({len(continuation)} chars). "
-            "WhatsApp send skipped until Phase 4 Baileys bridge is implemented."
-        )
-
-        # 6. Recursive Check? (If this one is ALSO cut off?)
-        # For now, let's limit to one continuation to avoid infinite loops.
+        # H-10: Send continuation via channel registry
+        channel = channel_registry.get(channel_id)
+        if channel is not None:
+            try:
+                await channel.send(target, continuation)
+                print(
+                    f"[AUTO-CONTINUE] Sent continuation ({len(continuation)} chars) "
+                    f"via {channel_id}"
+                )
+            except Exception as send_err:
+                print(f"[WARN] [AUTO-CONTINUE] Channel send failed: {send_err}")
+        else:
+            print(
+                f"[AUTO-CONTINUE] Continuation ready ({len(continuation)} chars) "
+                f"but channel '{channel_id}' not available."
+            )
 
     except Exception as e:
         print(f"[ERROR] [AUTO-CONTINUE] Failed: {e}")
@@ -416,7 +428,9 @@ def _make_flood_enqueue(channel_id: str):
     """
 
     async def _enqueue(channel_msg):
-        if dedup.is_duplicate(channel_msg.message_id or ""):
+        # H-09: Generate UUID fallback if message_id is empty/None
+        effective_id = channel_msg.message_id or str(uuid.uuid4())
+        if dedup.is_duplicate(effective_id):
             return
         await flood.incoming(
             chat_id=channel_msg.chat_id,
@@ -684,9 +698,10 @@ def _is_serial_tool(tool_name: str, tools: list) -> bool:
 
 
 def _is_owner_sender(user_id: str | None) -> bool:
-    """Heuristic: treat the_creator / the_partner (or absent user_id) as owner."""
+    """Heuristic: treat the_creator / the_partner as owner.
+    M-01: Return False for absent/empty user_id instead of True."""
     if not user_id:
-        return True
+        return False
     return user_id.lower() in {"the_creator", "the_partner"}
 
 
@@ -847,17 +862,21 @@ async def persona_chat(
 
     if session_mode == "spicy":
         # === THE VAULT (Local Stheno) ===
+        # C-02: Vault air-gap — NEVER fall back to cloud for spicy/vault content
         print("[HOT] Routing to THE VAULT (Local Stheno)")
-        full_prompt = f"{system_prompt}\n\nUser: {user_msg}\n\nSynapse:"
         try:
             result = await synapse_llm_router.call_with_metadata("vault", messages)
             reply = result.text
         except Exception as e:
-            print(f"[WARN] Vault failed: {e}. Falling back to OpenRouter.")
-            reply = await call_or_fallback(full_prompt)
+            print(f"[ERROR] Vault failed: {e}. Cloud fallback BLOCKED (air-gap policy).")
+            reply = (
+                "I'm unable to process this request right now -- "
+                "the local Vault model is unavailable and cloud fallback "
+                "is blocked for privacy. Please ensure Ollama is running."
+            )
             result = LLMResult(
                 text=reply,
-                model="OpenRouter Fallback",
+                model="vault-unavailable",
                 prompt_tokens=0,
                 completion_tokens=0,
                 total_tokens=0,
@@ -917,17 +936,14 @@ async def persona_chat(
                         max_tokens=1500,
                     )
                 else:
-                    # No tools path — single call, same as legacy
-                    if role == "code":
-                        reply = await call_ag_code(messages)
-                    elif role == "analysis":
-                        reply = await call_ag_oracle(messages)
-                    elif role == "review":
-                        reply = await call_ag_review(messages)
-                    else:
-                        reply = await call_gemini_flash(
-                            messages, temperature=0.85
-                        )
+                    # C-05: No tools path — use call_with_metadata so
+                    # `result` is a proper LLMResult (not None)
+                    temp = 0.2 if role == "code" else 0.85
+                    max_tok = 1000 if role == "code" else 1500
+                    result = await synapse_llm_router.call_with_metadata(
+                        role, messages, temperature=temp, max_tokens=max_tok
+                    )
+                    reply = result.text
                     break
             except Exception as e:
                 error_str = str(e).lower()
@@ -1092,6 +1108,12 @@ async def persona_chat(
     # We inject this here to ensure it ALWAYS appears, rather than relying on LLM hallucination.
 
     elapsed = time.perf_counter() - t0
+    # C-05: Guard against result being None (error paths, all rounds failed)
+    if result is None:
+        result = LLMResult(
+            text=reply, model="unknown", prompt_tokens=0,
+            completion_tokens=0, total_tokens=0,
+        )
     out_tokens = result.completion_tokens
     in_tokens = result.prompt_tokens
     total_tokens = result.total_tokens
@@ -1230,6 +1252,9 @@ async def gentle_worker_loop():
                 await asyncio.sleep(60)
         except asyncio.CancelledError:
             break
+        except (KeyboardInterrupt, SystemExit, MemoryError):
+            # M-06: Never swallow fatal BaseException subclasses
+            raise
         except Exception as e:
             print(f"[WARN] Worker: {e}")
             await asyncio.sleep(60)
@@ -1245,19 +1270,21 @@ def normalize_phone(raw: str | None) -> str:
 
 
 def validate_bridge_token(request: Request) -> None:
+    # C-03: Use hmac.compare_digest for timing-safe token comparison
     bridge_token = os.environ.get("WHATSAPP_BRIDGE_TOKEN")
     if bridge_token:
-        provided = request.headers.get("x-bridge-token")
-        if provided != bridge_token:
+        provided = request.headers.get("x-bridge-token") or ""
+        if not hmac.compare_digest(str(provided), str(bridge_token)):
             raise HTTPException(status_code=401, detail="Invalid bridge token")
 
 
 def validate_api_key(request: Request) -> None:
     """Validates the gateway token for protected endpoints."""
+    # C-03: Use hmac.compare_digest for timing-safe token comparison
     api_key = _synapse_cfg.gateway.get("token", "")
     if api_key:
-        provided = request.headers.get("x-api-key")
-        if provided != api_key:
+        provided = request.headers.get("x-api-key") or ""
+        if not hmac.compare_digest(str(provided), str(api_key)):
             raise HTTPException(status_code=401, detail="Invalid API key")
 
 
@@ -1513,6 +1540,76 @@ app.add_middleware(
 )
 
 
+# --- H-12: Request Body Size Limit Middleware (1 MB) ---
+from starlette.middleware.base import BaseHTTPMiddleware  # noqa: E402
+from starlette.responses import JSONResponse  # noqa: E402
+
+MAX_BODY_SIZE = 1_048_576  # 1 MB
+
+
+class BodySizeLimitMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        content_length = request.headers.get("content-length")
+        if content_length and int(content_length) > MAX_BODY_SIZE:
+            return JSONResponse(
+                status_code=413,
+                content={"detail": "Request body too large (limit: 1MB)"},
+            )
+        return await call_next(request)
+
+
+app.add_middleware(BodySizeLimitMiddleware)
+
+
+# --- H-04: Simple In-Memory Rate Limiter (sliding window, 60 req/min per IP) ---
+RATE_LIMIT_MAX = 60
+RATE_LIMIT_WINDOW = 60  # seconds
+_rate_limit_store: dict[str, collections.deque] = {}
+
+
+def _check_rate_limit(request: Request) -> None:
+    """Sliding-window rate limiter. Raises 429 if exceeded."""
+    client_ip = request.client.host if request.client else "unknown"
+    now = time.monotonic()
+    if client_ip not in _rate_limit_store:
+        _rate_limit_store[client_ip] = collections.deque()
+    dq = _rate_limit_store[client_ip]
+    # Evict expired entries
+    while dq and dq[0] < now - RATE_LIMIT_WINDOW:
+        dq.popleft()
+    if len(dq) >= RATE_LIMIT_MAX:
+        raise HTTPException(
+            status_code=429,
+            detail="Rate limit exceeded (60 requests/minute). Try again later.",
+        )
+    dq.append(now)
+
+
+# --- H-02: Gateway Auth Guard (SYNAPSE_GATEWAY_TOKEN) ---
+
+
+def _require_gateway_auth(request: Request) -> None:
+    """
+    Dependency that enforces SYNAPSE_GATEWAY_TOKEN on sensitive endpoints.
+    Reads token from Authorization header (Bearer) or x-api-key header.
+    Uses hmac.compare_digest for timing-safe comparison.
+    """
+    expected = (
+        _synapse_cfg.gateway.get("token", "")
+        or os.environ.get("SYNAPSE_GATEWAY_TOKEN", "")
+    )
+    if not expected:
+        return  # No token configured — skip auth (dev mode)
+    provided = ""
+    auth_header = request.headers.get("authorization", "")
+    if auth_header.startswith("Bearer "):
+        provided = auth_header[7:]
+    if not provided:
+        provided = request.headers.get("x-api-key", "")
+    if not provided or not hmac.compare_digest(str(provided), str(expected)):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+
 # ===========================================
 #  ROUTES
 # ===========================================
@@ -1525,44 +1622,40 @@ def root():
 
 @app.get("/health")
 async def health():
-    # Gather health for ALL registered channels (generic — no hardcoded channel names)
-    channels_health: dict[str, dict] = {}
+    # M-19: Redacted health endpoint — no internal paths, model names, or DB locations
+    # H-08: Use cached config instead of calling SynapseConfig.load() repeatedly
+    channels_health: dict[str, bool] = {}
     for cid in channel_registry.list_ids():
         ch = channel_registry.get(cid)
         if ch is not None:
             try:
-                channels_health[cid] = await ch.health_check()
-            except Exception as exc:
-                channels_health[cid] = {
-                    "status": "error",
-                    "channel": cid,
-                    "error": str(exc),
-                }
+                ch_health = await ch.health_check()
+                channels_health[cid] = ch_health.get("status") == "ok"
+            except Exception:
+                channels_health[cid] = False
 
+    # H-08: Use module-level cached config (_synapse_cfg) instead of 5x SynapseConfig.load()
+    _cached_mappings = _synapse_cfg.model_mappings
+    all_roles_configured = all(
+        _cached_mappings.get(r, {}).get("model")
+        for r in ("casual", "code", "analysis", "review")
+    )
+
+    overall = "ok" if all_roles_configured else "degraded"
     return {
-        "graph_nodes": brain.number_of_nodes(),
-        "graph_edges": brain.number_of_edges(),
+        "status": overall,
+        "graph_ok": brain.number_of_nodes() > 0,
         "toxic_model_loaded": toxic_scorer.is_loaded(),
-        "memory_db": get_db_stats(),
+        "memory_ok": bool(get_db_stats()),
         "pending_conflicts": len(
             [c for c in conflicts.pending_conflicts if c["status"] == "pending"]
         ),
-        "model": SynapseConfig.load().model_mappings.get("casual", {}).get("model", "unset"),
-        "architecture": {
-            "casual": SynapseConfig.load().model_mappings.get("casual", {}).get("model", "unset"),
-            "code": SynapseConfig.load().model_mappings.get("code", {}).get("model", "unset"),
-            "analysis": SynapseConfig.load()
-            .model_mappings.get("analysis", {})
-            .get("model", "unset"),
-            "review": SynapseConfig.load().model_mappings.get("review", {}).get("model", "unset"),
-        },
+        "llm_configured": all_roles_configured,
         "channels": channels_health,
-        "databases": _check_databases(),
-        "llm": _check_llm_provider(),
     }
 
 
-@app.get("/qr")
+@app.get("/qr", dependencies=[Depends(_require_gateway_auth)])
 async def get_qr():
     """
     WA-07: Proxy the QR code from the Baileys bridge for WhatsApp authentication.
@@ -1581,7 +1674,7 @@ async def get_qr():
     return {"qr": qr}
 
 
-@app.get("/api/sessions")
+@app.get("/api/sessions", dependencies=[Depends(_require_gateway_auth)])
 def get_sessions():
     """
     SESS-02: Return session token usage matching Synapse sessions list schema.
@@ -1648,7 +1741,9 @@ async def unified_webhook(channel_id: str, request: Request):
     if msg is None:
         return {"status": "skipped", "reason": "blocked_or_filtered", "accepted": True}
 
-    if dedup.is_duplicate(msg.message_id or raw.get("message_id", "")):
+    # H-09: Generate UUID fallback if message_id is empty/None
+    effective_msg_id = msg.message_id or raw.get("message_id", "") or str(uuid.uuid4())
+    if dedup.is_duplicate(effective_msg_id):
         return {"status": "skipped", "reason": "duplicate", "accepted": True}
 
     await flood.incoming(
@@ -1681,7 +1776,7 @@ async def whatsapp_enqueue_shim(request: Request):
 # WhatsApp session management + monitoring routes
 # ---------------------------------------------------------------------------
 
-@app.get("/channels/whatsapp/status")
+@app.get("/channels/whatsapp/status", dependencies=[Depends(_require_gateway_auth)])
 async def whatsapp_status():
     """Return enhanced WhatsApp connection status with auth age and uptime."""
     wa_channel = channel_registry.get("whatsapp")
@@ -1690,7 +1785,7 @@ async def whatsapp_status():
     return await wa_channel.get_status()
 
 
-@app.post("/channels/whatsapp/logout")
+@app.post("/channels/whatsapp/logout", dependencies=[Depends(_require_gateway_auth)])
 async def whatsapp_logout():
     """Deregister linked device and wipe WhatsApp session."""
     wa_channel = channel_registry.get("whatsapp")
@@ -1702,7 +1797,7 @@ async def whatsapp_logout():
     return {"ok": True, "message": "Logged out and session cleared"}
 
 
-@app.post("/channels/whatsapp/relink")
+@app.post("/channels/whatsapp/relink", dependencies=[Depends(_require_gateway_auth)])
 async def whatsapp_relink():
     """Force fresh QR cycle — wipe creds and restart Baileys socket."""
     wa_channel = channel_registry.get("whatsapp")
@@ -1732,7 +1827,7 @@ async def whatsapp_connection_state(request: Request):
 # WhatsApp retry queue routes
 # ---------------------------------------------------------------------------
 
-@app.get("/channels/whatsapp/retry-queue")
+@app.get("/channels/whatsapp/retry-queue", dependencies=[Depends(_require_gateway_auth)])
 async def whatsapp_retry_queue_list():
     """List pending entries in the WhatsApp message retry queue."""
     wa_channel = channel_registry.get("whatsapp")
@@ -1741,7 +1836,7 @@ async def whatsapp_retry_queue_list():
     return {"entries": await wa_channel._retry_queue.list_pending()}
 
 
-@app.post("/channels/whatsapp/retry-queue/flush")
+@app.post("/channels/whatsapp/retry-queue/flush", dependencies=[Depends(_require_gateway_auth)])
 async def whatsapp_retry_queue_flush():
     """Force immediate retry of all pending messages in the queue."""
     wa_channel = channel_registry.get("whatsapp")
@@ -1751,7 +1846,10 @@ async def whatsapp_retry_queue_flush():
     return {"ok": True, "flushed": flushed}
 
 
-@app.delete("/channels/whatsapp/retry-queue/{entry_id}")
+@app.delete(
+    "/channels/whatsapp/retry-queue/{entry_id}",
+    dependencies=[Depends(_require_gateway_auth)],
+)
 async def whatsapp_retry_queue_delete(entry_id: int):
     """Remove a specific entry from the retry queue."""
     wa_channel = channel_registry.get("whatsapp")
@@ -1801,8 +1899,8 @@ class OpenAIRequest(BaseModel):
     user: str | None = "the_creator"
 
 
-@app.post("/chat")
-@app.post("/v1/chat/completions")
+@app.post("/chat", dependencies=[Depends(_check_rate_limit)])
+@app.post("/v1/chat/completions", dependencies=[Depends(_check_rate_limit)])
 async def chat_webhook(request: Request):
     validate_api_key(request)
     try:
@@ -1870,6 +1968,7 @@ def _make_persona_handler(persona_id: str):
     async def handler(
         request: ChatRequest, background_tasks: BackgroundTasks, http_request: Request
     ):
+        _check_rate_limit(http_request)  # H-04: rate limit persona chat
         validate_api_key(http_request)
         return await persona_chat(request, persona_id, background_tasks)
 
@@ -1886,7 +1985,7 @@ for _p in PERSONAS_CONFIG["personas"]:
     )
 
 
-@app.get("/gateway/status")
+@app.get("/gateway/status", dependencies=[Depends(_require_gateway_auth)])
 async def gateway_status():
     return {
         "queue": task_queue.get_stats(),
@@ -1910,7 +2009,7 @@ async def rebuild_personas(request: Request):
         raise HTTPException(status_code=500, detail=str(e)) from None
 
 
-@app.get("/persona/status")
+@app.get("/persona/status", dependencies=[Depends(_require_gateway_auth)])
 def persona_status():
     """Show current persona profile stats from SBS."""
     stats = {pid: sbs.get_profile_summary() for pid, sbs in sbs_registry.items()}
@@ -1918,7 +2017,7 @@ def persona_status():
     return {"profiles": stats, "memory_db": db}
 
 
-@app.get("/sbs/status")
+@app.get("/sbs/status", dependencies=[Depends(_require_gateway_auth)])
 def sbs_status():
     """Show live SBS stats for sci-fi dashboard."""
     stats = {pid: sbs.get_profile_summary() for pid, sbs in sbs_registry.items()}
@@ -2026,5 +2125,5 @@ async def query_memory(item: QueryItem, request: Request):
 if __name__ == "__main__":
     import uvicorn
 
-    BIND_HOST = os.environ.get("API_BIND_HOST", "0.0.0.0")
+    BIND_HOST = os.environ.get("API_BIND_HOST", "127.0.0.1")
     uvicorn.run(app, host=BIND_HOST, port=8000)
