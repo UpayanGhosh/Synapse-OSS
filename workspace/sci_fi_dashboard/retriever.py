@@ -27,11 +27,15 @@ except ImportError:
 
 
 def get_embedding(text: str) -> list[float] | None:
-    """Generate an embedding vector for the given text."""
+    """Generate an embedding vector for the given text. Returns None on failure."""
     provider = get_provider()
     if provider is None:
         return None
-    return provider.embed_query(text)
+    try:
+        return provider.embed_query(text)
+    except Exception as e:
+        print(f"[WARN] get_embedding failed: {e}")
+        return None
 
 
 def _serialize_f32(vector: list) -> bytes:
