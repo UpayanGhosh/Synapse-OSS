@@ -356,11 +356,8 @@ class TestGracefulDegradation(unittest.TestCase):
                 # After the embedding refactor, it must delegate to get_provider().
                 # Here we just verify the zero-vector behaviour is preserved.
                 # Build a minimal engine without actually connecting to DBs.
-                with (
-                    patch("sci_fi_dashboard.memory_engine.OLLAMA_AVAILABLE", False),
-                    patch(
-                        "sci_fi_dashboard.memory_engine.QdrantVectorStore", MagicMock
-                    ),
+                with patch(
+                    "sci_fi_dashboard.memory_engine.QdrantVectorStore", MagicMock
                 ):
                     engine = MemoryEngine()
                     # Clear LRU cache so our mock is used

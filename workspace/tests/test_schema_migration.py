@@ -66,7 +66,7 @@ def _make_provider_mock(model: str = "test-model", name: str = "test-provider") 
     from sci_fi_dashboard.embedding.base import ProviderInfo
 
     provider = MagicMock()
-    provider.info.return_value = ProviderInfo(name=name, model=model, dimensions=EMBEDDING_DIMENSIONS)
+    provider.info.return_value = ProviderInfo(name=name, model=model, dimensions=EMBEDDING_DIMENSIONS, requires_network=False, requires_gpu=False)
     # embed_documents returns one 768-dim zero vector per text
     provider.embed_documents.side_effect = lambda texts: [
         [0.0] * EMBEDDING_DIMENSIONS for _ in texts

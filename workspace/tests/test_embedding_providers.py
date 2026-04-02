@@ -200,30 +200,26 @@ class TestFactory(unittest.TestCase):
 
     # 7. cascade selects FastEmbed when fastembed is importable
     def test_factory_cascade_fastembed_default(self):
+        # factory.py imports FastEmbedProvider lazily inside the function, so
+        # we inject the mock directly into sys.modules for that submodule.
         fake_fastembed = _make_fake_fastembed_module()
+        MockFEP = MagicMock()
+        mock_instance = MagicMock()
+        MockFEP.return_value = mock_instance
 
-        with patch.dict(sys.modules, {"fastembed": fake_fastembed}):
+        stub_module = types.ModuleType("sci_fi_dashboard.embedding.fastembed_provider")
+        stub_module.FastEmbedProvider = MockFEP
+
+        with patch.dict(sys.modules, {
+            "fastembed": fake_fastembed,
+            "sci_fi_dashboard.embedding.fastembed_provider": stub_module,
+        }):
+            from sci_fi_dashboard.embedding import reset_provider
+            reset_provider()
             from sci_fi_dashboard.embedding.factory import create_provider
+            result = create_provider()
 
-            with patch(
-                "sci_fi_dashboard.embedding.factory.FastEmbedProvider"
-            ) as MockFEP:
-                MockFEP.return_value = MagicMock()
-                # Patch the import inside create_provider
-                with patch.dict(
-                    sys.modules,
-                    {
-                        "sci_fi_dashboard.embedding.fastembed_provider": types.ModuleType(
-                            "sci_fi_dashboard.embedding.fastembed_provider"
-                        )
-                    },
-                ):
-                    sys.modules[
-                        "sci_fi_dashboard.embedding.fastembed_provider"
-                    ].FastEmbedProvider = MockFEP
-                    result = create_provider()
-
-            self.assertIs(result, MockFEP.return_value)
+        self.assertIs(result, mock_instance)
 
     # 8. cascade falls back to Ollama when fastembed is NOT importable
     def test_factory_cascade_ollama_fallback(self):
