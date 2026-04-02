@@ -24,6 +24,7 @@ cd workspace && pytest tests/ -v
 pytest tests/ -m unit|integration|smoke          # filter by marker
 pytest tests/test_flood.py -v                    # single file
 pytest tests/test_flood.py::TestFloodGate::test_batch -v  # single test
+pytest tests/test_dual_cognition.py -v            # dual cognition engine tests
 
 # Lint
 ruff check workspace/ && black workspace/   # line-length 100, py311
@@ -41,9 +42,11 @@ Channel (WA/TG/Discord/Slack)
   → MessageWorker x2
   → persona_chat() in api_gateway.py
       ├── SBS: get_prompt()          # assembled ~1500-token persona segment
-      ├── MemoryEngine: query()      # hybrid RAG: vector + FTS + rerank
-      ├── DualCognitionEngine: think()  # inner monologue + tension score
+      ├── MemoryEngine: query()      # hybrid RAG: vector + FTS + rerank (single query, results shared)
+      ├── DualCognitionEngine: think()  # inner monologue + tension score (timeout-wrapped, configurable)
+      │     └── receives pre_cached_memory from MemoryEngine (no double query)
       ├── route_traffic_cop()        # classifies → CASUAL/CODING/ANALYSIS/REVIEW/SPICY
+      │     └── skipped when CognitiveMerge.response_strategy maps to a known role
       └── SynapseLLMRouter: call()   # litellm.Router → cloud or local Ollama
   → registry.get(channel_id).send()
 ```
@@ -119,14 +122,16 @@ MCP tools are **not** offered to the LLM during persona chat — they are only c
 | `memory_engine.py` | `MemoryEngine` | Hybrid RAG (vector+FTS+rerank) — affects search quality |
 | `db.py` | `DatabaseManager` | SQLite+sqlite-vec, WAL mode, schema lifecycle |
 | `retriever.py` | `RetrievalPipeline` | Embed via Ollama/sentence-transformers, ANN+FTS |
-| `dual_cognition.py` | `DualCognitionEngine` | Inner monologue + tension scoring (self-contained, no internal deps) |
+| `dual_cognition.py` | `DualCognitionEngine` | Inner monologue + tension scoring; accepts `pre_cached_memory` from gateway; DEEP path fully parallelized; uses `logging` module |
 | `sqlite_graph.py` | `SQLiteGraph` | Knowledge graph (nodes/edges, subject-predicate-object) |
 | `persona.py` | `PersonaManager` | System prompt assembly, dictionary |
 | `toxic_scorer_lazy.py` | `LazyToxicScorer` | Toxic-BERT, auto-unloads after 30s idle |
 | `models_catalog.py` | `ModelsCatalog` | Ollama discovery, context window guard |
 
 ### Isolated Modules (safe to edit independently)
-`dual_cognition.py`, `gateway/flood.py`, `gateway/dedup.py`, `gateway/queue.py`, `channels/*.py` (via BaseChannel ABC), `sbs/profile/manager.py`, `narrative.py`, `conflict_resolver.py`
+`gateway/flood.py`, `gateway/dedup.py`, `gateway/queue.py`, `channels/*.py` (via BaseChannel ABC), `sbs/profile/manager.py`, `narrative.py`, `conflict_resolver.py`
+
+> **Note:** `dual_cognition.py` was previously isolated but now has a coupling with `api_gateway.py` via `pre_cached_memory` parameter. Edit the `think()` signature carefully.
 
 ## Configuration
 
@@ -137,6 +142,8 @@ Primary runtime config. Key sections:
 - `gateway_token` — token for `POST /chat/the_creator` and WebSocket auth
 - `session.dmScope` — one of `"main"` (default), `"per-peer"`, `"per-channel-peer"`, `"per-account-channel-peer"`
 - `session.identityLinks` — maps canonical name to raw peer IDs across channels
+- `session.dual_cognition_enabled` — boolean (default `true`), disables DualCognitionEngine when `false`
+- `session.dual_cognition_timeout` — float seconds (default `5.0`), `asyncio.wait_for` timeout on `think()`
 
 ### Environment Variables
 `GEMINI_API_KEY`, `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `GROQ_API_KEY`, `WHATSAPP_BRIDGE_TOKEN`, `SYNAPSE_GATEWAY_TOKEN`
@@ -161,6 +168,12 @@ API:8000 | Baileys Bridge:5010 (internal) | Tools MCP:8989 | Qdrant:6333 | Ollam
 6. **Ollama models require `ollama_chat/` prefix** in `synapse.json`, not `ollama/`. The `api_base` is pulled from `providers.ollama.api_base`.
 
 7. **`synapse_config.py` is imported by 50+ files** — even small changes there have wide blast radius.
+
+8. **Dual Cognition timeout** — `think()` is wrapped in `asyncio.wait_for(timeout=dual_cognition_timeout)`. If it times out, `CognitiveMerge()` (empty) is used and the message still gets a response. Tune via `session.dual_cognition_timeout` in `synapse.json` (default 5s).
+
+9. **Traffic Cop skip** — When `CognitiveMerge.response_strategy` is `"be_direct"`, `"analytical"`, or `"explore_with_care"`, the traffic cop LLM call is skipped and a role is mapped directly (`STRATEGY_TO_ROLE` constant in `api_gateway.py`). Falls back to normal traffic cop for unmapped strategies.
+
+10. **Memory query is shared** — `MemoryEngine.query()` is called once in `persona_chat()` and results are passed to `dual_cognition.think(pre_cached_memory=...)`. Do NOT add a second memory query inside dual cognition.
 
 ## Symbol Lookup
 ```bash
