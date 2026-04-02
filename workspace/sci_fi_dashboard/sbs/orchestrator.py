@@ -1,3 +1,5 @@
+import logging
+import re
 from datetime import datetime
 from pathlib import Path
 
@@ -36,6 +38,13 @@ class SBSOrchestrator:
         # Startup batch trigger (if > 6 hours)
         self._check_startup_batch()
 
+    def _run_batch_safe(self):
+        """Wrapper around batch.run() with error handling for fire-and-forget threads."""
+        try:
+            self.batch.run()
+        except Exception as e:
+            logging.getLogger("sbs").error(f"Batch processing failed: {e}", exc_info=True)
+
     def _check_startup_batch(self):
         meta = self.profile_mgr.load_layer("meta")
         last_run_str = meta.get("last_batch_run")
@@ -50,7 +59,7 @@ class SBSOrchestrator:
                 print("[SBS] Startup trigger: >6 hrs since last batch. Running now.")
                 import threading
 
-                threading.Thread(target=self.batch.run).start()
+                threading.Thread(target=self._run_batch_safe, daemon=True).start()
         except ValueError:
             pass
 
@@ -60,8 +69,6 @@ class SBSOrchestrator:
         """
         Called for every message in the conversation.
         """
-        import re
-
         message = RawMessage(
             role=role,
             content=content,
@@ -69,21 +76,24 @@ class SBSOrchestrator:
             response_to=response_to,
             char_count=len(content),
             word_count=len(content.split()),
-            has_emoji=bool(
-                re.search(
-                    r"[\U0001F600-\U0001F64F\U0001F300-\U0001F5FF\U0001F680-\U0001F6FF]", content
-                )
-            ),
-            is_question=content.strip().endswith("?"),
         )
 
-        # Run realtime processing
-        rt_results = self.realtime.process(message)
-        message.rt_sentiment = rt_results["rt_sentiment"]
-        message.rt_language = rt_results["rt_language"]
-        message.rt_mood_signal = rt_results["rt_mood_signal"]
+        # M4: Compute metadata fields defined in schema but previously unset
+        message.has_emoji = bool(
+            re.search(
+                r"[\U0001F600-\U0001F64F\U0001F300-\U0001F5FF"
+                r"\U0001F680-\U0001F6FF\U0001F900-\U0001F9FF]",
+                content,
+            )
+        )
+        message.is_question = content.rstrip().endswith("?")
 
-        # Log the message
+        # C4+M5: Run realtime processing FIRST, copy results into message, THEN log
+        rt_results = self.realtime.process(message)
+        message.rt_sentiment = rt_results.get("rt_sentiment")
+        message.rt_language = rt_results.get("rt_language")
+        message.rt_mood_signal = rt_results.get("rt_mood_signal")
+
         self.logger.log(message)
 
         rt_results["msg_id"] = message.msg_id
@@ -103,15 +113,12 @@ class SBSOrchestrator:
             # Keep track of last assistant message for feedback context
             self._last_assistant_message = content
 
-        # Trigger batch processing logic
+        # M1: Trigger batch processing with error handling
         self._unbatched_count += 1
         if self._unbatched_count >= self.BATCH_THRESHOLD:
-            # We would normally trigger this entirely asynchronously.
-            # For this MVP we will trigger it in line, however you'd want a
-            # Celery/Background task here.
             import threading
 
-            threading.Thread(target=self.batch.run).start()
+            threading.Thread(target=self._run_batch_safe, daemon=True).start()
             self._unbatched_count = 0
 
         return rt_results
