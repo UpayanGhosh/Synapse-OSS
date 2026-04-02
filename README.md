@@ -509,6 +509,18 @@ I believe in using every tool available to build things that work.
 
 ---
 
+## Contributors
+
+Thanks to these people for making Synapse better:
+
+| Contributor | Contribution |
+| --- | --- |
+| [@Aniruddha775](https://github.com/Aniruddha775) | Recursive CTE path search for knowledge graph ([#26](https://github.com/UpayanGhosh/Synapse-OSS/pull/26)) |
+
+Want to contribute? Check out [CONTRIBUTING.md](CONTRIBUTING.md) to get started.
+
+---
+
 ## Documentation
 
 | Document | Description |
