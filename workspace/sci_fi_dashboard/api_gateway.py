@@ -226,6 +226,32 @@ try:
 except ImportError:
     _TOOL_REGISTRY_AVAILABLE = False
 
+# --- Phase 4: Tool Safety Pipeline ---
+try:
+    from sci_fi_dashboard.tool_safety import (  # noqa: E402
+        apply_tool_policy_pipeline,
+        build_policy_steps,
+        ToolHookRunner,
+        ToolLoopDetector,
+        ToolAuditLogger,
+    )
+
+    _TOOL_SAFETY_AVAILABLE = True
+except ImportError:
+    _TOOL_SAFETY_AVAILABLE = False
+
+# --- Phase 5: User-facing Tool Features ---
+try:
+    from sci_fi_dashboard.tool_features import (  # noqa: E402
+        format_tool_footer,
+        get_model_override,
+        parse_command_shortcut,
+    )
+
+    _TOOL_FEATURES_AVAILABLE = True
+except ImportError:
+    _TOOL_FEATURES_AVAILABLE = False
+
 # Tool execution loop constants
 MAX_TOOL_ROUNDS = 5
 TOOL_RESULT_MAX_CHARS = 4000
@@ -235,6 +261,8 @@ _tool_logger = logging.getLogger(__name__ + ".tools")
 
 # --- Singletons (Optimized v3) ---
 tool_registry: "ToolRegistry | None" = None  # initialized in lifespan if available
+hook_runner: "ToolHookRunner | None" = None
+audit_logger: "ToolAuditLogger | None" = None
 brain = SQLiteGraph()
 gate = EntityGate(entities_file="entities.json")
 conflicts = ConflictManager(conflicts_file="conflicts.json")
@@ -797,6 +825,22 @@ async def persona_chat(
             channel_id="api",
         )
         session_tools = tool_registry.resolve(tool_context)
+
+        # Phase 4: Apply policy pipeline to filter tools
+        if _TOOL_SAFETY_AVAILABLE and session_tools:
+            tool_infos = [
+                {"name": t.name, "owner_only": getattr(t, "owner_only", False)}
+                for t in session_tools
+            ]
+            policy_steps = build_policy_steps(
+                _synapse_cfg.raw if hasattr(_synapse_cfg, "raw") else {},
+                channel_id="api",
+            )
+            surviving_names, _removal_log = apply_tool_policy_pipeline(
+                tool_infos, policy_steps, _is_owner_sender(request.user_id)
+            )
+            session_tools = [t for t in session_tools if t.name in surviving_names]
+
         tool_schemas = (
             tool_registry.get_schemas(session_tools) if session_tools else None
         )
@@ -835,7 +879,15 @@ async def persona_chat(
         if classification is None:
             classification = await route_traffic_cop(user_msg)
 
-        if "CODING" in classification:
+        # Phase 5: Check model override before traffic cop
+        override_role = None
+        if _TOOL_FEATURES_AVAILABLE:
+            override_role = get_model_override(request.user_id or "default")
+
+        if override_role:
+            role = override_role
+            print(f"[ROUTE] Model override active: role={role}")
+        elif "CODING" in classification:
             role = "code"
         elif "ANALYSIS" in classification:
             role = "analysis"
@@ -846,12 +898,13 @@ async def persona_chat(
 
         print(f"[ROUTE] Classification={classification} -> role={role}")
 
-        # --- Tool Execution Loop (Phase 3) ---
+        # --- Tool Execution Loop (Phase 3 + 4 + 5) ---
         reply = ""
         tools_used: list[str] = []
         total_tool_time = 0.0
         total_result_chars = 0
         result = None  # last LLM result for the for-else fallback
+        loop_detector = ToolLoopDetector() if _TOOL_SAFETY_AVAILABLE else None
 
         for round_num in range(MAX_TOOL_ROUNDS):
             try:
@@ -924,17 +977,39 @@ async def persona_chat(
                 ],
             })
 
+            # Phase 4: Loop detection — check before executing
+            blocked_ids: set = set()
+            if loop_detector:
+                for tc in tool_calls:
+                    try:
+                        args = json.loads(tc.arguments)
+                    except (json.JSONDecodeError, TypeError):
+                        args = {}
+                    severity = loop_detector.record(tc.name, args)
+                    if severity == "block":
+                        blocked_ids.add(tc.id)
+
             # Execute tools — parallel first, then serial
             serial_calls = [
                 tc for tc in tool_calls
                 if _is_serial_tool(tc.name, session_tools)
+                and tc.id not in blocked_ids
             ]
             parallel_calls = [
                 tc for tc in tool_calls
                 if not _is_serial_tool(tc.name, session_tools)
+                and tc.id not in blocked_ids
             ]
 
             tool_results: dict = {}
+
+            # Blocked calls get error results
+            for tc in tool_calls:
+                if tc.id in blocked_ids:
+                    tool_results[tc.id] = ToolResult(
+                        content=loop_detector.get_warning_message(tc.name, "block"),
+                        is_error=True,
+                    )
 
             if parallel_calls:
                 tasks = [
@@ -1034,11 +1109,16 @@ async def persona_chat(
 
     usage_pct = (total_tokens / max_context) * 100 if max_context else 0
 
-    # Include tool usage info in footer when tools were executed
+    # Phase 5: Include tool usage info in footer when tools were executed
     tools_footer = ""
     try:
         if session_mode != "spicy" and tools_used:
-            tools_footer = f"\n**Tools Used:** {', '.join(tools_used)}"
+            if _TOOL_FEATURES_AVAILABLE:
+                tools_footer = format_tool_footer(
+                    tools_used, total_tool_time, round_num + 1 if 'round_num' in dir() else 1
+                )
+            else:
+                tools_footer = f"\n**Tools Used:** {', '.join(tools_used)}"
     except NameError:
         pass  # tools_used not defined (spicy path)
 
@@ -1295,14 +1375,12 @@ async def lifespan(app: FastAPI):
     print("[INFO] Async Gateway Pipeline started.")
 
     # Phase 3: Initialize ToolRegistry (if available from parallel worktree)
-    global tool_registry
+    global tool_registry, hook_runner, audit_logger
     if _TOOL_REGISTRY_AVAILABLE:
         try:
             tool_registry = ToolRegistry()
             register_builtin_tools(tool_registry, memory_engine, WORKSPACE_ROOT)
-            _tool_logger.info(
-                "ToolRegistry initialized with %d tools", len(tool_registry.list_tools())
-            )
+            _tool_logger.info("ToolRegistry initialized")
         except Exception as exc:
             _tool_logger.warning("ToolRegistry init failed (non-fatal): %s", exc)
             tool_registry = None
@@ -1310,6 +1388,33 @@ async def lifespan(app: FastAPI):
         _tool_logger.info(
             "tool_registry module not available — tool execution loop disabled"
         )
+
+    # Phase 4: Initialize safety pipeline singletons
+    if _TOOL_SAFETY_AVAILABLE:
+        try:
+            hook_runner = ToolHookRunner()
+            audit_dir = str(_synapse_cfg.data_root / "audit")
+            audit_logger = ToolAuditLogger(audit_dir)
+
+            # Register audit as an after-hook
+            async def _audit_hook(tool_name, args, result, duration_ms):
+                if audit_logger:
+                    audit_logger.log_tool_call(
+                        tool_name=tool_name,
+                        args=args,
+                        result_content=result.get("content", ""),
+                        is_error=result.get("is_error", False),
+                        duration_ms=duration_ms,
+                        sender_id="unknown",
+                        chat_id="unknown",
+                    )
+
+            hook_runner.register_after(_audit_hook)
+            _tool_logger.info("Tool safety pipeline initialized")
+        except Exception as exc:
+            _tool_logger.warning("Tool safety init failed (non-fatal): %s", exc)
+    else:
+        _tool_logger.info("tool_safety module not available — safety pipeline disabled")
 
     # Initialize SessionActorQueue
     from gateway.session_actor import SessionActorQueue  # noqa: E402, PLC0415
