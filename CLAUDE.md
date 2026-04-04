@@ -2,6 +2,25 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Code Graph (Default Behaviour)
+
+A persistent structural knowledge graph of this codebase is available via the `code-review-graph` MCP server.
+**Always prefer graph tools over reading files for orientation and impact analysis.**
+
+| When you want to… | Use this tool | Instead of… |
+|---|---|---|
+| Understand what a file/function does | `semantic_search_nodes_tool` | reading the file |
+| Find what calls a function | `query_graph_tool` (callers) | grep |
+| Know what will break if you edit X | `get_impact_radius_tool` | reading dependents manually |
+| Orient before a multi-file task | `get_review_context_tool` | reading all files |
+| Get architecture overview | `get_architecture_overview_tool` | reading all modules |
+| Find entry points / critical flows | `list_flows_tool` | tracing manually |
+
+**Rules:**
+1. Before reading any file to understand context, query the graph first.
+2. Only read full file contents when you need to implement a specific change.
+3. After any Edit/Write, the graph auto-updates via PostToolUse hooks — no manual rebuild needed.
+
 ## Commands
 
 ```bash
@@ -176,8 +195,11 @@ API:8000 | Baileys Bridge:5010 (internal) | Tools MCP:8989 | Qdrant:6333 | Ollam
 10. **Memory query is shared** — `MemoryEngine.query()` is called once in `persona_chat()` and results are passed to `dual_cognition.think(pre_cached_memory=...)`. Do NOT add a second memory query inside dual cognition.
 
 ## Symbol Lookup
+Prefer `semantic_search_nodes_tool` (MCP) — searches 4700+ nodes by name or meaning in <2ms.
+
+Fallback (if MCP unavailable):
 ```bash
-grep "^SYMBOL_NAME	" workspace/tags   # find any class/function/variable (1215 symbols indexed)
+grep "^SYMBOL_NAME	" workspace/tags   # 1215 symbols indexed
 ```
 
 ## Code Style
