@@ -1,0 +1,1328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Synapse — The Body AI Deserves</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Outfit:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:          #FAF9F6;
+    --bg-dark:     #0C0C0C;
+    --text:        #111111;
+    --text-mid:    #555550;
+    --text-muted:  #71716E;
+    --text-light:  #A8A8A4;
+    --accent:      #E8580C;
+    --accent-glow: rgba(232, 88, 12, 0.12);
+    --indigo:      #5B5BD6;
+    --indigo-glow: rgba(91, 91, 214, 0.1);
+    --teal:        #0D9488;
+    --teal-glow:   rgba(13, 148, 136, 0.1);
+    --surface:     #F0EEEB;
+    --border:      #E0DDD8;
+    --success:     #18A34A;
+    --warn:        #D97706;
+    --danger:      #DC2626;
+    --card:        #FFFFFF;
+    --r:           12px;
+    --r-lg:        16px;
+    --r-pill:      100px;
+  }
+
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    height: 100%; width: 100%;
+    font-family: 'Outfit', sans-serif;
+    background: var(--bg-dark);
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* grain */
+  .grain {
+    position: fixed; inset: 0; z-index: 9999;
+    pointer-events: none; opacity: 0.024;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-size: 128px 128px;
+  }
+
+  /* frame */
+  .frame {
+    position: relative;
+    aspect-ratio: 9 / 16;
+    height: 100vh; max-height: 100vh;
+    margin: 0 auto; overflow: hidden;
+    background: var(--bg);
+    transition: background 0.5s ease;
+  }
+  @media (min-width: 600px) {
+    .frame {
+      height: min(100vh, 920px);
+      border-radius: 24px;
+      margin-top: max(0px, calc((100vh - 920px) / 2));
+      box-shadow: 0 0 0 1px rgba(0,0,0,0.06), 0 24px 80px rgba(0,0,0,0.25);
+    }
+  }
+
+  /* timer */
+  .timer-bar {
+    position: absolute; top: 0; left: 0; right: 0;
+    height: 36px; z-index: 100;
+    display: flex; align-items: center;
+    padding: 0 14px;
+    background: rgba(250,249,246,0.85);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    opacity: 0; transition: opacity 0.4s ease, background 0.5s ease;
+  }
+  .timer-bar.on { opacity: 1; }
+  .timer-track {
+    flex: 1; height: 2px;
+    background: var(--border); border-radius: 1px;
+    overflow: hidden; margin-right: 10px;
+  }
+  .timer-fill {
+    height: 100%; width: 0%;
+    background: var(--accent); border-radius: 1px;
+    transition: width 0.4s linear;
+  }
+  .timer-fill.tw { background: var(--warn); }
+  .timer-fill.td { background: var(--danger); }
+  .timer-text {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; font-weight: 500;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+    min-width: 36px; text-align: right;
+    transition: color 0.3s;
+  }
+  .timer-text.td { color: var(--danger); }
+
+  /* dots */
+  .dots {
+    position: absolute; bottom: 14px; left: 0; right: 0;
+    display: flex; justify-content: center; gap: 4px;
+    z-index: 100;
+  }
+  .dt {
+    width: 5px; height: 5px; border-radius: 50%;
+    background: var(--border);
+    transition: all 0.3s cubic-bezier(0.4,0,0.2,1);
+  }
+  .dt.on { width: 20px; border-radius: 3px; background: var(--accent); }
+  .dt.dn { background: var(--text-light); }
+
+  /* slides */
+  .slides { width: 100%; height: 100%; position: relative; }
+  .s {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column;
+    justify-content: center; align-items: center;
+    padding: 48px 28px 40px;
+    text-align: center;
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.5s ease;
+    background: var(--bg);
+  }
+  .s.on { opacity: 1; pointer-events: auto; }
+  .s-dark { background: var(--bg-dark); }
+
+  /* typography */
+  .hx {
+    font-size: clamp(36px, 8.5vw, 46px);
+    font-weight: 800; line-height: 1.06;
+    color: var(--text); letter-spacing: -0.04em;
+  }
+  .hl {
+    font-size: clamp(27px, 6vw, 34px);
+    font-weight: 800; line-height: 1.1;
+    color: var(--text); letter-spacing: -0.035em;
+  }
+  .hm {
+    font-size: clamp(21px, 4.8vw, 26px);
+    font-weight: 700; line-height: 1.18;
+    color: var(--text); letter-spacing: -0.03em;
+  }
+  .hs {
+    font-size: clamp(16px, 3.8vw, 19px);
+    font-weight: 600; line-height: 1.35;
+    color: var(--text); letter-spacing: -0.02em;
+  }
+  .bd {
+    font-size: clamp(13px, 3vw, 15px);
+    font-weight: 400; line-height: 1.55;
+    color: var(--text-muted);
+  }
+  .bds {
+    font-size: clamp(11px, 2.6vw, 12px);
+    font-weight: 500; line-height: 1.5;
+    color: var(--text-muted);
+  }
+  .sr { font-family: 'Instrument Serif', Georgia, serif; font-style: italic; }
+  .mono { font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 500; }
+  .tag {
+    font-size: 10px; font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent); margin-bottom: 12px;
+  }
+  .ac { color: var(--accent); }
+  .ind { color: var(--indigo); }
+  .tl { color: var(--teal); }
+  .wh { color: #fff; }
+  .wm { color: rgba(255,255,255,0.4); }
+
+  /* anim system */
+  .a { opacity: 0; transform: translateY(16px); }
+  .s.on .a { animation: up 0.55s cubic-bezier(0.22,1,0.36,1) forwards; }
+  .s.on .a1  { animation-delay: 0.04s; }
+  .s.on .a2  { animation-delay: 0.14s; }
+  .s.on .a3  { animation-delay: 0.26s; }
+  .s.on .a4  { animation-delay: 0.38s; }
+  .s.on .a5  { animation-delay: 0.50s; }
+  .s.on .a6  { animation-delay: 0.62s; }
+  .s.on .a7  { animation-delay: 0.74s; }
+  .s.on .a8  { animation-delay: 0.86s; }
+  .s.on .a9  { animation-delay: 0.98s; }
+  .s.on .a10 { animation-delay: 1.10s; }
+  .s.on .a11 { animation-delay: 1.22s; }
+
+  @keyframes up   { to { opacity:1; transform:translateY(0); } }
+  @keyframes breathe { 0%,100%{transform:scale(1)} 50%{transform:scale(1.04)} }
+  @keyframes draw { to { stroke-dashoffset: 0; } }
+  @keyframes fadeIn { to { opacity: 1; } }
+  @keyframes blink  { 0%,100%{opacity:1} 50%{opacity:0.2} }
+  @keyframes scaleUp { from{transform:scale(0);opacity:0} to{transform:scale(1);opacity:1} }
+  @keyframes shimmer { 0%{background-position:-200% center} 100%{background-position:200% center} }
+  @keyframes ringPulse { 0%{transform:scale(1);opacity:0.4} 100%{transform:scale(1.8);opacity:0} }
+  @keyframes glow {
+    0%,100% { box-shadow: 0 0 12px rgba(232,88,12,0.15); }
+    50%     { box-shadow: 0 0 24px rgba(232,88,12,0.3); }
+  }
+  @keyframes slideL { to { opacity:1; transform:translateX(0); } }
+  @keyframes slideR { to { opacity:1; transform:translateX(0); } }
+  @keyframes clash  { 0%{transform:scale(0);opacity:0} 50%{transform:scale(1.15);opacity:1} 100%{transform:scale(1);opacity:1} }
+
+  /* shared connectors */
+  .conn {
+    width: 2px; height: 22px; margin: 0 auto; position: relative;
+    background: linear-gradient(to bottom, var(--border), var(--accent));
+    border-radius: 1px;
+  }
+  .conn::after {
+    content:''; position:absolute; bottom:-5px; left:-3px;
+    border-left:4px solid transparent; border-right:4px solid transparent;
+    border-top:5px solid var(--accent);
+  }
+  .conn-glow { background: var(--accent); }
+  .conn-glow::after { border-top-color: var(--accent); }
+  .sp-4{height:4px;flex-shrink:0} .sp-6{height:6px;flex-shrink:0} .sp-8{height:8px;flex-shrink:0}
+  .sp-10{height:10px;flex-shrink:0} .sp-12{height:12px;flex-shrink:0} .sp-16{height:16px;flex-shrink:0}
+  .sp-20{height:20px;flex-shrink:0} .sp-24{height:24px;flex-shrink:0} .sp-32{height:32px;flex-shrink:0}
+
+  /* ════════════════════════════════════════════════
+     SLIDE COMPONENTS
+     ════════════════════════════════════════════════ */
+
+  /* S0: Start */
+  .s0-orb {
+    width: 96px; height: 96px; border-radius: 50%;
+    position: relative;
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: 32px;
+  }
+  .s0-orb::before {
+    content:''; position:absolute; inset:0;
+    border-radius:50%;
+    background: conic-gradient(from 0deg, var(--accent), var(--indigo), var(--accent));
+    animation: breathe 3s ease infinite;
+  }
+  .s0-orb::after {
+    content:''; position:absolute; inset:3px;
+    border-radius:50%; background: var(--bg-dark);
+  }
+  .s0-orb svg { position:relative; z-index:1; width:26px; height:26px; fill:#fff; margin-left:3px; }
+  .s0-title {
+    font-size: clamp(48px,11vw,56px); font-weight:900; line-height:1;
+    letter-spacing:-0.05em;
+    background: linear-gradient(135deg, #fff 40%, var(--accent));
+    -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;
+  }
+  .s0-sub { font-size:14px; color:rgba(255,255,255,0.35); margin-top:8px; }
+  .s0-sub .sr { color:rgba(255,255,255,0.5); }
+  .s0-cue {
+    font-size:11px; color:rgba(255,255,255,0.18);
+    margin-top:36px; letter-spacing:0.08em;
+    animation: breathe 2.5s ease infinite;
+  }
+
+  /* ══ S1: Pain Point (dark) ══ */
+  .pain-num {
+    font-family:'JetBrains Mono',monospace;
+    font-size:clamp(52px,13vw,68px); font-weight:700;
+    color:var(--accent); line-height:1;
+    letter-spacing:-0.04em;
+  }
+  .pain-unit {
+    font-size:clamp(14px,3.4vw,17px); font-weight:500;
+    color:rgba(255,255,255,0.3); margin-top:4px;
+  }
+  .pain-line {
+    width:32px; height:1.5px;
+    background:rgba(255,255,255,0.1); margin:18px auto;
+  }
+  .pain-text {
+    font-size:clamp(18px,4.5vw,24px); font-weight:600;
+    color:#fff; line-height:1.35; letter-spacing:-0.02em;
+  }
+  .pain-sub {
+    font-size:clamp(13px,3vw,15px); font-weight:400;
+    color:rgba(255,255,255,0.35); line-height:1.5; margin-top:10px;
+  }
+
+  /* ══ S2: What If ══ */
+  .whatif-card {
+    width:92%; padding:14px 14px; border-radius:var(--r);
+    border:1px solid var(--border); background:var(--card);
+    text-align:left; display:flex; align-items:flex-start; gap:10px;
+  }
+  .wf-icon { font-size:20px; flex-shrink:0; margin-top:2px; }
+  .wf-text { font-size:12px; color:var(--text-mid); line-height:1.5; }
+  .wf-text strong { color:var(--text); font-weight:600; }
+
+  /* ══ S3: ChatGPT vs Synapse ══ */
+  .vs-row { display:flex; gap:8px; width:94%; }
+  .vs-card {
+    flex:1; padding:12px 10px; border-radius:var(--r);
+    border:1.5px solid; text-align:left;
+  }
+  .vs-card-label {
+    font-size:9px; font-weight:700; letter-spacing:0.06em;
+    text-transform:uppercase; margin-bottom:6px;
+  }
+  .vs-card-q {
+    font-size:10px; color:var(--text-muted); margin-bottom:8px;
+    padding-bottom:6px; border-bottom:1px solid var(--border);
+  }
+  .vs-card-a { font-size:10.5px; line-height:1.5; }
+  .vs-generic {
+    border-color:var(--border); background:var(--surface);
+    opacity:0.7;
+  }
+  .vs-generic .vs-card-label { color:var(--text-light); }
+  .vs-generic .vs-card-a { color:var(--text-muted); }
+  .vs-synapse {
+    border-color:rgba(232,88,12,0.3); background:var(--card);
+    box-shadow:0 2px 12px rgba(232,88,12,0.06);
+  }
+  .vs-synapse .vs-card-label { color:var(--accent); }
+  .vs-synapse .vs-card-a { color:var(--text); }
+  .vs-badge {
+    display:inline-flex; align-items:center; gap:4px;
+    padding:4px 10px; border-radius:var(--r-pill);
+    font-size:9px; font-weight:600;
+    margin-top:4px;
+  }
+  .vs-badge-bad { background:#FEF2F2; color:#DC2626; border:1px solid #FECACA; }
+  .vs-badge-good { background:#F0FDF4; color:#166534; border:1px solid #86EFAC; }
+
+  /* ══ S-old: Hook (glass box) ══ */
+  .glass {
+    width:120px; height:120px; border-radius:24px;
+    display:flex; align-items:center; justify-content:center;
+    background: linear-gradient(135deg, var(--surface), rgba(255,255,255,0.6));
+    border:1.5px solid var(--border);
+    box-shadow: 0 6px 24px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.5);
+    margin-bottom:24px; position:relative;
+  }
+  .glass .brain { font-size:48px; }
+  .glass .lock {
+    position:absolute; bottom:-7px; right:-7px;
+    width:28px; height:28px; border-radius:8px;
+    background:#FEF2F2; border:1.5px solid #FECACA;
+    display:flex; align-items:center; justify-content:center; font-size:13px;
+  }
+  .trapped { color:var(--danger); font-weight:700; text-decoration: underline; text-decoration-color: rgba(220,38,38,0.3); text-underline-offset:3px; }
+
+  /* S2: Problem */
+  .miss-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; width:100%; margin-top:16px; }
+  .miss-card {
+    padding:14px 8px; border-radius:var(--r);
+    background:var(--card); border:1px solid var(--border);
+    display:flex; flex-direction:column; align-items:center; gap:6px;
+    position:relative; overflow:hidden;
+  }
+  .miss-card::after {
+    content:''; position:absolute; inset:0;
+    background: repeating-linear-gradient(-45deg, transparent, transparent 7px, rgba(220,38,38,0.03) 7px, rgba(220,38,38,0.03) 8px);
+  }
+  .miss-card .ic { font-size:26px; opacity:0.3; }
+  .miss-card .nm {
+    font-size:11px; font-weight:600; color:var(--text-light);
+    text-decoration:line-through; text-decoration-color:var(--danger); text-decoration-thickness:1.5px;
+  }
+  .punch {
+    font-family:'Instrument Serif', Georgia, serif;
+    font-style:italic;
+    font-size:clamp(17px,4vw,20px); color:var(--text); line-height:1.4;
+  }
+
+  /* S3: Synapse reveal */
+  .syn-name {
+    font-size:clamp(50px,12vw,60px); font-weight:900;
+    letter-spacing:-0.06em; line-height:1;
+    background: linear-gradient(135deg, var(--accent) 0%, #D44A0A 50%, var(--indigo) 100%);
+    background-size:200% auto;
+    -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;
+  }
+  .s.on .syn-name {
+    animation: up 0.55s cubic-bezier(0.22,1,0.36,1) forwards 0.14s, shimmer 3s ease 1s infinite;
+    opacity:0;
+  }
+  .nerve-svg { width:78%; max-width:280px; height:28px; margin:14px 0; }
+  .nerve-path {
+    fill:none; stroke:var(--accent); stroke-width:2; stroke-linecap:round;
+    stroke-dasharray:400; stroke-dashoffset:400;
+  }
+  .s.on .nerve-path { animation: draw 1.6s ease forwards 0.5s; }
+  .nerve-dot { fill:var(--accent); opacity:0; }
+  .s.on .nd1 { animation: scaleUp 0.3s ease forwards 0.7s; }
+  .s.on .nd2 { animation: scaleUp 0.3s ease forwards 1.1s; }
+  .s.on .nd3 { animation: scaleUp 0.3s ease forwards 1.5s; }
+
+  /* S4: Model Agnostic */
+  .funnel { width:100%; display:flex; flex-direction:column; align-items:center; margin-top:14px; }
+  .chips { display:flex; gap:7px; flex-wrap:wrap; justify-content:center; }
+  .chip {
+    padding:7px 12px; border-radius:var(--r-pill);
+    font-size:11px; font-weight:700; border:1.5px solid;
+  }
+  .c-gpt   { background:#ECFDF5; border-color:#6EE7B7; color:#065F46; }
+  .c-cl    { background:#FFF7ED; border-color:#FDBA74; color:#9A3412; }
+  .c-gem   { background:#EFF6FF; border-color:#93C5FD; color:#1E40AF; }
+  .c-ll    { background:#FAF5FF; border-color:#C4B5FD; color:#5B21B6; }
+  .c-any   { background:var(--surface); border-color:var(--border); color:var(--text-muted); font-weight:500; font-style:italic; }
+
+  /* SVG funnel lines — each path from chip to center bottom */
+  .funnel-svg {
+    width: 100%; max-width: 320px; height: 44px;
+    display: block; margin: 0 auto;
+  }
+  .funnel-line {
+    fill: none; stroke-width: 2; stroke-linecap: round;
+    stroke-dasharray: 120; stroke-dashoffset: 120;
+  }
+  .fl-gpt   { stroke: #6EE7B7; }
+  .fl-cl    { stroke: #FDBA74; }
+  .fl-gem   { stroke: #93C5FD; }
+  .fl-ll    { stroke: #C4B5FD; }
+  .s.on .funnel-line { animation: draw 0.6s ease forwards; }
+  .s.on .fl1 { animation-delay: 0.35s; }
+  .s.on .fl2 { animation-delay: 0.45s; }
+  .s.on .fl3 { animation-delay: 0.55s; }
+  .s.on .fl4 { animation-delay: 0.65s; }
+  /* arrowhead dot at convergence point */
+  .funnel-dot {
+    fill: var(--accent); opacity: 0;
+  }
+  .s.on .funnel-dot { animation: scaleUp 0.3s ease forwards 0.75s; }
+
+  .core-tag {
+    padding:12px 28px; border-radius:var(--r-lg);
+    background:var(--bg-dark); color:#fff;
+    font-size:16px; font-weight:700; letter-spacing:-0.02em;
+    position:relative;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+  }
+  .core-tag::before {
+    content:''; position:absolute; inset:-2px;
+    border-radius:18px; z-index:-1;
+    background:conic-gradient(from 180deg, var(--accent), var(--indigo), var(--accent));
+    opacity:0.45;
+  }
+  .out-pill {
+    padding:8px 18px; border-radius:var(--r-pill);
+    background:#F0FDF4; border:1.5px solid #86EFAC;
+    font-size:12px; font-weight:600; color:#166534;
+    display:flex; align-items:center; gap:5px;
+  }
+  .ck {
+    width:16px; height:16px; border-radius:50%;
+    background:var(--success); color:#fff;
+    display:inline-flex; align-items:center; justify-content:center;
+    font-size:10px; font-weight:700;
+  }
+
+  /* S5: Self-Evolving Memory */
+  .chat-bub {
+    max-width:92%; padding:12px 14px;
+    border-radius:14px 14px 4px 14px;
+    background:var(--surface); color:var(--text);
+    font-size:13px; line-height:1.5; text-align:left;
+    border:1px solid var(--border);
+  }
+  .chat-bub .hi {
+    background:var(--accent-glow); padding:1px 4px; border-radius:3px;
+    font-weight:600; color:var(--accent);
+    border-bottom:1.5px solid var(--accent);
+  }
+  .det-pill {
+    display:inline-flex; align-items:center; gap:4px;
+    padding:5px 10px; border-radius:var(--r-pill);
+    background:var(--accent-glow); border:1px solid rgba(232,88,12,0.2);
+    font-size:10px; font-weight:700; color:var(--accent);
+  }
+  .mem-row { display:flex; gap:8px; width:100%; }
+  .mem-card {
+    flex:1; padding:12px 6px; border-radius:var(--r);
+    text-align:center; border:1.5px solid;
+  }
+  .mem-card .mi { font-size:20px; margin-bottom:4px; }
+  .mem-card .ml { font-size:9px; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; }
+  .mem-card .md { font-size:9px; margin-top:2px; }
+  .mg { border-color:var(--border); background:var(--card); }
+  .mg .ml { color:var(--text-muted); } .mg .md { color:var(--text-light); }
+  .mp { border-color:#FCD34D; background:#FFFBEB; }
+  .mp .ml { color:#B45309; } .mp .md { color:#D97706; }
+  .ev-tag {
+    font-size:10px; font-weight:600; color:var(--indigo);
+    display:flex; align-items:center; gap:4px; margin-top:12px;
+  }
+
+  /* ══ S6a: SBS — What It Does ══ */
+  .sbs-feat {
+    width:92%; padding:10px 12px; border-radius:10px;
+    border:1px solid var(--border); background:var(--card);
+    display:flex; align-items:center; gap:10px; text-align:left;
+  }
+  .sf-icon { font-size:22px; flex-shrink:0; width:36px; text-align:center; }
+  .sf-body {}
+  .sf-title { font-size:12px; font-weight:700; color:var(--text); }
+  .sf-desc  { font-size:10px; color:var(--text-muted); margin-top:1px; }
+  .sbs-punch {
+    font-family:'Instrument Serif',Georgia,serif;
+    font-style:italic; font-size:clamp(14px,3.4vw,17px);
+    color:var(--accent); margin-top:14px;
+  }
+
+  /* ══ S6b: SBS — How (Pipeline) ══ */
+  .sbs-pipe { width:92%; display:flex; flex-direction:column; align-items:center; }
+  .sbs-step {
+    width:100%; padding:8px 10px; border-radius:9px;
+    border:1px solid var(--border); background:var(--card);
+    display:flex; align-items:center; gap:8px; text-align:left;
+  }
+  .ss-ic { font-size:16px; flex-shrink:0; width:28px; text-align:center; }
+  .ss-body {}
+  .ss-title { font-size:11px; font-weight:700; color:var(--text); }
+  .ss-desc  { font-size:9.5px; color:var(--text-muted); margin-top:1px; line-height:1.4; }
+  .ss-checks { display:flex; gap:4px; flex-wrap:wrap; margin-top:3px; }
+  .ss-ck {
+    padding:2px 6px; border-radius:4px; font-size:8px; font-weight:600;
+    background:var(--accent-glow); color:var(--accent); border:1px solid rgba(232,88,12,0.15);
+  }
+  .sbs-branch { display:flex; gap:5px; justify-content:center; }
+  .sbs-result {
+    width:100%; padding:10px 12px; border-radius:10px;
+    border:1.5px solid rgba(24,163,74,0.3);
+    background:rgba(24,163,74,0.04); text-align:left;
+  }
+  .s.on .sbs-result { animation: up 0.55s cubic-bezier(0.22,1,0.36,1) forwards, glow 2.5s ease 1.4s infinite; opacity:0; }
+  .sr-label { font-size:9px; font-weight:700; color:var(--success); letter-spacing:0.04em; margin-bottom:4px; }
+  .sr-text  { font-size:11px; color:#166534; line-height:1.5; font-style:italic; }
+  .sr-tag   { font-size:9px; color:var(--success); font-weight:600; margin-top:4px; }
+
+  /* ══ S7a: DC — What It Does ══ */
+  .dc-mem {
+    width:92%; padding:10px 12px; border-radius:10px;
+    border:1.5px solid; text-align:left;
+  }
+  .dc-mem-label { font-size:9px; font-weight:700; letter-spacing:0.05em; margin-bottom:3px; }
+  .dc-mem-text  { font-size:11px; line-height:1.45; font-style:italic; }
+  .dc-short { border-color:#93C5FD; background:#EFF6FF; }
+  .dc-short .dc-mem-label { color:#1E40AF; }
+  .dc-short .dc-mem-text  { color:#1E3A5F; }
+  .dc-long  { border-color:#C4B5FD; background:#FAF5FF; }
+  .dc-long .dc-mem-label { color:#5B21B6; }
+  .dc-long .dc-mem-text  { color:#3B1D8E; }
+  /* slide-in from sides */
+  .dc-slide-l { opacity:0; transform:translateX(-24px); }
+  .dc-slide-r { opacity:0; transform:translateX(24px); }
+  .s.on .dc-slide-l { animation: slideL 0.5s cubic-bezier(0.22,1,0.36,1) forwards; }
+  .s.on .dc-slide-r { animation: slideR 0.5s cubic-bezier(0.22,1,0.36,1) forwards; }
+  /* clash badge */
+  .dc-clash {
+    padding:8px 16px; border-radius:var(--r-pill);
+    background:#FEF2F2; border:1.5px solid #FCA5A5;
+    font-size:12px; font-weight:700; color:#DC2626;
+    letter-spacing:0.02em;
+    opacity:0; transform:scale(0);
+  }
+  .s.on .dc-clash { animation: clash 0.5s cubic-bezier(0.22,1,0.36,1) forwards; }
+  /* challenge response */
+  .dc-challenge {
+    width:92%; padding:10px 12px; border-radius:10px;
+    border:1.5px solid rgba(24,163,74,0.3);
+    background:rgba(24,163,74,0.04); text-align:left;
+  }
+  .dc-ch-label { font-size:9px; font-weight:700; color:var(--success); letter-spacing:0.04em; margin-bottom:3px; }
+  .dc-ch-text  { font-size:11px; color:#166534; line-height:1.5; }
+  .dc-punch {
+    font-family:'Instrument Serif',Georgia,serif;
+    font-style:italic; font-size:clamp(13px,3.2vw,16px);
+    color:var(--text); margin-top:12px;
+  }
+
+  /* ══ S7b: DC — How (Routing) ══ */
+  .dc-router { display:flex; gap:6px; justify-content:center; width:92%; }
+  .dc-tier {
+    flex:1; padding:8px 6px; border-radius:9px;
+    border:1.5px solid var(--border); background:var(--card);
+    text-align:center;
+  }
+  .dc-tier-icon { font-size:18px; margin-bottom:3px; }
+  .dc-tier-name { font-size:10px; font-weight:700; color:var(--text); }
+  .dc-tier-trig { font-size:8px; color:var(--text-muted); margin-top:2px; }
+  .dc-tier-llm  { font-size:8px; font-weight:600; color:var(--text-light); margin-top:3px; }
+  .dc-tier.active {
+    border-color:var(--indigo); background:var(--indigo-glow);
+    box-shadow:0 0 12px rgba(91,91,214,0.15);
+  }
+  .dc-tier.active .dc-tier-name { color:var(--indigo); }
+  .s.on .dc-tier.active { animation: up 0.55s cubic-bezier(0.22,1,0.36,1) forwards 0.45s, glow 2.5s ease 1.2s infinite; opacity:0; }
+  /* parallel cards */
+  .dc-par { display:flex; gap:6px; width:92%; }
+  .dc-par-card {
+    flex:1; padding:8px; border-radius:8px;
+    border:1px solid; text-align:center;
+    font-size:9px; font-weight:600;
+  }
+  .dc-par-ic { font-size:16px; margin-bottom:3px; }
+  .dc-par-title { font-weight:700; font-size:10px; margin-bottom:2px; }
+  .dc-par-items { font-size:8.5px; color:var(--text-muted); line-height:1.4; }
+  .dpc-present { border-color:rgba(232,88,12,0.2); background:rgba(232,88,12,0.04); }
+  .dpc-present .dc-par-title { color:var(--accent); }
+  .dpc-memory  { border-color:rgba(91,91,214,0.2); background:rgba(91,91,214,0.04); }
+  .dpc-memory .dc-par-title { color:var(--indigo); }
+  /* merge card */
+  .dc-merge {
+    width:80%; padding:8px 10px; border-radius:8px;
+    border:1.5px solid var(--border); background:var(--surface);
+    text-align:center;
+  }
+  .dc-merge-items { display:flex; gap:4px; justify-content:center; flex-wrap:wrap; }
+  .dc-merge-tag {
+    padding:2px 7px; border-radius:4px; font-size:8px; font-weight:600;
+  }
+  .dmt-strat { background:var(--indigo-glow); color:var(--indigo); border:1px solid rgba(91,91,214,0.2); }
+  .dmt-tone  { background:var(--teal-glow); color:var(--teal); border:1px solid rgba(13,148,136,0.2); }
+  .dmt-tension { background:#FEF3C7; color:#B45309; border:1px solid #FDE68A; }
+  .dc-out { border-color:rgba(24,163,74,0.25); background:rgba(24,163,74,0.04); }
+  .dc-out .dc-icon  { background:rgba(24,163,74,0.1); }
+  .dc-out .dc-label { color:var(--success); }
+  .dc-out .dc-text  { color:#166534; }
+
+  /* S8: Actions */
+  .act-pipe { width:100%; display:flex; flex-direction:column; align-items:center; margin-top:10px; }
+  .act-node {
+    width:88%; padding:9px 12px; border-radius:9px;
+    display:flex; align-items:center; gap:9px;
+    background:var(--card); border:1px solid var(--border);
+    font-size:12px; font-weight:500; color:var(--text); text-align:left;
+  }
+  .act-ic {
+    width:30px; height:30px; border-radius:8px;
+    display:flex; align-items:center; justify-content:center;
+    font-size:14px; flex-shrink:0;
+  }
+  .ai-b .act-ic { background:#EFF6FF; }
+  .ai-p .act-ic { background:#FAF5FF; }
+  .ai-g .act-ic { background:#F0FDF4; }
+  .ai-o .act-ic { background:#FFF7ED; }
+  .pipe {
+    width:2px; height:16px; margin:0 auto;
+    background: linear-gradient(to bottom, var(--border), rgba(91,91,214,0.4));
+    border-radius:1px;
+  }
+
+  /* S9: Architecture — THE WOW SLIDE */
+  .arch {
+    width:100%; display:flex; flex-direction:column;
+    align-items:center; margin-top:8px;
+  }
+  .arch-chip {
+    padding:6px 12px; border-radius:7px;
+    font-size:10px; font-weight:600;
+    border:1px solid; display:inline-flex; align-items:center; gap:4px;
+  }
+  .ac-dark   { background:var(--bg-dark); border-color:#333; color:#fff; padding:8px 18px; font-size:12px; }
+  .ac-chan    { background:var(--card); border-color:var(--border); color:var(--text-muted); }
+  .ac-out    { background:#F0FDF4; border-color:#86EFAC; color:#166534; padding:8px 16px; font-size:11px; }
+  .ar { display:flex; gap:5px; justify-content:center; flex-wrap:wrap; }
+  .al {
+    width: 2px; height: 22px; margin: 0 auto;
+    background: linear-gradient(to bottom, var(--accent), var(--indigo));
+    border-radius: 1px;
+    position: relative;
+  }
+  .al::after {
+    content:''; position:absolute; bottom:-5px; left:-3px;
+    border-left:4px solid transparent; border-right:4px solid transparent;
+    border-top:5px solid var(--indigo);
+  }
+
+  /* the core box — impressive with glow */
+  .arch-core {
+    width: 92%; padding: 14px 12px;
+    border-radius: var(--r-lg);
+    background: linear-gradient(135deg, #13132B 0%, #1A1A3E 100%);
+    position: relative; z-index: 0;
+    display: flex; flex-direction: column; align-items: center;
+    gap: 8px;
+    overflow: hidden;
+    border: 1.5px solid rgba(232,88,12,0.3);
+    box-shadow: 0 4px 24px rgba(0,0,0,0.08), 0 0 0 1px rgba(91,91,214,0.1);
+  }
+  /* core box: custom animation — no .a class to avoid conflicts */
+  .a-core { opacity: 0; transform: translateY(16px); }
+  .s.on .a-core {
+    animation:
+      up 0.55s cubic-bezier(0.22,1,0.36,1) 0.50s forwards,
+      glow 3s ease 1.2s infinite;
+  }
+  .arch-core::before {
+    content:''; position:absolute; inset:0;
+    border-radius: var(--r-lg);
+    background: conic-gradient(from 45deg, rgba(232,88,12,0.08), rgba(91,91,214,0.08), rgba(13,148,136,0.08), rgba(232,88,12,0.08));
+  }
+  .arch-core-title { color:#fff; font-size:14px; font-weight:700; letter-spacing:-0.02em; }
+  .arch-core-chips {
+    display: flex; gap: 5px; flex-wrap: wrap;
+    justify-content: center;
+  }
+  .acc {
+    padding:5px 9px; border-radius:6px;
+    font-size:9px; font-weight:600;
+    border:1px solid;
+    letter-spacing:0.02em;
+  }
+  .acc-sbs  { background:rgba(232,88,12,0.12); border-color:rgba(232,88,12,0.25); color:#E8580C; }
+  .acc-dc   { background:rgba(91,91,214,0.12); border-color:rgba(91,91,214,0.25); color:#5B5BD6; }
+  .acc-tc   { background:rgba(13,148,136,0.12); border-color:rgba(13,148,136,0.25); color:#0D9488; }
+  .acc-mr   { background:rgba(255,255,255,0.08); border-color:rgba(255,255,255,0.15); color:rgba(255,255,255,0.6); }
+
+  .arch-mem-row {
+    display:flex; gap:5px; justify-content:center;
+  }
+  .amr {
+    padding:4px 8px; border-radius:5px;
+    font-size:9px; font-weight:600; border:1px solid;
+  }
+  .amr-vec { background:#EFF6FF; border-color:#BFDBFE; color:#1E40AF; }
+  .amr-gra { background:#FAF5FF; border-color:#DDD6FE; color:#6D28D9; }
+  .amr-fts { background:#F0FDF4; border-color:#BBF7D0; color:#15803D; }
+  .amr-tool { background:#FFF7ED; border-color:#FED7AA; color:#9A3412; }
+
+  /* S10: Progress */
+  .prog-list { width:100%; display:flex; flex-direction:column; gap:6px; text-align:left; margin-top:14px; }
+  .pr {
+    display:flex; align-items:center; gap:8px;
+    padding:8px 10px; border-radius:9px;
+    background:var(--card); border:1px solid var(--border);
+  }
+  .pi {
+    width:24px; height:24px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    font-size:11px; flex-shrink:0;
+  }
+  .pid { background:#DCFCE7; }
+  .piw { background:#FEF3C7; }
+  .pin { background:var(--surface); }
+  .pt { font-size:11.5px; font-weight:500; color:var(--text); }
+  .pt.mu { color:var(--text-light); }
+
+  /* S11: Vision (dark) */
+  .vis-orb {
+    width:100px; height:100px; border-radius:50%;
+    position:relative;
+    display:flex; align-items:center; justify-content:center;
+    margin-bottom:24px;
+  }
+  .vis-orb::before {
+    content:''; position:absolute; inset:0;
+    border-radius:50%;
+    background:radial-gradient(circle, var(--accent) 0%, var(--indigo) 60%, transparent 70%);
+    opacity:0.2; animation: breathe 3s ease infinite;
+  }
+  .vis-orb::after {
+    content:''; position:absolute;
+    width:150%; height:150%; border-radius:50%;
+    border:1px solid rgba(255,255,255,0.06);
+    animation: ringPulse 3s ease infinite;
+  }
+  .vis-orb .ve { font-size:40px; position:relative; z-index:1; }
+  .vis-div { width:30px; height:1.5px; background:rgba(255,255,255,0.12); margin:16px auto; }
+
+  /* S12: CTA */
+  .oss-bdg {
+    padding:6px 12px; border-radius:var(--r-pill);
+    background:var(--surface); border:1px solid var(--border);
+    font-size:10px; font-weight:600; color:var(--text-muted);
+    display:flex; align-items:center; gap:4px;
+    margin-bottom:20px;
+  }
+  .cta-name {
+    font-size:clamp(40px,10vw,48px); font-weight:900;
+    letter-spacing:-0.05em; line-height:1;
+    background:linear-gradient(135deg, var(--accent), var(--indigo));
+    -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;
+  }
+  .gh {
+    display:flex; align-items:center; gap:8px;
+    padding:11px 20px; border-radius:var(--r);
+    background:var(--bg-dark); color:#fff;
+    font-size:13px; font-weight:600;
+    box-shadow:0 2px 10px rgba(0,0,0,0.1);
+    margin-top:18px;
+  }
+  .gh svg { width:18px; height:18px; fill:#fff; }
+  .handle { font-size:12px; color:var(--accent); font-weight:600; margin-top:10px; }
+
+  /* nav */
+  .nav-h {
+    position:absolute; bottom:30px;
+    left:0; right:0; text-align:center;
+    font-size:10px; color:var(--text-light);
+    z-index:100; pointer-events:none;
+    letter-spacing:0.04em;
+    transition:opacity 0.3s;
+  }
+  .nav-dk { color:rgba(255,255,255,0.15); }
+</style>
+</head>
+<body>
+<div class="grain"></div>
+<div class="frame" id="F">
+
+  <div class="timer-bar" id="TB">
+    <div class="timer-track"><div class="timer-fill" id="TF"></div></div>
+    <span class="timer-text" id="TT">3:00</span>
+  </div>
+
+  <div class="slides">
+
+    <!-- S0 — START (dark) -->
+    <section class="s s-dark on" data-i="0">
+      <div class="s0-orb a a1"><svg viewBox="0 0 24 24"><polygon points="9.5,7 17,12 9.5,17"/></svg></div>
+      <div class="s0-title a a2">Synapse</div>
+      <div class="s0-sub a a3">The <span class="sr">nervous system</span> for AI</div>
+      <div class="sp-32"></div>
+      <div class="s0-cue a a4">TAP TO BEGIN</div>
+    </section>
+
+    <!-- S1 — PAIN POINT (dark) -->
+    <section class="s s-dark" data-i="1">
+      <div class="pain-num a a1">1,000+</div>
+      <div class="pain-unit a a2">conversations with your AI</div>
+      <div class="pain-line a a3"></div>
+      <div class="pain-text a a4">It still talks to you<br>like a <span class="ac">stranger.</span></div>
+      <div class="sp-12"></div>
+      <div class="pain-sub a a5">No memory of your jokes. No clue<br>about your sarcasm. Zero personality.</div>
+    </section>
+
+    <!-- S2 — WHAT IF -->
+    <section class="s" data-i="2">
+      <div class="tag a a1">Imagine</div>
+      <div class="hm a a2">What if your AI<br><span class="sr" style="font-weight:400;">actually knew you?</span></div>
+      <div class="sp-12"></div>
+      <div class="whatif-card a a3">
+        <span class="wf-icon">🧠</span>
+        <span class="wf-text"><strong>Remembered</strong> that you hate mornings and never schedules 9am calls</span>
+      </div>
+      <div class="sp-6"></div>
+      <div class="whatif-card a a4">
+        <span class="wf-icon">😏</span>
+        <span class="wf-text"><strong>Got your sarcasm</strong> and played along instead of taking it literally</span>
+      </div>
+      <div class="sp-6"></div>
+      <div class="whatif-card a a5">
+        <span class="wf-icon">🔍</span>
+        <span class="wf-text"><strong>Searched LinkedIn</strong> for jobs matching your resume while you slept</span>
+      </div>
+      <div class="sp-6"></div>
+      <div class="whatif-card a a6">
+        <span class="wf-icon">🤔</span>
+        <span class="wf-text"><strong>Challenged you</strong> when you contradicted yourself instead of just agreeing</span>
+      </div>
+      <div class="sp-16"></div>
+      <div class="hs a a7" style="font-weight:500;">This isn't science fiction.<br><span class="ac" style="font-weight:700;">We're building it.</span></div>
+    </section>
+
+    <!-- S3 — CHATGPT vs SYNAPSE -->
+    <section class="s" data-i="3">
+      <div class="tag a a1">The Difference</div>
+      <div class="hm a a2" style="font-size:clamp(19px,4.4vw,24px);">Same question.<br><span class="sr" style="font-weight:400;">Different intelligence.</span></div>
+      <div class="sp-10"></div>
+      <div class="vs-row">
+        <div class="vs-card vs-generic a a3">
+          <div class="vs-card-label">Generic AI</div>
+          <div class="vs-card-q">You: "that meeting was insane lol"</div>
+          <div class="vs-card-a">"I'm glad you found the meeting eventful! Would you like me to help you summarize the key takeaways?"</div>
+          <div class="sp-6"></div>
+          <div class="vs-badge vs-badge-bad">Robotic</div>
+        </div>
+        <div class="vs-card vs-synapse a a4">
+          <div class="vs-card-label">Synapse</div>
+          <div class="vs-card-q">You: "that meeting was insane lol"</div>
+          <div class="vs-card-a">"haha no way — what did your manager even say?? I bet it was the Q3 thing again 💀"</div>
+          <div class="sp-6"></div>
+          <div class="vs-badge vs-badge-good">Natural</div>
+        </div>
+      </div>
+      <div class="sp-14"></div>
+      <div class="bds a a5" style="max-width:260px;">Same LLM under the hood. The difference<br>is the <strong style="color:var(--accent);">architecture around it.</strong></div>
+    </section>
+
+    <!-- S4 — PROBLEM (brain needs body) -->
+    <section class="s" data-i="4">
+      <div class="tag a a1">The Problem</div>
+      <div class="hm a a2">The most powerful brain<br>in history</div>
+      <div class="sp-4"></div>
+      <div class="bd a a3">with none of these:</div>
+      <div class="miss-grid">
+        <div class="miss-card a a3"><span class="ic">👐</span><span class="nm">Hands</span></div>
+        <div class="miss-card a a4"><span class="ic">👁️</span><span class="nm">Eyes</span></div>
+        <div class="miss-card a a5"><span class="ic">🛠️</span><span class="nm">Tools</span></div>
+        <div class="miss-card a a6"><span class="ic">🦿</span><span class="nm">Body</span></div>
+      </div>
+      <div class="sp-20"></div>
+      <div class="punch a a7">The brain is more than capable.<br>It just needs a <span class="ac">body.</span></div>
+    </section>
+
+    <!-- S5 — MEET SYNAPSE -->
+    <section class="s" data-i="5">
+      <div class="tag a a1">Introducing</div>
+      <div class="syn-name">Synapse</div>
+      <svg class="nerve-svg a a3" viewBox="0 0 300 28">
+        <path class="nerve-path" d="M8,14 C55,2 100,26 150,14 C200,2 245,26 292,14"/>
+        <circle class="nerve-dot nd1" cx="8" cy="14" r="4.5"/>
+        <circle class="nerve-dot nd2" cx="150" cy="14" r="4.5"/>
+        <circle class="nerve-dot nd3" cx="292" cy="14" r="4.5"/>
+      </svg>
+      <div class="hs a a4" style="font-weight:500;">The nervous system<br>for artificial intelligence</div>
+      <div class="sp-12"></div>
+      <div class="bd a a5" style="max-width:260px;">
+        We connect the brain to the world.<br>Eyes to see. Hands to act.<br>
+        <span class="sr" style="color:var(--text);">Memory to grow.</span>
+      </div>
+    </section>
+
+    <!-- S6 — MODEL AGNOSTIC -->
+    <section class="s" data-i="6">
+      <div class="tag a a1">Core Principle</div>
+      <div class="hl a a2">One body.<br><span class="sr" style="font-weight:400;">Any brain.</span></div>
+      <div class="funnel">
+        <div class="sp-12"></div>
+        <div class="chips a a3">
+          <span class="chip c-gpt">GPT-4o</span>
+          <span class="chip c-cl">Claude</span>
+          <span class="chip c-gem">Gemini</span>
+          <span class="chip c-ll">Llama</span>
+        </div>
+        <svg class="funnel-svg a a4" viewBox="0 0 320 44">
+          <!-- GPT line: top-left to center-bottom -->
+          <path class="funnel-line fl-gpt fl1" d="M50,2 Q50,20 160,42"/>
+          <!-- Claude line -->
+          <path class="funnel-line fl-cl fl2" d="M120,2 Q120,22 160,42"/>
+          <!-- Gemini line -->
+          <path class="funnel-line fl-gem fl3" d="M200,2 Q200,22 160,42"/>
+          <!-- Llama line -->
+          <path class="funnel-line fl-ll fl4" d="M270,2 Q270,20 160,42"/>
+          <!-- convergence dot -->
+          <circle class="funnel-dot" cx="160" cy="42" r="4"/>
+        </svg>
+        <div class="core-tag a a5">⚡ SYNAPSE</div>
+        <div class="sp-6"></div>
+        <div class="conn a a6"></div>
+        <div class="sp-6"></div>
+        <div class="out-pill a a7"><span class="ck">✓</span> Same quality output</div>
+      </div>
+      <div class="sp-12"></div>
+      <div class="bds a a8">Switch models freely. The architecture ensures consistent results.</div>
+    </section>
+
+    <!-- S5 — SELF-EVOLVING MEMORY -->
+    <section class="s" data-i="7">
+      <div class="tag a a1">Self-Evolving</div>
+      <div class="hm a a2">It learns from you.<br><span class="sr" style="font-weight:400;">Automatically.</span></div>
+      <div class="sp-10"></div>
+      <div class="chat-bub a a3">"Hey, <span class="hi">remember this</span> — my mom's birthday is March 12th. <span class="hi">Very important.</span>"</div>
+      <div class="sp-8"></div>
+      <div class="det-pill a a4">⚡ Importance detected</div>
+      <div class="sp-4"></div>
+      <div class="conn a a5"></div>
+      <div class="sp-4"></div>
+      <div class="mem-row">
+        <div class="mem-card mg a a6"><span class="mi">📁</span><span class="ml">General</span><span class="md">Everyday chats</span></div>
+        <div class="mem-card mp a a7"><span class="mi">⭐</span><span class="ml">Priority</span><span class="md">Auto-created table</span></div>
+      </div>
+      <div class="ev-tag a a8">✦ Schema evolves from your words — no config needed</div>
+    </section>
+
+    <!-- S6 — SBS: WHAT IT DOES -->
+    <section class="s" data-i="8">
+      <div class="tag a a1" style="color:var(--accent);">Soul-Brain Sync</div>
+      <div class="hm a a2">It learns how you talk.<br><span class="sr" style="font-weight:400;">Like a real friend.</span></div>
+      <div class="sp-10"></div>
+      <div class="sbs-feat a a3">
+        <span class="sf-icon">🗣️</span>
+        <div class="sf-body"><div class="sf-title">Your slangs & lingo</div><div class="sf-desc">"no cap", "lowkey", "it's giving" — it picks them up</div></div>
+      </div>
+      <div class="sp-6"></div>
+      <div class="sbs-feat a a4">
+        <span class="sf-icon">😏</span>
+        <div class="sf-body"><div class="sf-title">Your sarcasm style</div><div class="sf-desc">Detects dry humor, plays along, never takes it literally</div></div>
+      </div>
+      <div class="sp-6"></div>
+      <div class="sbs-feat a a5">
+        <span class="sf-icon">🤣</span>
+        <div class="sf-body"><div class="sf-title">Inside jokes</div><div class="sf-desc">Remembers context from weeks ago and references it</div></div>
+      </div>
+      <div class="sp-6"></div>
+      <div class="sbs-feat a a6">
+        <span class="sf-icon">💬</span>
+        <div class="sf-body"><div class="sf-title">Your rhythm</div><div class="sf-desc">Short or verbose, emojis or none — mirrors how YOU text</div></div>
+      </div>
+      <div class="sp-12"></div>
+      <div class="sbs-punch a a7">Not a chatbot. A friend that actually gets you.</div>
+    </section>
+
+    <!-- S7 — SBS: HOW IT WORKS (Animated Pipeline) -->
+    <section class="s" data-i="9">
+      <div class="tag a a1" style="color:var(--accent);">How SBS Works</div>
+      <div class="hs a a2" style="font-weight:700;">The engine behind <span class="sr" style="font-weight:400;">your AI twin.</span></div>
+      <div class="sbs-pipe">
+        <div class="sp-6"></div>
+        <div class="sbs-step a a3">
+          <span class="ss-ic">💬</span>
+          <div class="ss-body"><div class="ss-title">You send a message</div><div class="ss-desc">"lmao that meeting was wild"</div></div>
+        </div>
+        <div class="al a a3"></div>
+        <div class="sbs-step a a4">
+          <span class="ss-ic">🔍</span>
+          <div class="ss-body"><div class="ss-title">Realtime Analyzer</div><div class="ss-desc">Detects: casual tone, slang, humor, short-form</div></div>
+        </div>
+        <div class="al a a4"></div>
+        <div class="sbs-step a a5">
+          <span class="ss-ic">📊</span>
+          <div class="ss-body">
+            <div class="ss-title">8-Layer Profile Update</div>
+            <div class="ss-checks"><span class="ss-ck">linguistic</span><span class="ss-ck">emotional</span><span class="ss-ck">vocabulary</span><span class="ss-ck">interaction</span></div>
+          </div>
+        </div>
+        <div class="al a a5"></div>
+        <div class="sbs-step a a6">
+          <span class="ss-ic">📝</span>
+          <div class="ss-body"><div class="ss-title">Prompt Compiler</div><div class="ss-desc">Builds persona-rich prompt → sends to ANY LLM</div></div>
+        </div>
+        <div class="al a a6"></div>
+        <div class="sbs-branch a a7">
+          <span class="chip c-gpt" style="font-size:9px;padding:4px 8px;">GPT</span>
+          <span class="chip c-cl" style="font-size:9px;padding:4px 8px;">Claude</span>
+          <span class="chip c-gem" style="font-size:9px;padding:4px 8px;">Gemini</span>
+          <span class="chip c-ll" style="font-size:9px;padding:4px 8px;">Llama</span>
+        </div>
+        <div class="al a a7"></div>
+        <div class="sbs-result a a8">
+          <div class="sr-label">HYPER-PERSONALIZED REPLY</div>
+          <div class="sr-text">"haha no way, that meeting was UNHINGED — what did your manager even say?? 💀"</div>
+          <div class="sr-tag">Sounds like YOU, not a bot.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- S8 — DC: WHAT IT DOES -->
+    <section class="s" data-i="10">
+      <div class="tag a a1" style="color:var(--indigo);">Dual Cognition Engine</div>
+      <div class="hm a a2">It remembers.<br><span class="sr" style="font-weight:400;">It questions. It thinks.</span></div>
+      <div class="sp-10"></div>
+      <div class="dc-mem dc-short dc-slide-l" style="animation-delay:0.3s;">
+        <div class="dc-mem-label">📋 SHORT-TERM MEMORY</div>
+        <div class="dc-mem-text">"You just said you're happy at your current job."</div>
+      </div>
+      <div class="sp-8"></div>
+      <div class="dc-mem dc-long dc-slide-r" style="animation-delay:0.55s;">
+        <div class="dc-mem-label">🗄️ LONG-TERM MEMORY</div>
+        <div class="dc-mem-text">"3 months ago you said you wanted to switch careers."</div>
+      </div>
+      <div class="sp-12"></div>
+      <div class="dc-clash" style="animation-delay:0.85s;">⚡ CONTRADICTION DETECTED</div>
+      <div class="sp-10"></div>
+      <div class="dc-challenge a a7">
+        <div class="dc-ch-label">🧠 INSTEAD OF JUST AGREEING:</div>
+        <div class="dc-ch-text">"Wait — last time you said you were happy here. What changed? Let's figure this out together."</div>
+      </div>
+      <div class="sp-10"></div>
+      <div class="dc-punch a a8">A friend that holds you accountable.</div>
+    </section>
+
+    <!-- S9 — DC: HOW IT WORKS (3-Tier Routing) -->
+    <section class="s" data-i="11">
+      <div class="tag a a1" style="color:var(--indigo);">How Dual Cognition Works</div>
+      <div class="hs a a2" style="font-weight:700;">Three depths of <span class="sr" style="font-weight:400;">thinking.</span></div>
+      <div class="sp-6"></div>
+      <div class="chat-bub a a3" style="font-size:11px;">"I think I should quit my job."</div>
+      <div class="al a a3"></div>
+      <div class="dc-router a a4">
+        <div class="dc-tier">
+          <div class="dc-tier-icon">⚡</div>
+          <div class="dc-tier-name">FAST</div>
+          <div class="dc-tier-trig">"hi", "ok"</div>
+          <div class="dc-tier-llm">0 LLM calls</div>
+        </div>
+        <div class="dc-tier">
+          <div class="dc-tier-icon">🔄</div>
+          <div class="dc-tier-name">STANDARD</div>
+          <div class="dc-tier-trig">normal chat</div>
+          <div class="dc-tier-llm">2 LLM calls</div>
+        </div>
+        <div class="dc-tier active">
+          <div class="dc-tier-icon">🧠</div>
+          <div class="dc-tier-name">DEEP</div>
+          <div class="dc-tier-trig">emotional, complex</div>
+          <div class="dc-tier-llm">3 LLM calls</div>
+        </div>
+      </div>
+      <div class="al a a5"></div>
+      <div class="dc-par a a6">
+        <div class="dc-par-card dpc-present">
+          <div class="dc-par-ic">🔍</div>
+          <div class="dc-par-title">Analyze Present</div>
+          <div class="dc-par-items">intent, emotion,<br>sentiment, pattern</div>
+        </div>
+        <div class="dc-par-card dpc-memory">
+          <div class="dc-par-ic">🗄️</div>
+          <div class="dc-par-title">Recall Memory</div>
+          <div class="dc-par-items">facts, graph,<br>contradictions</div>
+        </div>
+      </div>
+      <div class="al a a7"></div>
+      <div class="dc-merge a a8">
+        <div class="dc-merge-items">
+          <span class="dc-merge-tag dmt-strat">challenge</span>
+          <span class="dc-merge-tag dmt-tone">warm</span>
+          <span class="dc-merge-tag dmt-tension">high tension</span>
+        </div>
+      </div>
+      <div class="al a a8"></div>
+      <div class="arch-chip ac-out a a9">✨ Considered response</div>
+      <div class="sp-8"></div>
+      <div class="bds a a10">Instant for small talk. Deep reasoning for what matters.</div>
+    </section>
+
+    <!-- S10 — ACTIONS -->
+    <section class="s" data-i="12">
+      <div class="tag a a1">Real Actions</div>
+      <div class="hm a a2">It doesn't just think.<br>It <span class="ac">acts.</span></div>
+      <div class="sp-6"></div>
+      <div class="chat-bub a a3" style="font-size:12px;">"Find me jobs on LinkedIn that match my resume"</div>
+      <div class="act-pipe">
+        <div class="pipe a a4"></div>
+        <div class="act-node ai-b a a4"><span class="act-ic">📄</span><span>Reads & analyzes your resume</span></div>
+        <div class="pipe a a5"></div>
+        <div class="act-node ai-p a a5"><span class="act-ic">🔍</span><span>Searches LinkedIn & the web</span></div>
+        <div class="pipe a a6"></div>
+        <div class="act-node ai-g a a6"><span class="act-ic">🎯</span><span>Matches & ranks opportunities</span></div>
+        <div class="pipe a a7"></div>
+        <div class="act-node ai-o a a7"><span class="act-ic">💾</span><span>Saves results to your desktop</span></div>
+      </div>
+    </section>
+
+    <!-- S11 — ARCHITECTURE (THE WOW SLIDE) -->
+    <section class="s" data-i="13">
+      <div class="tag a a1">The Architecture</div>
+      <div class="hm a a2" style="font-size:clamp(18px,4.2vw,22px);">How it all connects</div>
+      <div class="arch">
+        <div class="sp-6"></div>
+        <!-- You -->
+        <div class="arch-chip ac-dark a a3">👤 You</div>
+        <div class="al a a3"></div>
+        <!-- Channels -->
+        <div class="ar a a4">
+          <span class="arch-chip ac-chan">💬 Chat</span>
+          <span class="arch-chip ac-chan">📱 WhatsApp</span>
+          <span class="arch-chip ac-chan">🌐 Web</span>
+        </div>
+        <div class="al a a4"></div>
+        <!-- CORE — the impressive part -->
+        <div class="arch-core a-core">
+          <div class="arch-core-title">⚡ Synapse Core</div>
+          <div class="arch-core-chips">
+            <span class="acc acc-sbs">SBS Persona</span>
+            <span class="acc acc-dc">Dual Cognition</span>
+            <span class="acc acc-tc">Traffic Cop</span>
+            <span class="acc acc-mr">Model Router</span>
+          </div>
+        </div>
+        <div class="al a a6"></div>
+        <!-- Memory layer -->
+        <div class="arch-mem-row a a7">
+          <span class="amr amr-vec">Vector DB</span>
+          <span class="amr amr-gra">Knowledge Graph</span>
+          <span class="amr amr-fts">Full-Text</span>
+        </div>
+        <div class="al a a7"></div>
+        <!-- Tools -->
+        <div class="ar a a8">
+          <span class="amr amr-tool">🔧 Tools</span>
+          <span class="amr amr-tool">🌍 Web</span>
+          <span class="amr amr-tool">📧 Email</span>
+          <span class="amr amr-tool">📋 Files</span>
+        </div>
+        <div class="al a a8"></div>
+        <!-- Output -->
+        <div class="arch-chip ac-out a a9">✅ Actions & Output</div>
+      </div>
+    </section>
+
+    <!-- S12 — PROGRESS -->
+    <section class="s" data-i="14">
+      <div class="tag a a1">Progress</div>
+      <div class="hm a a2">How close are we?</div>
+      <div class="prog-list">
+        <div class="pr a a3"><span class="pi pid">✅</span><span class="pt">Multi-channel messaging</span></div>
+        <div class="pr a a3"><span class="pi pid">✅</span><span class="pt">Hybrid memory (vector + graph)</span></div>
+        <div class="pr a a4"><span class="pi pid">✅</span><span class="pt">Intelligent model routing</span></div>
+        <div class="pr a a5"><span class="pi pid">✅</span><span class="pt">Soul-Brain Sync persona engine</span></div>
+        <div class="pr a a6"><span class="pi pid">✅</span><span class="pt">Dual Cognition engine</span></div>
+        <div class="pr a a7"><span class="pi pid">✅</span><span class="pt">Voice processing pipeline</span></div>
+        <div class="pr a a8"><span class="pi piw">🔨</span><span class="pt">Tool execution framework</span></div>
+        <div class="pr a a9"><span class="pi piw">🔨</span><span class="pt">Self-evolving schema</span></div>
+        <div class="pr a a10"><span class="pi pin">⏳</span><span class="pt mu">Autonomous web actions</span></div>
+      </div>
+      <div class="sp-12"></div>
+      <div class="hs a a11"><span class="sr" style="font-weight:400;">Closer than you think.</span></div>
+    </section>
+
+    <!-- S13 — VISION (dark) -->
+    <section class="s s-dark" data-i="15">
+      <div class="vis-orb a a1"><span class="ve">🧠</span></div>
+      <div class="hx wh a a2">We're not building<br>another AI.</div>
+      <div class="vis-div a a3"></div>
+      <div class="hl a a4" style="color:#fff;">We're building<br><span class="ac">the body</span><br>AI deserves.</div>
+      <div class="sp-20"></div>
+      <div class="bd a a5" style="color:rgba(255,255,255,0.3);">Open source. Model agnostic. Self-evolving.</div>
+    </section>
+
+    <!-- S16 — CTA -->
+    <section class="s" data-i="16">
+      <div class="oss-bdg a a1"><span>🔓</span> 100% Open Source</div>
+      <div class="cta-name a a2">Synapse</div>
+      <div class="sp-10"></div>
+      <div class="bd a a3">Built in public.<br><span class="sr" style="color:var(--text);">By builders, for builders.</span></div>
+      <div class="gh a a4">
+        <svg viewBox="0 0 24 24"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+        Star on GitHub
+      </div>
+      <div class="handle a a5">@synapse-oss</div>
+      <div class="sp-16"></div>
+      <div class="bds a a6" style="color:var(--text-light);">The future of AI needs a body. We're building it.</div>
+    </section>
+
+  </div>
+
+  <div class="dots" id="D"></div>
+  <div class="nav-h" id="NH">tap to continue</div>
+
+</div>
+
+<script>
+(function(){
+  const ss = document.querySelectorAll('.s');
+  const N  = ss.length;
+  const F  = document.getElementById('F');
+  const TB = document.getElementById('TB');
+  const TF = document.getElementById('TF');
+  const TT = document.getElementById('TT');
+  const NH = document.getElementById('NH');
+  const D  = document.getElementById('D');
+
+  let cur = 0, ti = null, el = 0;
+  const LIM = 180;
+
+  // dots (skip s0)
+  for(let i=1;i<N;i++){
+    const d=document.createElement('div');
+    d.className='dt'; d.dataset.i=i; D.appendChild(d);
+  }
+
+  function syncDots(){
+    D.querySelectorAll('.dt').forEach(d=>{
+      const i=+d.dataset.i;
+      d.className='dt';
+      if(i===cur) d.classList.add('on');
+      else if(i<cur) d.classList.add('dn');
+    });
+  }
+
+  function tick(){
+    el++;
+    const r=Math.max(0,LIM-el);
+    const m=Math.floor(r/60), s=r%60;
+    TT.textContent=m+':'+String(s).padStart(2,'0');
+    TF.style.width=(el/LIM*100)+'%';
+    TF.classList.remove('tw','td'); TT.classList.remove('td');
+    if(r<=30){TF.classList.add('td');TT.classList.add('td');}
+    else if(r<=60){TF.classList.add('tw');}
+    if(r===0){clearInterval(ti);TT.style.animation='blink 0.5s ease infinite';}
+  }
+
+  function go(n){
+    if(n<0||n>=N) return;
+    if(cur===0&&n===1){TB.classList.add('on');ti=setInterval(tick,1000);}
+
+    ss[cur].classList.remove('on');
+    cur=n;
+    ss[cur].classList.add('on');
+
+    const dk=ss[cur].classList.contains('s-dark');
+    F.style.background=dk?'var(--bg-dark)':'var(--bg)';
+    TB.style.background=dk?'rgba(12,12,12,0.85)':'rgba(250,249,246,0.85)';
+    TT.style.color=dk?'rgba(255,255,255,0.3)':'';
+    NH.className=dk?'nav-h nav-dk':'nav-h';
+
+    if(cur===0) NH.style.opacity='0';
+    else if(cur===N-1){NH.textContent='end';NH.style.opacity='1';}
+    else{NH.textContent='tap to continue';NH.style.opacity='1';}
+
+    syncDots();
+  }
+
+  F.addEventListener('click',function(e){
+    if(e.target.closest('a')) return;
+    const r=F.getBoundingClientRect();
+    const x=e.clientX-r.left;
+    if(x<r.width*0.25&&cur>1) go(cur-1);
+    else go(cur+1);
+  });
+
+  document.addEventListener('keydown',function(e){
+    if(e.key==='ArrowRight'||e.key===' '){e.preventDefault();go(cur+1);}
+    if(e.key==='ArrowLeft'){e.preventDefault();go(cur-1);}
+  });
+
+  let tx=0;
+  F.addEventListener('touchstart',function(e){tx=e.changedTouches[0].screenX;},{passive:true});
+  F.addEventListener('touchend',function(e){
+    const dx=tx-e.changedTouches[0].screenX;
+    if(Math.abs(dx)>50){dx>0?go(cur+1):go(cur-1);}
+  },{passive:true});
+
+  syncDots();
+})();
+</script>
+</body>
+</html>
