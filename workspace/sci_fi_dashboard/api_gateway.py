@@ -22,6 +22,9 @@ from contextlib import asynccontextmanager, suppress
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path as _Path
 
 from sci_fi_dashboard import _deps as deps
 from sci_fi_dashboard.channel_setup import register_optional_channels
@@ -38,6 +41,7 @@ from sci_fi_dashboard.routes import (
     health,
     knowledge,
     persona,
+    pipeline as pipeline_routes,
     sessions,
     websocket,
     whatsapp,
@@ -265,6 +269,17 @@ app.include_router(persona.router)
 app.include_router(knowledge.router)
 app.include_router(sessions.router)
 app.include_router(websocket.router)
+app.include_router(pipeline_routes.router)
+
+# Dashboard static files
+_static_dir = _Path(__file__).parent / "static"
+if _static_dir.exists():
+    app.mount("/static", StaticFiles(directory=str(_static_dir)), name="static")
+
+
+@app.get("/dashboard")
+async def dashboard():
+    return RedirectResponse(url="/static/dashboard/index.html")
 
 
 # ---------------------------------------------------------------------------

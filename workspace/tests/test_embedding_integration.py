@@ -11,15 +11,8 @@ import types
 import unittest
 from unittest.mock import MagicMock, patch
 
-# Pre-stub qdrant_client so memory_engine is importable without the package installed.
-for _mod in [
-    "qdrant_client",
-    "qdrant_client.http",
-    "qdrant_client.http.models",
-    "qdrant_client.http.models.models",
-    "qdrant_client.models",
-]:
-    sys.modules.setdefault(_mod, MagicMock())
+# Pre-stub lancedb so memory_engine is importable without the package installed.
+sys.modules.setdefault("lancedb", MagicMock())
 
 
 def _make_provider(dims: int = 768, name: str = "test-provider") -> MagicMock:
@@ -67,7 +60,7 @@ class TestMemoryEngineGetEmbedding(unittest.TestCase):
     def _make_engine(self, provider):
         """Create MemoryEngine with patched dependencies."""
         qdrant_patch = patch(
-            "sci_fi_dashboard.memory_engine.QdrantVectorStore", return_value=MagicMock()
+            "sci_fi_dashboard.memory_engine.LanceDBVectorStore", return_value=MagicMock()
         )
         get_provider_patch = patch(
             "sci_fi_dashboard.memory_engine.get_provider", return_value=provider

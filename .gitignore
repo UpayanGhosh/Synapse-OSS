@@ -40,6 +40,8 @@ workspace/skills/gog/token.pickle
 workspace/db/
 workspace/qdrant/
 qdrant/storage/
+*.lance
+lancedb/
 
 # Log files
 *.log

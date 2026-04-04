@@ -25,7 +25,7 @@ from unittest.mock import patch, MagicMock, AsyncMock
 # We need to mock heavy dependencies before importing MemoryEngine
 @pytest.fixture(autouse=True)
 def mock_heavy_deps():
-    """Mock Qdrant, flashrank, flashtext to avoid real connections."""
+    """Mock LanceDB, flashrank, flashtext to avoid real connections."""
     with patch.dict("sys.modules", {
         "flashrank": MagicMock(),
     }):
@@ -37,7 +37,7 @@ class TestMemoryEngineInit:
 
     def test_accepts_shared_stores(self):
         """Should accept graph_store and keyword_processor."""
-        with patch("sci_fi_dashboard.memory_engine.QdrantVectorStore"):
+        with patch("sci_fi_dashboard.memory_engine.LanceDBVectorStore"):
             with patch("sci_fi_dashboard.memory_engine.OLLAMA_AVAILABLE", False):
                 from sci_fi_dashboard.memory_engine import MemoryEngine
                 mock_graph = MagicMock()
@@ -48,7 +48,7 @@ class TestMemoryEngineInit:
 
     def test_init_without_ollama(self):
         """Should initialize even when Ollama is not available."""
-        with patch("sci_fi_dashboard.memory_engine.QdrantVectorStore"):
+        with patch("sci_fi_dashboard.memory_engine.LanceDBVectorStore"):
             with patch("sci_fi_dashboard.memory_engine.OLLAMA_AVAILABLE", False):
                 from sci_fi_dashboard.memory_engine import MemoryEngine
                 engine = MemoryEngine()
@@ -59,7 +59,7 @@ class TestTemporalScore:
     """Tests for _temporal_score method."""
 
     def _make_engine(self):
-        with patch("sci_fi_dashboard.memory_engine.QdrantVectorStore"):
+        with patch("sci_fi_dashboard.memory_engine.LanceDBVectorStore"):
             with patch("sci_fi_dashboard.memory_engine.OLLAMA_AVAILABLE", False):
                 from sci_fi_dashboard.memory_engine import MemoryEngine
                 return MemoryEngine()
@@ -92,7 +92,7 @@ class TestImportanceHeuristic:
     """Tests for _score_importance_heuristic."""
 
     def _make_engine(self):
-        with patch("sci_fi_dashboard.memory_engine.QdrantVectorStore"):
+        with patch("sci_fi_dashboard.memory_engine.LanceDBVectorStore"):
             with patch("sci_fi_dashboard.memory_engine.OLLAMA_AVAILABLE", False):
                 from sci_fi_dashboard.memory_engine import MemoryEngine
                 return MemoryEngine()
@@ -148,7 +148,7 @@ class TestScoreImportanceAsync:
     """Tests for the async score_importance method."""
 
     def _make_engine(self):
-        with patch("sci_fi_dashboard.memory_engine.QdrantVectorStore"):
+        with patch("sci_fi_dashboard.memory_engine.LanceDBVectorStore"):
             with patch("sci_fi_dashboard.memory_engine.OLLAMA_AVAILABLE", False):
                 from sci_fi_dashboard.memory_engine import MemoryEngine
                 return MemoryEngine()
@@ -198,7 +198,7 @@ class TestGetEmbedding:
 
     def test_ollama_unavailable_fallback(self):
         """When Ollama is unavailable, should use sentence-transformers or zeros."""
-        with patch("sci_fi_dashboard.memory_engine.QdrantVectorStore"):
+        with patch("sci_fi_dashboard.memory_engine.LanceDBVectorStore"):
             with patch("sci_fi_dashboard.memory_engine.OLLAMA_AVAILABLE", False):
                 from sci_fi_dashboard.memory_engine import MemoryEngine
                 engine = MemoryEngine()
@@ -214,7 +214,7 @@ class TestGetEmbedding:
         """When Ollama is available, should use it."""
         mock_ollama = MagicMock()
         mock_ollama.embeddings.return_value = {"embedding": [0.5] * 768}
-        with patch("sci_fi_dashboard.memory_engine.QdrantVectorStore"):
+        with patch("sci_fi_dashboard.memory_engine.LanceDBVectorStore"):
             with patch("sci_fi_dashboard.memory_engine.OLLAMA_AVAILABLE", True):
                 with patch("sci_fi_dashboard.memory_engine.ollama", mock_ollama):
                     from sci_fi_dashboard.memory_engine import MemoryEngine
@@ -228,7 +228,7 @@ class TestGetEmbedding:
         """Ollama error should fall back to zero vector."""
         mock_ollama = MagicMock()
         mock_ollama.embeddings.side_effect = Exception("connection refused")
-        with patch("sci_fi_dashboard.memory_engine.QdrantVectorStore"):
+        with patch("sci_fi_dashboard.memory_engine.LanceDBVectorStore"):
             with patch("sci_fi_dashboard.memory_engine.OLLAMA_AVAILABLE", True):
                 with patch("sci_fi_dashboard.memory_engine.ollama", mock_ollama):
                     from sci_fi_dashboard.memory_engine import MemoryEngine
@@ -243,9 +243,9 @@ class TestQuery:
     """Tests for the query method."""
 
     def _make_engine(self):
-        mock_qdrant = MagicMock()
-        mock_qdrant.search.return_value = []
-        with patch("sci_fi_dashboard.memory_engine.QdrantVectorStore", return_value=mock_qdrant):
+        mock_lance = MagicMock()
+        mock_lance.search.return_value = []
+        with patch("sci_fi_dashboard.memory_engine.LanceDBVectorStore", return_value=mock_lance):
             with patch("sci_fi_dashboard.memory_engine.OLLAMA_AVAILABLE", False):
                 from sci_fi_dashboard.memory_engine import MemoryEngine
                 engine = MemoryEngine()
@@ -263,7 +263,7 @@ class TestQuery:
         assert "tier" in result
 
     def test_empty_results(self):
-        """No Qdrant results should fall back to reranker or return empty."""
+        """No LanceDB results should fall back to reranker or return empty."""
         engine = self._make_engine()
         result = engine.query("obscure query about nothing")
         assert result["results"] == [] or isinstance(result["results"], list)
@@ -271,7 +271,7 @@ class TestQuery:
     def test_error_returns_error_dict(self):
         """Exception during query should return error dict."""
         engine = self._make_engine()
-        engine.qdrant_store.search.side_effect = Exception("Qdrant down")
+        engine.vector_store.search.side_effect = Exception("LanceDB down")
         result = engine.query("test")
         assert result["tier"] == "error"
         assert "error" in result
@@ -316,7 +316,7 @@ class TestAddMemory:
 
     def test_add_memory_happy_path(self, tmp_path):
         """Should store memory and return dict with id."""
-        with patch("sci_fi_dashboard.memory_engine.QdrantVectorStore"):
+        with patch("sci_fi_dashboard.memory_engine.LanceDBVectorStore"):
             with patch("sci_fi_dashboard.memory_engine.OLLAMA_AVAILABLE", False):
                 with patch("sci_fi_dashboard.memory_engine.get_db_connection") as mock_db:
                     mock_conn = MagicMock()
@@ -334,7 +334,7 @@ class TestAddMemory:
 
     def test_add_memory_error(self):
         """Error during add_memory should return error dict."""
-        with patch("sci_fi_dashboard.memory_engine.QdrantVectorStore"):
+        with patch("sci_fi_dashboard.memory_engine.LanceDBVectorStore"):
             with patch("sci_fi_dashboard.memory_engine.OLLAMA_AVAILABLE", False):
                 with patch("sci_fi_dashboard.memory_engine.get_db_connection") as mock_db:
                     mock_db.side_effect = Exception("DB locked")
@@ -352,7 +352,7 @@ class TestThink:
         """Should use Ollama when available."""
         mock_ollama = MagicMock()
         mock_ollama.chat.return_value = {"message": {"content": "Hello from Ollama"}}
-        with patch("sci_fi_dashboard.memory_engine.QdrantVectorStore"):
+        with patch("sci_fi_dashboard.memory_engine.LanceDBVectorStore"):
             with patch("sci_fi_dashboard.memory_engine.OLLAMA_AVAILABLE", True):
                 with patch("sci_fi_dashboard.memory_engine.ollama", mock_ollama):
                     # Also need to make the cloud router import fail
@@ -364,7 +364,7 @@ class TestThink:
 
     def test_think_no_ollama_no_cloud(self):
         """No Ollama and no cloud router should return error."""
-        with patch("sci_fi_dashboard.memory_engine.QdrantVectorStore"):
+        with patch("sci_fi_dashboard.memory_engine.LanceDBVectorStore"):
             with patch("sci_fi_dashboard.memory_engine.OLLAMA_AVAILABLE", False):
                 with patch.dict("sys.modules", {"sci_fi_dashboard.llm_router": None}):
                     from sci_fi_dashboard.memory_engine import MemoryEngine

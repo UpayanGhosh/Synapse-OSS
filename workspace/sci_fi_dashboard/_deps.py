@@ -201,6 +201,11 @@ sbs_registry: dict[str, SBSOrchestrator] = {
 }
 
 
+def _check_rate_limit(request: "Request | None" = None) -> None:  # noqa: F821
+    """Rate-limit guard (not yet implemented — pass-through)."""
+    pass
+
+
 def _resolve_target(raw_target: str) -> str:
     """Map a raw chat_id / phone number / keyword to a persona ID."""
     t = raw_target.lower()
@@ -229,6 +234,17 @@ load_env_file(anchor=Path(__file__))
 from synapse_config import SynapseConfig  # noqa: E402
 
 from sci_fi_dashboard.llm_router import LLMResult, SynapseLLMRouter  # noqa: E402
+from sci_fi_dashboard.schemas import ChatRequest, WhatsAppLoopTestRequest  # noqa: E402
+from sci_fi_dashboard.middleware import (  # noqa: E402
+    _require_gateway_auth,
+    validate_api_key,
+    validate_bridge_token,
+)
+from sci_fi_dashboard.whatsapp_bridge import (  # noqa: E402
+    get_inbound_message,
+    normalize_phone,
+)
+from sci_fi_dashboard.chat_pipeline import persona_chat  # noqa: E402
 
 _synapse_cfg = SynapseConfig.load()
 synapse_llm_router = SynapseLLMRouter(_synapse_cfg)

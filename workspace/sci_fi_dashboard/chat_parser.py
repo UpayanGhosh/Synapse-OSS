@@ -238,7 +238,7 @@ TECH_JARGON = {
     "docker",
     "kubernetes",
     "sqlite",
-    "qdrant",
+    "lancedb",
     "ollama",
     "gemini",
     "openai",

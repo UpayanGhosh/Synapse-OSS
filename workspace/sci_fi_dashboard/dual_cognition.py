@@ -11,6 +11,8 @@ import logging
 import re
 from dataclasses import dataclass, field
 
+from sci_fi_dashboard.pipeline_emitter import get_emitter as _get_emitter
+
 logger = logging.getLogger("dual_cognition")
 
 
@@ -163,8 +165,17 @@ class DualCognitionEngine:
         try:
             complexity = self.classify_complexity(user_message, conversation_history)
 
+            try: _get_emitter().emit("cognition.classify", {
+                "complexity": complexity,
+                "word_count": len(user_message.split()),
+                "signals": [],
+            })
+            except Exception: pass
+
             # FAST PATH: 0 LLM calls -- return minimal merge immediately
             if complexity == "fast":
+                try: _get_emitter().emit("cognition.fast_path", {"reason": "simple_message"})
+                except Exception: pass
                 return CognitiveMerge(
                     tension_level=0.0,
                     tension_type="none",
@@ -175,10 +186,29 @@ class DualCognitionEngine:
 
             # STANDARD PATH: analyze + recall + merge (2 LLM calls)
             if complexity == "standard":
+                try: _get_emitter().emit("cognition.analyze_start", {})
+                except Exception: pass
+                try: _get_emitter().emit("cognition.recall_start", {"from_cache": pre_cached_memory is not None})
+                except Exception: pass
                 present, memory = await asyncio.gather(
                     self._analyze_present(user_message, conversation_history, llm_fn),
                     self._recall_memory(user_message, chat_id, target, pre_cached_memory),
                 )
+                try: _get_emitter().emit("cognition.analyze_done", {
+                    "sentiment": getattr(present, "sentiment", ""),
+                    "intent": getattr(present, "intent", ""),
+                    "emotional_state": getattr(present, "emotional_state", ""),
+                    "topics": getattr(present, "topics", []),
+                    "conversational_pattern": getattr(present, "conversational_pattern", ""),
+                })
+                except Exception: pass
+                try: _get_emitter().emit("cognition.recall_done", {
+                    "fact_count": len(getattr(memory, "relevant_facts", [])),
+                    "has_graph_context": bool(getattr(memory, "graph_connections", "")),
+                })
+                except Exception: pass
+                try: _get_emitter().emit("cognition.merge_start", {"use_cot": False})
+                except Exception: pass
                 merge = await self._merge_streams(present, memory, target, llm_fn, use_cot=False)
                 if self.trajectory:
                     self.trajectory.record(merge, present.topics)
@@ -189,12 +219,31 @@ class DualCognitionEngine:
             # Run both operations in parallel to save latency:
             # - present analysis (LLM call)
             # - memory recall using original message with pre-cached results (no LLM, fast)
+            try: _get_emitter().emit("cognition.analyze_start", {})
+            except Exception: pass
+            try: _get_emitter().emit("cognition.recall_start", {"from_cache": pre_cached_memory is not None})
+            except Exception: pass
             present, memory = await asyncio.gather(
                 self._analyze_present(user_message, conversation_history, llm_fn),
                 self._recall_memory(user_message, chat_id, target, pre_cached_memory),
             )
+            try: _get_emitter().emit("cognition.analyze_done", {
+                "sentiment": getattr(present, "sentiment", ""),
+                "intent": getattr(present, "intent", ""),
+                "emotional_state": getattr(present, "emotional_state", ""),
+                "topics": getattr(present, "topics", []),
+                "conversational_pattern": getattr(present, "conversational_pattern", ""),
+            })
+            except Exception: pass
+            try: _get_emitter().emit("cognition.recall_done", {
+                "fact_count": len(getattr(memory, "relevant_facts", [])),
+                "has_graph_context": bool(getattr(memory, "graph_connections", "")),
+            })
+            except Exception: pass
 
             # Step 3: CoT merge
+            try: _get_emitter().emit("cognition.merge_start", {"use_cot": True})
+            except Exception: pass
             merge = await self._merge_streams(present, memory, target, llm_fn, use_cot=True)
             if self.trajectory:
                 self.trajectory.record(merge, present.topics)

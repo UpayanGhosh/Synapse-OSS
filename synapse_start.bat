@@ -29,15 +29,6 @@ if not exist "%PROJECT_ROOT%\.env" (
     exit /b 1
 )
 
-REM --- Guard: Docker must be running ---
-docker info >nul 2>&1
-if %ERRORLEVEL% NEQ 0 (
-    echo [X] Docker is not running. Please start Docker Desktop and try again.
-    echo.
-    pause
-    exit /b 1
-)
-
 REM --- First-run: Python environment ---
 if not exist "%PROJECT_ROOT%\.venv\Scripts\python.exe" (
     echo [SETUP] First run detected - setting up Python environment...
@@ -77,22 +68,8 @@ if not exist "%PROJECT_ROOT%\.venv\Scripts\python.exe" (
     echo.
 )
 
-REM --- 1. Qdrant ---
-echo [1/3] Starting Qdrant...
-docker start antigravity_qdrant >nul 2>&1
-if %ERRORLEVEL% EQU 0 (
-    echo    [OK] Started.
-) else (
-    docker run -d --name antigravity_qdrant -p 6333:6333 -p 6334:6334 qdrant/qdrant >nul 2>&1
-    if %ERRORLEVEL% EQU 0 (
-        echo    [OK] Created and started.
-    ) else (
-        echo    [--] Qdrant unavailable - vector search will be disabled.
-    )
-)
-
-REM --- 2. Ollama ---
-echo [2/3] Starting Ollama...
+REM --- 1. Ollama ---
+echo [1/2] Starting Ollama...
 tasklist /FI "IMAGENAME eq ollama.exe" 2>nul | find /I "ollama.exe" >nul
 if %ERRORLEVEL% NEQ 0 (
     where ollama >nul 2>&1
@@ -107,8 +84,8 @@ if %ERRORLEVEL% NEQ 0 (
     echo    [OK] Already running.
 )
 
-REM --- 3. API Gateway ---
-echo [3/3] Starting API Gateway...
+REM --- 2. API Gateway ---
+echo [2/2] Starting API Gateway...
 netstat -ano | findstr ":8000" | find "LISTENING" >nul
 if %ERRORLEVEL% NEQ 0 (
     mkdir "%USERPROFILE%\.synapse\logs" >nul 2>&1

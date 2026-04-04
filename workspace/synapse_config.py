@@ -80,6 +80,7 @@ class SynapseConfig:
     sbs: SBSConfig = field(default_factory=SBSConfig)
     validated_schema: Any = field(default=None, repr=False)
     embedding: dict = field(default_factory=dict)
+    vector_store: dict = field(default_factory=dict)
 
     @classmethod
     def load(cls) -> "SynapseConfig":
@@ -109,6 +110,7 @@ class SynapseConfig:
         mcp: dict[str, Any] = {}
         sbs_raw: dict[str, Any] = {}
         embedding: dict[str, Any] = {}
+        vector_store: dict[str, Any] = {}
 
         config_file = data_root / "synapse.json"
         validated = None
@@ -129,6 +131,7 @@ class SynapseConfig:
             mcp = raw.get("mcp", {})
             sbs_raw = raw.get("sbs", {})
             embedding = raw.get("embedding", {})
+            vector_store = raw.get("vector_store", {})
 
         # Build SBSConfig from the "sbs" key (missing keys use dataclass defaults)
         sbs_config = SBSConfig(**{
@@ -150,6 +153,7 @@ class SynapseConfig:
             sbs=sbs_config,
             validated_schema=validated,
             embedding=embedding,
+            vector_store=vector_store,
         )
 
 

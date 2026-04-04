@@ -229,32 +229,30 @@ class TestReEmbedEngine(unittest.TestCase):
         conn.close()
 
 
-class TestQdrantDimensionsParameterized(unittest.TestCase):
-    """QdrantVectorStore must accept embedding_dimensions and not hardcode 768."""
+class TestLanceDBDimensionsParameterized(unittest.TestCase):
+    """LanceDBVectorStore must accept embedding_dimensions and not hardcode 768."""
 
-    def test_qdrant_dimensions_stored_on_instance(self):
+    def test_lancedb_dimensions_stored_on_instance(self, tmp_path=None):
         """Passing embedding_dimensions=512 stores 512, not the default 768."""
-        # Import here to isolate the dependency — qdrant_client may not be installed
-        # in all test environments.  The scripts/ directory is not on sys.path by
-        # default, so add it temporarily.
-        scripts_dir = str(Path(__file__).parent.parent.parent / "workspace" / "scripts" / "v2_migration")
-        if scripts_dir not in sys.path:
-            sys.path.insert(0, scripts_dir)
+        import tempfile
 
         try:
-            # Patch QdrantClient to avoid needing a running Qdrant instance
-            with patch("qdrant_client.QdrantClient") as MockClient:
-                MockClient.return_value.get_collections.return_value.collections = []
-                from qdrant_handler import QdrantVectorStore  # noqa: PLC0415
+            from sci_fi_dashboard.vector_store.lancedb_store import LanceDBVectorStore  # noqa: PLC0415
 
-                store = QdrantVectorStore(embedding_dimensions=512)
+            with tempfile.TemporaryDirectory() as tmpdir:
+                store = LanceDBVectorStore(db_path=tmpdir, embedding_dimensions=512)
                 self.assertEqual(store._embedding_dimensions, 512)
+                # Verify schema reflects the custom dimension
+                vector_field = store.table.schema.field("vector")
+                self.assertEqual(vector_field.type.list_size, 512)
 
                 # Also verify the default is still 768
-                store_default = QdrantVectorStore()
+                store_default = LanceDBVectorStore(
+                    db_path=tmpdir + "_default", embedding_dimensions=768
+                )
                 self.assertEqual(store_default._embedding_dimensions, 768)
         except ImportError as exc:
-            self.skipTest(f"qdrant_client not installed or qdrant_handler not found: {exc}")
+            self.skipTest(f"lancedb not installed: {exc}")
 
 
 if __name__ == "__main__":

@@ -63,5 +63,10 @@
     "model": null,
     "cache_dir": null,
     "threads": null
+  },
+
+  "vector_store": {
+    "backend": "lancedb",
+    "lancedb": { "db_path": null, "table_name": "memories" }
   }
 }

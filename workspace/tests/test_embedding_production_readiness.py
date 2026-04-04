@@ -357,7 +357,7 @@ class TestGracefulDegradation(unittest.TestCase):
                 # Here we just verify the zero-vector behaviour is preserved.
                 # Build a minimal engine without actually connecting to DBs.
                 with patch(
-                    "sci_fi_dashboard.memory_engine.QdrantVectorStore", MagicMock
+                    "sci_fi_dashboard.memory_engine.LanceDBVectorStore", MagicMock
                 ):
                     engine = MemoryEngine()
                     # Clear LRU cache so our mock is used

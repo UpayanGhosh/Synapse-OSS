@@ -12,6 +12,7 @@ from sci_fi_dashboard import _deps as deps
 from sci_fi_dashboard.schemas import ChatRequest
 from sci_fi_dashboard.dual_cognition import CognitiveMerge
 from sci_fi_dashboard.llm_router import LLMResult
+from sci_fi_dashboard.pipeline_emitter import get_emitter as _get_emitter
 
 logger = logging.getLogger(__name__)
 _tool_logger = logging.getLogger(__name__ + ".tools")
@@ -96,6 +97,12 @@ async def persona_chat(
     user_msg = request.message
     print(f"[MAIL] [{target.upper()}] Inbound: {user_msg[:80]}...")
 
+    _pipeline_start = time.time()
+    try:
+        _run_id = _get_emitter().start_run(text=user_msg[:120], target=target)
+    except Exception:
+        pass
+
     # 1. Memory Retrieval (Phoenix v3 Unified Engine)
     mem_response = None
     try:
@@ -106,6 +113,14 @@ async def persona_chat(
 
         # Using the new MemoryEngine for hybrid search + graph context
         mem_response = deps.memory_engine.query(user_msg, limit=5, with_graph=True)
+        try:
+            _get_emitter().emit("memory.query_done", {
+                "tier": mem_response.get("tier", "unknown"),
+                "result_count": len(mem_response.get("results", [])),
+                "graph_context": bool(mem_response.get("graph_context")),
+            })
+        except Exception:
+            pass
 
         # Format results for the prompt
         results_list = mem_response.get("results", [])
@@ -123,6 +138,13 @@ async def persona_chat(
 
     # 2. Toxicity Check
     toxicity = deps.toxic_scorer.score(user_msg)
+    try:
+        _get_emitter().emit("toxicity.check", {
+            "score": round(float(toxicity), 3),
+            "passed": float(toxicity) < 0.8,
+        })
+    except Exception:
+        pass
     if toxicity > 0.8 and session_mode == "safe":
         print(
             f"[WARN] High Toxicity ({toxicity:.2f}) detected in Safe Mode. "
@@ -151,6 +173,20 @@ async def persona_chat(
             cognitive_context = deps.dual_cognition.build_cognitive_context(
                 cognitive_merge
             )
+            try:
+                _get_emitter().emit("cognition.merge_done", {
+                    "tension_level": round(cognitive_merge.tension_level, 3),
+                    "tension_type": cognitive_merge.tension_type,
+                    "response_strategy": cognitive_merge.response_strategy,
+                    "suggested_tone": cognitive_merge.suggested_tone,
+                    "inner_monologue": cognitive_merge.inner_monologue,
+                    "thought": cognitive_merge.thought,
+                    "contradictions": cognitive_merge.contradictions,
+                    "memory_insights": cognitive_merge.memory_insights,
+                    "complexity": getattr(cognitive_merge, "_complexity", "unknown"),
+                })
+            except Exception:
+                pass
 
             print(
                 f"[MEM] Cognitive State: {cognitive_merge.tension_type} "
@@ -261,9 +297,29 @@ async def persona_chat(
         # C-02: Vault air-gap -- NEVER fall back to cloud for spicy/vault content
         print("[HOT] Routing to THE VAULT (Local Stheno)")
         try:
+            _get_emitter().emit("llm.route", {
+                "role": "vault",
+                "model": deps._synapse_cfg.model_mappings.get("vault", {}).get("model", "unknown"),
+            })
+        except Exception:
+            pass
+        try:
+            _llm_start = time.time()
+            try:
+                _get_emitter().emit("llm.stream_start", {"role": "vault"})
+            except Exception:
+                pass
             result = await deps.synapse_llm_router.call_with_metadata(
                 "vault", messages
             )
+            try:
+                _get_emitter().emit("llm.stream_done", {
+                    "total_tokens": getattr(result, "total_tokens", 0),
+                    "model": getattr(result, "model", "unknown"),
+                    "latency_ms": round((time.time() - _llm_start) * 1000),
+                })
+            except Exception:
+                pass
             reply = result.text
         except Exception as e:
             print(
@@ -299,8 +355,27 @@ async def persona_chat(
                     f"[SIGNAL] Traffic Cop SKIPPED -- strategy "
                     f"'{strategy}' -> {classification}"
                 )
+                try:
+                    _get_emitter().emit("traffic_cop.skip", {
+                        "strategy": cognitive_merge.response_strategy,
+                        "mapped_role": classification,
+                    })
+                except Exception:
+                    pass
         if classification is None:
+            try:
+                _get_emitter().emit("traffic_cop.start", {})
+            except Exception:
+                pass
             classification = await route_traffic_cop(user_msg)
+            try:
+                _get_emitter().emit("traffic_cop.done", {
+                    "classification": classification,
+                    "role": classification,
+                    "skipped": False,
+                })
+            except Exception:
+                pass
 
         # Phase 5: Check model override before traffic cop
         override_role = None
@@ -321,6 +396,14 @@ async def persona_chat(
 
         print(f"[ROUTE] Classification={classification} -> role={role}")
 
+        try:
+            _get_emitter().emit("llm.route", {
+                "role": role,
+                "model": deps._synapse_cfg.model_mappings.get(role.lower(), {}).get("model", "unknown"),
+            })
+        except Exception:
+            pass
+
         # --- Tool Execution Loop (Phase 3 + 4 + 5) ---
         reply = ""
         tools_used: list[str] = []
@@ -333,6 +416,11 @@ async def persona_chat(
 
         for round_num in range(deps.MAX_TOOL_ROUNDS):
             try:
+                _llm_start = time.time()
+                try:
+                    _get_emitter().emit("llm.stream_start", {"role": role})
+                except Exception:
+                    pass
                 if tool_schemas and hasattr(
                     deps.synapse_llm_router, "call_with_tools"
                 ):
@@ -343,12 +431,28 @@ async def persona_chat(
                         temperature=0.7 if role != "code" else 0.2,
                         max_tokens=1500,
                     )
+                    try:
+                        _get_emitter().emit("llm.stream_done", {
+                            "total_tokens": getattr(result, "total_tokens", 0),
+                            "model": getattr(result, "model", "unknown"),
+                            "latency_ms": round((time.time() - _llm_start) * 1000),
+                        })
+                    except Exception:
+                        pass
                 else:
                     temp = 0.2 if role == "code" else 0.85
                     max_tok = 1000 if role == "code" else 1500
                     result = await deps.synapse_llm_router.call_with_metadata(
                         role, messages, temperature=temp, max_tokens=max_tok
                     )
+                    try:
+                        _get_emitter().emit("llm.stream_done", {
+                            "total_tokens": getattr(result, "total_tokens", 0),
+                            "model": getattr(result, "model", "unknown"),
+                            "latency_ms": round((time.time() - _llm_start) * 1000),
+                        })
+                    except Exception:
+                        pass
                     reply = result.text
                     break
             except Exception as e:
@@ -619,5 +723,11 @@ async def persona_chat(
             result_dict["tools_used"] = tools_used
             result_dict["tool_rounds"] = round_num + 1
     except NameError:
+        pass
+    try:
+        _get_emitter().end_run(
+            total_latency_ms=round((time.time() - _pipeline_start) * 1000)
+        )
+    except Exception:
         pass
     return result_dict

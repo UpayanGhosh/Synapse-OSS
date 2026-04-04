@@ -59,18 +59,10 @@ def with_retry(retries: int = 3, delay: float = 0.5):
 # Paths
 WORKSPACE_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.append(WORKSPACE_ROOT)
-# Note: scripts/v2_migration might not exist yet or might be elsewhere,
-# but I will keep it as per user's provision.
-sys.path.append(os.path.join(WORKSPACE_ROOT, "scripts", "v2_migration"))
 
-try:
-    from scripts.v2_migration.qdrant_handler import QdrantVectorStore
-except ImportError:
-    # Fallback to absolute import if package structure is tricky
-    sys.path.append(os.path.join(WORKSPACE_ROOT, "sci_fi_dashboard"))
-    from retriever import QdrantVectorStore  # noqa: E402
-
+from sci_fi_dashboard.vector_store import LanceDBVectorStore
 from sci_fi_dashboard.embedding import get_provider
+from sci_fi_dashboard.pipeline_emitter import get_emitter as _get_emitter
 
 # Configuration
 RERANK_MODEL_NAME = "ms-marco-TinyBERT-L-2-v2"
@@ -97,7 +89,7 @@ class MemoryEngine:
         Accept shared graph_store and keyword_processor from gateway
         to avoid duplication.
         """
-        self.qdrant_store = QdrantVectorStore()
+        self.vector_store = LanceDBVectorStore()
 
         # SHARED -- not duplicated
         self.graph_store = graph_store
@@ -151,6 +143,9 @@ class MemoryEngine:
         hemisphere: str = "safe",
     ) -> dict:
         start = time.time()
+        try: _get_emitter().emit("memory.query_start", {"text": text[:80]})
+        except Exception: pass
+        _query_start = time.time()
 
         try:
             # Entity extraction (shared keyword_processor)
@@ -180,8 +175,12 @@ class MemoryEngine:
             else:
                 routing = "Default (Hybrid)"
 
-            # Qdrant search with hemisphere filtering
+            # LanceDB search with hemisphere filtering
+            try: _get_emitter().emit("memory.embedding_start", {})
+            except Exception: pass
             query_vec_tuple = self.get_embedding(text)
+            try: _get_emitter().emit("memory.embedding_done", {"dims": len(query_vec_tuple) if hasattr(query_vec_tuple, "__len__") else 768})
+            except Exception: pass
             if query_vec_tuple is None:
                 return {
                     "results": [],
@@ -192,36 +191,24 @@ class MemoryEngine:
                 }
             query_vec = list(query_vec_tuple)
 
-            # Build hemisphere filter for Qdrant
+            # Build hemisphere filter (SQL WHERE clause for LanceDB)
             # Spicy sessions see both safe + spicy; safe sessions see only safe
-            from qdrant_client.http import models as qdrant_models
-
             if hemisphere == "spicy":
-                hemisphere_filter = qdrant_models.Filter(
-                    should=[
-                        qdrant_models.FieldCondition(
-                            key="hemisphere_tag",
-                            match=qdrant_models.MatchValue(value="safe"),
-                        ),
-                        qdrant_models.FieldCondition(
-                            key="hemisphere_tag",
-                            match=qdrant_models.MatchValue(value="spicy"),
-                        ),
-                    ]
-                )
+                hemisphere_filter = "hemisphere_tag IN ('safe', 'spicy')"
             else:
-                hemisphere_filter = qdrant_models.Filter(
-                    must=[
-                        qdrant_models.FieldCondition(
-                            key="hemisphere_tag",
-                            match=qdrant_models.MatchValue(value="safe"),
-                        )
-                    ]
-                )
+                hemisphere_filter = "hemisphere_tag = 'safe'"
 
-            q_results = self.qdrant_store.search(
+            try: _get_emitter().emit("memory.lancedb_search_start", {"hemisphere": hemisphere, "limit": limit * 3})
+            except Exception: pass
+            _search_start = time.time()
+            q_results = self.vector_store.search(
                 query_vec, limit=limit * 3, query_filter=hemisphere_filter
             )
+            try: _get_emitter().emit("memory.lancedb_search_done", {
+                "num_candidates": len(q_results),
+                "latency_ms": round((time.time() - _search_start) * 1000),
+            })
+            except Exception: pass
 
             # Apply 3-factor scoring: relevance + temporal + importance
             for r in q_results:
@@ -232,6 +219,12 @@ class MemoryEngine:
                 )
 
             q_results.sort(key=lambda x: x["combined_score"], reverse=True)
+            try:
+                _top_scored = q_results[:5]
+                _get_emitter().emit("memory.scoring", {
+                    "results": [{"text": r.get("metadata", {}).get("text", "")[:60], "score": round(r.get("combined_score", 0), 3), "semantic": round(r.get("score", 0), 3)} for r in _top_scored]
+                })
+            except Exception: pass
 
             # Smart gate -- fast path
             high_conf = [
@@ -245,12 +238,14 @@ class MemoryEngine:
             ]
 
             if len(high_conf) >= limit:
+                try: _get_emitter().emit("memory.fast_gate_hit", {"threshold": 0.80, "top_score": round(high_conf[0].get("combined_score", 0), 3) if high_conf else 0})
+                except Exception: pass
                 return {
                     "results": [
                         {
                             "content": x["metadata"]["text"],
                             "score": x["combined_score"],
-                            "source": "qdrant_fast",
+                            "source": "lancedb_fast",
                         }
                         for x in high_conf[:limit]
                     ],
@@ -261,6 +256,8 @@ class MemoryEngine:
                 }
 
             # Reranker fallback
+            try: _get_emitter().emit("memory.reranking_start", {})
+            except Exception: pass
             ranker = self._get_ranker()
             candidates = [
                 {
@@ -274,7 +271,7 @@ class MemoryEngine:
 
             return {
                 "results": [
-                    {"content": x["text"], "score": float(x["score"]), "source": "qdrant_reranked"}
+                    {"content": x["text"], "score": float(x["score"]), "source": "lancedb_reranked"}
                     for x in ranked[:limit]
                 ],
                 "tier": "reranked",
@@ -331,9 +328,9 @@ class MemoryEngine:
                 except Exception as vec_err:
                     print(f"[WARN] vec_items insert failed (vector search disabled?): {vec_err}")
 
-                # Also upsert to Qdrant for ANN search
+                # Also upsert to LanceDB for ANN search
                 try:
-                    self.qdrant_store.upsert_facts([{
+                    self.vector_store.upsert_facts([{
                         "id": doc_id,
                         "vector": list(embedding),
                         "metadata": {
@@ -343,8 +340,8 @@ class MemoryEngine:
                             "importance": importance,
                         },
                     }])
-                except Exception as qdrant_err:
-                    print(f"[WARN] Qdrant upsert failed: {qdrant_err}")
+                except Exception as lancedb_err:
+                    print(f"[WARN] LanceDB upsert failed: {lancedb_err}")
 
                 cursor.execute(
                     "UPDATE documents SET processed = 1 WHERE id = ?", (doc_id,)

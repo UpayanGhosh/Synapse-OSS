@@ -101,15 +101,18 @@ def validate_env() -> None:
     if not os.environ.get("WHATSAPP_BRIDGE_TOKEN", "").strip():
         print("[WARN] WHATSAPP_BRIDGE_TOKEN not set -- WhatsApp bridge unauthenticated")
 
+    from synapse_config import SynapseConfig as _SC
+
     ollama_on = _port_open("localhost", 11434)
-    qdrant_on = _port_open("localhost", 6333)
+    lance_dir = _SC.load().db_dir / "lancedb"
+    lance_on = lance_dir.exists()
     groq_on = bool(os.environ.get("GROQ_API_KEY", "").strip())
     openrouter_on = bool(os.environ.get("OPENROUTER_API_KEY", "").strip())
     whatsapp_on = bool(os.environ.get("WHATSAPP_BRIDGE_TOKEN", "").strip())
 
     print("[INFO] Feature availability:")
     print(f"   Ollama         {'[ON]' if ollama_on else '[--]'}  local embedding + The Vault")
-    print(f"   Qdrant         {'[ON]' if qdrant_on else '[--]'}  vector search")
+    print(f"   LanceDB        {'[ON]' if lance_on else '[--]'}  vector search (embedded)")
     print(f"   Groq           {'[ON]' if groq_on else '[--]'}  voice transcription")
     print(f"   OpenRouter     {'[ON]' if openrouter_on else '[--]'}  fallback model routing")
     print(f"   WhatsApp       {'[ON]' if whatsapp_on else '[--]'}  bridge authentication")

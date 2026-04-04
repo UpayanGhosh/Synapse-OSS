@@ -29,16 +29,9 @@ for _p in (_WORKSPACE, _WORKSPACE.parent):
     if str(_p) not in sys.path:
         sys.path.insert(0, str(_p))
 
-# Pre-stub qdrant_client so memory_engine can be imported even when the
-# qdrant_client package is not installed in the test environment.
-for _mod in [
-    "qdrant_client",
-    "qdrant_client.http",
-    "qdrant_client.http.models",
-    "qdrant_client.http.models.models",
-    "qdrant_client.models",
-]:
-    sys.modules.setdefault(_mod, MagicMock())
+# Pre-stub lancedb so memory_engine can be imported even when the
+# package is not installed in the test environment.
+sys.modules.setdefault("lancedb", MagicMock())
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -169,7 +162,7 @@ class TestMemoryEngineLRUCache(unittest.TestCase):
         Returns a fresh engine with its LRU cache cleared.
         """
         qdrant_patch = patch(
-            "sci_fi_dashboard.memory_engine.QdrantVectorStore",
+            "sci_fi_dashboard.memory_engine.LanceDBVectorStore",
             return_value=MagicMock(),
         )
         provider_patch = patch(
@@ -225,7 +218,7 @@ class TestMemoryEngineLRUCache(unittest.TestCase):
         mock_provider = _make_provider()
 
         qdrant_patch = patch(
-            "sci_fi_dashboard.memory_engine.QdrantVectorStore",
+            "sci_fi_dashboard.memory_engine.LanceDBVectorStore",
             return_value=MagicMock(),
         )
         provider_patch = patch(
@@ -672,7 +665,7 @@ class TestMemoryEngineEdgeCases(unittest.TestCase):
 
     def _make_engine(self, provider):
         qdrant_patch = patch(
-            "sci_fi_dashboard.memory_engine.QdrantVectorStore",
+            "sci_fi_dashboard.memory_engine.LanceDBVectorStore",
             return_value=MagicMock(),
         )
         provider_patch = patch(

@@ -10,8 +10,7 @@ from datetime import datetime
 
 from synapse_config import SynapseConfig
 from sci_fi_dashboard.embedding import get_provider
-from qdrant_client import QdrantClient
-from qdrant_client.http import models
+from sci_fi_dashboard.vector_store import LanceDBVectorStore
 
 try:
     import ollama
@@ -75,14 +74,14 @@ def ingest_nightly():
         print("No pending logs to ingest.")
         return
 
-    qdrant = QdrantClient(host="localhost", port=6333)
+    lance_store = LanceDBVectorStore()
 
     for doc_id, content, ts in rows:
         print(f"  -> Processing document {doc_id}...")
         data = extract_structured_data(content)
 
-        # 1. Update Qdrant (Atomic Facts)
-        points = []
+        # 1. Update LanceDB (Atomic Facts)
+        facts_batch = []
         for fact in data.get("atomic_facts", []):
             vec = get_embedding(fact)
             cursor.execute(
@@ -90,20 +89,18 @@ def ingest_nightly():
             )
             fact_id = cursor.lastrowid
 
-            points.append(
-                models.PointStruct(
-                    id=fact_id,
-                    vector=vec,
-                    payload={
-                        "text": fact,
-                        "source_id": doc_id,
-                        "unix_timestamp": ts or int(time.time()),
-                    },
-                )
-            )
+            facts_batch.append({
+                "id": fact_id,
+                "vector": list(vec),
+                "metadata": {
+                    "text": fact,
+                    "source_id": doc_id,
+                    "unix_timestamp": ts or int(time.time()),
+                },
+            })
 
-        if points:
-            qdrant.upsert(collection_name="atomic_facts", points=points)
+        if facts_batch:
+            lance_store.upsert_facts(facts_batch)
 
         # 2. Update Knowledge Graph (with Archival Logic)
         for rel_data in data.get("relations", []):

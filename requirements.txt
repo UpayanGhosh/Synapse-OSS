@@ -26,6 +26,7 @@ InquirerPy>=0.3.4               # Preferred terminal UI: better Windows compat +
 
 # --- Database & Vector Search ---
 sqlite-vec>=0.1.1
+lancedb>=0.6.0                   # Embedded vector DB (replaces Qdrant - zero Docker)
 
 # --- Embeddings ---
 fastembed>=0.4.0                 # ONNX-based local embeddings (default provider)
