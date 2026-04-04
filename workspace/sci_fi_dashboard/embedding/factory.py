@@ -1,9 +1,11 @@
 import logging
+import threading
 
 from sci_fi_dashboard.embedding.base import EmbeddingProvider
 
 logger = logging.getLogger(__name__)
 _provider: EmbeddingProvider | None = None
+_provider_lock = threading.Lock()
 
 
 def create_provider(config: dict | None = None) -> EmbeddingProvider:
@@ -70,18 +72,21 @@ def _create_explicit(
 
 
 def get_provider(config: dict | None = None) -> EmbeddingProvider | None:
-    """Return singleton provider, creating it on first call."""
+    """Return singleton provider, creating it on first call (thread-safe)."""
     global _provider
     if _provider is None:
-        try:
-            _provider = create_provider(config)
-        except RuntimeError as e:
-            logger.error(f"[Embedding] {e}")
-            return None
+        with _provider_lock:
+            if _provider is None:
+                try:
+                    _provider = create_provider(config)
+                except RuntimeError as e:
+                    logger.error(f"[Embedding] {e}")
+                    return None
     return _provider
 
 
 def reset_provider() -> None:
-    """Reset singleton — used in tests."""
+    """Reset singleton — used in tests (thread-safe)."""
     global _provider
-    _provider = None
+    with _provider_lock:
+        _provider = None
