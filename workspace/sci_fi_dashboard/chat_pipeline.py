@@ -220,7 +220,13 @@ async def persona_chat(
     )
     user_msg_id = user_log.get("msg_id")
 
-    base_instructions = "You are Synapse. Follow the persona profile below precisely."
+    base_instructions = (
+        "You are Synapse. Follow the persona profile below precisely. "
+        "A block of RETRIEVED MEMORIES will follow — treat these as ground truth "
+        "about the user's real life. Always weave specific details from those memories "
+        "into your reply, even in casual greetings. Reference names, events, and "
+        "ongoing situations naturally rather than waiting to be asked."
+    )
     proactive_block = (
         deps._proactive_engine.get_prompt_injection()
         if deps._proactive_engine
@@ -234,7 +240,12 @@ async def persona_chat(
         {
             "role": "system",
             "content": (
-                f"--- RETRIEVED MEMORIES ---\n{memory_context}\n--- END MEMORIES ---"
+                f"--- RETRIEVED MEMORIES ---\n"
+                f"These are real facts about the user's life. Weave specific details from "
+                f"these memories naturally into your response — proactively reference them "
+                f"even in casual greetings (e.g. ask about Jordan, mention the cat, "
+                f"reference work or hobbies). Don't just acknowledge them — USE them.\n\n"
+                f"{memory_context}\n--- END MEMORIES ---"
             ),
         },
     ]
