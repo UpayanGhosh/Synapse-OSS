@@ -120,25 +120,28 @@ class DualCognitionEngine:
             deep_signals += 1
 
         emotional_markers = [
-            "help",
-            "stuck",
-            "frustrated",
-            "can't",
-            "failed",
-            "stressed",
-            "scared",
-            "angry",
-            "depressed",
-            "crying",
+            # English
+            "help", "stuck", "frustrated", "can't", "failed", "stressed",
+            "scared", "angry", "depressed", "crying", "lonely", "hurt",
+            "worried", "anxious", "miss", "confused", "upset", "sad",
+            # Banglish — emotional states
+            "miss korchi", "miss kori", "kharap", "dukkho", "kando",
+            "ekla", "bhoy", "bhoy pacchi", "jhogra", "problem",
+            "tension", "chinta", "kষti", "kষto", "tired",
+            "please", "ki korbo", "ki korbi", "bujhte parchhi na",
+            "mone hocche", "lagche", "kষমa", "sorry", "hurt korlo",
+            "raga", "rag", "bhalobashi", "darkar", "dorkar",
+            "thik nei", "thik nai", "valo nei", "bhalo nei", "valo na",
         ]
         if any(m in msg_lower for m in emotional_markers):
             deep_signals += 1
 
         ambiguity_markers = [
-            "that thing",
-            "what we",
-            "you know",
-            "remember when",
+            # English
+            "that thing", "what we", "you know", "remember when",
+            # Banglish
+            "mone ache", "mone achhe", "shei din", "shei ghotona",
+            "oi kotha", "tui jantis", "tui janish", "bujhte parbi",
         ]
         if any(m in msg_lower for m in ambiguity_markers):
             deep_signals += 1

@@ -218,6 +218,16 @@ async def lifespan(app: FastAPI):
         deps._proactive_engine = app.state.proactive_engine
         logger.info("[PROACTIVE] Engine started")
 
+    # CronService — proactive scheduled messages
+    app.state.cron_service = None
+    try:
+        from sci_fi_dashboard.cron_service import CronService
+        app.state.cron_service = CronService(channel_registry=deps.channel_registry)
+        await app.state.cron_service.start()
+        logger.info("[CRON] CronService started")
+    except Exception as _cron_exc:
+        logger.warning("[CRON] CronService init failed (non-fatal): %s", _cron_exc)
+
     yield
 
     # --- Shutdown ---
@@ -234,6 +244,8 @@ async def lifespan(app: FastAPI):
     worker_task.cancel()
     if hasattr(app.state, "proactive_engine") and app.state.proactive_engine:
         await app.state.proactive_engine.stop()
+    if hasattr(app.state, "cron_service") and app.state.cron_service:
+        await app.state.cron_service.stop()
     if hasattr(app.state, "mcp_client") and app.state.mcp_client:
         await app.state.mcp_client.disconnect_all()
     if hasattr(app.state, "retry_queue"):

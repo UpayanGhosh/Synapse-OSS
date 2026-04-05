@@ -129,6 +129,19 @@ Thumbs.db
 workspace/milestones/
 
 # ──────────────────────────────────────────────────────────────
+# User instance config — personal, never committed
+# Each user generates their own via the onboarding wizard
+# ──────────────────────────────────────────────────────────────
+personas.yaml
+!personas.yaml.example
+synapse.json
+!synapse.json.example
+
+# Personal migration / import scripts (Jarvis, WhatsApp history, etc.)
+# These contain hardcoded personal paths — keep local only
+workspace/scripts/personal/
+
+# ──────────────────────────────────────────────────────────────
 # Local / personal notes
 # ──────────────────────────────────────────────────────────────
 futureendevours.md

@@ -6,17 +6,16 @@ from ..profile.manager import ProfileManager
 
 # Pre-compiled patterns (loaded once, used forever)
 BANGLISH_MARKERS = {
-    # Common Banglish words with normalized forms
+    # Generic South Asian / code-switching markers.
+    # These are learned from conversation — add your own in ~/.synapse/sbs/vocab/
     r"l[yi]a+dh?": "lyadh",
     r"ghu+m": "ghum",
     r"kha+[ow]a": "khaowa",
-    r"bo+u?muni": "the_partner_nickname",
     r"cha+[iy]": "chai",
     r"bh+a+i": "the_brother",
     r"ar+[ea]y?": "arey",
     r"ki\s*kor(chi|bo|ish)": "ki_korchi_family",
     r"achh?[io]s?h?": "acchis",
-    # ... extend as discovered
 }
 
 MOOD_KEYWORDS = {

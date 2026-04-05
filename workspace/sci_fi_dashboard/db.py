@@ -42,6 +42,78 @@ def _ensure_sessions_table(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+def _ensure_jarvis_tables(conn: sqlite3.Connection) -> None:
+    """Create Jarvis-migration and new feature tables (idempotent).
+
+    Called on both first boot and existing DB migrations so all tables
+    are guaranteed to exist regardless of install order.
+    """
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS relationship_memories (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            category        TEXT,
+            content         TEXT NOT NULL,
+            source_event    TEXT,
+            hemisphere_tag  TEXT DEFAULT 'safe',
+            created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS roast_vault (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            content     TEXT NOT NULL,
+            context     TEXT,
+            used_count  INTEGER DEFAULT 0,
+            created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS gift_date_vault (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            item_name   TEXT NOT NULL,
+            category    TEXT,
+            context     TEXT,
+            source_date TEXT,
+            priority    INTEGER DEFAULT 5,
+            created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS memory_diary (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            date            TEXT NOT NULL,
+            session_id      TEXT,
+            user_id         TEXT,
+            entry_text      TEXT NOT NULL,
+            message_count   INTEGER DEFAULT 0,
+            dominant_mood   TEXT,
+            peak_tension    REAL DEFAULT 0.0,
+            key_topics      TEXT,
+            created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_diary_user_date
+            ON memory_diary(user_id, date);
+
+        CREATE TABLE IF NOT EXISTS structured_memory (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            source_table    TEXT NOT NULL,
+            content         TEXT NOT NULL,
+            metadata        TEXT,
+            created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS atomic_facts (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            entity          TEXT,
+            content         TEXT NOT NULL,
+            category        TEXT,
+            source_doc_id   INTEGER,
+            unix_timestamp  INTEGER,
+            embedding_model TEXT DEFAULT 'nomic-embed-text',
+            embedding_version TEXT DEFAULT 'ollama-v1',
+            created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+    """)
+    conn.commit()
+
+
 def _ensure_embedding_metadata(conn: sqlite3.Connection) -> None:
     """Add embedding provenance columns if they don't exist yet (idempotent).
 
@@ -173,6 +245,7 @@ class DatabaseManager:
 
                 _ensure_sessions_table(conn)
                 _ensure_embedding_metadata(conn)
+                _ensure_jarvis_tables(conn)
                 conn.commit()
                 conn.close()
                 print("[OK] Memory database initialized successfully.")
@@ -181,6 +254,7 @@ class DatabaseManager:
                 with sqlite3.connect(DB_PATH) as _mig:
                     _ensure_sessions_table(_mig)
                     _ensure_embedding_metadata(_mig)
+                    _ensure_jarvis_tables(_mig)
 
             DatabaseManager._initialized = True
 

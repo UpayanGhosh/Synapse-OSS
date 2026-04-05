@@ -1,3 +1,4 @@
+import asyncio
 import time
 
 import psutil
@@ -12,9 +13,13 @@ class GentleWorker:
     Only runs heavy maintenance tasks when the system is idle and plugged in.
     """
 
-    def __init__(self, graph: SQLiteGraph = None):
+    def __init__(self, graph: SQLiteGraph = None, cron_service=None, proactive_engine=None,
+                 channel_registry=None):
         self.is_running = True
         self.graph = graph or SQLiteGraph()
+        self.cron_service = cron_service
+        self.proactive_engine = proactive_engine
+        self.channel_registry = channel_registry
 
     def check_conditions(self):
         """
@@ -64,12 +69,43 @@ class GentleWorker:
         except Exception as e:
             print(f"[WARN] DB optimization failed: {e}")
 
+    def heavy_task_proactive_checkin(self):
+        """Maybe reach out to users who haven't messaged in 8h+."""
+        can_run, reason = self.check_conditions()
+        if not can_run:
+            return
+
+        if not self.proactive_engine or not self.channel_registry:
+            return
+
+        try:
+            # Fire-and-forget: schedule on the event loop
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                loop.create_task(self._async_proactive_checkin())
+        except Exception as e:
+            print(f"[WARN] Proactive check-in scheduling failed: {e}")
+
+    async def _async_proactive_checkin(self):
+        """Async proactive check-in for default users."""
+        for user_id, channel_id in [("the_creator", "whatsapp"), ("the_partner", "whatsapp")]:
+            try:
+                reply = await self.proactive_engine.maybe_reach_out(user_id, channel_id)
+                if reply:
+                    channel = self.channel_registry.get(channel_id)
+                    if channel:
+                        await channel.send(user_id, reply)
+                        print(f"[PROACTIVE] Sent check-in to {user_id}")
+            except Exception as e:
+                print(f"[WARN] Proactive {user_id} failed: {e}")
+
     def start(self):
         print(f"[WORKER] Gentle Worker Started (PID: {psutil.Process().pid})")
 
         # Schedule tasks at production-appropriate intervals
         schedule.every(10).minutes.do(self.heavy_task_graph_pruning)
         schedule.every(30).minutes.do(self.heavy_task_db_optimize)
+        schedule.every(15).minutes.do(self.heavy_task_proactive_checkin)
 
         try:
             while self.is_running:
