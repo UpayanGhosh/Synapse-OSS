@@ -255,31 +255,44 @@ class MemoryEngine:
                     "routing": routing,
                 }
 
-            # Reranker fallback
+            # Reranker fallback (gracefully degrades to scored results if reranker fails)
             try: _get_emitter().emit("memory.reranking_start", {})
             except Exception: pass
-            ranker = self._get_ranker()
-            candidates = [
-                {
-                    "id": r["id"],
-                    "text": r["metadata"]["text"],
-                    "meta": {"score": r["combined_score"]},
+            try:
+                ranker = self._get_ranker()
+                candidates = [
+                    {
+                        "id": r["id"],
+                        "text": r["metadata"]["text"],
+                        "meta": {"score": r["combined_score"]},
+                    }
+                    for r in q_results
+                ]
+                ranked = ranker.rerank(RerankRequest(query=text, passages=candidates))
+                return {
+                    "results": [
+                        {"content": x["text"], "score": float(x["score"]), "source": "lancedb_reranked"}
+                        for x in ranked[:limit]
+                    ],
+                    "tier": "reranked",
+                    "entities": entities,
+                    "graph_context": graph_context,
+                    "elapsed": f"{time.time() - start:.4f}s",
+                    "routing": routing,
                 }
-                for r in q_results
-            ]
-            ranked = ranker.rerank(RerankRequest(query=text, passages=candidates))
-
-            return {
-                "results": [
-                    {"content": x["text"], "score": float(x["score"]), "source": "lancedb_reranked"}
-                    for x in ranked[:limit]
-                ],
-                "tier": "reranked",
-                "entities": entities,
-                "graph_context": graph_context,
-                "elapsed": f"{time.time() - start:.4f}s",
-                "routing": routing,
-            }
+            except Exception as rerank_err:
+                print(f"[WARN] Reranker failed ({rerank_err}) — falling back to scored results")
+                return {
+                    "results": [
+                        {"content": r["metadata"]["text"], "score": r["combined_score"], "source": "lancedb_scored"}
+                        for r in q_results[:limit]
+                    ],
+                    "tier": "scored_fallback",
+                    "entities": entities,
+                    "graph_context": graph_context,
+                    "elapsed": f"{time.time() - start:.4f}s",
+                    "routing": routing,
+                }
         except Exception as e:
             print(f"[WARN] Memory query failed: {e}")
             return {
