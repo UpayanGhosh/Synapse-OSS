@@ -142,6 +142,15 @@ synapse.json
 workspace/scripts/personal/
 
 # ──────────────────────────────────────────────────────────────
+# Personal research / session content — never commit
+# ──────────────────────────────────────────────────────────────
+content/
+workspace/content/
+workspace/docs/
+test.html
+.agents/
+
+# ──────────────────────────────────────────────────────────────
 # Local / personal notes
 # ──────────────────────────────────────────────────────────────
 futureendevours.md
