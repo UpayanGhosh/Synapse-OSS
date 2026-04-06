@@ -101,7 +101,7 @@ tool_registry: "ToolRegistry | None" = None  # initialized in lifespan if availa
 hook_runner: "ToolHookRunner | None" = None
 audit_logger: "ToolAuditLogger | None" = None
 brain = SQLiteGraph()
-gate = EntityGate(entities_file="entities.json")
+gate = EntityGate(graph_store=brain, entities_file="entities.json")
 conflicts = ConflictManager(conflicts_file="conflicts.json")
 toxic_scorer = LazyToxicScorer(idle_timeout=30.0)
 emotional_trajectory = EmotionalTrajectory()
