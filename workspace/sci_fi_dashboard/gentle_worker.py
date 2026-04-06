@@ -99,11 +99,46 @@ class GentleWorker:
             except Exception as e:
                 print(f"[WARN] Proactive {user_id} failed: {e}")
 
+    def heavy_task_kg_extraction(self):
+        """Incremental KG extraction: process up to 10 pending docs per run."""
+        can_run, reason = self.check_conditions()
+        if not can_run:
+            return
+
+        import sqlite3
+
+        from synapse_config import SynapseConfig
+
+        db_path = str(SynapseConfig.load().db_dir / "memory.db")
+        try:
+            conn = sqlite3.connect(db_path)
+            row = conn.execute(
+                "SELECT COUNT(*) FROM documents WHERE kg_processed = 0"
+            ).fetchone()
+            pending = row[0] if row else 0
+            conn.close()
+        except Exception as e:
+            print(f"[WARN] KG extraction check failed: {e}")
+            return
+
+        if pending == 0:
+            return
+
+        print(f"[KG] Background extraction: {pending} doc(s) pending — processing up to 10...")
+        try:
+            from scripts.fact_extractor import process_documents  # noqa: PLC0415
+
+            process_documents(force=False, limit=10, dry_run=False)
+        except Exception as e:
+            print(f"[WARN] Background KG extraction failed: {e}")
+
     def start(self):
         print(f"[WORKER] Gentle Worker Started (PID: {psutil.Process().pid})")
 
         # Schedule tasks at production-appropriate intervals
+        # KG extraction at 20 min — staggered from pruning@10min, VACUUM@30min
         schedule.every(10).minutes.do(self.heavy_task_graph_pruning)
+        schedule.every(20).minutes.do(self.heavy_task_kg_extraction)
         schedule.every(30).minutes.do(self.heavy_task_db_optimize)
         schedule.every(15).minutes.do(self.heavy_task_proactive_checkin)
 

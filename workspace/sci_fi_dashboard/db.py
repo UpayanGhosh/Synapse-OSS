@@ -114,6 +114,19 @@ def _ensure_jarvis_tables(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+def _ensure_kg_processed_column(conn: sqlite3.Connection) -> None:
+    """Add kg_processed column to documents table if missing (idempotent).
+
+    Separate from processed= (which tracks the old Gemini extraction pipeline).
+    All existing documents start at 0 so the new local-LLM extractor picks them up.
+    """
+    cursor = conn.execute("PRAGMA table_info(documents)")
+    columns = {row[1] for row in cursor.fetchall()}
+    if "kg_processed" not in columns:
+        conn.execute("ALTER TABLE documents ADD COLUMN kg_processed INTEGER DEFAULT 0")
+    conn.commit()
+
+
 def _ensure_embedding_metadata(conn: sqlite3.Connection) -> None:
     """Add embedding provenance columns if they don't exist yet (idempotent).
 
@@ -246,6 +259,7 @@ class DatabaseManager:
                 _ensure_sessions_table(conn)
                 _ensure_embedding_metadata(conn)
                 _ensure_jarvis_tables(conn)
+                _ensure_kg_processed_column(conn)
                 conn.commit()
                 conn.close()
                 print("[OK] Memory database initialized successfully.")
@@ -255,6 +269,7 @@ class DatabaseManager:
                     _ensure_sessions_table(_mig)
                     _ensure_embedding_metadata(_mig)
                     _ensure_jarvis_tables(_mig)
+                    _ensure_kg_processed_column(_mig)
 
             DatabaseManager._initialized = True
 
