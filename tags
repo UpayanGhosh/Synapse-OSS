@@ -537,13 +537,6 @@ prune_sessions	workspace/scripts/prune_sessions.py	19	function
 pytest_addoption	workspace/tests/conftest.py	144	function
 pytest_collection_modifyitems	workspace/tests/conftest.py	149	function
 pytest_configure	workspace/tests/conftest.py	132	function
-QDRANT_HOST	workspace/scripts/migrate_temporal.py	13	variable
-QDRANT_PORT	workspace/scripts/migrate_temporal.py	14	variable
-QdrantVectorStore	workspace/scripts/v2_migration/qdrant_handler.py	7	class
-QdrantVectorStore.__init__	workspace/scripts/v2_migration/qdrant_handler.py	8	method
-QdrantVectorStore._ensure_collection	workspace/scripts/v2_migration/qdrant_handler.py	13	method
-QdrantVectorStore.search	workspace/scripts/v2_migration/qdrant_handler.py	45	method
-QdrantVectorStore.upsert_facts	workspace/scripts/v2_migration/qdrant_handler.py	33	method
 QR_POLL_INTERVAL	workspace/cli/channel_steps.py	50	variable
 QR_REFRESH_INTERVAL	workspace/cli/channel_steps.py	54	variable
 QR_TIMEOUT	workspace/cli/channel_steps.py	51	variable

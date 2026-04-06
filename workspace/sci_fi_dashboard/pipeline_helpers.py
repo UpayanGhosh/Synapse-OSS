@@ -11,7 +11,9 @@ from pathlib import Path
 import psutil
 
 from sci_fi_dashboard import _deps as deps
+from sci_fi_dashboard.conv_kg_extractor import run_batch_extraction
 from sci_fi_dashboard.schemas import ChatRequest
+from synapse_config import SynapseConfig
 
 logger = logging.getLogger(__name__)
 
@@ -245,6 +247,8 @@ async def on_batch_ready(
 async def gentle_worker_loop():
     """Background maintenance loop."""
     print("[WORKER] Gentle Worker: running.")
+    _kg_tick = 0
+    _kg_last_time = time.time()
     while True:
         try:
             battery = psutil.sensors_battery()
@@ -254,6 +258,30 @@ async def gentle_worker_loop():
             if is_plugged and cpu_load < 20.0:
                 deps.brain.prune_graph()
                 deps.conflicts.prune_conflicts()
+
+                # KG extraction every 2 cycles (~20 min) or 30-min fallback
+                _kg_tick += 1
+                if _kg_tick >= 2 or (time.time() - _kg_last_time) >= 1800:
+                    _kg_tick = 0
+                    _kg_last_time = time.time()
+                    try:
+                        cfg = SynapseConfig.load()
+                        for pid, sbs in deps.sbs_registry.items():
+                            await run_batch_extraction(
+                                persona_id=pid,
+                                sbs_data_dir=str(sbs.data_dir),
+                                llm_router=deps.synapse_llm_router,
+                                graph=deps.brain,
+                                memory_db_path=str(cfg.db_dir / "memory.db"),
+                                entities_json_path=str(
+                                    Path(__file__).parent / "entities.json"
+                                ),
+                                min_messages=cfg.kg_extraction.min_messages,
+                                kg_role=cfg.kg_extraction.kg_role,
+                            )
+                    except Exception as e:
+                        logger.warning("[WARN] KG extraction failed: %s", e)
+
                 await asyncio.sleep(600)
             else:
                 await asyncio.sleep(60)

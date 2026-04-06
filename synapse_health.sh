@@ -38,7 +38,6 @@ if [ -n "$HEALTH" ]; then
 else
     echo "❌ Gateway DOWN (or /health not responding)"
 fi
-curl -sf http://localhost:6333/collections > /dev/null && echo "✅ Qdrant     (6333)" || echo "❌ Qdrant DOWN"
 curl -sf http://localhost:11434/api/tags > /dev/null && echo "✅ Ollama     (11434)" || echo "❌ Ollama DOWN (or not installed)"
 
 # server.py should NOT be running

@@ -1,7 +1,7 @@
 """
 lancedb_store.py — LanceDB-backed VectorStore for Synapse-OSS.
 
-Replaces Qdrant with an embedded, pip-installable vector DB.
+Embedded, pip-installable vector DB for Synapse-OSS.
 Zero Docker dependency — data lives at ~/.synapse/workspace/db/lancedb/.
 
 Design notes:
@@ -9,7 +9,7 @@ Design notes:
 - Idempotent upsert via merge_insert on "id" column.
 - IVF_PQ index deferred until >= 256 rows (brute-force is faster below that).
 - Score conversion: LanceDB returns cosine distance (0=identical),
-  converted to similarity score (1=identical) to match Qdrant semantics.
+  converted to similarity score (1=identical).
 - prefilter=True on hemisphere filter cuts search space ~50% before ANN.
 """
 
@@ -52,7 +52,7 @@ def _build_schema(embedding_dimensions: int) -> pa.Schema:
 
 
 class LanceDBVectorStore(VectorStore):
-    """Embedded LanceDB vector store — drop-in replacement for QdrantVectorStore."""
+    """Embedded LanceDB vector store for Synapse-OSS."""
 
     def __init__(
         self,

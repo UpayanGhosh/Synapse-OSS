@@ -38,8 +38,6 @@ workspace/skills/gog/token.pickle
 *.db-wal
 *.db-journal
 workspace/db/
-workspace/qdrant/
-qdrant/storage/
 *.lance
 lancedb/
 
@@ -85,7 +83,6 @@ extensions/
 synapse_manager.sh
 synapse_architecture.sh
 wake_watcher.sh
-install_qdrant_native.sh
 fix_unicode.py
 verify_concurrency.py
 test_all_models.sh

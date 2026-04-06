@@ -161,7 +161,7 @@ class TestMemoryEngineLRUCache(unittest.TestCase):
         Construct a MemoryEngine with mocked external dependencies.
         Returns a fresh engine with its LRU cache cleared.
         """
-        qdrant_patch = patch(
+        lancedb_patch = patch(
             "sci_fi_dashboard.memory_engine.LanceDBVectorStore",
             return_value=MagicMock(),
         )
@@ -169,7 +169,7 @@ class TestMemoryEngineLRUCache(unittest.TestCase):
             "sci_fi_dashboard.memory_engine.get_provider",
             return_value=provider,
         )
-        with qdrant_patch, provider_patch:
+        with lancedb_patch, provider_patch:
             from sci_fi_dashboard.memory_engine import MemoryEngine
             engine = MemoryEngine()
             engine.get_embedding.cache_clear()
@@ -217,7 +217,7 @@ class TestMemoryEngineLRUCache(unittest.TestCase):
         """The provider returned by get_provider() is stored as self._embed_provider."""
         mock_provider = _make_provider()
 
-        qdrant_patch = patch(
+        lancedb_patch = patch(
             "sci_fi_dashboard.memory_engine.LanceDBVectorStore",
             return_value=MagicMock(),
         )
@@ -225,7 +225,7 @@ class TestMemoryEngineLRUCache(unittest.TestCase):
             "sci_fi_dashboard.memory_engine.get_provider",
             return_value=mock_provider,
         )
-        with qdrant_patch, provider_patch:
+        with lancedb_patch, provider_patch:
             from sci_fi_dashboard.memory_engine import MemoryEngine
             engine = MemoryEngine()
 
@@ -664,7 +664,7 @@ class TestMemoryEngineEdgeCases(unittest.TestCase):
     """Additional edge cases for MemoryEngine.get_embedding()."""
 
     def _make_engine(self, provider):
-        qdrant_patch = patch(
+        lancedb_patch = patch(
             "sci_fi_dashboard.memory_engine.LanceDBVectorStore",
             return_value=MagicMock(),
         )
@@ -672,7 +672,7 @@ class TestMemoryEngineEdgeCases(unittest.TestCase):
             "sci_fi_dashboard.memory_engine.get_provider",
             return_value=provider,
         )
-        with qdrant_patch, provider_patch:
+        with lancedb_patch, provider_patch:
             from sci_fi_dashboard.memory_engine import MemoryEngine
             engine = MemoryEngine()
             engine.get_embedding.cache_clear()

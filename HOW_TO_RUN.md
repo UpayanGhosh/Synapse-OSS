@@ -431,7 +431,7 @@ abort) so you can add a key later without re-running the full onboard.
 
 | Service | Purpose |
 |---------|---------|
-| Qdrant (Docker) | Vector database for semantic memory |
+| LanceDB (embedded) | Vector database for semantic memory |
 | Ollama | Embedding model (`nomic-embed-text`) — required for memory ingestion |
 | Synapse API Gateway | The brain — handles memory, routing, persona |
 
@@ -487,7 +487,7 @@ synapse_start.bat
 ```
 
 The start script automatically:
-- Starts Docker / Qdrant if not already running
+- Initializes LanceDB vector store (embedded, no Docker needed)
 - Starts Ollama (required for memory embedding)
 - Starts the Synapse API Gateway (which in turn spawns the Baileys WhatsApp bridge)
 

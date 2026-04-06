@@ -282,9 +282,6 @@ def pipeline_memory_engine(pipeline_lancedb, pipeline_graph):
 
     # Override the vector store with our pre-seeded LanceDB fixture so that
     # all engine.query() calls hit the same data as the ingest tests.
-    engine.qdrant_store = pipeline_lancedb  # type: ignore[attr-defined]
-    # Also expose as vector_store for forward-compatibility with the refactored
-    # MemoryEngine that uses vector_store instead of qdrant_store.
     engine.vector_store = pipeline_lancedb  # type: ignore[attr-defined]
     engine._embed_provider = fake_provider  # type: ignore[attr-defined]
 

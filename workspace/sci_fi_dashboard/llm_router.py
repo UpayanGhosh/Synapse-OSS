@@ -695,10 +695,12 @@ class SynapseLLMRouter:
         messages: list[dict],
         temperature: float = 0.7,
         max_tokens: int = 1000,
+        **kwargs,
     ):
         """
         Internal: route to the litellm model for the given role and return the raw
         litellm response object. Handles error classification and session tracking.
+        Extra **kwargs (e.g. response_format) are forwarded to litellm acompletion.
         """
         try:
             response = await self._router.acompletion(
@@ -706,6 +708,7 @@ class SynapseLLMRouter:
                 messages=messages,
                 temperature=temperature,
                 max_tokens=max_tokens,
+                **kwargs,
             )
             choice = response.choices[0]
             finish_reason = choice.finish_reason
@@ -757,6 +760,7 @@ class SynapseLLMRouter:
                     messages=messages,
                     temperature=temperature,
                     max_tokens=max_tokens,
+                    **kwargs,
                 )
             raise
 
@@ -766,6 +770,7 @@ class SynapseLLMRouter:
         messages: list[dict],
         temperature: float = 0.7,
         max_tokens: int = 1000,
+        **kwargs,
     ) -> str:
         """
         Route to the litellm model for the given role (e.g., 'casual', 'vault').
@@ -776,9 +781,9 @@ class SynapseLLMRouter:
         """
         mapping = self._config.model_mappings.get(role, {})
         if mapping.get("model", "").startswith(_CLAUDE_MAX_PREFIX):
-            result = await self.call_with_metadata(role, messages, temperature, max_tokens)
+            result = await self.call_with_metadata(role, messages, temperature, max_tokens, **kwargs)
             return result.text
-        response = await self._do_call(role, messages, temperature, max_tokens)
+        response = await self._do_call(role, messages, temperature, max_tokens, **kwargs)
         return response.choices[0].message.content or ""
 
     async def _call_claude_cli(
@@ -888,10 +893,12 @@ class SynapseLLMRouter:
         messages: list[dict],
         temperature: float = 0.7,
         max_tokens: int = 1000,
+        **kwargs,
     ) -> LLMResult:
         """
         Same as call() but returns an LLMResult with text + usage metadata.
         For claude_max roles, uses CLI subprocess to bypass API fingerprinting.
+        Extra **kwargs (e.g. response_format) are forwarded to the underlying call.
         """
         # Check if this role uses claude_max — if so, use CLI subprocess
         mapping = self._config.model_mappings.get(role, {})
@@ -904,7 +911,7 @@ class SynapseLLMRouter:
                 logger.warning("claude CLI failed (%s) — falling back to litellm", cli_exc)
                 # Fall through to normal litellm path
 
-        response = await self._do_call(role, messages, temperature, max_tokens)
+        response = await self._do_call(role, messages, temperature, max_tokens, **kwargs)
         usage = getattr(response, "usage", None)
         return LLMResult(
             text=response.choices[0].message.content or "",

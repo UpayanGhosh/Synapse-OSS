@@ -21,7 +21,14 @@ import os
 import re
 import threading
 import time
+import warnings
 from typing import Callable, Optional
+
+warnings.warn(
+    "triple_extractor is deprecated; use conv_kg_extractor instead",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 logger = logging.getLogger(__name__)
 

@@ -319,6 +319,7 @@ def _handle_reset(reset_scope: str, data_root: Path) -> None:
 _KNOWN_MODELS: dict[str, list[dict[str, str]]] = {
     "gemini": [
         {"value": "gemini/gemini-2.5-flash", "label": "Gemini 2.5 Flash (fast, cheap)"},
+        {"value": "gemini/gemini-2.5-flash-lite", "label": "Gemini 2.5 Flash-Lite (fastest, free tier)"},
         {"value": "gemini/gemini-2.5-pro", "label": "Gemini 2.5 Pro (best quality)"},
         {"value": "gemini/gemini-2.0-flash", "label": "Gemini 2.0 Flash"},
     ],
@@ -369,6 +370,7 @@ _ROLES: list[tuple[str, str, list[str]]] = [
     ("code", "Code generation & debugging", ["anthropic", "openai", "github_copilot", "groq"]),
     ("analysis", "Analysis & deep research", ["gemini", "openai", "github_copilot", "anthropic"]),
     ("review", "Code review & critique", ["anthropic", "openai", "github_copilot", "gemini"]),
+    ("kg", "Knowledge Graph extraction (background, always Gemini free tier)", ["gemini"]),
 ]
 
 
@@ -384,6 +386,8 @@ def _build_model_mappings(providers: list[str]) -> dict:
     """Generate sensible model_mappings automatically (QuickStart / non-interactive)."""
     mappings: dict = {}
     for role, _desc, prefs in _ROLES:
+        if role == "kg":
+            continue  # handled below — always Gemini Flash-Lite
         model = _auto_pick(providers, prefs, _KNOWN_MODELS)
         if model:
             mappings[role] = {"model": model, "fallback": None}
@@ -391,6 +395,14 @@ def _build_model_mappings(providers: list[str]) -> dict:
     # vault: always ollama (local-only by design)
     if "ollama" in providers:
         mappings["vault"] = {"model": "ollama_chat/llama3.3", "fallback": None}
+
+    # kg: always Gemini Flash-Lite (free tier, 1000 req/day)
+    # This is independent of the user's chat provider choice.
+    if "gemini" in providers:
+        mappings["kg"] = {
+            "model": "gemini/gemini-2.5-flash-lite",
+            "fallback": "gemini/gemini-2.5-flash",
+        }
 
     return mappings
 
@@ -424,6 +436,8 @@ def _build_model_mappings_interactive(providers: list[str], prompter: "object") 
 
     mappings: dict = {}
     for role, desc, prefs in _ROLES:
+        if role == "kg":
+            continue  # handled below — always Gemini Flash-Lite
         default = _auto_pick(providers, prefs, _KNOWN_MODELS)
         selected = prompter.select(  # type: ignore[attr-defined]
             f"{role} ({desc}):",
@@ -435,6 +449,15 @@ def _build_model_mappings_interactive(providers: list[str], prompter: "object") 
     # vault: always ollama (local-only by design)
     if "ollama" in providers:
         mappings["vault"] = {"model": "ollama_chat/llama3.3", "fallback": None}
+
+    # kg: always Gemini Flash-Lite (free tier, 1000 req/day)
+    # Not user-configurable — memory engine runs on Gemini regardless of chat provider.
+    if "gemini" in providers:
+        mappings["kg"] = {
+            "model": "gemini/gemini-2.5-flash-lite",
+            "fallback": "gemini/gemini-2.5-flash",
+        }
+        _print("[dim]   KG role auto-set to Gemini 2.5 Flash-Lite (free tier)[/]")
 
     return mappings
 
