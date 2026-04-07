@@ -43,7 +43,7 @@ Details at v4.0 milestone init.
 - [ ] **Phase 2: Safe Self-Modification + Rollback** — Full consent protocol + snapshot engine + Zone 1/Zone 2 hard enforcement + rollback by date/description (vision Phase 6)
 - [x] **Phase 3: Subagent System** — Spawn isolated async sub-agents, parallel execution, result return, progress updates (vision Phase 7) (completed 2026-04-07)
 - [x] **Phase 4: Onboarding Wizard v2** — `python -m synapse setup` under 5 min, initial SBS profile from questions, history import offer (vision Phase 8) (completed 2026-04-07)
-- [ ] **Phase 5: Browser Tool** — Live web access as a skill, summarized injection, privacy-boundary enforcement (vision Phase 9)
+- [x] **Phase 5: Browser Tool** — Live web access as a skill, summarized injection, privacy-boundary enforcement (vision Phase 9) (completed 2026-04-07)
 
 ---
 
@@ -252,7 +252,7 @@ Phases execute in dependency order: 0 → 1 → 2 → 3 → 4 → 5
 | 2. Safe Self-Modification + Rollback | 0/6 | Pending | — |
 | 3. Subagent System | 4/4 | Complete   | 2026-04-07 |
 | 4. Onboarding Wizard v2 | 4/4 | Complete   | 2026-04-07 |
-| 5. Browser Tool | 3/4 | In Progress|  |
+| 5. Browser Tool | 4/4 | Complete   | 2026-04-07 |
 
 **v1.0 Archive:** All 10 phases, 38 plans — COMPLETE (2026-03-03)
 See archived ROADMAP in `.planning/phases/` for historical reference.

@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Proactive Architecture Evolution
 status: unknown
-last_updated: "2026-04-07T14:00:20.758Z"
+last_updated: "2026-04-07T14:00:00.000Z"
 progress:
   total_phases: 5
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 22
-  completed_plans: 16
+  completed_plans: 17
 ---
 
 # Project State
@@ -22,12 +22,12 @@ See: .planning/PROJECT.md (updated 2026-04-06)
 
 ## Current Position
 
-Phase: 05 (browser-tool) — EXECUTING
-Plan: 3 of 4 complete (Plan 04 next)
-Status: Executing Phase 05
-Last activity: 2026-04-07 -- Phase 05 Plan 03 completed
+Phase: 05 (browser-tool) — COMPLETE
+Plan: 4 of 4 complete (Phase 05 done)
+Status: Phase 05 complete — all phases done
+Last activity: 2026-04-07 -- Phase 05 Plan 04 completed
 
-Progress: [########░░░░░░░░░░░░░░░░░░░░░] 16/22 plans complete
+Progress: [##########░░░░░░░░░░░░░░░░░░░] 17/22 plans complete
 
 ## Pre-Work Checklist
 
@@ -76,6 +76,9 @@ Before starting Phase 1:
 - [Phase 05-browser-tool]: _load_sibling_module() uses importlib.util.spec_from_file_location() — no sys.path manipulation, no namespace pollution, TOCTOU-safe
 - [Phase 05-browser-tool]: Hemisphere guard is the FIRST check in run_browser_skill — fires before any import or network call
 - [Phase 05-browser-tool]: Phase 01 skill framework (schema.py, loader.py, registry.py, watcher.py, router.py, runner.py) created as Rule 3 blocking fix since Phase 01 was never executed
+- [Phase 05-browser-tool]: SSRF tests call real is_ssrf_blocked() without mocking — test failures catch real guard regressions
+- [Phase 05-browser-tool]: Hemisphere guard proven by zero _load_sibling_module calls in spicy mode — call-count tracking pattern
+- [Phase 05-browser-tool]: 169.254.x.x link-local range added to SSRF tests (AWS/GCP/Azure IMDSv1 attack vector coverage)
 
 ### Pending Todos
 
@@ -95,7 +98,7 @@ None active. v2.0 ready to begin after branch merge.
 
 ## Session Continuity
 
-Last session: 2026-04-07 (Phase 05-03 complete — browser skill orchestrator + skill framework)
-Stopped at: Completed 05-browser-tool/05-03-PLAN.md — browser_skill.py orchestrator with hemisphere guard, importlib entry_point dispatch in SkillRunner, full skill system framework created
+Last session: 2026-04-07 (Phase 05-04 complete — browser skill integration tests for all BROWSE requirements)
+Stopped at: Completed 05-browser-tool/05-04-PLAN.md — 17 integration tests covering BROWSE-01 through BROWSE-05, SSRF guard, hemisphere privacy boundary
 Resume file: None
-Next step: Continue Phase 05-browser-tool from Plan 04
+Next step: Phase 05 complete — all plans executed for browser-tool phase
