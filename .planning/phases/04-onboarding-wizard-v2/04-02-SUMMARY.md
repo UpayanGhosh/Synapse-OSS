@@ -120,3 +120,11 @@ None - no external service configuration required.
 ---
 *Phase: 04-onboarding-wizard-v2*
 *Completed: 2026-04-07*
+
+## Self-Check: PASSED
+
+- workspace/cli/verify_steps.py — FOUND
+- .planning/phases/04-onboarding-wizard-v2/04-02-SUMMARY.md — FOUND
+- Commit bf704ab — FOUND (feat: verify_steps.py)
+- Commit 71fe2ba — FOUND (feat: synapse_cli.py fix)
+- Commit 52c812b — FOUND (docs: SUMMARY + STATE + ROADMAP + REQUIREMENTS)
