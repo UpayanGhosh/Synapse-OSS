@@ -136,7 +136,7 @@ def setup(
     if verify:
         from cli.verify_steps import run_verify  # noqa: PLC0415
 
-        raise typer.Exit(run_verify())
+        raise typer.Exit(run_verify(non_interactive=non_interactive))
     else:
         from cli.onboard import run_wizard  # noqa: PLC0415
 
