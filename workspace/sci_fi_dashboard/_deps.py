@@ -278,3 +278,11 @@ synapse_llm_router = SynapseLLMRouter(_synapse_cfg)
 
 # Module-level proactive engine reference — set in lifespan after engine starts
 _proactive_engine = None
+
+# ---------------------------------------------------------------------------
+# Phase 2 (v2.0): Snapshot Engine (optional — set in lifespan)
+# ---------------------------------------------------------------------------
+if TYPE_CHECKING:
+    from sci_fi_dashboard.snapshot_engine import SnapshotEngine
+
+snapshot_engine: "SnapshotEngine | None" = None

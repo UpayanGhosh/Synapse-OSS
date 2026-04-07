@@ -44,9 +44,12 @@ from sci_fi_dashboard.routes import (
     pipeline as pipeline_routes,
     sessions,
     skills,
+    snapshots,
     websocket,
     whatsapp,
 )
+from sci_fi_dashboard.snapshot_engine import SnapshotEngine
+from sci_fi_dashboard.sbs.sentinel.manifest import ZONE_2_PATHS
 
 logger = logging.getLogger(__name__)
 
@@ -229,6 +232,22 @@ async def lifespan(app: FastAPI):
     except Exception as _cron_exc:
         logger.warning("[CRON] CronService init failed (non-fatal): %s", _cron_exc)
 
+    # Phase 2 (v2.0): SnapshotEngine — Zone 2 atomic snapshot/rollback
+    # Zone 2 paths imported from manifest — ensures scope matches the authoritative
+    # Zone 2 definition (skills + state/agents). max_snapshots configurable via
+    # synapse.json -> snapshots_max_count (default 50, T-02-04 DoS guard).
+    _snap_max = deps._synapse_cfg.session.get("snapshots_max_count", 50)
+    deps.snapshot_engine = SnapshotEngine(
+        data_root=deps._synapse_cfg.data_root,
+        zone2_paths=ZONE_2_PATHS,
+        max_snapshots=_snap_max,
+    )
+    app.state.snapshot_engine = deps.snapshot_engine
+    logger.info(
+        "[SNAPSHOT] SnapshotEngine initialized at %s",
+        deps._synapse_cfg.data_root / "snapshots",
+    )
+
     # Phase 1 (v2.0): Skill Architecture
     if deps._SKILL_SYSTEM_AVAILABLE:
         try:
@@ -337,6 +356,7 @@ app.include_router(whatsapp.router)
 app.include_router(persona.router)
 app.include_router(knowledge.router)
 app.include_router(sessions.router)
+app.include_router(snapshots.router)
 app.include_router(websocket.router)
 app.include_router(pipeline_routes.router)
 app.include_router(skills.router)
