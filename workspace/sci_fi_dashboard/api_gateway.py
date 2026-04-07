@@ -44,13 +44,9 @@ from sci_fi_dashboard.routes import (
     persona,
     pipeline as pipeline_routes,
     sessions,
-    skills,
-    snapshots,
     websocket,
     whatsapp,
 )
-from sci_fi_dashboard.snapshot_engine import SnapshotEngine
-from sci_fi_dashboard.sbs.sentinel.manifest import ZONE_2_PATHS
 
 logger = logging.getLogger(__name__)
 
@@ -245,27 +241,6 @@ async def lifespan(app: FastAPI):
     except Exception as _cron_exc:
         logger.warning("[CRON] CronService init failed (non-fatal): %s", _cron_exc)
 
-    # Phase 2 (v2.0): SnapshotEngine — Zone 2 atomic snapshot/rollback
-    # Zone 2 paths imported from manifest — ensures scope matches the authoritative
-    # Zone 2 definition (skills + state/agents). max_snapshots configurable via
-    # synapse.json -> snapshots_max_count (default 50, T-02-04 DoS guard).
-    _snap_max = deps._synapse_cfg.session.get("snapshots_max_count", 50)
-    deps.snapshot_engine = SnapshotEngine(
-        data_root=deps._synapse_cfg.data_root,
-        zone2_paths=ZONE_2_PATHS,
-        max_snapshots=_snap_max,
-    )
-    app.state.snapshot_engine = deps.snapshot_engine
-    logger.info(
-        "[SNAPSHOT] SnapshotEngine initialized at %s",
-        deps._synapse_cfg.data_root / "snapshots",
-    )
-
-    # Phase 2 (v2.0): ConsentProtocol — must come after SnapshotEngine init
-    from sci_fi_dashboard.consent_protocol import ConsentProtocol
-    deps.consent_protocol = ConsentProtocol(snapshot_engine=deps.snapshot_engine)
-    logger.info("[CONSENT] ConsentProtocol initialized")
-
     # Phase 1 (v2.0): Skill Architecture
     if deps._SKILL_SYSTEM_AVAILABLE:
         try:
@@ -276,21 +251,17 @@ async def lifespan(app: FastAPI):
             _skills_dir = deps._synapse_cfg.data_root / "skills"
             _skills_dir.mkdir(parents=True, exist_ok=True)
 
-            # Seed bundled skills (e.g. skill-creator) on first run — T-01-20
-            _seeded = SkillRegistry.seed_bundled_skills(_skills_dir)
-            if _seeded:
-                logger.info("[Skills] Seeded %d bundled skills to %s", _seeded, _skills_dir)
-
             deps.skill_registry = SkillRegistry(_skills_dir)
             deps.skill_router = SkillRouter()
             deps.skill_router.update_skills(deps.skill_registry.list_skills())
 
-            # Wire hot-reload: when watcher triggers reload, also update router
+            # Wire hot-reload: when watcher triggers reload, also update router embeddings
             _original_reload = deps.skill_registry.reload
 
             def _reload_with_router_update():
                 _original_reload()
-                deps.skill_router.update_skills(deps.skill_registry.list_skills())
+                if deps.skill_router is not None:
+                    deps.skill_router.update_skills(deps.skill_registry.list_skills())
 
             deps.skill_registry.reload = _reload_with_router_update
 
@@ -303,7 +274,7 @@ async def lifespan(app: FastAPI):
 
             _skill_count = len(deps.skill_registry.list_skills())
             logger.info(
-                "[Skills] Skill system initialized: %d skills loaded from %s",
+                "[Skills] Skill system initialized: %d skill(s) loaded from %s",
                 _skill_count,
                 _skills_dir,
             )
@@ -318,14 +289,15 @@ async def lifespan(app: FastAPI):
     yield
 
     # --- Shutdown ---
-    # Stop skill watcher before other cleanup
+    print("[STOP] Shutting down...")
+
+    # Stop skill watcher
     if deps.skill_watcher is not None:
         try:
             deps.skill_watcher.stop()
         except Exception:
             pass
 
-    print("[STOP] Shutting down...")
     deps.brain.save_graph()
 
     for persona_id, sbs in deps.sbs_registry.items():
@@ -374,10 +346,8 @@ app.include_router(whatsapp.router)
 app.include_router(persona.router)
 app.include_router(knowledge.router)
 app.include_router(sessions.router)
-app.include_router(snapshots.router)
 app.include_router(websocket.router)
 app.include_router(pipeline_routes.router)
-app.include_router(skills.router)
 app.include_router(agents_routes.router)
 
 # Dashboard static files

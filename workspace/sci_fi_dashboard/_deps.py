@@ -5,7 +5,6 @@ import os
 import sys
 import uuid
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from rich import print
 
@@ -90,20 +89,20 @@ except ImportError:
 # ---------------------------------------------------------------------------
 # Phase 1 (v2.0): Skill Architecture (optional)
 # ---------------------------------------------------------------------------
-if TYPE_CHECKING:
-    from sci_fi_dashboard.skills.registry import SkillRegistry
-    from sci_fi_dashboard.skills.router import SkillRouter
-    from sci_fi_dashboard.skills.watcher import SkillWatcher
-
 try:
-    from sci_fi_dashboard.skills.registry import SkillRegistry as _SkillRegistry
-    from sci_fi_dashboard.skills.router import SkillRouter as _SkillRouter
-    from sci_fi_dashboard.skills.watcher import SkillWatcher as _SkillWatcher
-    from sci_fi_dashboard.skills.runner import SkillRunner as _SkillRunner
+    from sci_fi_dashboard.skills.registry import SkillRegistry as _SkillRegistry  # noqa: E402
+    from sci_fi_dashboard.skills.router import SkillRouter as _SkillRouter  # noqa: E402
+    from sci_fi_dashboard.skills.watcher import SkillWatcher as _SkillWatcher  # noqa: E402
+    from sci_fi_dashboard.skills.runner import SkillRunner as _SkillRunner  # noqa: E402
 
     _SKILL_SYSTEM_AVAILABLE = True
 except ImportError:
     _SKILL_SYSTEM_AVAILABLE = False
+
+# Singletons — initialized in lifespan if skill system is available
+skill_registry: "_SkillRegistry | None" = None
+skill_router: "_SkillRouter | None" = None
+skill_watcher: "_SkillWatcher | None" = None
 
 # ---------------------------------------------------------------------------
 # Tool execution loop constants
@@ -133,12 +132,6 @@ dual_cognition = DualCognitionEngine(
     emotional_trajectory=emotional_trajectory,
 )
 conversation_cache = ConversationCache(max_entries=200, ttl_s=300)
-
-# Skill system singletons — initialized in lifespan if skill system is available.
-# Set to None on init failure (non-fatal: server starts normally).
-skill_registry: "SkillRegistry | None" = None
-skill_router: "SkillRouter | None" = None
-skill_watcher: "SkillWatcher | None" = None
 
 # ---------------------------------------------------------------------------
 # Async Gateway Components
@@ -278,25 +271,6 @@ synapse_llm_router = SynapseLLMRouter(_synapse_cfg)
 
 # Module-level proactive engine reference — set in lifespan after engine starts
 _proactive_engine = None
-
-# ---------------------------------------------------------------------------
-# Phase 2 (v2.0): Snapshot Engine (optional — set in lifespan)
-# ---------------------------------------------------------------------------
-if TYPE_CHECKING:
-    from sci_fi_dashboard.snapshot_engine import SnapshotEngine
-
-snapshot_engine: "SnapshotEngine | None" = None
-
-# Phase 2: Consent protocol singleton (initialized in api_gateway.py lifespan)
-if TYPE_CHECKING:
-    from sci_fi_dashboard.consent_protocol import ConsentProtocol
-
-consent_protocol: "ConsentProtocol | None" = None
-
-# Phase 2: Pending consent state keyed by (session_key, sender_id) tuple.
-# In-memory dict — does not survive server restart. Acceptable for single-user deployment.
-# Shape: {(session_key, sender_id): PendingConsent}
-pending_consents: dict = {}
 
 # ---------------------------------------------------------------------------
 # Phase 3: SubAgent System (optional — initialized in lifespan)
