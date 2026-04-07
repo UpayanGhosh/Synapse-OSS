@@ -248,6 +248,11 @@ async def lifespan(app: FastAPI):
         deps._synapse_cfg.data_root / "snapshots",
     )
 
+    # Phase 2 (v2.0): ConsentProtocol — must come after SnapshotEngine init
+    from sci_fi_dashboard.consent_protocol import ConsentProtocol
+    deps.consent_protocol = ConsentProtocol(snapshot_engine=deps.snapshot_engine)
+    logger.info("[CONSENT] ConsentProtocol initialized")
+
     # Phase 1 (v2.0): Skill Architecture
     if deps._SKILL_SYSTEM_AVAILABLE:
         try:

@@ -46,6 +46,13 @@ try:
 except ImportError:
     pass
 
+from sci_fi_dashboard.consent_protocol import (
+    detect_modification_intent,
+    is_affirmative,
+    is_negative,
+    PendingConsent,
+)
+
 
 # ---------------------------------------------------------------------------
 # Tool Execution Helpers (Phase 3)
@@ -102,6 +109,131 @@ async def persona_chat(
         _run_id = _get_emitter().start_run(text=user_msg[:120], target=target)
     except Exception:
         pass
+
+    # --- Phase 2: Consent Protocol Interception ---
+    # Check for pending consent first (user said "yes"/"no" to a previous proposal).
+    # Key is (session_key, sender_id) tuple to prevent cross-user hijacking (T-02-02).
+    _session_key = getattr(request, "session_key", None) or "default"
+    _sender_id = request.user_id or "default"
+    _consent_key = (_session_key, _sender_id)
+    _pending = deps.pending_consents.get(_consent_key)
+
+    if _pending is not None:
+        if _pending.is_expired:
+            # Expired consent — silently clear and continue normal pipeline
+            deps.pending_consents.pop(_consent_key, None)
+            logger.info("[CONSENT] Expired pending consent cleared for %s", _consent_key)
+        elif is_affirmative(user_msg):
+            # User confirmed — execute the modification
+            deps.pending_consents.pop(_consent_key, None)
+            logger.info("[CONSENT] User confirmed modification: %s", _pending.intent.description)
+            # T-02-02: Validate sender_id matches
+            if _pending.sender_id != _sender_id:
+                logger.warning(
+                    "[CONSENT] Sender mismatch: expected %s, got %s",
+                    _pending.sender_id, _sender_id,
+                )
+                return {
+                    "reply": "Sorry, only the person who requested the change can confirm it.",
+                    "persona": f"synapse_{target}",
+                    "memory_method": "consent_rejected",
+                    "model": "system",
+                }
+
+            # Build the executor based on change_type
+            async def _create_skill_executor():
+                """Real executor for create_skill: creates skill dir with SKILL.md stub.
+                Satisfies MOD-02 (Synapse executes the modification).
+                Uses Phase 1 SKILL.md schema: name, description, version, author."""
+                import re as _re
+                from pathlib import Path as _Path
+
+                _data_root = deps._synapse_cfg.data_root
+                _skill_name = (
+                    _pending.intent.details.get("skill_name")
+                    or _pending.intent.description.lower().replace(" ", "-")[:40]
+                )
+                # Sanitize skill name (same slug pattern as SnapshotEngine._slugify)
+                _skill_name = _re.sub(r"[^a-z0-9]+", "-", _skill_name).strip("-")[:40]
+                _skill_dir = _data_root / "skills" / _skill_name
+                _skill_dir.mkdir(parents=True, exist_ok=True)
+                (_skill_dir / "SKILL.md").write_text(
+                    f"---\n"
+                    f"name: {_skill_name}\n"
+                    f"description: {_pending.intent.description}\n"
+                    f"version: 1.0.0\n"
+                    f"author: synapse-self-mod\n"
+                    f"---\n",
+                    encoding="utf-8",
+                )
+                return {"created": True, "skill_dir": str(_skill_dir)}
+
+            async def _noop_executor():
+                """Noop executor for change types not yet wired (e.g., create_cron).
+                NOTE: create_cron wiring is deferred to Phase 3 (subagent system)
+                where async tool execution is supported. The consent-detect-explain-confirm
+                infrastructure is complete; only the actual CronJob creation is deferred."""
+                return {"executed": False, "reason": "executor not yet wired for this change_type"}
+
+            # Select executor based on change_type
+            if _pending.intent.change_type == "create_skill":
+                _executor = _create_skill_executor
+            else:
+                # create_cron and other types: noop for now (Phase 3)
+                _executor = _noop_executor
+
+            result = await deps.consent_protocol.confirm_and_execute(
+                _pending.intent, _executor
+            )
+            if result["status"] == "success":
+                reply_text = (
+                    f"Done! I've made the change: {_pending.intent.description}\n"
+                    f"A snapshot has been saved — you can undo this anytime."
+                )
+            else:
+                reply_text = (
+                    f"The change failed and I've reverted everything back.\n"
+                    f"Error: {result.get('error', 'unknown')}\n"
+                    f"Your system is unchanged."
+                )
+            return {
+                "reply": reply_text,
+                "persona": f"synapse_{target}",
+                "memory_method": "consent_executed",
+                "model": "system",
+            }
+        elif is_negative(user_msg):
+            # User declined
+            deps.pending_consents.pop(_consent_key, None)
+            logger.info("[CONSENT] User declined modification")
+            return {
+                "reply": "Got it, I won't make that change.",
+                "persona": f"synapse_{target}",
+                "memory_method": "consent_declined",
+                "model": "system",
+            }
+        # If user says something else while consent is pending, fall through to normal pipeline
+
+    # Check for new modification intent
+    if deps.consent_protocol is not None:
+        _intent = await detect_modification_intent(user_msg)
+        if _intent is not None:
+            _explanation = deps.consent_protocol.explain(_intent)
+            deps.pending_consents[_consent_key] = PendingConsent(
+                intent=_intent,
+                session_id=_session_key,
+                sender_id=_sender_id,
+                explanation=_explanation,
+                created_at=time.time(),
+            )
+            logger.info("[CONSENT] Modification intent detected, awaiting confirmation")
+            return {
+                "reply": _explanation,
+                "persona": f"synapse_{target}",
+                "memory_method": "consent_pending",
+                "model": "system",
+            }
+    # --- End Phase 2 Consent Protocol ---
 
     # 1. Memory Retrieval (Phoenix v3 Unified Engine)
     mem_response = None

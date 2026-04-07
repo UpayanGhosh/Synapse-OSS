@@ -286,3 +286,14 @@ if TYPE_CHECKING:
     from sci_fi_dashboard.snapshot_engine import SnapshotEngine
 
 snapshot_engine: "SnapshotEngine | None" = None
+
+# Phase 2: Consent protocol singleton (initialized in api_gateway.py lifespan)
+if TYPE_CHECKING:
+    from sci_fi_dashboard.consent_protocol import ConsentProtocol
+
+consent_protocol: "ConsentProtocol | None" = None
+
+# Phase 2: Pending consent state keyed by (session_key, sender_id) tuple.
+# In-memory dict — does not survive server restart. Acceptable for single-user deployment.
+# Shape: {(session_key, sender_id): PendingConsent}
+pending_consents: dict = {}
