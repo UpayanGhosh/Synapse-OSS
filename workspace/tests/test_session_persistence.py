@@ -44,6 +44,20 @@ _skip = pytest.mark.skipif(
     reason="sci_fi_dashboard/multiuser not yet available",
 )
 
+# Guard for pipeline_helpers (transitively requires pyarrow via lancedb)
+try:
+    import sci_fi_dashboard.pipeline_helpers as _ph  # noqa: F401
+    import sci_fi_dashboard.session_ingest as _si  # noqa: F401
+
+    _PIPELINE_AVAILABLE = True
+except (ImportError, Exception):
+    _PIPELINE_AVAILABLE = False
+
+_skip_pipeline = pytest.mark.skipif(
+    not _PIPELINE_AVAILABLE,
+    reason="pipeline_helpers/session_ingest not importable (missing ML deps)",
+)
+
 
 # ---------------------------------------------------------------------------
 # Session key tests (SESS-01)
@@ -415,6 +429,7 @@ def test_session_reset_404_for_unknown(api_client):
     assert resp.status_code == 404
 
 
+@_skip_pipeline
 class TestSessionResetCommand:
     """Tests for /new: archive + full memory loop + fresh start."""
 
