@@ -10,10 +10,11 @@ Design notes:
 - IVF_PQ index deferred until >= 256 rows (brute-force is faster below that).
 - Score conversion: LanceDB returns cosine distance (0=identical),
   converted to similarity score (1=identical) to match Qdrant semantics.
-- prefilter=True on hemisphere filter cuts search space ~50% before ANN.
+- Hemisphere filter uses postfilter (prefilter=False) for correctness with IN() queries.
 """
 
 import logging
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -25,6 +26,8 @@ logger = logging.getLogger(__name__)
 
 _DEFAULT_TABLE = "memories"
 _INDEX_THRESHOLD = 256  # rows required before building IVF_PQ index
+_UPSERT_CHUNK = 2_000   # max rows per merge_insert call — limits peak memory
+_TABLE_INIT_LOCK = threading.Lock()  # serialises check-and-create across threads
 
 
 def _default_db_path() -> Path:
@@ -74,11 +77,23 @@ class LanceDBVectorStore(VectorStore):
         logger.info("[OK] LanceDBVectorStore connected at %s (table=%s)", resolved_path, table_name)
 
     def _open_or_create_table(self):
-        """Open existing table or create with schema. Never overwrites existing data."""
-        existing = self._db.table_names()
-        if self._table_name in existing:
-            return self._db.open_table(self._table_name)
-        return self._db.create_table(self._table_name, schema=self._schema)
+        """Open existing table or create with schema. Never overwrites existing data.
+
+        Guarded by _TABLE_INIT_LOCK to prevent TOCTOU race when multiple threads
+        instantiate LanceDBVectorStore against the same path simultaneously.
+        The try/except also handles external-process races (two separate Python
+        processes sharing the same LanceDB directory).
+        """
+        with _TABLE_INIT_LOCK:
+            existing = self._db.list_tables()
+            if self._table_name in existing:
+                return self._db.open_table(self._table_name)
+            try:
+                return self._db.create_table(self._table_name, schema=self._schema)
+            except Exception as e:
+                if "already exists" in str(e).lower():
+                    return self._db.open_table(self._table_name)
+                raise
 
     def _ensure_index(self) -> None:
         """Build IVF_PQ + scalar + FTS indexes once enough rows exist.
@@ -103,31 +118,39 @@ class LanceDBVectorStore(VectorStore):
             logger.warning("[WARN] LanceDB index creation failed (non-fatal): %s", e)
 
     def upsert_facts(self, facts: list[dict]) -> None:
-        """Idempotent batch upsert. Same id overwrites, never duplicates."""
+        """Idempotent batch upsert. Same id overwrites, never duplicates.
+
+        Processes facts in chunks of _UPSERT_CHUNK to bound peak RSS: building a
+        full rows list for large batches duplicates all vector data as Python objects,
+        which doubles memory. Chunking keeps only N rows live at a time.
+        Vectors are referenced directly (no copy) since they're already list[float].
+        """
         if not facts:
             return
 
-        rows = []
-        for f in facts:
-            meta = f.get("metadata", {})
-            rows.append({
-                "id": int(f["id"]),
-                "vector": [float(x) for x in f["vector"]],
-                "text": str(meta.get("text", "")),
-                "hemisphere_tag": str(meta.get("hemisphere_tag", "safe")),
-                "unix_timestamp": int(meta.get("unix_timestamp", 0)),
-                "importance": int(meta.get("importance", 5)),
-                "source_id": int(meta.get("source_id", 0)),
-                "entity": str(meta.get("entity", "")),
-                "category": str(meta.get("category", "")),
-            })
+        for chunk_start in range(0, len(facts), _UPSERT_CHUNK):
+            chunk = facts[chunk_start : chunk_start + _UPSERT_CHUNK]
+            rows = []
+            for f in chunk:
+                meta = f.get("metadata", {})
+                rows.append({
+                    "id": int(f["id"]),
+                    "vector": f["vector"],  # already list[float] — no copy
+                    "text": str(meta.get("text", "")),
+                    "hemisphere_tag": str(meta.get("hemisphere_tag", "safe")),
+                    "unix_timestamp": int(meta.get("unix_timestamp", 0)),
+                    "importance": int(meta.get("importance", 5)),
+                    "source_id": int(meta.get("source_id", 0)),
+                    "entity": str(meta.get("entity", "")),
+                    "category": str(meta.get("category", "")),
+                })
+            (
+                self.table.merge_insert("id")
+                .when_matched_update_all()
+                .when_not_matched_insert_all()
+                .execute(rows)
+            )
 
-        (
-            self.table.merge_insert("id")
-            .when_matched_update_all()
-            .when_not_matched_insert_all()
-            .execute(rows)
-        )
         self._ensure_index()
 
     def search(
@@ -145,7 +168,10 @@ class LanceDBVectorStore(VectorStore):
         try:
             searcher = self.table.search(query_vector).metric("cosine").limit(limit)
             if query_filter:
-                searcher = searcher.where(query_filter, prefilter=True)
+                # prefilter=False (postfilter): ANN runs on full table first, filter applied after.
+                # prefilter=True restricts the IVF_PQ search space before ANN, which breaks IN()
+                # queries when few partitions exist — records in other partitions are never reached.
+                searcher = searcher.where(query_filter, prefilter=False)
 
             results = searcher.to_list()
         except Exception as e:
@@ -154,7 +180,10 @@ class LanceDBVectorStore(VectorStore):
 
         output = []
         for r in results:
-            score = 1.0 - float(r.get("_distance", 1.0))
+            # Clamp to [0, 1]: cosine distance is in [0, 2], but floating-point imprecision
+            # can push it slightly above 1.0, making score slightly negative and incorrectly
+            # filtering out valid results when score_threshold=0.0.
+            score = max(0.0, 1.0 - float(r.get("_distance", 1.0)))
             if score < score_threshold:
                 continue
             output.append({

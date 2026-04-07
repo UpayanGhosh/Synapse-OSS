@@ -14,6 +14,7 @@ Tests cover:
 
 from __future__ import annotations
 
+import gc
 import time
 
 import numpy as np
@@ -159,18 +160,27 @@ class TestIngestionThroughput:
 class TestIngestionMemory:
 
     def test_memory_growth_bounded_10k(self, tmp_path):
-        """RSS growth during 10k ingest stays under 200 MB."""
-        mem_before = get_memory_mb()
-        if mem_before == 0:
+        """RSS growth during 10k upsert stays under 200 MB.
+
+        Baseline is taken AFTER facts are built so we measure only the
+        upsert overhead, not the test-data construction cost.
+        gen.facts(10k) materialises ~246 MB of Python float objects
+        (768 floats × 24 bytes × 10k vectors) which would blow the budget
+        before upsert_facts() is even called.
+        """
+        if get_memory_mb() == 0:
             pytest.skip("psutil not available")
         gen = LanceDBDataGenerator(seed=30)
         store = _make_store(tmp_path)
         facts = gen.facts(10_000)
+        gc.collect()                  # flush intermediate allocations from facts build
+        mem_before = get_memory_mb()  # baseline: facts already live, store connected
         store.upsert_facts(facts)
+        gc.collect()
         mem_after = get_memory_mb()
         delta = mem_after - mem_before
         print(f"\n[memory] 10k ingest: +{delta:.1f} MB (before={mem_before:.1f}, after={mem_after:.1f})")
-        assert delta < 200, f"Memory grew {delta:.1f} MB — possible leak"
+        assert delta < 200, f"Memory grew {delta:.1f} MB — possible leak in upsert_facts()"
 
     @pytest.mark.slow
     def test_memory_growth_bounded_100k(self, tmp_path):

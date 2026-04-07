@@ -360,8 +360,11 @@ class TestSearchAccuracy:
         noise = gen.facts(500)
         store.upsert_facts(noise)
 
-        # Plant a distinct vector
-        anchor = gen.vectors_random(1, dims=768)[0].tolist()
+        # Plant a distinct vector.
+        # IMPORTANT: gen.vectors_random(n) always reseeds from self._seed, so
+        # gen.vectors_random(1)[0] == gen.facts(500)'s vector[0] == noise id=0.
+        # Take index 500 (outside the 0..499 range used by noise) to guarantee uniqueness.
+        anchor = gen.vectors_random(501, dims=768)[500].tolist()
         store.upsert_facts([{
             "id": 999_999,
             "vector": anchor,
