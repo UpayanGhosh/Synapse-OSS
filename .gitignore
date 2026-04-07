@@ -116,9 +116,9 @@ Thumbs.db
 .claude/
 
 # ──────────────────────────────────────────────────────────────
-# GSD planning docs — local only, not for public GitHub
+# GSD planning docs — tracked on this branch
 # ──────────────────────────────────────────────────────────────
-.planning/
+# .planning/
 
 # ──────────────────────────────────────────────────────────────
 # Milestones / internal specs — not for GitHub
