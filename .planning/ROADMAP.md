@@ -1,6 +1,176 @@
-# Roadmap: Synapse-OSS v2.0 — The Adaptive Core
+# Roadmap: Synapse-OSS
 
-## Overview
+---
+
+## v3.0 — Bioinspired Memory Architecture (CURRENT)
+
+### Overview
+
+v2.0 gave Synapse extensibility (skills, self-modification, subagents). v3.0 gives it a
+human-calibrated memory. This milestone transforms the single-channel vector search into a
+neuroscience-inspired system covering ~65% of human memory subsystems: dual-channel retrieval,
+Ebbinghaus adaptive decay, two-phase CLS consolidation (SWS gist + REM association), Modern
+Hopfield co-activation, reconsolidation on prediction error, state-dependent retrieval with mood
+repair, query intelligence, and a full embedding migration to bge-m3.
+
+The research basis is 29 papers, 57 Q&As, and 7 follow-ups consolidated into a master spec
+at `memory-vault/research/architecture-spec.md`. All 17 tunable parameters are locked.
+
+Phase numbering continues from v2.0 (last phase was 5). v3.0 phases are 6–11.
+
+### Phase Numbering
+
+- Integer phases (6–11): v3.0 milestone work
+- Decimal phases (N.1, N.2): Urgent insertions created via `/gsd-insert-phase`
+- v2.0 phases (0–5) archived below for reference
+
+### Phases
+
+- [ ] **Phase 6: Retrieval Foundation** — FTS5/BM25 sparse channel, RRF fusion replacing weighted-sum, hemisphere bug fix, query router with type classification
+- [ ] **Phase 7: Memory Lifecycle Schema** — Full schema migration (6 new columns + 3 new tables), Ebbinghaus strength tracking, emotional state tagging at write time, context tag classification
+- [ ] **Phase 8: Consolidation Engine** — SWS gist pass, schema formation, MMR diversification, Ebbinghaus decay sweep, metamemory FOK pre-check
+- [ ] **Phase 9: Associative Memory** — Modern Hopfield co-activation, REM association pass, reconsolidation, post-retrieval forgetting
+- [ ] **Phase 10: Query Intelligence + Contextual Retrieval** — HyDE/Query2doc expansion, state-dependent retrieval with mood repair, contextual integrity filter, causal edge promotion
+- [ ] **Phase 11: Embedding Migration** — bge-m3 replaces nomic-embed-text, re-embedding pipeline, cache invalidation
+
+---
+
+## Phase Details
+
+### Phase 6: Retrieval Foundation
+**Goal**: Memory queries use two parallel retrieval channels (dense + sparse) fused with
+RRF, the hemisphere isolation bug is fixed, and the query router classifies every incoming
+query before search begins.
+**Depends on**: v2.0 phases complete (refactor/optimize merged to main). Phase 6 is the
+foundation for all subsequent v3.0 phases.
+**Requirements**: RETR-01, RETR-02, RETR-04, RETR-05
+**Success Criteria** (what must be TRUE):
+  1. A keyword search ("what did I say about my Python project") returns results from the BM25/FTS5 channel that the dense-only path misses — confirmed by comparing result sets before and after
+  2. A semantic query ("something about feeling anxious at work") surfaces results from the dense channel that BM25 misses — results from both channels appear in the final fused list
+  3. A spicy-hemisphere query only surfaces memories tagged `hemisphere=spicy` — confirmed by sending a privacy-flagged message and inspecting which rows are returned
+  4. The query router correctly classifies a direct name lookup as `entity_lookup`, a feeling-based query as `semantic`, "what did I say last Tuesday" as `temporal_range` — confirmed by unit tests with assertions on the returned type
+  5. RRF fusion scoring is observable: result set includes `source_channel` metadata per returned document
+**Plans**: TBD
+**UI hint**: no
+
+---
+
+### Phase 7: Memory Lifecycle Schema
+**Goal**: The database schema captures the full bioinspired memory lifecycle — memory
+strength, access history, emotional context, context categorization, and schema linkage —
+with all columns migrated cleanly for existing documents.
+**Depends on**: Phase 6 (FTS5 table required for FOK counts; schema migration must run
+after FTS5 virtual table creation)
+**Requirements**: MEM-01, MEM-02, MEM-03, MEM-04, MEM-05, MEM-06, MEM-07, MEM-08
+**Success Criteria** (what must be TRUE):
+  1. After migration, all existing documents have `strength=5.0`, `retrieval_count=0`, `last_accessed=NULL`, `emotional_state=NULL`, `context_tags='[]'`, `schema_id=NULL` — confirmed by `SELECT COUNT(*) FROM documents WHERE strength IS NULL` returning 0
+  2. When a new message arrives in a work conversation, the stored document has a non-null `context_tags` value containing "work" — confirmed by inspecting the row after write
+  3. When a message arrives during a detected anxious exchange, `emotional_state` is populated at write time (not at retrieval time) — confirmed by DualCognition integration test
+  4. Retrieving a memory a second time within the same hour does NOT increment `retrieval_count` — confirmed by sending the same query twice within 60 seconds and asserting count stays at 1
+  5. The `schemas` and `schema_episodes` tables exist and are queryable — `SELECT * FROM schemas LIMIT 1` returns without error on a fresh installation
+**Plans**: TBD
+**UI hint**: no
+
+---
+
+### Phase 8: Consolidation Engine
+**Goal**: Memories consolidate nightly into reusable semantic schemas (SWS gist pass),
+redundant retrieval results are diversified (MMR), dormant memories are marked for
+suppression (Ebbinghaus sweep), and the system can estimate retrieval confidence before
+running a full search (FOK).
+**Depends on**: Phase 7 (schema table must exist; strength/emotional_state columns required
+for consolidation prioritization)
+**Requirements**: CONSOL-01, CONSOL-02, CONSOL-03, CONSOL-07, CONSOL-08, CONSOL-09, RETR-03, QUERY-04, QUERY-05
+**Success Criteria** (what must be TRUE):
+  1. After 8+ conversations about the same topic accumulate, the nightly consolidation pass creates at least one entry in the `schemas` table — confirmed by checking `SELECT COUNT(*) FROM schemas` before and after a simulated consolidation run
+  2. The consolidated schema row has `schema_episodes` links to the source episodic memories — the originals are NOT deleted, confirmed by verifying their `id` values still appear in `documents`
+  3. A retrieved result set with 3 near-duplicate memories about the same event is diversified by MMR — the final returned set contains at most one of the near-duplicates, confirmed by injecting controlled test documents
+  4. After 31 days without access, a low-importance memory has `strength < 0.1` and is excluded from normal retrieval results — confirmed by simulating time passage in a test
+  5. Asking "what do you know about my dentist?" when no dentist-related memories exist returns a response indicating low confidence ("I don't think we've discussed that") — FOK returns `confidence=none` in under 5ms
+**Plans**: TBD
+**UI hint**: no
+
+---
+
+### Phase 9: Associative Memory
+**Goal**: Retrieved memories surface their co-occurring associations (Hopfield), cross-domain
+structural similarities are written to the knowledge graph (REM pass), prediction errors
+trigger memory trace updates or competing traces (reconsolidation), and retrieving a memory
+slightly weakens its near-duplicate competitors (retrieval-induced forgetting).
+**Depends on**: Phase 8 (consolidation produces the schema corpus that REM operates on;
+Hopfield matrix is populated from Phase 7 write path; reconsolidation requires access tracking)
+**Requirements**: RETR-06, ASSOC-01, ASSOC-02, CONSOL-04, POST-01, POST-02, POST-03, POST-04, POST-05
+**Success Criteria** (what must be TRUE):
+  1. Retrieving a memory about "Python debugging frustration" also surfaces a memory about "cooking a failed recipe" via Hopfield co-activation — the result includes `source_channel=hopfield` in its metadata
+  2. After the REM association pass runs, the knowledge graph contains at least one `shares_pattern` edge linking memories from different topic communities — confirmed by `SELECT * FROM edges WHERE relation='shares_pattern' LIMIT 1`
+  3. When a conversation produces `tension_level=0.6` (reconsolidation window), the retrieved memory's `emotional_state` column is updated within the 6-hour window — confirmed by querying the document row before and after
+  4. When `tension_level=0.9` (extinction), a NEW competing memory trace is created in `documents` rather than modifying the original — confirmed by asserting the original row is unchanged and a new row exists
+  5. A memory that was NOT returned but scored cosine > 0.85 against a returned memory has a lower `strength` value immediately after retrieval — the penalty is confirmed by comparing strength before and after a controlled query
+**Plans**: TBD
+**UI hint**: no
+
+---
+
+### Phase 10: Query Intelligence + Contextual Retrieval
+**Goal**: Vague queries expand to hypothetical embeddings before search (HyDE), emotional
+context biases retrieval toward mood-congruent memories with mood repair for sustained
+negative states, contextual integrity filters prevent out-of-context information surfacing,
+and causally-linked edges are promoted from correlations when evidence is sufficient.
+**Depends on**: Phase 9 (Hopfield and associative layers must exist; reconsolidation and
+state tracking required for mood repair; causal promotion needs the extended edges table
+from Phase 7)
+**Requirements**: ASSOC-03, ASSOC-04, ASSOC-05, ASSOC-06, CONSOL-05, CONSOL-06, QUERY-01, QUERY-02, QUERY-03
+**Success Criteria** (what must be TRUE):
+  1. A vague query ("something that made me feel proud") retrieves better results with HyDE enabled than without — confirmed by A/B comparison: disabled path returns fewer relevant results for the same query
+  2. A direct entity lookup ("what is my sister's birthday") skips HyDE and uses the raw query embedding — confirmed by the query router logging `hyde_skipped=true` for entity-type queries
+  3. When the user is currently in an anxious conversation, memories tagged `emotional_state=anxious` score ~25% higher in the result ranking than neutral memories — observable from the score metadata
+  4. When the user has been in a negative state for 3+ consecutive messages, positive/achievement memories are included alongside mood-congruent ones — confirmed by checking returned `emotional_state` values include "positive" or "achievement"
+  5. Memories tagged `context_tags=["health"]` are suppressed when the current conversation context is detected as "work" — confirmed by injecting health memories into a work-context conversation and verifying they do not appear in results
+  6. After 5+ observations of a correlated edge across 3+ distinct conversation contexts, that edge's `is_causal` flag is set to `1` in the database — confirmed by simulating the threshold conditions in an integration test
+**Plans**: TBD
+**UI hint**: no
+
+---
+
+### Phase 11: Embedding Migration
+**Goal**: The nomic-embed-text embedding model is replaced by bge-m3 across all write and
+read paths. All existing documents are re-embedded to bge-m3 vectors without data loss.
+The embedding cache is invalidated on model swap so stale nomic vectors are never returned.
+**Depends on**: Phase 10 (all retrieval logic must be stable before changing the vector
+representation that all channels operate on — migrating mid-build would invalidate prior tests)
+**Requirements**: EMBED-01, EMBED-02, EMBED-03
+**Success Criteria** (what must be TRUE):
+  1. After migration, the embedding provider is `bge-m3` (1024 dims) — confirmed by `SELECT embedding FROM documents LIMIT 1` and asserting the vector dimension is 1024, not 768 (nomic)
+  2. The re-embedding pipeline completes on a 10K-document database without errors and without deleting any documents — confirmed by comparing document counts before and after
+  3. Running the re-embedding pipeline twice on the same database is idempotent — no duplicate documents, no changed row counts, confirmed by second run finishing without writes
+  4. Swapping the model in `synapse.json` from nomic to bge-m3 and back triggers cache invalidation — confirmed by asserting the lru_cache is cleared and the first subsequent embed call uses the new model
+  5. Multilingual text (Bengali/Bangla) embeds with bge-m3 and returns semantically valid results — confirmed by embedding a Bengali phrase and its English translation and asserting cosine similarity > 0.7
+**Plans**: TBD
+**UI hint**: no
+
+---
+
+## Progress (v3.0)
+
+**Execution Order:**
+Phases execute in dependency order: 6 → 7 → 8 → 9 → 10 → 11
+
+| Phase | Plans Complete | Status | Completed |
+|-------|----------------|--------|-----------|
+| 6. Retrieval Foundation | 0/? | Not started | — |
+| 7. Memory Lifecycle Schema | 0/? | Not started | — |
+| 8. Consolidation Engine | 0/? | Not started | — |
+| 9. Associative Memory | 0/? | Not started | — |
+| 10. Query Intelligence + Contextual Retrieval | 0/? | Not started | — |
+| 11. Embedding Migration | 0/? | Not started | — |
+
+---
+
+---
+
+## v2.0 — The Adaptive Core (IN PROGRESS — phases 0-2 remaining)
+
+### Overview
 
 v1.0 gave Synapse a body (model-agnostic, multi-channel, fully self-hosted). v2.0 gives
 it the ability to grow. This milestone ships the five foundational capabilities that turn
@@ -15,7 +185,7 @@ with rollback — self-modification without rollback is not an option (learned f
 Phase 1 (Skill Architecture) must ship before Phase 2 because the self-mod engine uses
 skills as its output format — every modification produces a skill, not raw code.
 
-## Milestone Context
+### Milestone Context
 
 **v1.0 (COMPLETE — 2026-03-03):** OSS independence — all OpenClaw deps removed,
 all channels live, full health/sessions API. 38 plans, 10 phases, 100% complete.
@@ -23,20 +193,15 @@ all channels live, full health/sessions API. 38 plans, 10 phases, 100% complete.
 **v2.0 (CURRENT):** The Adaptive Core — Phases 5–9 from the vision document.
 6 phases, est. 27+ plans.
 
-**v3.0 (FUTURE — 2027):** Proactive Architecture Evolution — Synapse observes patterns
-and proposes its own extensions. Details at v3.0 milestone init.
+**v3.0 (CURRENT — Bioinspired Memory Architecture):** See above.
 
-**v4.0 (FUTURE — 2028):** The Jarvis Threshold — mature instance manages parts of
-the user's digital life, has its own name and personality shaped through conversation.
-Details at v4.0 milestone init.
-
-## Phase Numbering
+### Phase Numbering
 
 - Integer phases (1–5): v2.0 milestone work
 - Decimal phases (N.1, N.2): Urgent insertions between planned phases
 - Previous v1.0 phases archived in `.planning/phases/`
 
-## Phases
+### Phases
 
 - [x] **Phase 0: Session & Context Persistence** — Wire the multiuser/ session infrastructure into the WhatsApp pipeline; every message builds on conversation history instead of starting fresh (completed 2026-04-07)
 - [x] **Phase 1: Skill Architecture** — Skills-as-directories: SKILL.md format, startup discovery, description-based routing, skill-creator skill (vision Phase 5) (completed 2026-04-07)
@@ -46,8 +211,6 @@ Details at v4.0 milestone init.
 - [x] **Phase 5: Browser Tool** — Live web access as a skill, summarized injection, privacy-boundary enforcement (vision Phase 9) (completed 2026-04-07)
 
 ---
-
-## Phase Details
 
 ### Phase 0: Session & Context Persistence
 **Goal**: Every WhatsApp conversation maintains history across messages. The existing
@@ -217,30 +380,7 @@ Plans:
 
 ---
 
-## Future Milestones
-
-### v3.0: Proactive Architecture Evolution (Target: 2027)
-Synapse stops waiting to be asked. It observes recurring patterns and proposes its own
-extensions. "You've asked me to check your email every morning 5 times this week. Want
-me to just do that automatically?" Same consent protocol — but Synapse initiates.
-
-Key capabilities:
-- Pattern tracker: configurable window (default: 3 occurrences / 7 days) triggers proposal
-- Proposal engine: generates a plain-language description of the proposed change
-- Suppression: user can mute proposals per category
-- Divergence metric: track how differently each instance has evolved from the baseline
-
-### v4.0: The Jarvis Threshold (Target: 2028)
-A mature Synapse instance manages parts of the user's digital life. It has its own name,
-its own personality, its own relationship with its user — shaped entirely through
-conversation, not configuration panels.
-
-Not superhuman intelligence. Deep familiarity. Persistent context. Proactive capability.
-An architecture that was literally built by the person it serves.
-
----
-
-## Progress
+## Progress (v2.0)
 
 **Execution Order:**
 Phases execute in dependency order: 0 → 1 → 2 → 3 → 4 → 5
@@ -253,6 +393,31 @@ Phases execute in dependency order: 0 → 1 → 2 → 3 → 4 → 5
 | 3. Subagent System | 4/4 | Complete | 2026-04-07 |
 | 4. Onboarding Wizard v2 | 4/4 | Complete | 2026-04-07 |
 | 5. Browser Tool | 4/4 | Complete | 2026-04-07 |
+
+---
+
+## Future Milestones
+
+### v4.0: Proactive Architecture Evolution (Target: 2027)
+Synapse stops waiting to be asked. It observes recurring patterns and proposes its own
+extensions. "You've asked me to check your email every morning 5 times this week. Want
+me to just do that automatically?" Same consent protocol — but Synapse initiates.
+
+Key capabilities:
+- Pattern tracker: configurable window (default: 3 occurrences / 7 days) triggers proposal
+- Proposal engine: generates a plain-language description of the proposed change
+- Suppression: user can mute proposals per category
+- Divergence metric: track how differently each instance has evolved from the baseline
+
+### v5.0: The Jarvis Threshold (Target: 2028)
+A mature Synapse instance manages parts of the user's digital life. It has its own name,
+its own personality, its own relationship with its user — shaped entirely through
+conversation, not configuration panels.
+
+Not superhuman intelligence. Deep familiarity. Persistent context. Proactive capability.
+An architecture that was literally built by the person it serves.
+
+---
 
 **v1.0 Archive:** All 10 phases, 38 plans — COMPLETE (2026-03-03)
 See archived ROADMAP in `.planning/phases/` for historical reference.
