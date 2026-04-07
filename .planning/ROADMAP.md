@@ -103,8 +103,8 @@ Plans:
 - [x] 01-01-PLAN.md — Define SKILL.md schema (YAML frontmatter + instructions body) + create SkillLoader class with validation
 - [x] 01-02-PLAN.md — Implement SkillRegistry: startup scan, hot-reload watcher, GET /skills endpoint
 - [x] 01-03-PLAN.md — Implement description-based SkillRouter: embed descriptions at load, cosine-match incoming intent
-- [ ] 01-04-PLAN.md — Wire SkillRegistry + SkillRouter into api_gateway.py pipeline (post-traffic-cop routing step)
-- [ ] 01-05-PLAN.md — Create skill-creator skill: SKILL.md template + scripts/create_skill.py + test coverage
+- [x] 01-04-PLAN.md — Wire SkillRegistry + SkillRouter into api_gateway.py pipeline (post-traffic-cop routing step)
+- [x] 01-05-PLAN.md — Create skill-creator skill: SKILL.md template + scripts/create_skill.py + test coverage
 
 ---
 
