@@ -39,6 +39,7 @@ class FastEmbedProvider(EmbeddingProvider):
         threads: int | None = None,
         batch_size: int | None = None,
     ):
+        FastEmbedProvider._inject_cuda_dlls()  # must run before onnxruntime first imports on Windows
         self._accelerator = _detect_accelerator()  # detect first — needed for model selection
         if model:
             self._model_name = model
@@ -57,12 +58,13 @@ class FastEmbedProvider(EmbeddingProvider):
 
         # Safe internal batch size passed to fastembed's embed().
         # fastembed default is 256 which overflows VRAM on GPUs with mixed-length texts.
-        # GPU: 32 keeps peak VRAM usage well within 8GB.
+        # GPU: 8 — keeps peak VRAM ~4 GB even for long texts (AG News, 300+ token articles).
+        #          64 caused OOM (34 GB arena request) on standard 6-8 GB GPUs.
         # CPU: 64 — no VRAM constraint, higher is fine.
         if batch_size is not None:
             self._batch_size = batch_size
         elif self._accelerator in ("cuda", "coreml"):
-            self._batch_size = 64
+            self._batch_size = 8
         else:
             self._batch_size = 64
 

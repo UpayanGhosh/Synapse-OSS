@@ -34,6 +34,7 @@ _ROOT = os.path.abspath(os.path.join(_DIR, ".."))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
+import litellm as _litellm_module  # noqa: E402
 from litellm import (  # noqa: E402
     APIConnectionError,
     AuthenticationError,
@@ -44,6 +45,10 @@ from litellm import (  # noqa: E402
     Timeout,
 )
 from synapse_config import SynapseConfig  # noqa: E402
+
+# gpt-5-mini and other restricted models reject custom temperature/top_p —
+# drop unsupported params silently instead of raising UnsupportedParamsError.
+_litellm_module.drop_params = True
 
 logger = logging.getLogger(__name__)
 
@@ -725,6 +730,27 @@ class SynapseLLMRouter:
                 logger.debug("Session write failed (non-fatal): %s", session_exc)
             return response
         except AuthenticationError as exc:
+            # Copilot returns 401 "token expired" when the tid= bearer token
+            # lapses (30-min TTL). Refresh and retry once — same logic as the
+            # 403 path in the except Exception handler below.
+            if self._uses_copilot and (
+                "token expired" in str(exc).lower() or "unauthorized" in str(exc).lower()
+            ):
+                if self._copilot_refresh_lock.locked():
+                    async with self._copilot_refresh_lock:
+                        pass
+                else:
+                    async with self._copilot_refresh_lock:
+                        logger.warning("Copilot token expired (401) — refreshing and retrying")
+                        _get_copilot_token()
+                        self._rebuild_router()
+                return await self._router.acompletion(
+                    model=role,
+                    messages=messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    **kwargs,
+                )
             logger.error("Auth failed for role '%s': %s", role, exc)
             raise
         except RateLimitError as exc:
@@ -1027,8 +1053,22 @@ class SynapseLLMRouter:
         try:
             response = await self._router.acompletion(**kwargs)
         except AuthenticationError as exc:
-            logger.error("Auth failed for role '%s' (tools): %s", role, exc)
-            raise
+            if self._uses_copilot and (
+                "token expired" in str(exc).lower() or "unauthorized" in str(exc).lower()
+            ):
+                if self._copilot_refresh_lock.locked():
+                    async with self._copilot_refresh_lock:
+                        pass
+                else:
+                    async with self._copilot_refresh_lock:
+                        logger.warning("Copilot token expired (401, tools) — refreshing and retrying")
+                        _get_copilot_token()
+                        self._rebuild_router()
+                response = await self._router.acompletion(**kwargs)
+                # fall through to normal response handling below
+            else:
+                logger.error("Auth failed for role '%s' (tools): %s", role, exc)
+                raise
         except RateLimitError as exc:
             logger.warning("Rate limit for role '%s' (tools): %s", role, exc)
             raise

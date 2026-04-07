@@ -141,17 +141,28 @@ class MemoryEngine:
         limit: int = 5,
         with_graph: bool = True,
         hemisphere: str = "safe",
+        seed_entities: list[str] | None = None,
     ) -> dict:
         start = time.time()
         try: _get_emitter().emit("memory.query_start", {"text": text[:80]})
         except Exception: pass
         _query_start = time.time()
 
+        # First-person pronouns → include seed_entities in graph lookup even if
+        # no entity name appears literally in the query text ("my condition" etc.)
+        _FIRST_PERSON = {"i", "my", "me", "mine", "myself", "i've", "i'm", "i'd", "i'll"}
+        _is_self_referential = bool(_FIRST_PERSON & set(text.lower().split()))
+
         try:
             # Entity extraction (shared keyword_processor)
             entities = []
             if self.keyword_processor:
                 entities = self.keyword_processor.extract_keywords(text)
+
+            # Inject seed_entities for self-referential queries so the KG is
+            # consulted even when the user writes "my X" instead of their name
+            if seed_entities and (_is_self_referential or not entities):
+                entities = list(dict.fromkeys(entities + seed_entities))
 
             # Graph context (shared graph_store)
             graph_context = ""

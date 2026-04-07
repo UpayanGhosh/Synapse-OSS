@@ -130,11 +130,11 @@ cryptographically immutable to model writes. Ships together with rollback — no
 **Plans**: 6 plans
 
 Plans:
-- [ ] 02-01-PLAN.md — Create SnapshotEngine: write/list/restore snapshot lifecycle + test_snapshot_engine.py
-- [ ] 02-02-PLAN.md — Implement Zone 1/Zone 2 registry in Sentinel: IMMUTABLE_PATHS + WRITABLE_ZONES constants, enforce at write time
-- [ ] 02-03-PLAN.md — Implement ConsentProtocol: explain → confirm → execute → snapshot orchestration with timeout and no-answer handling
-- [ ] 02-04-PLAN.md — Wire ConsentProtocol into api_gateway.py: detect modification intents, invoke protocol before any Zone 2 write
-- [ ] 02-05-PLAN.md — Implement rollback: by snapshot ID, by date string, by natural language description ("undo last", "go back to last week")
+- [x] 02-01-PLAN.md — Create SnapshotEngine: write/list/restore snapshot lifecycle + test_snapshot_engine.py
+- [x] 02-02-PLAN.md — Implement Zone 1/Zone 2 registry in Sentinel: IMMUTABLE_PATHS + WRITABLE_ZONES constants, enforce at write time
+- [x] 02-03-PLAN.md — Implement ConsentProtocol: explain → confirm → execute → snapshot orchestration with timeout and no-answer handling
+- [x] 02-04-PLAN.md — Wire ConsentProtocol into api_gateway.py: detect modification intents, invoke protocol before any Zone 2 write
+- [x] 02-05-PLAN.md — Implement rollback: by snapshot ID, by date string, by natural language description ("undo last", "go back to last week")
 - [ ] 02-06-PLAN.md — Integration tests: full consent → execute → snapshot → rollback cycle; Zone 1 write rejection; auto-revert on failure
 
 ---

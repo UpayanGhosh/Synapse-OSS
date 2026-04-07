@@ -407,9 +407,12 @@ class LanceDBDataGenerator:
         if provider is None:
             pytest.skip("No embedding provider configured")
 
+        # Truncate to avoid GPU OOM — AG News articles can be 10k+ chars (~3500 tokens).
+        # 2000 chars ≈ 500 tokens, keeps BiasSoftmax arena well under 200 MB per batch.
+        _MAX_CHARS = 2000
         all_vecs = []
         for i in range(0, len(texts), batch_size):
-            batch = texts[i : i + batch_size]
+            batch = [t[:_MAX_CHARS] for t in texts[i : i + batch_size]]
             vecs = provider.embed_documents(batch)
             all_vecs.extend(vecs)
 
@@ -596,9 +599,11 @@ def _embed_or_random(
         from sci_fi_dashboard.embedding.factory import get_provider
         provider = get_provider()
         if provider is not None:
+            _MAX_CHARS = 2000
             all_vecs = []
             for i in range(0, n, batch_size):
-                all_vecs.extend(provider.embed_documents(texts[i : i + batch_size]))
+                batch = [t[:_MAX_CHARS] for t in texts[i : i + batch_size]]
+                all_vecs.extend(provider.embed_documents(batch))
             arr = np.array(all_vecs, dtype=np.float32)
             norms = np.linalg.norm(arr, axis=1, keepdims=True)
             return arr / np.maximum(norms, 1e-8), texts

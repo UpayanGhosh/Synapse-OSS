@@ -2,6 +2,24 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## OSS Development Workflow (CRITICAL — read before every push)
+
+**Testing uses personal data. Commits follow OSS standards. Never mix them.**
+
+- **During development/testing**: Personal data is fine — real `~/.synapse/` DBs, personal `entities.json`, personal `synapse.json` tokens, real chat history. This is how features are validated.
+- **Before any `git commit` or `git push`**: Apply OSS standards:
+  - No personal data files (e.g., `entities.json` extracted from real chats — ~3.9MB, 110K entities)
+  - No tokens, API keys, or personal credentials in committed files
+  - No `synapse.json` with real `gateway_token` or `providers` keys
+  - `entities.json` ships as an empty `{}` placeholder — users populate it via their own extraction
+  - Config files ship with example/placeholder values, not real ones
+  - Test fixtures use synthetic data, not personal messages
+
+**Pre-push checklist:**
+1. Is `entities.json` empty `{}`? (never commit real extracted entities)
+2. Are all tokens/keys in `.gitignore`d files only?
+3. Does the code work for a fresh OSS install, not just this personal setup?
+
 ## Commands
 
 ```bash
