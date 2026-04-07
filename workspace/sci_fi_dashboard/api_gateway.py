@@ -43,6 +43,7 @@ from sci_fi_dashboard.routes import (
     persona,
     pipeline as pipeline_routes,
     sessions,
+    skills,
     websocket,
     whatsapp,
 )
@@ -228,9 +229,60 @@ async def lifespan(app: FastAPI):
     except Exception as _cron_exc:
         logger.warning("[CRON] CronService init failed (non-fatal): %s", _cron_exc)
 
+    # Phase 1 (v2.0): Skill Architecture
+    if deps._SKILL_SYSTEM_AVAILABLE:
+        try:
+            from sci_fi_dashboard.skills.registry import SkillRegistry
+            from sci_fi_dashboard.skills.router import SkillRouter
+            from sci_fi_dashboard.skills.watcher import SkillWatcher
+
+            _skills_dir = deps._synapse_cfg.data_root / "skills"
+            _skills_dir.mkdir(parents=True, exist_ok=True)
+
+            deps.skill_registry = SkillRegistry(_skills_dir)
+            deps.skill_router = SkillRouter()
+            deps.skill_router.update_skills(deps.skill_registry.list_skills())
+
+            # Wire hot-reload: when watcher triggers reload, also update router
+            _original_reload = deps.skill_registry.reload
+
+            def _reload_with_router_update():
+                _original_reload()
+                deps.skill_router.update_skills(deps.skill_registry.list_skills())
+
+            deps.skill_registry.reload = _reload_with_router_update
+
+            deps.skill_watcher = SkillWatcher(
+                skills_dir=_skills_dir,
+                registry=deps.skill_registry,
+                debounce_seconds=2.0,
+            )
+            deps.skill_watcher.start()
+
+            _skill_count = len(deps.skill_registry.list_skills())
+            logger.info(
+                "[Skills] Skill system initialized: %d skills loaded from %s",
+                _skill_count,
+                _skills_dir,
+            )
+        except Exception as exc:
+            logger.warning("[Skills] Skill system init failed (non-fatal): %s", exc)
+            deps.skill_registry = None
+            deps.skill_router = None
+            deps.skill_watcher = None
+    else:
+        logger.info("[Skills] skills module not available -- skill system disabled")
+
     yield
 
     # --- Shutdown ---
+    # Stop skill watcher before other cleanup
+    if deps.skill_watcher is not None:
+        try:
+            deps.skill_watcher.stop()
+        except Exception:
+            pass
+
     print("[STOP] Shutting down...")
     deps.brain.save_graph()
 
@@ -282,6 +334,7 @@ app.include_router(knowledge.router)
 app.include_router(sessions.router)
 app.include_router(websocket.router)
 app.include_router(pipeline_routes.router)
+app.include_router(skills.router)
 
 # Dashboard static files
 _static_dir = _Path(__file__).parent / "static"

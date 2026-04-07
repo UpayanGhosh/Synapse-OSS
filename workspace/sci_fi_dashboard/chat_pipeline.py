@@ -132,7 +132,12 @@ async def persona_chat(
             pass
 
         # Layer 2: Vector search for conversation-specific context (WhatsApp chunks etc.)
-        mem_response = deps.memory_engine.query(user_msg, limit=5, with_graph=True)
+        # seed_entities: real-world names for the persona so first-person queries
+        # ("my medical condition") still trigger a KG graph lookup.
+        # Configure via synapse.json → session → selfEntityNames → <target>
+        _self_names = deps._synapse_cfg.session.get("selfEntityNames", {})
+        _seed = _self_names.get(target, []) if isinstance(_self_names, dict) else []
+        mem_response = deps.memory_engine.query(user_msg, limit=5, with_graph=True, seed_entities=_seed or None)
         try:
             _get_emitter().emit("memory.query_done", {
                 "tier": mem_response.get("tier", "unknown"),
@@ -344,6 +349,52 @@ async def persona_chat(
     messages.append({"role": "user", "content": user_msg})
 
     t0 = time.perf_counter()
+
+    # --- Phase 1 (v2.0): Skill Routing ---
+    # Check if message matches a skill BEFORE traffic cop routing.
+    # Skills handle the message entirely — skip MoA pipeline if matched.
+    # Skills are NEVER triggered in spicy hemisphere (T-01-14 privacy boundary).
+    if (
+        deps._SKILL_SYSTEM_AVAILABLE
+        and deps.skill_router is not None
+        and session_mode != "spicy"
+    ):
+        matched_skill = deps.skill_router.match(user_msg)
+        if matched_skill is not None:
+            logger.info("[Skills] Message routed to skill '%s'", matched_skill.name)
+            from sci_fi_dashboard.skills.runner import SkillRunner
+
+            skill_result = await SkillRunner.execute(
+                manifest=matched_skill,
+                user_message=user_msg,
+                history=request.history,
+                llm_router=deps.synapse_llm_router,
+            )
+            reply = skill_result.text
+
+            # Log via SBS
+            sbs_orchestrator = deps.get_sbs_for_target(target)
+            sbs_orchestrator.on_message("assistant", reply, request.user_id or "default")
+
+            # Store in memory (CRITICAL: method is add_memory, NOT store)
+            try:
+                deps.memory_engine.add_memory(
+                    content=(
+                        f"[Skill: {matched_skill.name}] "
+                        f"User: {user_msg}\nAssistant: {reply}"
+                    ),
+                    category="skill_execution",
+                )
+            except Exception:
+                pass
+
+            return {
+                "reply": reply,
+                "model": f"skill:{matched_skill.name}",
+                "tokens": {"prompt": 0, "completion": 0, "total": 0},
+                "role": f"skill:{matched_skill.name}",
+                "retrieval_method": "skill",
+            }
 
     # --- Phase 3: Tool Context & Schema Resolution ---
     use_tools = (
