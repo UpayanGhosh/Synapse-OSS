@@ -227,21 +227,122 @@ class _LLMClientAdapter:
 # Async Gateway Processing Pipeline
 # ---------------------------------------------------------------------------
 
+# Module-level set prevents GC of fire-and-forget background tasks (Research Pitfall 6).
+_background_tasks: set[asyncio.Task] = set()
+
 
 async def process_message_pipeline(
-    user_msg: str, chat_id: str, mcp_context: str = ""
+    user_msg: str, chat_id: str, mcp_context: str = "", *, is_group: bool = False
 ) -> str:
+    """Process one inbound message through the full session-aware pipeline.
+
+    The ``is_group`` keyword-only parameter defaults to False so the existing
+    3-arg call ``process_fn(task.user_message, chat_id, task.mcp_context)`` from
+    MessageWorker continues to work unchanged (Research Pitfall 3 / D-04, D-06).
+    """
+    # Deferred imports to avoid circular dependencies at module load time.
     from sci_fi_dashboard.chat_pipeline import persona_chat
+    from sci_fi_dashboard.multiuser.session_key import build_session_key
+    from sci_fi_dashboard.multiuser.session_store import SessionStore
+    from sci_fi_dashboard.multiuser.transcript import (
+        transcript_path,
+        load_messages,
+        append_message,
+    )
+    from sci_fi_dashboard.multiuser.compaction import estimate_tokens, compact_session
 
+    # ------------------------------------------------------------------
+    # Step 1: Resolve target persona and load config
+    # ------------------------------------------------------------------
     target = deps._resolve_target(chat_id)
+    cfg = SynapseConfig.load()
+    data_root = cfg.data_root  # ~/.synapse/ — NOT cfg.db_dir.parent (Research Pitfall 1)
+    session_cfg = getattr(cfg, "session", {}) or {}
+    dm_scope = session_cfg.get("dmScope", "per-channel-peer")
+    identity_links = session_cfg.get("identityLinks", {})
 
+    # ------------------------------------------------------------------
+    # Step 2: Build session key (per D-04, D-05, D-06, D-07)
+    # ------------------------------------------------------------------
+    session_key = build_session_key(
+        agent_id=target,
+        channel="whatsapp",
+        peer_id=chat_id,
+        peer_kind="group" if is_group else "direct",
+        account_id="whatsapp",
+        dm_scope=dm_scope,
+        main_key="whatsapp:dm",
+        identity_links=identity_links,
+    )
+    logger.info("Session key: %s", session_key)
+
+    # ------------------------------------------------------------------
+    # Step 3: Get or create session entry (per D-18 corrected, D-19)
+    # ------------------------------------------------------------------
+    store = SessionStore(agent_id=target, data_root=data_root)
+    entry = await store.get(session_key)
+    if entry is None:
+        entry = await store.update(session_key, {})
+
+    t_path = transcript_path(entry, data_root, target)
+
+    # ------------------------------------------------------------------
+    # Step 4: Load history with cache (per D-10, D-13, Research Pitfall 7)
+    # ------------------------------------------------------------------
+    channels_cfg = cfg.channels if hasattr(cfg, "channels") and isinstance(cfg.channels, dict) else {}
+    history_limit = int(channels_cfg.get("whatsapp", {}).get("dmHistoryLimit", 50))
+
+    messages = deps.conversation_cache.get(session_key)
+    if messages is None:
+        messages = await load_messages(t_path, limit=history_limit)
+        deps.conversation_cache.put(session_key, messages)  # put() BEFORE append() calls
+
+    # ------------------------------------------------------------------
+    # Step 5: Build ChatRequest with real history and call persona_chat (THE FIX for D-01)
+    # ------------------------------------------------------------------
     chat_req = ChatRequest(
         message=user_msg,
         user_id=chat_id,
         session_type="safe",
+        history=messages,
     )
     result = await persona_chat(chat_req, target, None, mcp_context=mcp_context)
-    return result.get("reply", "")
+    reply = result.get("reply", "")
+
+    # ------------------------------------------------------------------
+    # Step 6: Fire-and-forget transcript append + compaction (per D-11, D-12, D-14-D-17)
+    # ------------------------------------------------------------------
+    user_dict = {"role": "user", "content": user_msg}
+    asst_dict = {"role": "assistant", "content": reply}
+
+    async def _save_and_compact():
+        try:
+            await append_message(t_path, user_dict)
+            await append_message(t_path, asst_dict)
+            deps.conversation_cache.append(session_key, user_dict)
+            deps.conversation_cache.append(session_key, asst_dict)
+
+            # Compaction pre-gate (D-14: 60% threshold, D-17: 32k safe default)
+            cached = deps.conversation_cache.get(session_key) or []
+            ctx_window = 32_000
+            if estimate_tokens(cached) > int(ctx_window * 0.6):
+                await compact_session(
+                    transcript_path=t_path,
+                    context_window_tokens=ctx_window,
+                    llm_client=_LLMClientAdapter(deps.synapse_llm_router),
+                    agent_id=target,
+                    session_key=session_key,
+                    store_path=store._path,
+                )
+                deps.conversation_cache.invalidate(session_key)
+        except Exception:
+            logger.exception("Background save/compact failed for %s", session_key)
+
+    task = asyncio.create_task(_save_and_compact())
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+
+    return reply
 
 
 async def on_batch_ready(

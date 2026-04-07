@@ -231,8 +231,9 @@ def limit_history_turns(messages: list[dict], limit: int) -> list[dict]:
     return messages
 
 
-async def archive_transcript(path: Path) -> None:
-    """Rename *path* to ``<path>.deleted.<timestamp_ms>``."""
+async def archive_transcript(path: Path) -> Path:
+    """Rename *path* to ``<path>.deleted.<timestamp_ms>`` and return the new path."""
     ts_ms = int(time.time() * 1000)
     dest = Path(f"{path}.deleted.{ts_ms}")
     await asyncio.to_thread(os.rename, path, dest)
+    return dest
