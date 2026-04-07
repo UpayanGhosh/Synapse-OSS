@@ -239,6 +239,11 @@ async def lifespan(app: FastAPI):
             _skills_dir = deps._synapse_cfg.data_root / "skills"
             _skills_dir.mkdir(parents=True, exist_ok=True)
 
+            # Seed bundled skills (e.g. skill-creator) on first run — T-01-20
+            _seeded = SkillRegistry.seed_bundled_skills(_skills_dir)
+            if _seeded:
+                logger.info("[Skills] Seeded %d bundled skills to %s", _seeded, _skills_dir)
+
             deps.skill_registry = SkillRegistry(_skills_dir)
             deps.skill_router = SkillRouter()
             deps.skill_router.update_skills(deps.skill_registry.list_skills())

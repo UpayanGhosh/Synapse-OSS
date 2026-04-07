@@ -110,3 +110,43 @@ class SkillRegistry:
     def skills_dir(self) -> Path:
         """The root directory this registry monitors."""
         return self._skills_dir
+
+    # ------------------------------------------------------------------
+    # Bundled skill seeding
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def seed_bundled_skills(skills_dir: Path) -> int:
+        """Copy bundled skills to the user's skills_dir if they don't already exist.
+
+        Called once at startup (in api_gateway lifespan) so every user gets the
+        built-in skills like skill-creator on their first run.
+
+        Security: only copies from the ``bundled/`` directory inside this package.
+        Never overwrites existing skill directories — user customisations are
+        preserved (T-01-20).
+
+        Args:
+            skills_dir: Target directory (typically ~/.synapse/skills/).
+
+        Returns:
+            Number of bundled skills actually copied (0 if all already exist).
+        """
+        import shutil
+
+        bundled_dir = Path(__file__).parent / "bundled"
+        if not bundled_dir.exists():
+            return 0
+
+        seeded = 0
+        for skill_src in sorted(bundled_dir.iterdir()):
+            if not skill_src.is_dir():
+                continue
+            skill_dst = skills_dir / skill_src.name
+            if skill_dst.exists():
+                continue  # Preserve any user customisation — T-01-20
+            shutil.copytree(skill_src, skill_dst)
+            logger.info("[Skills] Seeded bundled skill: %s", skill_src.name)
+            seeded += 1
+
+        return seeded
