@@ -139,6 +139,18 @@ def _run_non_interactive(
         SYNAPSE_HOME             — override default ~/.synapse data root
         SYNAPSE_GATEWAY_TOKEN    — WebSocket control-plane auth token
 
+    Optional SBS persona env vars (all optional — absent means use defaults silently):
+        SYNAPSE_COMMUNICATION_STYLE  — preferred comm style
+                                       (casual_and_witty, formal_and_precise,
+                                        technical_depth, creative_and_playful)
+        SYNAPSE_ENERGY_LEVEL         — energy/mood baseline
+                                       (high_energy, calm_and_steady, adaptive)
+        SYNAPSE_INTERESTS            — comma-separated topic list
+                                       (technology, music, wellness, finance,
+                                        science, arts, sports, cooking)
+        SYNAPSE_PRIVACY_LEVEL        — privacy sensitivity
+                                       (open, selective, private)
+
     Exit codes:
         0 — config written successfully
         1 — required env var missing or validation failed
@@ -246,6 +258,73 @@ def _run_non_interactive(
     # --- Write ---
     write_config(data_root, config)
     typer.echo(f"Config written to {data_root / 'synapse.json'}")
+
+    # --- SBS profile seeding from env vars (all optional) ---
+    communication_style = os.environ.get("SYNAPSE_COMMUNICATION_STYLE", "").strip()
+    energy_level = os.environ.get("SYNAPSE_ENERGY_LEVEL", "").strip()
+    interests_raw = os.environ.get("SYNAPSE_INTERESTS", "").strip()
+    privacy_level = os.environ.get("SYNAPSE_PRIVACY_LEVEL", "").strip()
+
+    if any([communication_style, energy_level, interests_raw, privacy_level]):
+        try:
+            from cli.sbs_profile_init import (  # noqa: PLC0415
+                ENERGY_CHOICES,
+                INTEREST_CHOICES,
+                PRIVACY_CHOICES,
+                STYLE_CHOICES,
+                initialize_sbs_from_wizard,
+            )
+
+            # Validate communication_style
+            if communication_style and communication_style not in STYLE_CHOICES:
+                typer.echo(
+                    f"WARNING: SYNAPSE_COMMUNICATION_STYLE='{communication_style}' is not valid. "
+                    f"Valid: {', '.join(STYLE_CHOICES)}. Using default 'casual_and_witty'.",
+                    err=True,
+                )
+                communication_style = "casual_and_witty"
+
+            # Validate energy_level
+            if energy_level and energy_level not in ENERGY_CHOICES:
+                typer.echo(
+                    f"WARNING: SYNAPSE_ENERGY_LEVEL='{energy_level}' is not valid. "
+                    f"Valid: {', '.join(ENERGY_CHOICES)}. Using default 'calm_and_steady'.",
+                    err=True,
+                )
+                energy_level = "calm_and_steady"
+
+            # Validate privacy_level
+            if privacy_level and privacy_level not in PRIVACY_CHOICES:
+                typer.echo(
+                    f"WARNING: SYNAPSE_PRIVACY_LEVEL='{privacy_level}' is not valid. "
+                    f"Valid: {', '.join(PRIVACY_CHOICES)}. Using default 'selective'.",
+                    err=True,
+                )
+                privacy_level = "selective"
+
+            # Parse and validate interests (comma-separated, filter unknowns)
+            parsed_interests = [i.strip().lower() for i in interests_raw.split(",") if i.strip()]
+            unknown_interests = [i for i in parsed_interests if i not in INTEREST_CHOICES]
+            if unknown_interests:
+                typer.echo(
+                    f"WARNING: Unknown interests ignored: {', '.join(unknown_interests)}. "
+                    f"Valid: {', '.join(INTEREST_CHOICES)}",
+                    err=True,
+                )
+                parsed_interests = [i for i in parsed_interests if i in INTEREST_CHOICES]
+
+            initialize_sbs_from_wizard(
+                {
+                    "communication_style": communication_style or "casual_and_witty",
+                    "energy_level": energy_level or "calm_and_steady",
+                    "interests": parsed_interests,
+                    "privacy_level": privacy_level or "selective",
+                },
+                data_root=data_root,
+            )
+            typer.echo("SBS profile initialized from environment variables.")
+        except Exception as exc:  # noqa: BLE001
+            typer.echo(f"WARNING: SBS profile initialization failed: {exc}", err=True)
 
     # --- Environment validation ---
     _validate_environment(config)
