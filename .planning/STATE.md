@@ -1,17 +1,14 @@
 ---
 gsd_state_version: 1.0
-milestone: v3.0
+milestone: v2.0
 milestone_name: Proactive Architecture Evolution
-status: executing
-stopped_at: v2.0 milestone initialized — PROJECT.md, REQUIREMENTS.md, ROADMAP.md created
-last_updated: "2026-04-07T10:01:13.931Z"
-last_activity: 2026-04-07 -- Phase 02 execution started
+status: unknown
+last_updated: "2026-04-07T13:37:59.222Z"
 progress:
-  total_phases: 6
-  completed_phases: 2
-  total_plans: 16
-  completed_plans: 10
-  percent: 63
+  total_phases: 5
+  completed_phases: 1
+  total_plans: 22
+  completed_plans: 9
 ---
 
 # Project State
@@ -21,16 +18,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-06)
 
 **Core value:** An AI that knows you deeply, grows with you continuously, and reaches out to you first — on your machine, under your full control.
-**Current focus:** Phase 02 — safe-self-modification-rollback
+**Current focus:** Phase 01 — skill-architecture
 
 ## Current Position
 
-Phase: 02 (safe-self-modification-rollback) — EXECUTING
-Plan: 1 of 6
-Status: Executing Phase 02
-Last activity: 2026-04-07 -- Phase 02 execution started
+Phase: 05 (browser-tool) — EXECUTING
+Plan: 1 of 4 complete (Plan 02 next)
+Status: Executing Phase 05
+Last activity: 2026-04-07 -- Phase 05 Plan 01 completed
 
-Progress: [░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 0/23 plans complete
+Progress: [######░░░░░░░░░░░░░░░░░░░░░░░] 10/22 plans complete
 
 ## Pre-Work Checklist
 
@@ -59,6 +56,11 @@ Before starting Phase 1:
 - Skills-as-directories chosen over Python plugin system: simpler, AI-writable, no pip install
 - Phase order locked: Skills → Self-Mod → Subagents → Onboarding v2 → Browser Tool
 - Browser Tool implemented as a skill (not core pipeline) — can be disabled/replaced
+- [Phase 05-browser-tool]: trafilatura.fetch_url() never called — all HTTP goes through safe_httpx_client for SSRF protection on redirects
+- [Phase 05-browser-tool]: Browser skill directory at ~/.synapse/skills/browser/ follows SKILL.md + scripts/ convention from Phase 01
+- [Phase 04-onboarding-wizard-v2]: channel validation functions raise ValueError not return bool -- wrapped in try/except in verify_steps.py
+- [Phase 03-subagent-system]: Sub-agents use 'analysis' role (Gemini Pro) by default for deep reasoning tasks
+- [Phase 03-subagent-system]: ProgressReporter.stop() does not await cancellation — safe for both sync and async callers
 
 ### Pending Todos
 
@@ -78,7 +80,7 @@ None active. v2.0 ready to begin after branch merge.
 
 ## Session Continuity
 
-Last session: 2026-04-06
-Stopped at: v2.0 milestone initialized — PROJECT.md, REQUIREMENTS.md, ROADMAP.md created
+Last session: 2026-04-07
+Stopped at: Completed 05-browser-tool-01-PLAN.md — browser skill directory + fetch_and_summarize.py
 Resume file: None
-Next step: `/gsd-discuss-phase 1` after merging refactor/optimize
+Next step: Continue Phase 05-browser-tool from Plan 02

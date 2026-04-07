@@ -251,7 +251,7 @@ Phases execute in dependency order: 0 → 1 → 2 → 3 → 4 → 5
 | 1. Skill Architecture | 0/5 | Planned | — |
 | 2. Safe Self-Modification + Rollback | 0/6 | Planned | — |
 | 3. Subagent System | 0/4 | Pending | — |
-| 4. Onboarding Wizard v2 | 0/4 | Planned | — |
+| 4. Onboarding Wizard v2 | 1/4 | In Progress|  |
 | 5. Browser Tool | 0/4 | Pending | — |
 
 **v1.0 Archive:** All 10 phases, 38 plans — COMPLETE (2026-03-03)
