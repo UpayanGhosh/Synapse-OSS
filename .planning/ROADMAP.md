@@ -155,13 +155,13 @@ crashing it if they fail.
   - Sub-agent memory access must be read-only by default — prevent agents from accidentally writing to the parent's memory context
   - asyncio task cancellation on sub-agent timeout must be clean — no dangling connections or partially-written memory entries
   - The result delivery path (sub-agent → parent conversation) requires a callback or queue mechanism compatible with the existing channel send architecture
-**Plans**: 4 plans (estimated)
+**Plans**: 4 plans
 
 Plans:
-- [ ] 03-01-PLAN.md — Define SubAgent dataclass + AgentRegistry + spawn/cancel lifecycle + GET /agents endpoint
-- [ ] 03-02-PLAN.md — Implement SubAgentRunner: isolated context window, scoped memory read, tool access, progress callback
-- [ ] 03-03-PLAN.md — Wire spawn intent detection into api_gateway.py + result delivery back to parent channel
-- [ ] 03-04-PLAN.md — Integration tests: parallel execution timing, crash isolation, progress updates, result delivery
+- [ ] 03-01-PLAN.md — SubAgent dataclass + AgentRegistry CRUD lifecycle + GET /agents endpoint
+- [ ] 03-02-PLAN.md — SubAgentRunner: isolated asyncio execution, scoped memory snapshots, ProgressReporter callbacks
+- [ ] 03-03-PLAN.md — Spawn intent keyword gate + pipeline wiring in chat_pipeline.py + result delivery via channel.send()
+- [ ] 03-04-PLAN.md — Unit + integration tests: parallel timing, crash isolation, progress updates, result delivery, API endpoint
 
 ---
 
