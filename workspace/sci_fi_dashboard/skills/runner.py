@@ -1,74 +1,49 @@
-"""Skill execution runner with exception isolation (SKILL-06).
+"""
+SkillRunner — executes matched skills with full exception isolation (SKILL-06).
 
-SkillRunner.execute() is the boundary between the skill system and the main
-pipeline. It is the ONLY place where a skill can fail — no exception ever
-propagates beyond this function. All failures are converted to user-friendly
-error messages that allow the conversation to continue normally.
+A failing skill NEVER crashes the main conversation loop.
+All exceptions are caught, logged, and returned as user-friendly messages.
 
-Usage::
-
-    result = await SkillRunner.execute(
-        manifest=matched_skill,
-        user_message=user_msg,
-        history=request.history,
-        llm_router=deps.synapse_llm_router,
-    )
-    if result.error:
-        # Skill failed, but we still have a user-friendly reply in result.text
-        ...
-    reply = result.text
+Extension (Plan 05-03): Generic entry_point dispatch via importlib.util.spec_from_file_location().
+- No sys.path manipulation
+- No hardcoded skill name checks
+- Any skill can declare an entry_point in its SKILL.md for pre-processing before the LLM call
+- SkillRunner.execute accepts session_context for privacy guard enforcement
 """
 
 from __future__ import annotations
 
+import importlib.util
 import logging
 import time
-from dataclasses import dataclass, field
-from pathlib import Path
+from dataclasses import dataclass
 
 from sci_fi_dashboard.skills.schema import SkillManifest
-from synapse_config import SynapseConfig
 
 logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
-# Result dataclass
-# ---------------------------------------------------------------------------
-
-
 @dataclass
 class SkillResult:
-    """Result of executing a skill.
-
-    Attributes:
-        text:          The reply text to send to the user. Always set —
-                       even on error, contains a user-friendly message.
-        skill_name:    Name of the skill that produced this result.
-        error:         True if the skill raised an exception. False on success.
-        execution_ms:  Wall-clock time in milliseconds from call to return.
-    """
+    """Result of executing a skill."""
 
     text: str
     skill_name: str
     error: bool = False
-    execution_ms: float = field(default=0.0)
-
-
-# ---------------------------------------------------------------------------
-# Runner
-# ---------------------------------------------------------------------------
+    execution_ms: float = 0.0
 
 
 class SkillRunner:
     """Executes a matched skill with full exception isolation.
 
     A failing skill NEVER crashes the main conversation loop.
-    Errors are caught, logged, and returned as a user-friendly message
-    inside a ``SkillResult(error=True)``.
+    Errors are caught, logged, and returned as a user-friendly message.
 
-    This class has no instance state — all methods are static so callers
-    do not need to manage a SkillRunner singleton.
+    Entry point dispatch (Plan 05-03):
+    If a skill declares entry_point in SKILL.md (e.g.
+    "scripts/browser_skill.py:run_browser_skill"), SkillRunner loads and calls
+    that function before the LLM call using importlib.util.spec_from_file_location().
+    This is entirely generic — no hardcoded skill name checks.
     """
 
     @staticmethod
@@ -76,89 +51,123 @@ class SkillRunner:
         manifest: SkillManifest,
         user_message: str,
         history: list[dict],
-        llm_router,  # SynapseLLMRouter instance — typed loosely to avoid circular import
+        llm_router,
+        session_context: dict | None = None,
     ) -> SkillResult:
         """Execute a skill and return the result. NEVER raises.
 
-        Builds the LLM message list from:
-          1. A system message using ``manifest.instructions`` (or a default
-             built from name + description when instructions is empty).
-          2. The conversation ``history`` (user/assistant turns).
-          3. The current ``user_message`` as a user turn.
+        Parameters
+        ----------
+        manifest : SkillManifest
+            The matched skill's metadata.
+        user_message : str
+            The raw user message that triggered the skill.
+        history : list[dict]
+            Conversation history to include in the LLM context.
+        llm_router : SynapseLLMRouter
+            LLM router instance for making the final LLM call.
+        session_context : dict | None
+            Session metadata passed to entry_point functions.
+            Should contain 'session_type' for privacy guard enforcement.
+            Backward compatible — defaults to None.
 
-        Determines the LLM role from ``manifest.model_hint`` — falls back to
-        ``"casual"`` when hint is absent.
-
-        Wraps the entire LLM call in a try/except block so any exception
-        (network error, timeout, provider error, etc.) is caught and
-        converted to an error ``SkillResult`` with a human-readable message.
-
-        Args:
-            manifest:     Validated SkillManifest for the skill to execute.
-            user_message: Raw user input text.
-            history:      Conversation history as a list of
-                          ``{"role": str, "content": str}`` dicts.
-            llm_router:   SynapseLLMRouter instance. Must have a
-                          ``call(role, messages, **kwargs)`` coroutine.
-
-        Returns:
-            SkillResult with the response text, skill name, error flag,
-            and execution time in milliseconds. Never raises.
+        Returns
+        -------
+        SkillResult
+            Always returns a result. Never raises.
         """
-        # Special built-in skill handlers — these bypass the generic LLM call
-        if manifest.name == "skill-creator":
-            return await SkillRunner._execute_skill_creator(manifest, user_message, history, llm_router)
+        t0 = time.perf_counter()
 
-        # Build message list: system → history → user turn
+        # ------------------------------------------------------------------
+        # GENERIC ENTRY POINT DISPATCH (importlib-based, no sys.path)
+        # ------------------------------------------------------------------
+        # If the manifest declares an entry_point, load and call it BEFORE
+        # the LLM call. This is fully generic — no hardcoded skill name checks.
+        pre_result = None
+        if manifest.entry_point:
+            try:
+                pre_result = await SkillRunner._call_entry_point(
+                    manifest, user_message, session_context
+                )
+                # If the entry point returned a hemisphere block, return immediately
+                # without calling the LLM (privacy guard takes priority)
+                if (
+                    pre_result is not None
+                    and hasattr(pre_result, "hemisphere_blocked")
+                    and pre_result.hemisphere_blocked
+                ):
+                    elapsed_ms = (time.perf_counter() - t0) * 1000
+                    return SkillResult(
+                        text=getattr(pre_result, "error", "Blocked by privacy guard."),
+                        skill_name=manifest.name,
+                        error=False,  # Intentional guard, not an error
+                        execution_ms=elapsed_ms,
+                    )
+            except Exception as exc:
+                logger.warning(
+                    "[Skills] Entry point '%s' failed: %s", manifest.entry_point, exc
+                )
+                pre_result = None
+
+        # ------------------------------------------------------------------
+        # BUILD LLM MESSAGES with optional pre-processed content
+        # ------------------------------------------------------------------
         system_content = (
             manifest.instructions
-            if manifest.instructions
-            else (
-                f"You are executing the '{manifest.name}' skill. "
-                f"{manifest.description}"
-            )
+            or f"You are executing the '{manifest.name}' skill. {manifest.description}"
         )
-        messages: list[dict] = [
-            {"role": "system", "content": system_content},
-        ]
+
+        web_context = ""
+        source_urls: list[str] = []
+
+        if pre_result is not None:
+            if hasattr(pre_result, "context_block") and pre_result.context_block:
+                web_context = pre_result.context_block
+                source_urls = getattr(pre_result, "source_urls", [])
+            elif hasattr(pre_result, "error") and pre_result.error:
+                web_context = f"[Pre-processing note: {pre_result.error}]"
+
+        if web_context:
+            system_content += f"\n\n## Web Content\n\n{web_context}"
+
+        messages = [{"role": "system", "content": system_content}]
         messages.extend(history)
         messages.append({"role": "user", "content": user_message})
 
-        # Determine LLM role
+        # Determine LLM role from manifest hint, fallback to "casual"
         role = manifest.model_hint if manifest.model_hint else "casual"
 
-        t0 = time.perf_counter()
+        # ------------------------------------------------------------------
+        # LLM CALL (wrapped in try/except — exceptions become user messages)
+        # ------------------------------------------------------------------
         try:
-            response = await llm_router.call(
-                role, messages, temperature=0.7, max_tokens=2000
-            )
+            response = await llm_router.call(role, messages, temperature=0.7, max_tokens=2000)
             elapsed_ms = (time.perf_counter() - t0) * 1000
-            logger.info(
-                "[Skills] Executed '%s' in %.0fms via role='%s'",
-                manifest.name,
-                elapsed_ms,
-                role,
-            )
+            logger.info("[Skills] Executed '%s' in %.0fms", manifest.name, elapsed_ms)
+
+            # Append source URLs if web content was used and LLM didn't cite them (BROWSE-05)
+            reply_text = response
+            if source_urls:
+                urls_block = "\n".join(f"- {u}" for u in source_urls)
+                # Only append if the LLM didn't already include them
+                if not any(u in reply_text for u in source_urls[:2]):
+                    reply_text += f"\n\n**Sources:**\n{urls_block}"
+
             return SkillResult(
-                text=response,
+                text=reply_text,
                 skill_name=manifest.name,
                 error=False,
                 execution_ms=elapsed_ms,
             )
+
         except Exception as exc:
             elapsed_ms = (time.perf_counter() - t0) * 1000
             error_msg = (
-                f"I tried to use the '{manifest.name}' skill but it encountered "
-                f"an error: {type(exc).__name__}: {str(exc)[:200]}. "
+                f"I tried to use the '{manifest.name}' skill but it encountered an error: "
+                f"{type(exc).__name__}: {str(exc)[:200]}. "
                 f"The conversation can continue normally."
             )
-            logger.error(
-                "[Skills] Skill '%s' failed after %.0fms: %s",
-                manifest.name,
-                elapsed_ms,
-                exc,
-                exc_info=True,
-            )
+            logger.error("[Skills] Skill '%s' failed: %s", manifest.name, exc, exc_info=True)
             return SkillResult(
                 text=error_msg,
                 skill_name=manifest.name,
@@ -167,92 +176,72 @@ class SkillRunner:
             )
 
     @staticmethod
-    async def _execute_skill_creator(
+    async def _call_entry_point(
         manifest: SkillManifest,
         user_message: str,
-        history: list[dict],
-        llm_router,
-    ) -> SkillResult:
-        """Special handler for the built-in skill-creator skill. NEVER raises.
+        session_context: dict | None,
+    ):
+        """Load and call a skill's declared entry_point function via importlib.
 
-        Calls SkillCreator.generate_from_conversation() which does the LLM
-        extraction + filesystem write.  Wraps everything in try/except — any
-        failure returns SkillResult(error=True) with a user-friendly message.
+        entry_point format: "scripts/browser_skill.py:run_browser_skill"
+        - Left of ':' is the script path relative to manifest.path
+        - Right of ':' is the async function name to call
 
-        Args:
-            manifest:     The skill-creator SkillManifest.
-            user_message: Raw user input (the skill creation request).
-            history:      Conversation history (not used directly — passed through).
-            llm_router:   SynapseLLMRouter instance for the extraction LLM call.
+        Uses importlib.util.spec_from_file_location() — NO sys.path manipulation.
+        The function is called with: fn(user_message=str, session_context=dict|None)
 
-        Returns:
-            SkillResult — never raises.
+        Parameters
+        ----------
+        manifest : SkillManifest
+            The skill manifest with entry_point and path fields.
+        user_message : str
+            Passed to the entry point function.
+        session_context : dict | None
+            Passed to the entry point function (used for privacy guard enforcement).
+
+        Returns
+        -------
+        Any
+            Whatever the entry_point function returns (e.g. BrowserSkillResult).
+
+        Raises
+        ------
+        ValueError
+            If entry_point format is invalid (missing ':').
+        FileNotFoundError
+            If the referenced script does not exist.
+        ImportError
+            If the module spec cannot be created.
+        AttributeError
+            If the function name is not found in the loaded module.
         """
-        t0 = time.perf_counter()
-        try:
-            from sci_fi_dashboard.skills.creator import SkillCreator
+        ep = manifest.entry_point
+        if ":" not in ep:
+            raise ValueError(f"Invalid entry_point format (expected 'path:func'): {ep}")
 
-            skills_dir: Path = SynapseConfig.load().data_root / "skills"
-            skills_dir.mkdir(parents=True, exist_ok=True)
+        script_rel, func_name = ep.rsplit(":", 1)
+        script_path = manifest.path / script_rel
 
-            result = await SkillCreator.generate_from_conversation(
-                user_message=user_message,
-                skills_dir=skills_dir,
-                llm_router=llm_router,
-            )
+        if not script_path.exists():
+            raise FileNotFoundError(f"Entry point script not found: {script_path}")
 
-            elapsed_ms = (time.perf_counter() - t0) * 1000
+        # Load the module via importlib — no sys.path mutation
+        spec = importlib.util.spec_from_file_location(
+            f"skill_{manifest.name}.{script_path.stem}",
+            script_path,
+        )
+        if spec is None or spec.loader is None:
+            raise ImportError(f"Cannot create module spec for: {script_path}")
 
-            if "skill_name" in result:
-                skill_name = result["skill_name"]
-                skill_path = result.get("skill_path", str(skills_dir / skill_name))
-                reply_text = (
-                    f"Skill '{skill_name}' created successfully at {skill_path}. "
-                    f"Trigger it by saying one of its trigger phrases. "
-                    f"It will be available after the next hot-reload cycle "
-                    f"(usually within a few seconds)."
-                )
-                logger.info(
-                    "[Skills] skill-creator created '%s' in %.0fms",
-                    skill_name,
-                    elapsed_ms,
-                )
-                return SkillResult(
-                    text=reply_text,
-                    skill_name="skill-creator",
-                    error=False,
-                    execution_ms=elapsed_ms,
-                )
-            else:
-                # generate_from_conversation returned a failure dict
-                message = result.get(
-                    "message",
-                    "Skill creation failed — please try again with a clearer description.",
-                )
-                logger.warning("[Skills] skill-creator returned failure: %s", message)
-                return SkillResult(
-                    text=message,
-                    skill_name="skill-creator",
-                    error=False,  # Soft failure — show message, not an error
-                    execution_ms=elapsed_ms,
-                )
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)  # type: ignore[union-attr]
 
-        except Exception as exc:
-            elapsed_ms = (time.perf_counter() - t0) * 1000
-            error_msg = (
-                f"I tried to create the skill but encountered an error: "
-                f"{type(exc).__name__}: {str(exc)[:200]}. "
-                f"Please try again."
-            )
-            logger.error(
-                "[Skills] _execute_skill_creator failed after %.0fms: %s",
-                elapsed_ms,
-                exc,
-                exc_info=True,
-            )
-            return SkillResult(
-                text=error_msg,
-                skill_name="skill-creator",
-                error=True,
-                execution_ms=elapsed_ms,
-            )
+        fn = getattr(module, func_name, None)
+        if fn is None:
+            raise AttributeError(f"Function '{func_name}' not found in {script_path}")
+
+        # Call with standardised arguments
+        return await fn(
+            user_message=user_message,
+            session_context=session_context,
+        )

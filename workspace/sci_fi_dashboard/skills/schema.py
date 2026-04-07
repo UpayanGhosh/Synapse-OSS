@@ -1,16 +1,9 @@
 """
-skills/schema.py — SkillManifest dataclass and SkillValidationError exception.
+Skill schema definitions — SkillManifest dataclass and SkillValidationError.
 
-Defines the data contract for parsed SKILL.md files. Every skill directory
-produces a SkillManifest on successful load; invalid directories raise
-SkillValidationError with a human-readable message listing missing fields.
-
-Expected skill directory structure (per SKILL-01):
-    skill-name/
-        SKILL.md        (required — YAML frontmatter + instructions body)
-        scripts/        (optional — executable scripts called by the skill)
-        references/     (optional — reference documents for the skill)
-        assets/         (optional — static assets: images, templates, etc.)
+Defines the data model for skill metadata loaded from SKILL.md files.
+Every skill in ~/.synapse/skills/ must have a SKILL.md with valid YAML frontmatter
+matching this schema.
 """
 
 from __future__ import annotations
@@ -18,77 +11,63 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-# ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
+# Required fields that every SKILL.md must declare
+REQUIRED_FIELDS: set[str] = {"name", "description", "version"}
 
-# Required YAML frontmatter fields — absence of any raises SkillValidationError.
-REQUIRED_FIELDS: frozenset[str] = frozenset({"name", "description", "version"})
-
-# Optional subdirectory names that a skill directory may contain per SKILL-01.
 # Expected skill directory structure (per SKILL-01):
 #   skill-name/
 #     SKILL.md        (required — YAML frontmatter + instructions)
 #     scripts/        (optional — executable scripts)
 #     references/     (optional — reference documents)
 #     assets/         (optional — static assets: images, templates, etc.)
-OPTIONAL_SUBDIRS: tuple[str, ...] = ("scripts", "references", "assets")
-
-
-# ---------------------------------------------------------------------------
-# Exceptions
-# ---------------------------------------------------------------------------
+OPTIONAL_SUBDIRS = ("scripts", "references", "assets")
 
 
 class SkillValidationError(ValueError):
     """Raised when a SKILL.md file fails validation.
 
-    Attributes:
-        skill_path:     String path to the skill directory that failed.
-        missing_fields: List of required field names that were absent.
+    Attributes
+    ----------
+    skill_path : str
+        Path to the skill directory that failed validation.
+    missing_fields : list[str]
+        List of required field names that were absent.
     """
 
-    def __init__(
-        self,
-        skill_path: str,
-        missing_fields: list[str],
-        extra_msg: str = "",
-    ) -> None:
+    def __init__(self, skill_path: str, missing_fields: list[str], extra_msg: str = "") -> None:
         self.skill_path = skill_path
         self.missing_fields = missing_fields
-        self._extra_msg = extra_msg
+        self.extra_msg = extra_msg
         super().__init__(str(self))
 
     def __str__(self) -> str:
-        parts = [f"Invalid SKILL.md at {self.skill_path}:"]
+        base = f"Invalid SKILL.md at {self.skill_path}"
         if self.missing_fields:
-            parts.append(f"missing required fields: {', '.join(self.missing_fields)}.")
-        if self._extra_msg:
-            parts.append(self._extra_msg)
-        return " ".join(parts)
-
-
-# ---------------------------------------------------------------------------
-# Dataclass
-# ---------------------------------------------------------------------------
+            base += f": missing required fields: {', '.join(self.missing_fields)}"
+        if self.extra_msg:
+            base += f". {self.extra_msg}"
+        return base
 
 
 @dataclass(frozen=True)
 class SkillManifest:
-    """Parsed and validated representation of a SKILL.md file.
+    """Parsed and validated metadata from a skill's SKILL.md file.
 
-    Required fields (must be present in YAML frontmatter):
-        name:           Unique skill identifier, lowercase-hyphenated.
-        description:    Human-readable description used for routing.
-        version:        Semver string (e.g. "1.0.0").
+    Required fields (must be in YAML frontmatter):
+        name        — unique skill identifier, lowercase-hyphenated
+        description — human-readable description, used for routing
+        version     — semver string (e.g. "1.0.0")
 
-    Optional fields (default to empty/falsy values when absent):
-        author:         Skill author name or handle.
-        triggers:       Explicit trigger phrases for exact-match routing bypass.
-        model_hint:     Preferred LLM role, e.g. "code", "analysis".
-        permissions:    Capability grants, e.g. ["filesystem:write", "network:fetch"].
-        instructions:   Full markdown body below the YAML frontmatter block.
-        path:           Resolved absolute path to the skill directory on disk.
+    Optional fields:
+        author      — skill author name or handle
+        triggers    — explicit trigger phrases for exact-match routing bypass
+        model_hint  — preferred LLM role ("code", "analysis", "casual", etc.)
+        permissions — declared capabilities (e.g. ["filesystem:write", "network:fetch"])
+        instructions — markdown body below YAML frontmatter (the skill's system prompt)
+        path        — resolved absolute path to the skill directory
+        entry_point — optional pre-processing entrypoint: "scripts/skill.py:function_name"
+                      Used by SkillRunner to call a function before the LLM call.
+                      Format: relative path from skill directory : function name
     """
 
     # Required
@@ -103,3 +82,4 @@ class SkillManifest:
     permissions: list[str] = field(default_factory=list)
     instructions: str = ""
     path: Path = field(default_factory=lambda: Path("."))
+    entry_point: str = ""

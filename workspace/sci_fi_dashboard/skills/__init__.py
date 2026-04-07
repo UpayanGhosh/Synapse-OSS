@@ -1,21 +1,8 @@
 """
-skills — Synapse-OSS skill system package.
+Skill system public API — consolidated exports from all sub-modules.
 
-Consolidated exports for all skill system classes from Plans 01-05.
-Plans 02 and 03 ran in Wave 2 (parallel) and intentionally deferred __init__.py
-updates to avoid write conflicts. This module consolidates all exports now that
-all plans are complete.
-
-Public API:
-    SkillManifest       — frozen dataclass for parsed SKILL.md files
-    SkillValidationError — raised when SKILL.md fails validation
-    SkillLoader         — classmethods for loading/scanning skill directories
-    SkillRegistry       — thread-safe singleton managing loaded skills
-    SkillWatcher        — watchdog-based filesystem watcher with hot-reload
-    SkillRouter         — embedding-based intent routing (two-stage matching)
-    SkillRunner         — LLM execution engine with exception isolation
-    SkillResult         — result dataclass returned by SkillRunner.execute()
-    SkillCreator        — generates new skill directories from conversation (SKILL-04)
+Usage:
+    from sci_fi_dashboard.skills import SkillManifest, SkillLoader, SkillRunner
 """
 
 from sci_fi_dashboard.skills.schema import SkillManifest, SkillValidationError
@@ -24,7 +11,6 @@ from sci_fi_dashboard.skills.registry import SkillRegistry
 from sci_fi_dashboard.skills.watcher import SkillWatcher
 from sci_fi_dashboard.skills.router import SkillRouter
 from sci_fi_dashboard.skills.runner import SkillRunner, SkillResult
-from sci_fi_dashboard.skills.creator import SkillCreator
 
 __all__ = [
     "SkillManifest",
@@ -35,5 +21,4 @@ __all__ = [
     "SkillRouter",
     "SkillRunner",
     "SkillResult",
-    "SkillCreator",
 ]
