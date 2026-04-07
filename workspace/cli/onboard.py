@@ -791,6 +791,106 @@ def _collect_provider_keys(
 
 
 # ---------------------------------------------------------------------------
+# SBS persona-seeding step (inserted between config write and daemon install)
+# ---------------------------------------------------------------------------
+
+
+def _run_sbs_questions(prompter: "object", data_root: Path) -> None:
+    """Collect persona-seeding answers and write to SBS profile layers.
+
+    Called at the end of _run_interactive_impl(), after config is written
+    but before the daemon install step. Failure here must never crash the wizard.
+
+    Asks 4 targeted questions:
+      1. Communication style preference
+      2. Energy / mood level
+      3. Topic interests (multi-select)
+      4. Privacy sensitivity
+
+    Then offers an optional WhatsApp history import.
+    """
+    import subprocess  # noqa: PLC0415
+
+    from cli.sbs_profile_init import (  # noqa: PLC0415
+        ENERGY_DISPLAY_MAP,
+        PRIVACY_DISPLAY_MAP,
+        STYLE_DISPLAY_MAP,
+        initialize_sbs_from_wizard,
+    )
+
+    _print("\n[bold cyan]--- Persona Profile ---[/]")
+
+    # --- Q1: Communication style ---
+    style_display = prompter.select(  # type: ignore[attr-defined]
+        "How should Synapse communicate with you by default?",
+        choices=list(STYLE_DISPLAY_MAP.keys()),
+        default="Casual and witty",
+    )
+
+    # --- Q2: Energy / mood level ---
+    energy_display = prompter.select(  # type: ignore[attr-defined]
+        "How would you describe your typical energy level?",
+        choices=list(ENERGY_DISPLAY_MAP.keys()),
+        default="Calm and steady",
+    )
+
+    # --- Q3: Interests (multi-select) ---
+    interest_displays = prompter.multiselect(  # type: ignore[attr-defined]
+        "What topics are you most interested in? (select all that apply)",
+        choices=["Technology", "Music", "Wellness", "Finance", "Science", "Arts", "Sports", "Cooking"],
+    )
+
+    # --- Q4: Privacy sensitivity ---
+    privacy_display = prompter.select(  # type: ignore[attr-defined]
+        "How sensitive are you about personal data in conversations?",
+        choices=list(PRIVACY_DISPLAY_MAP.keys()),
+        default="Selective - use judgment",
+    )
+
+    # --- Map display values to internal values ---
+    answers = {
+        "communication_style": STYLE_DISPLAY_MAP.get(style_display, "casual_and_witty"),
+        "energy_level": ENERGY_DISPLAY_MAP.get(energy_display, "calm_and_steady"),
+        "interests": [topic.lower() for topic in (interest_displays or [])],
+        "privacy_level": PRIVACY_DISPLAY_MAP.get(privacy_display, "selective"),
+    }
+
+    # --- Write profile layers ---
+    try:
+        initialize_sbs_from_wizard(answers, data_root)
+        _print("[green]Persona profile seeded.[/]")
+    except Exception:  # noqa: BLE001
+        import logging  # noqa: PLC0415
+
+        logging.getLogger(__name__).warning(
+            "SBS profile init failed — wizard continues", exc_info=True
+        )
+        _print("[yellow]Persona profile setup skipped (non-fatal).[/]")
+
+    # --- Optional: WhatsApp history import ---
+    if prompter.confirm(  # type: ignore[attr-defined]
+        "Would you like to import existing WhatsApp chat history?", default=False
+    ):
+        wa_file = prompter.text(  # type: ignore[attr-defined]
+            "Path to WhatsApp export (.txt file)", default=""
+        )
+        if wa_file:
+            from pathlib import Path as _Path  # noqa: PLC0415
+
+            wa_path = _Path(wa_file)
+            if wa_path.exists():
+                subprocess.run(
+                    [sys.executable, "scripts/import_whatsapp.py", wa_file, "--hemisphere", "safe"],
+                    check=False,
+                )
+                _print("[green]WhatsApp history import started.[/]")
+            else:
+                _print(f"[yellow]File not found: {wa_file} — import skipped.[/]")
+        else:
+            _print("[dim]No file provided — WhatsApp import skipped.[/]")
+
+
+# ---------------------------------------------------------------------------
 # Interactive wizard — main entry point
 # ---------------------------------------------------------------------------
 
@@ -979,6 +1079,11 @@ def _run_interactive_impl(
     # --- Step 10: Write config (ONB-07) ---
     write_config(data_root, config)
     cfg_file = data_root / "synapse.json"
+
+    # --- Step 10b: Persona profile seeding ---
+    # SBS questions run after synapse.json is written so SynapseConfig.load()
+    # inside initialize_sbs_from_wizard() resolves the correct profile path.
+    _run_sbs_questions(prompter=prompter, data_root=data_root)
 
     # --- Step 11: Daemon install ---
     _wizard_daemon_install(prompter=prompter, config=config, data_root=data_root, flow=flow)
