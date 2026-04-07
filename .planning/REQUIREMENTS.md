@@ -35,13 +35,13 @@ Requirements for the v2.0 milestone. Maps to vision document Phases 5–9.
 
 ### Subagent System (Phase 7)
 
-- [ ] **AGENT-01**: The main conversation can spawn an isolated sub-agent with a task description and optional context
+- [x] **AGENT-01**: The main conversation can spawn an isolated sub-agent with a task description and optional context
 - [x] **AGENT-02**: Sub-agents run in isolated asyncio tasks — a crashed sub-agent does not affect the parent conversation
 - [x] **AGENT-03**: Sub-agent results return to the parent conversation as a structured message
 - [x] **AGENT-04**: Multiple sub-agents can run in parallel — independent tasks do not wait on each other
 - [x] **AGENT-05**: Sub-agents have access to memory and tools but operate with a scoped context window — they do not receive the full parent conversation history by default
 - [x] **AGENT-06**: Long-running sub-agents (> 30s) send progress updates to the parent at configurable intervals
-- [ ] **AGENT-07**: `GET /agents` lists active and recently completed sub-agent tasks with status
+- [x] **AGENT-07**: `GET /agents` lists active and recently completed sub-agent tasks with status
 
 ### Onboarding Wizard v2 (Phase 8)
 
@@ -120,13 +120,13 @@ To be detailed at v4.0 milestone initialization.
 | MOD-08 | Phase 2 | Pending |
 | MOD-09 | Phase 2 | Pending |
 | MOD-10 | Phase 2 | Pending |
-| AGENT-01 | Phase 3 | Pending |
+| AGENT-01 | Phase 3 | Complete |
 | AGENT-02 | Phase 3 | Complete |
 | AGENT-03 | Phase 3 | Complete |
 | AGENT-04 | Phase 3 | Complete |
 | AGENT-05 | Phase 3 | Complete |
 | AGENT-06 | Phase 3 | Complete |
-| AGENT-07 | Phase 3 | Pending |
+| AGENT-07 | Phase 3 | Complete |
 | ONBOARD2-01 | Phase 4 | Complete |
 | ONBOARD2-02 | Phase 4 | Complete |
 | ONBOARD2-03 | Phase 4 | Complete |
