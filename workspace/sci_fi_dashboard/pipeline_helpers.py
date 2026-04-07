@@ -196,6 +196,34 @@ async def continue_conversation(
 
 
 # ---------------------------------------------------------------------------
+# LLM Adapter for Compaction (bridges SynapseLLMRouter → compaction contract)
+# ---------------------------------------------------------------------------
+
+
+class _LLMClientAdapter:
+    """Adapter: exposes acompletion(messages=[...]) using SynapseLLMRouter._do_call().
+
+    compaction.py requires: await llm_client.acompletion(messages=[...])
+    returning an object with .choices[0].message.content (plain string).
+
+    SynapseLLMRouter._do_call(role, messages) returns the raw litellm response
+    which already has that shape. We use the "casual" role for compaction summaries.
+    """
+
+    def __init__(self, router) -> None:
+        self._router = router
+
+    async def acompletion(self, messages: list[dict], **kwargs):
+        """Forward to SynapseLLMRouter._do_call with role='casual'.
+
+        Passes max_tokens=2000 (not the _do_call default of 1000) so that
+        compaction summaries of large conversations are not truncated.
+        """
+        max_tokens = kwargs.get("max_tokens", 2000)
+        return await self._router._do_call("casual", messages, max_tokens=max_tokens)
+
+
+# ---------------------------------------------------------------------------
 # Async Gateway Processing Pipeline
 # ---------------------------------------------------------------------------
 
