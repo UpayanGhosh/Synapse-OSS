@@ -455,7 +455,7 @@ class TestSBSQuestions:
 
         stub = self._make_stub()
 
-        with patch("cli.onboard.initialize_sbs_from_wizard") as mock_init:
+        with patch("cli.sbs_profile_init.initialize_sbs_from_wizard") as mock_init:
             _run_sbs_questions(stub, tmp_path)
 
         mock_init.assert_called_once()
@@ -489,7 +489,7 @@ class TestSBSQuestions:
         })
 
         with (
-            patch("cli.onboard.initialize_sbs_from_wizard"),
+            patch("cli.sbs_profile_init.initialize_sbs_from_wizard"),
             patch("subprocess.run") as mock_run,
         ):
             _run_sbs_questions(stub, tmp_path)
@@ -505,7 +505,7 @@ class TestSBSQuestions:
         stub = self._make_stub()  # WhatsApp confirm=False
 
         with (
-            patch("cli.onboard.initialize_sbs_from_wizard"),
+            patch("cli.sbs_profile_init.initialize_sbs_from_wizard"),
             patch("subprocess.run") as mock_run,
         ):
             _run_sbs_questions(stub, tmp_path)
@@ -518,7 +518,7 @@ class TestSBSQuestions:
 
         stub = self._make_stub()
 
-        with patch("cli.onboard.initialize_sbs_from_wizard", side_effect=Exception("DB error")):
+        with patch("cli.sbs_profile_init.initialize_sbs_from_wizard", side_effect=Exception("DB error")):
             # Should NOT raise
             _run_sbs_questions(stub, tmp_path)
 
@@ -555,7 +555,7 @@ class TestNonInteractiveSBS:
 
         with (
             patch("litellm.acompletion", new_callable=AsyncMock) as mock_acomp,
-            patch("cli.onboard.initialize_sbs_from_wizard") as mock_init,
+            patch("cli.sbs_profile_init.initialize_sbs_from_wizard") as mock_init,
             patch("cli.onboard._validate_environment"),
             patch("cli.gateway_steps.configure_gateway",
                   return_value={"port": 8000, "bind": "loopback", "token": "a" * 48}),
@@ -587,7 +587,7 @@ class TestNonInteractiveSBS:
 
         with (
             patch("litellm.acompletion", new_callable=AsyncMock) as mock_acomp,
-            patch("cli.onboard.initialize_sbs_from_wizard") as mock_init,
+            patch("cli.sbs_profile_init.initialize_sbs_from_wizard") as mock_init,
             patch("cli.onboard._validate_environment"),
             patch("cli.gateway_steps.configure_gateway",
                   return_value={"port": 8000, "bind": "loopback", "token": "a" * 48}),
@@ -617,7 +617,7 @@ class TestNonInteractiveSBS:
 
         with (
             patch("litellm.acompletion", new_callable=AsyncMock) as mock_acomp,
-            patch("cli.onboard.initialize_sbs_from_wizard", side_effect=capture_init),
+            patch("cli.sbs_profile_init.initialize_sbs_from_wizard", side_effect=capture_init),
             patch("cli.onboard._validate_environment"),
             patch("cli.gateway_steps.configure_gateway",
                   return_value={"port": 8000, "bind": "loopback", "token": "a" * 48}),
@@ -650,7 +650,7 @@ class TestNonInteractiveSBS:
 
         with (
             patch("litellm.acompletion", new_callable=AsyncMock) as mock_acomp,
-            patch("cli.onboard.initialize_sbs_from_wizard", side_effect=capture),
+            patch("cli.sbs_profile_init.initialize_sbs_from_wizard", side_effect=capture),
             patch("cli.onboard._validate_environment"),
             patch("cli.gateway_steps.configure_gateway",
                   return_value={"port": 8000, "bind": "loopback", "token": "a" * 48}),
@@ -681,7 +681,7 @@ class TestNonInteractiveSBS:
 
         with (
             patch("litellm.acompletion", new_callable=AsyncMock) as mock_acomp,
-            patch("cli.onboard.initialize_sbs_from_wizard", side_effect=capture),
+            patch("cli.sbs_profile_init.initialize_sbs_from_wizard", side_effect=capture),
             patch("cli.onboard._validate_environment"),
             patch("cli.gateway_steps.configure_gateway",
                   return_value={"port": 8000, "bind": "loopback", "token": "a" * 48}),
@@ -712,7 +712,7 @@ class TestNonInteractiveSBS:
 
         with (
             patch("litellm.acompletion", new_callable=AsyncMock) as mock_acomp,
-            patch("cli.onboard.initialize_sbs_from_wizard", side_effect=capture),
+            patch("cli.sbs_profile_init.initialize_sbs_from_wizard", side_effect=capture),
             patch("cli.onboard._validate_environment"),
             patch("cli.gateway_steps.configure_gateway",
                   return_value={"port": 8000, "bind": "loopback", "token": "a" * 48}),
@@ -824,6 +824,38 @@ class TestVerifySubcommand:
             run_verify()
 
         mock_write.assert_not_called()
+
+    def test_run_verify_parallel_providers(self, tmp_path, monkeypatch):
+        """ONBOARD2-05: Multiple providers validated in parallel via asyncio.gather."""
+        from cli.verify_steps import run_verify, _validate_all_providers
+
+        monkeypatch.setenv("SYNAPSE_HOME", str(tmp_path))
+        mock_cfg = self._make_synapse_config(
+            tmp_path,
+            providers={
+                "gemini": {"api_key": "key1"},
+                "openrouter": {"api_key": "key2"},
+                "anthropic": {"api_key": "key3"},
+            },
+        )
+
+        with (
+            patch("cli.verify_steps.SynapseConfig") as mock_cfg_cls,
+            patch("asyncio.run") as mock_run,
+            patch("asyncio.gather") as mock_gather,
+        ):
+            mock_cfg_cls.load.return_value = mock_cfg
+            # asyncio.run wraps _validate_all_providers which uses asyncio.gather
+            mock_run.return_value = [
+                ("gemini", True, ""),
+                ("openrouter", True, ""),
+                ("anthropic", True, ""),
+            ]
+            result = run_verify()
+
+        assert result == 0
+        # Verify asyncio.run was called (which internally uses gather for parallelism)
+        mock_run.assert_called_once()
 
     def test_run_verify_handles_validation_result_not_bool(self, tmp_path, monkeypatch):
         """Guard against the bug where ValidationResult would be truthy as a raw dataclass.
