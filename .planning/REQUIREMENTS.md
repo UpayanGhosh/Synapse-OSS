@@ -45,9 +45,9 @@ Requirements for the v2.0 milestone. Maps to vision document Phases 5–9.
 
 ### Onboarding Wizard v2 (Phase 8)
 
-- [ ] **ONBOARD2-01**: `python -m synapse setup` completes full setup — model selection, API key entry, validation, persona configuration — in under 5 minutes for a fresh user
-- [ ] **ONBOARD2-02**: The wizard builds an initial SBS profile via targeted questions (communication style, interests, privacy preferences) — user reaches a meaningful baseline without prior conversations
-- [ ] **ONBOARD2-03**: The wizard offers WhatsApp history import during setup — python scripts/import_whatsapp.py is presented as an option, not a required step
+- [x] **ONBOARD2-01**: `python -m synapse setup` completes full setup — model selection, API key entry, validation, persona configuration — in under 5 minutes for a fresh user
+- [x] **ONBOARD2-02**: The wizard builds an initial SBS profile via targeted questions (communication style, interests, privacy preferences) — user reaches a meaningful baseline without prior conversations
+- [x] **ONBOARD2-03**: The wizard offers WhatsApp history import during setup — python scripts/import_whatsapp.py is presented as an option, not a required step
 - [ ] **ONBOARD2-04**: The wizard supports `--non-interactive` flag with env vars for headless/Docker/CI setups
 - [x] **ONBOARD2-05**: After wizard completion, `python -m synapse setup --verify` confirms all configured providers and channels respond correctly
 
@@ -57,7 +57,7 @@ Requirements for the v2.0 milestone. Maps to vision document Phases 5–9.
 - [x] **BROWSE-02**: Web content is summarized and injected into the conversation context — raw HTML is never passed to the LLM
 - [ ] **BROWSE-03**: Browser requests respect the Zone 1/Zone 2 privacy boundary — private/spicy hemisphere conversations never trigger web fetches
 - [x] **BROWSE-04**: Browser tool is implemented as a skill (SKILL.md) — it can be disabled or replaced without touching the core pipeline
-- [ ] **BROWSE-05**: Search results include source URLs — the user can verify provenance
+- [x] **BROWSE-05**: Search results include source URLs — the user can verify provenance
 
 ---
 
@@ -127,16 +127,16 @@ To be detailed at v4.0 milestone initialization.
 | AGENT-05 | Phase 3 | Complete |
 | AGENT-06 | Phase 3 | Complete |
 | AGENT-07 | Phase 3 | Pending |
-| ONBOARD2-01 | Phase 4 | Pending |
-| ONBOARD2-02 | Phase 4 | Pending |
-| ONBOARD2-03 | Phase 4 | Pending |
+| ONBOARD2-01 | Phase 4 | Complete |
+| ONBOARD2-02 | Phase 4 | Complete |
+| ONBOARD2-03 | Phase 4 | Complete |
 | ONBOARD2-04 | Phase 4 | Pending |
 | ONBOARD2-05 | Phase 4 | Complete |
 | BROWSE-01 | Phase 5 | Complete |
 | BROWSE-02 | Phase 5 | Complete |
 | BROWSE-03 | Phase 5 | Pending |
 | BROWSE-04 | Phase 5 | Complete |
-| BROWSE-05 | Phase 5 | Pending |
+| BROWSE-05 | Phase 5 | Complete |
 
 **Coverage:**
 - v2.0 requirements: 34 total

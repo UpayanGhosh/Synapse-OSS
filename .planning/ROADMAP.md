@@ -210,8 +210,8 @@ community-extended without touching the core pipeline.
 **Plans**: 4 plans
 
 Plans:
-- [ ] 05-01-PLAN.md — Create browser skill directory: SKILL.md + scripts/fetch_and_summarize.py + SSRF guard reuse + trafilatura content extraction
-- [ ] 05-02-PLAN.md — Implement web search via DuckDuckGo (DDGS): rate limiting, result ranking, source URL attribution
+- [x] 05-01-PLAN.md — Create browser skill directory: SKILL.md + scripts/fetch_and_summarize.py + SSRF guard reuse + trafilatura content extraction
+- [x] 05-02-PLAN.md — Implement web search via DuckDuckGo (DDGS): rate limiting, result ranking, source URL attribution
 - [ ] 05-03-PLAN.md — Wire browser skill orchestrator: hemisphere privacy guard + search->fetch->summarize chain + SkillRunner session context
 - [ ] 05-04-PLAN.md — Integration tests: SSRF rejection, HTML-free LLM prompts, hemisphere guard, source URLs, skill-disabled fallback
 
@@ -251,8 +251,8 @@ Phases execute in dependency order: 0 → 1 → 2 → 3 → 4 → 5
 | 1. Skill Architecture | 0/5 | Planned | — |
 | 2. Safe Self-Modification + Rollback | 0/6 | Pending | — |
 | 3. Subagent System | 2/4 | In Progress|  |
-| 4. Onboarding Wizard v2 | 1/4 | In Progress|  |
-| 5. Browser Tool | 0/4 | Pending | — |
+| 4. Onboarding Wizard v2 | 2/4 | In Progress|  |
+| 5. Browser Tool | 2/4 | In Progress | — |
 
 **v1.0 Archive:** All 10 phases, 38 plans — COMPLETE (2026-03-03)
 See archived ROADMAP in `.planning/phases/` for historical reference.
