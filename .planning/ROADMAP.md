@@ -41,7 +41,7 @@ Details at v4.0 milestone init.
 - [ ] **Phase 0: Session & Context Persistence** — Wire the multiuser/ session infrastructure into the WhatsApp pipeline; every message builds on conversation history instead of starting fresh
 - [ ] **Phase 1: Skill Architecture** — Skills-as-directories: SKILL.md format, startup discovery, description-based routing, skill-creator skill (vision Phase 5)
 - [ ] **Phase 2: Safe Self-Modification + Rollback** — Full consent protocol + snapshot engine + Zone 1/Zone 2 hard enforcement + rollback by date/description (vision Phase 6)
-- [ ] **Phase 3: Subagent System** — Spawn isolated async sub-agents, parallel execution, result return, progress updates (vision Phase 7)
+- [x] **Phase 3: Subagent System** — Spawn isolated async sub-agents, parallel execution, result return, progress updates (vision Phase 7) (completed 2026-04-07)
 - [x] **Phase 4: Onboarding Wizard v2** — `python -m synapse setup` under 5 min, initial SBS profile from questions, history import offer (vision Phase 8) (completed 2026-04-07)
 - [ ] **Phase 5: Browser Tool** — Live web access as a skill, summarized injection, privacy-boundary enforcement (vision Phase 9)
 
@@ -250,7 +250,7 @@ Phases execute in dependency order: 0 → 1 → 2 → 3 → 4 → 5
 | 0. Session & Context Persistence | 0/4 | Planned | — |
 | 1. Skill Architecture | 0/5 | Planned | — |
 | 2. Safe Self-Modification + Rollback | 0/6 | Pending | — |
-| 3. Subagent System | 2/4 | In Progress|  |
+| 3. Subagent System | 4/4 | Complete   | 2026-04-07 |
 | 4. Onboarding Wizard v2 | 4/4 | Complete   | 2026-04-07 |
 | 5. Browser Tool | 2/4 | In Progress | — |
 

@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Proactive Architecture Evolution
 status: unknown
-last_updated: "2026-04-07T13:50:58.245Z"
+last_updated: "2026-04-07T14:00:00.000Z"
 progress:
   total_phases: 5
   completed_phases: 2
   total_plans: 22
-  completed_plans: 14
+  completed_plans: 15
 ---
 
 # Project State
@@ -27,9 +27,7 @@ Plan: 2 of 4 complete (Plan 03 next)
 Status: Executing Phase 05
 Last activity: 2026-04-07 -- Phase 05 Plan 02 completed
 
-Progress: [######░░░░░░░░░░░░░░░░░░░░░░░] 13/22 plans complete
-
-> Note: Phase 04-onboarding-wizard-v2 Plan 04 also completed 2026-04-07 (was queued before Phase 05 started).
+Progress: [#######░░░░░░░░░░░░░░░░░░░░░░] 15/22 plans complete
 
 ## Pre-Work Checklist
 
@@ -71,6 +69,8 @@ Before starting Phase 1:
 - [Phase 04-onboarding-wizard-v2]: Non-interactive SBS env vars deferred-imported inside try/except — zero cost for pipelines that don't use SBS seeding; SBS block placed after write_config() so SBS failure never impacts config write
 - [Phase 03-subagent-system]: Spawn interception in process_message_pipeline not persona_chat — pipeline has chat_id/session_key, ChatRequest does not
 - [Phase 03-subagent-system]: channel_id hardcoded to whatsapp in pipeline_helpers with TODO(multi-channel) comment — tracked tech debt
+- [Phase 03-subagent-system]: Crash isolation tests use two SubAgentRunners sharing one AgentRegistry — cleanest way to control per-agent LLM behaviour without coupling runners
+- [Phase 03-subagent-system]: Integration tests patch deps singletons at module level using save/restore pattern — avoids complex mock.patch context managers for module globals
 - [Phase 04-onboarding-wizard-v2]: Task 2 (run tests) skipped — user explicitly requested code-only execution; tests written by reading actual source files
 
 ### Pending Todos
@@ -91,7 +91,7 @@ None active. v2.0 ready to begin after branch merge.
 
 ## Session Continuity
 
-Last session: 2026-04-07
-Stopped at: Completed 03-subagent-system/03-03-PLAN.md — spawn intent detection + pipeline wiring
+Last session: 2026-04-07 (Phase 03-04 complete — subagent test suite)
+Stopped at: Completed 03-subagent-system/03-04-PLAN.md — subagent system test suite (unit + integration)
 Resume file: None
-Next step: Phase 03 complete (all 3 plans done). Continue Phase 04 or 05 as next priority.
+Next step: Phase 03 fully complete (all 4 plans done). Phase 05 (browser-tool) Plan 03 is next.
