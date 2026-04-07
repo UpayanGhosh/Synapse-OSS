@@ -9,6 +9,8 @@
 # crawl4ai on Mac/Linux; playwright on Windows (crawl4ai has build failures on Windows)
 crawl4ai>=0.2.0 ; sys_platform != 'win32'    # Headless browser automation — Mac/Linux only
 playwright>=1.20.0 ; sys_platform == 'win32' # Windows browser automation — replaces crawl4ai on Windows
+trafilatura>=2.0.0                            # HTML content extraction (readable text from web pages)
+duckduckgo-search>=7.0.0                     # Web search without API key (DuckDuckGo)
 
 # --- Media / MIME Detection ---
 python-magic>=0.4.27
