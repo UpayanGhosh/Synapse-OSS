@@ -103,7 +103,7 @@ class SubAgentRunner:
         # Create an isolated asyncio.Task for this agent.
         task = asyncio.create_task(
             self._run_agent(agent),
-            name=f"subagent-{agent.agent_id}",
+            name=f"agent-{agent.agent_id}",
         )
 
         # Attach the task to the registry (transitions to RUNNING, stores ref).
