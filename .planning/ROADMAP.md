@@ -181,13 +181,13 @@ questions, not just blank defaults.
   - The 5-minute target includes API key validation live calls — parallel validation (Phase 3 sub-agents) needed to meet the target
   - SBS profile initialization from wizard answers must use the same profile layer schema as the live SBS engine — no parallel data formats
   - `--non-interactive` must handle partial env var sets gracefully (clear error listing what's missing, not a cryptic KeyError)
-**Plans**: 4 plans (estimated)
+**Plans**: 4 plans
 
 Plans:
-- [ ] 04-01-PLAN.md — Redesign wizard flow: question set spec for SBS baseline profile + parallel provider validation via sub-agents
-- [ ] 04-02-PLAN.md — Implement SBS profile initialization from wizard answers: map question responses to profile layers
-- [ ] 04-03-PLAN.md — Add `--verify` subcommand: per-provider and per-channel live health check with clear pass/fail output
-- [ ] 04-04-PLAN.md — Integration tests: fresh install timing, SBS profile population, non-interactive mode, verify subcommand
+- [ ] 04-01-PLAN.md — Setup entrypoint + SBS profile init module + persona questions in interactive wizard
+- [ ] 04-02-PLAN.md — Verify subcommand: parallel provider + channel validation with pass/fail output
+- [ ] 04-03-PLAN.md — Non-interactive SBS env var support + input validation
+- [ ] 04-04-PLAN.md — Test coverage for all v2 wizard features (ONBOARD2-01 through ONBOARD2-05)
 
 ---
 
@@ -207,13 +207,13 @@ community-extended without touching the core pipeline.
   - SSRF guard: must reject requests to private IPs (10.x, 192.168.x, 127.x, localhost) — same guard pattern used in the existing media pipeline
   - Content extraction quality: raw HTML summarization produces poor results for JS-heavy SPAs — use a readability/article-extraction library (trafilatura or similar), not naive HTML strip
   - Rate limiting: search engines will block repeated unthrottled fetches — implement exponential backoff + configurable request delay
-**Plans**: 4 plans (estimated)
+**Plans**: 4 plans
 
 Plans:
-- [ ] 05-01-PLAN.md — Create browser skill directory: SKILL.md + scripts/fetch_and_summarize.py + SSRF guard + readability extraction
-- [ ] 05-02-PLAN.md — Implement search skill: web search via configurable provider (Brave/DuckDuckGo/Serper), result ranking, source attribution
-- [ ] 05-03-PLAN.md — Wire privacy-boundary check: assert hemisphere != "spicy" before any outbound fetch in the skill runner
-- [ ] 05-04-PLAN.md — Integration tests: SSRF rejection, HTML-free LLM prompts, source URL inclusion, skill-disabled fallback
+- [ ] 05-01-PLAN.md — Create browser skill directory: SKILL.md + scripts/fetch_and_summarize.py + SSRF guard reuse + trafilatura content extraction
+- [ ] 05-02-PLAN.md — Implement web search via DuckDuckGo (DDGS): rate limiting, result ranking, source URL attribution
+- [ ] 05-03-PLAN.md — Wire browser skill orchestrator: hemisphere privacy guard + search->fetch->summarize chain + SkillRunner session context
+- [ ] 05-04-PLAN.md — Integration tests: SSRF rejection, HTML-free LLM prompts, hemisphere guard, source URLs, skill-disabled fallback
 
 ---
 
@@ -251,7 +251,7 @@ Phases execute in dependency order: 0 → 1 → 2 → 3 → 4 → 5
 | 1. Skill Architecture | 0/5 | Planned | — |
 | 2. Safe Self-Modification + Rollback | 0/6 | Planned | — |
 | 3. Subagent System | 0/4 | Pending | — |
-| 4. Onboarding Wizard v2 | 0/4 | Pending | — |
+| 4. Onboarding Wizard v2 | 0/4 | Planned | — |
 | 5. Browser Tool | 0/4 | Pending | — |
 
 **v1.0 Archive:** All 10 phases, 38 plans — COMPLETE (2026-03-03)
