@@ -38,8 +38,6 @@ workspace/skills/gog/token.pickle
 *.db-wal
 *.db-journal
 workspace/db/
-workspace/qdrant/
-qdrant/storage/
 *.lance
 lancedb/
 
@@ -85,7 +83,6 @@ extensions/
 synapse_manager.sh
 synapse_architecture.sh
 wake_watcher.sh
-install_qdrant_native.sh
 fix_unicode.py
 verify_concurrency.py
 test_all_models.sh
@@ -119,14 +116,36 @@ Thumbs.db
 .claude/
 
 # ──────────────────────────────────────────────────────────────
-# GSD planning docs — local only, not for public GitHub
+# GSD planning docs — tracked on this branch
 # ──────────────────────────────────────────────────────────────
-.planning/
+# .planning/
 
 # ──────────────────────────────────────────────────────────────
 # Milestones / internal specs — not for GitHub
 # ──────────────────────────────────────────────────────────────
 workspace/milestones/
+
+# ──────────────────────────────────────────────────────────────
+# User instance config — personal, never committed
+# Each user generates their own via the onboarding wizard
+# ──────────────────────────────────────────────────────────────
+personas.yaml
+!personas.yaml.example
+synapse.json
+!synapse.json.example
+
+# Personal migration / import scripts (Jarvis, WhatsApp history, etc.)
+# These contain hardcoded personal paths — keep local only
+workspace/scripts/personal/
+
+# ──────────────────────────────────────────────────────────────
+# Personal research / session content — never commit
+# ──────────────────────────────────────────────────────────────
+content/
+workspace/content/
+workspace/docs/
+test.html
+.agents/
 
 # ──────────────────────────────────────────────────────────────
 # Local / personal notes

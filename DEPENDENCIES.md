@@ -80,5 +80,5 @@ channels/registry.py
 
 ## Circular Import Prevention
 - `ChannelRegistry` is lazy-imported in `gateway/worker.py`
-- `qdrant_handler` is conditionally imported in `memory_engine.py`
+- `LanceDBVectorStore` is conditionally imported in `memory_engine.py`
 - `SynapseConfig` imported at function level in `db.py`, `sqlite_graph.py`

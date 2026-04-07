@@ -65,7 +65,7 @@ These are not theoretical capabilities. This system processes real messages, fro
 | Metric | Before (v1.0) | After (Phoenix v3) | What Changed |
 | --- | --- | :---: | --- |
 | **Knowledge Graph Footprint** | ~155MB in-RAM (NetworkX) | **<1.2MB** (SQLite) | NetworkX loaded the entire graph into RAM, causing 81% memory pressure on an 8GB host. SQLite reads from disk on demand. **99.2% reduction.** |
-| **Host RAM Usage** | 81.3% | **<25%** | Consolidated 4 separate processes (LanceDB, NetworkX, memory server, gateway) into a single FastAPI app. LanceDB replaces Qdrant with zero Docker overhead. **3.3x lower.** |
+| **Host RAM Usage** | 81.3% | **<25%** | Consolidated 4 separate processes (LanceDB, NetworkX, memory server, gateway) into a single FastAPI app. LanceDB provides embedded vector search with zero Docker overhead. **3.3x lower.** |
 | **Retrieval Latency (P95)** | ~1.2s | **<350ms** | High-confidence results (>0.80) bypass FlashRank reranker entirely. Only ambiguous queries pay the reranking overhead. **3.4x faster.** |
 | **Vocabulary Diversity** | ~5,000 static terms | **37,868+** | Continuous ingestion from 4 years of conversation logs via the SBS batch pipeline. **7.6x richer.** |
 | **Message Pipeline** | Synchronous (webhook timeout) | **Async queue** (202 Accepted) | FloodGate batching (3s window) + deduplication (5-min window) + bounded TaskQueue (max 100) + 2 concurrent MessageWorkers. **Zero dropped messages** under single-user load. |

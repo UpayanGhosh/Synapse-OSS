@@ -38,6 +38,7 @@ from sci_fi_dashboard.sbs.orchestrator import SBSOrchestrator  # noqa: E402
 from sci_fi_dashboard.smart_entity import EntityGate  # noqa: E402
 from sci_fi_dashboard.sqlite_graph import SQLiteGraph  # noqa: E402
 from sci_fi_dashboard.toxic_scorer_lazy import LazyToxicScorer  # noqa: E402
+from sci_fi_dashboard.multiuser.conversation_cache import ConversationCache  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Phase 3: Tool Execution Loop (optional)
@@ -101,7 +102,7 @@ tool_registry: "ToolRegistry | None" = None  # initialized in lifespan if availa
 hook_runner: "ToolHookRunner | None" = None
 audit_logger: "ToolAuditLogger | None" = None
 brain = SQLiteGraph()
-gate = EntityGate(entities_file="entities.json")
+gate = EntityGate(graph_store=brain, entities_file="entities.json")
 conflicts = ConflictManager(conflicts_file="conflicts.json")
 toxic_scorer = LazyToxicScorer(idle_timeout=30.0)
 emotional_trajectory = EmotionalTrajectory()
@@ -112,6 +113,7 @@ dual_cognition = DualCognitionEngine(
     toxic_scorer=toxic_scorer,
     emotional_trajectory=emotional_trajectory,
 )
+conversation_cache = ConversationCache(max_entries=200, ttl_s=300)
 
 # ---------------------------------------------------------------------------
 # Async Gateway Components

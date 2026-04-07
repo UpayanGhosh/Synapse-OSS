@@ -1,6 +1,6 @@
 """
 Tests for Phase 3 embedding schema migration, dimension validation,
-re-embedding engine, and parameterized Qdrant dimensions.
+re-embedding engine, and parameterized vector dimensions.
 
 Run with:
     pytest workspace/tests/test_schema_migration.py -v

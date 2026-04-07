@@ -59,13 +59,13 @@ class TestMemoryEngineGetEmbedding(unittest.TestCase):
 
     def _make_engine(self, provider):
         """Create MemoryEngine with patched dependencies."""
-        qdrant_patch = patch(
+        lancedb_patch = patch(
             "sci_fi_dashboard.memory_engine.LanceDBVectorStore", return_value=MagicMock()
         )
         get_provider_patch = patch(
             "sci_fi_dashboard.memory_engine.get_provider", return_value=provider
         )
-        with qdrant_patch, get_provider_patch:
+        with lancedb_patch, get_provider_patch:
             from sci_fi_dashboard.memory_engine import MemoryEngine
 
             engine = MemoryEngine()

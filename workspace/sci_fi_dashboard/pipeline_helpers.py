@@ -11,7 +11,10 @@ from pathlib import Path
 import psutil
 
 from sci_fi_dashboard import _deps as deps
+from sci_fi_dashboard.conv_kg_extractor import run_batch_extraction
 from sci_fi_dashboard.schemas import ChatRequest
+from sci_fi_dashboard.session_ingest import _ingest_session_background
+from synapse_config import SynapseConfig
 
 logger = logging.getLogger(__name__)
 
@@ -194,24 +197,213 @@ async def continue_conversation(
 
 
 # ---------------------------------------------------------------------------
-# Async Gateway Processing Pipeline
+# LLM Adapter for Compaction (bridges SynapseLLMRouter → compaction contract)
 # ---------------------------------------------------------------------------
 
 
-async def process_message_pipeline(
-    user_msg: str, chat_id: str, mcp_context: str = ""
+class _LLMClientAdapter:
+    """Adapter: exposes acompletion(messages=[...]) using SynapseLLMRouter._do_call().
+
+    compaction.py requires: await llm_client.acompletion(messages=[...])
+    returning an object with .choices[0].message.content (plain string).
+
+    SynapseLLMRouter._do_call(role, messages) returns the raw litellm response
+    which already has that shape. We use the "casual" role for compaction summaries.
+    """
+
+    def __init__(self, router) -> None:
+        self._router = router
+
+    async def acompletion(self, messages: list[dict], **kwargs):
+        """Forward to SynapseLLMRouter._do_call with role='casual'.
+
+        Passes max_tokens=2000 (not the _do_call default of 1000) so that
+        compaction summaries of large conversations are not truncated.
+        """
+        max_tokens = kwargs.get("max_tokens", 2000)
+        return await self._router._do_call("casual", messages, max_tokens=max_tokens)
+
+
+# ---------------------------------------------------------------------------
+# Async Gateway Processing Pipeline
+# ---------------------------------------------------------------------------
+
+# Module-level set prevents GC of fire-and-forget background tasks (Research Pitfall 6).
+_background_tasks: set[asyncio.Task] = set()
+
+# GC anchor for session ingestion background tasks (/new command)
+_session_ingest_tasks: set[asyncio.Task] = set()
+
+
+async def _handle_new_command(
+    session_key: str,
+    agent_id: str,
+    data_root: "Path",
+    session_store,
+    hemisphere: str = "safe",
 ) -> str:
+    """Archive current transcript, fire full memory-loop ingestion, rotate session ID.
+
+    The old JSONL is renamed (not deleted).
+    Background task runs vector + KG ingestion on the archived transcript.
+    Returns confirmation immediately — callers must NOT call the LLM.
+    """
+    from sci_fi_dashboard.multiuser.transcript import transcript_path, archive_transcript
+
+    entry = await session_store.get(session_key)
+    archived_path = None
+
+    if entry is not None:
+        old_path = transcript_path(entry, data_root, agent_id)
+        archived_path = await archive_transcript(old_path) if old_path.exists() else None
+
+    # Clear in-memory cache
+    deps.conversation_cache.invalidate(session_key)
+
+    # Rotate session ID → new JSONL on next message
+    # CRITICAL: delete() first — _merge_entry() never overwrites session_id via update()
+    await session_store.delete(session_key)
+    await session_store.update(session_key, {"compaction_count": 0})
+
+    # Fire-and-forget: full memory loop (vector + KG) in background
+    if archived_path is not None:
+        task = asyncio.create_task(
+            _ingest_session_background(
+                archived_path=archived_path,
+                agent_id=agent_id,
+                session_key=session_key,
+                hemisphere=hemisphere,
+            )
+        )
+        _session_ingest_tasks.add(task)
+        task.add_done_callback(_session_ingest_tasks.discard)
+
+    return "Session archived! I'll remember everything. Starting fresh now."
+
+
+async def process_message_pipeline(
+    user_msg: str, chat_id: str, mcp_context: str = "", *, is_group: bool = False
+) -> str:
+    """Process one inbound message through the full session-aware pipeline.
+
+    The ``is_group`` keyword-only parameter defaults to False so the existing
+    3-arg call ``process_fn(task.user_message, chat_id, task.mcp_context)`` from
+    MessageWorker continues to work unchanged (Research Pitfall 3 / D-04, D-06).
+    """
+    # Deferred imports to avoid circular dependencies at module load time.
     from sci_fi_dashboard.chat_pipeline import persona_chat
+    from sci_fi_dashboard.multiuser.session_key import build_session_key
+    from sci_fi_dashboard.multiuser.session_store import SessionStore
+    from sci_fi_dashboard.multiuser.transcript import (
+        transcript_path,
+        load_messages,
+        append_message,
+    )
+    from sci_fi_dashboard.multiuser.compaction import estimate_tokens, compact_session
 
+    # ------------------------------------------------------------------
+    # Step 1: Resolve target persona and load config
+    # ------------------------------------------------------------------
     target = deps._resolve_target(chat_id)
+    cfg = SynapseConfig.load()
+    data_root = cfg.data_root  # ~/.synapse/ — NOT cfg.db_dir.parent (Research Pitfall 1)
+    session_cfg = getattr(cfg, "session", {}) or {}
+    dm_scope = session_cfg.get("dmScope", "per-channel-peer")
+    identity_links = session_cfg.get("identityLinks", {})
 
+    # ------------------------------------------------------------------
+    # Step 2: Build session key (per D-04, D-05, D-06, D-07)
+    # ------------------------------------------------------------------
+    session_key = build_session_key(
+        agent_id=target,
+        channel="whatsapp",
+        peer_id=chat_id,
+        peer_kind="group" if is_group else "direct",
+        account_id="whatsapp",
+        dm_scope=dm_scope,
+        main_key="whatsapp:dm",
+        identity_links=identity_links,
+    )
+    logger.info("Session key: %s", session_key)
+
+    # ------------------------------------------------------------------
+    # Step 3: Get or create session entry (per D-18 corrected, D-19)
+    # ------------------------------------------------------------------
+    store = SessionStore(agent_id=target, data_root=data_root)
+    entry = await store.get(session_key)
+    if entry is None:
+        entry = await store.update(session_key, {})
+
+    t_path = transcript_path(entry, data_root, target)
+
+    # ------------------------------------------------------------------
+    # /new command: archive session + full memory loop + rotate session
+    # ------------------------------------------------------------------
+    if user_msg.strip().lower() == "/new":
+        return await _handle_new_command(
+            session_key=session_key,
+            agent_id=target,
+            data_root=data_root,
+            session_store=store,
+        )
+
+    # ------------------------------------------------------------------
+    # Step 4: Load history with cache (per D-10, D-13, Research Pitfall 7)
+    # ------------------------------------------------------------------
+    channels_cfg = cfg.channels if hasattr(cfg, "channels") and isinstance(cfg.channels, dict) else {}
+    history_limit = int(channels_cfg.get("whatsapp", {}).get("dmHistoryLimit", 50))
+
+    messages = deps.conversation_cache.get(session_key)
+    if messages is None:
+        messages = await load_messages(t_path, limit=history_limit)
+        deps.conversation_cache.put(session_key, messages)  # put() BEFORE append() calls
+
+    # ------------------------------------------------------------------
+    # Step 5: Build ChatRequest with real history and call persona_chat (THE FIX for D-01)
+    # ------------------------------------------------------------------
     chat_req = ChatRequest(
         message=user_msg,
         user_id=chat_id,
         session_type="safe",
+        history=messages,
     )
     result = await persona_chat(chat_req, target, None, mcp_context=mcp_context)
-    return result.get("reply", "")
+    reply = result.get("reply", "")
+
+    # ------------------------------------------------------------------
+    # Step 6: Fire-and-forget transcript append + compaction (per D-11, D-12, D-14-D-17)
+    # ------------------------------------------------------------------
+    user_dict = {"role": "user", "content": user_msg}
+    asst_dict = {"role": "assistant", "content": reply}
+
+    async def _save_and_compact():
+        try:
+            await append_message(t_path, user_dict)
+            await append_message(t_path, asst_dict)
+            deps.conversation_cache.append(session_key, user_dict)
+            deps.conversation_cache.append(session_key, asst_dict)
+
+            # Compaction pre-gate (D-14: 60% threshold, D-17: 32k safe default)
+            cached = deps.conversation_cache.get(session_key) or []
+            ctx_window = 32_000
+            if estimate_tokens(cached) > int(ctx_window * 0.6):
+                await compact_session(
+                    transcript_path=t_path,
+                    context_window_tokens=ctx_window,
+                    llm_client=_LLMClientAdapter(deps.synapse_llm_router),
+                    agent_id=target,
+                    session_key=session_key,
+                    store_path=store._path,
+                )
+                deps.conversation_cache.invalidate(session_key)
+        except Exception:
+            logger.exception("Background save/compact failed for %s", session_key)
+
+    task = asyncio.create_task(_save_and_compact())
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+
+    return reply
 
 
 async def on_batch_ready(
@@ -245,6 +437,8 @@ async def on_batch_ready(
 async def gentle_worker_loop():
     """Background maintenance loop."""
     print("[WORKER] Gentle Worker: running.")
+    _kg_tick = 0
+    _kg_last_time = time.time()
     while True:
         try:
             battery = psutil.sensors_battery()
@@ -254,6 +448,30 @@ async def gentle_worker_loop():
             if is_plugged and cpu_load < 20.0:
                 deps.brain.prune_graph()
                 deps.conflicts.prune_conflicts()
+
+                # KG extraction every 2 cycles (~20 min) or 30-min fallback
+                _kg_tick += 1
+                if _kg_tick >= 2 or (time.time() - _kg_last_time) >= 1800:
+                    _kg_tick = 0
+                    _kg_last_time = time.time()
+                    try:
+                        cfg = SynapseConfig.load()
+                        for pid, sbs in deps.sbs_registry.items():
+                            await run_batch_extraction(
+                                persona_id=pid,
+                                sbs_data_dir=str(sbs.data_dir),
+                                llm_router=deps.synapse_llm_router,
+                                graph=deps.brain,
+                                memory_db_path=str(cfg.db_dir / "memory.db"),
+                                entities_json_path=str(
+                                    Path(__file__).parent / "entities.json"
+                                ),
+                                min_messages=cfg.kg_extraction.min_messages,
+                                kg_role=cfg.kg_extraction.kg_role,
+                            )
+                    except Exception as e:
+                        logger.warning("[WARN] KG extraction failed: %s", e)
+
                 await asyncio.sleep(600)
             else:
                 await asyncio.sleep(60)

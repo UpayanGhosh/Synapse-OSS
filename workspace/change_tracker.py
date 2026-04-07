@@ -97,7 +97,7 @@ IGNORE_REGEXES = [
     r".*[/\\]\.vscode[/\\].*",  # VS Code settings
     r".*[/\\]models[/\\].*",  # Model data
     # -- Workspace exclusions --
-    r".*[/\\]qdrant[/\\]storage[/\\].*",  # Qdrant vector storage
+    r".*[/\\]lancedb[/\\].*",  # LanceDB vector storage
     r".*[/\\]_archived_memories[/\\].*",  # Archived memories
     r".*[/\\]node_modules[/\\].*",  # Node modules
     # -- Editor / misc --
@@ -493,7 +493,7 @@ def main():
     log.info(f"[INFO] Auto-push: {'ON' if args.push else 'OFF'}")
     log.info(f"[PAUSED]  Paused:    {'YES [WARN]' if paused else 'NO'}")
     log.info(f"[LOG] Log file: {LOG_FILE}")
-    log.info("[GUARD]  Excluded:  .git/, .db, .log, __pycache__, qdrant/")
+    log.info("[GUARD]  Excluded:  .git/, .db, .log, __pycache__, lancedb/")
     log.info("=" * 56)
 
     if paused:

@@ -128,3 +128,57 @@ class ProactiveAwarenessEngine:
 
     def get_prompt_injection(self) -> str:
         return self._context.compile_prompt_block()
+
+    async def maybe_reach_out(
+        self,
+        user_id: str,
+        channel_id: str,
+        last_message_time: float = None,
+    ) -> str | None:
+        """
+        Check if Synapse should proactively reach out to the user.
+
+        Conditions:
+        - last_message_time > 8h ago (or unknown)
+        - Not 23:00-08:00 IST (sleep window)
+        - Returns a generated message string, or None if conditions aren't met.
+
+        Caller (GentleWorker) is responsible for sending the message.
+        """
+        from datetime import datetime, timezone, timedelta
+        IST = timezone(timedelta(hours=5, minutes=30))
+        now = datetime.now(IST)
+
+        # Sleep window: 23:00 - 08:00 IST
+        hour = now.hour
+        if hour >= 23 or hour < 8:
+            return None
+
+        # Check last message gap
+        if last_message_time is not None:
+            import time as _time
+            gap_seconds = _time.time() - last_message_time
+            if gap_seconds < 8 * 3600:
+                return None  # Less than 8h — don't interrupt
+
+        # Generate check-in message
+        try:
+            from sci_fi_dashboard.chat_pipeline import persona_chat
+            from sci_fi_dashboard.schemas import ChatRequest
+            payload = (
+                "Check in naturally with the user. "
+                "Don't say you're doing an automated check-in. "
+                "Reference something from recent memory if you remember it — "
+                "a topic they mentioned, something they were working on. "
+                "Keep it brief and warm."
+            )
+            request = ChatRequest(message=payload, user_id=user_id, history=[])
+            result = await persona_chat(request, target=user_id)
+            reply = result.get("reply", "")
+            # Strip stats footer
+            if "---\n**Context Usage:**" in reply:
+                reply = reply.split("---\n**Context Usage:**")[0].strip()
+            return reply if reply else None
+        except Exception as e:
+            logger.warning("[PROACTIVE] maybe_reach_out failed: %s", e)
+            return None

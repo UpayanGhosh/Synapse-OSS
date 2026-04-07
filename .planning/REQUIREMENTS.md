@@ -1,136 +1,89 @@
-# Requirements: Synapse-OSS Provider & Channel Independence
+# Requirements: Synapse-OSS v2.0 — The Adaptive Core
 
-**Defined:** 2026-03-02
-**Core Value:** A user can run Synapse-OSS on any machine, connect to their messaging apps and LLM providers, and have a fully working AI assistant — with zero dependency on any external binary or bridge service.
-
----
-
-## v1 Requirements
-
-### Foundation & Configuration
-
-- [x] **CONF-01**: User can run Synapse-OSS without the openclaw binary installed or running
-- [x] **CONF-02**: System reads provider credentials and channel configs from `~/.synapse/synapse.json`
-- [x] **CONF-03**: `SYNAPSE_HOME` env var overrides the default `~/.synapse/` data root
-- [x] **CONF-04**: `SynapseConfig.load()` enforces precedence: env vars > synapse.json > defaults
-- [x] **CONF-05**: Credentials stored in synapse.json with `chmod 600` file permissions
-- [x] **CONF-06**: Migration script moves all data from `~/.openclaw/workspace/` to `~/.synapse/workspace/` with checksums, WAL checkpoint, and rollback on failure
-- [x] **CONF-07**: Existing users can migrate without data loss (memory.db, knowledge_graph.db, emotional_trajectory.db, SBS profiles)
-
-### LLM Provider Layer
-
-- [x] **LLM-01**: `llm_router.py` routes all LLM calls via `litellm.acompletion()` (no openclaw proxy)
-- [x] **LLM-02**: System supports Anthropic Claude (claude-opus-4-6, claude-sonnet-4-6, claude-haiku-4-5)
-- [x] **LLM-03**: System supports OpenAI GPT (gpt-4o, gpt-4o-mini, gpt-4-turbo)
-- [x] **LLM-04**: System supports Google Gemini (gemini/gemini-2.0-flash, gemini/gemini-2.0-pro)
-- [x] **LLM-05**: System supports Groq (groq/llama-3.3-70b-versatile, groq/mixtral-8x7b-32768)
-- [x] **LLM-06**: System supports Ollama local models (ollama_chat/llama3.3, etc.)
-- [x] **LLM-07**: System supports OpenRouter (openrouter/auto, openrouter/mistralai/mixtral-8x7b)
-- [x] **LLM-08**: System supports Mistral AI (mistral/mistral-large-latest)
-- [x] **LLM-09**: System supports Together AI (together_ai/meta-llama/Llama-3-70b-chat-hf)
-- [x] **LLM-10**: System supports xAI Grok (xai/grok-2-latest, xai/grok-3)
-- [x] **LLM-11**: System supports Bedrock Claude (bedrock/anthropic.claude-3-5-sonnet-20241022-v2:0)
-- [x] **LLM-12**: System supports Chinese providers: MiniMax (minimax/abab6.5s-chat), Moonshot/Kimi (moonshot/moonshot-v1-128k), Zhipu Z.AI (zai/glm-4-plus — note: zai/ prefix, NOT zhipu/)
-- [x] **LLM-13**: System supports Volcano Engine/BytePlus (volcengine/doubao-pro-4k), Baidu Qianfan (qianfan/ERNIE-4.0)
-- [x] **LLM-14**: System supports self-hosted vLLM (openai/<model> + api_base override), HuggingFace Inference Endpoints, NVIDIA NIM
-- [x] **LLM-15**: System supports GitHub Copilot (copilot/<model> via OAuth device flow)
-- [x] **LLM-16**: Provider model string mapping table is defined in `synapse.json` — no hardcoded strings scattered across codebase
-- [x] **LLM-17**: LLM call errors (rate limits, auth failures, timeouts) are handled per-provider with appropriate retry/fallback logic
-- [x] **LLM-18**: Existing mixture-of-agents routing logic (casual → Gemini Flash, code → Claude Sonnet, etc.) continues to work via new provider layer
-
-### Channel Abstraction Layer
-
-- [x] **CHAN-01**: `BaseChannel` ABC defines the interface all channel implementations must satisfy: `receive()`, `send()`, `send_typing()`, `mark_read()`, `health_check()`
-- [x] **CHAN-02**: `ChannelRegistry` singleton manages channel lifecycle: register, start, stop, restart on crash
-- [x] **CHAN-03**: All channels normalize inbound messages to a unified `ChannelMessage` dataclass (channel_id, user_id, chat_id, text, timestamp, is_group, raw)
-- [x] **CHAN-04**: Unified FastAPI router at `POST /channels/{channel_id}/webhook` replaces channel-specific endpoints
-- [x] **CHAN-05**: `POST /whatsapp/enqueue` is kept as a backwards-compatibility shim that delegates to the unified handler
-- [x] **CHAN-06**: Channel adapters use the asyncio coroutine pattern (not blocking `.run()` / `.run_polling()` calls) so all channels share the FastAPI event loop
-- [x] **CHAN-07**: `sender.py` is generalized from WhatsApp-only to route outbound messages to the correct channel via ChannelRegistry
-
-### WhatsApp Channel (Baileys Bridge)
-
-- [x] **WA-01**: Synapse ships a `baileys-bridge/index.js` (~150 lines) Node.js Express microservice in the repo
-- [x] **WA-02**: FastAPI lifespan starts/stops the Baileys bridge as a managed subprocess (`asyncio.create_subprocess_exec`)
-- [x] **WA-03**: Bridge exposes HTTP endpoints: `POST /send`, `POST /typing`, `POST /seen`, `GET /health`, `GET /qr`
-- [x] **WA-04**: Bridge implements atomic writes for Baileys auth state files (prevents session corruption on unclean shutdown)
-- [x] **WA-05**: Bridge uses `cachedGroupMetadata` to avoid triggering WhatsApp rate limits on group messages
-- [x] **WA-06**: Bridge auto-restarts on crash with a Python supervisor loop (exponential backoff, max 5 retries)
-- [x] **WA-07**: QR code for WhatsApp auth is accessible via `GET /qr` and printed to the onboarding wizard terminal
-- [x] **WA-08**: Node.js 18+ on host PATH is validated at startup; clear error message if missing
-
-### Telegram Channel
-
-- [x] **TEL-01**: Telegram channel uses python-telegram-bot v22+ in async Application mode (coroutine API, not `run_polling()`)
-- [x] **TEL-02**: Inbound DMs and group messages (when bot is mentioned) are handled
-- [x] **TEL-03**: Outbound text send, typing action, and message reply work correctly
-- [x] **TEL-04**: Bot token is stored in synapse.json under `channels.telegram.token`
-
-### Discord Channel
-
-- [x] **DIS-01**: Discord channel uses discord.py v2.4+ with the async `on_message` event coroutine (not blocking runner)
-- [x] **DIS-02**: Inbound DMs and server messages (when bot is mentioned or in designated channels) are handled
-- [x] **DIS-03**: Outbound text send and typing indicator work correctly
-- [x] **DIS-04**: Bot token and allowed channel/server IDs stored in synapse.json under `channels.discord`
-
-### Slack Channel
-
-- [x] **SLK-01**: Slack channel uses slack-bolt async with Socket Mode by default (no public URL required for self-hosters)
-- [x] **SLK-02**: Inbound DMs and app mentions in channels are handled
-- [x] **SLK-03**: Outbound text send works correctly
-- [x] **SLK-04**: Bot token and app-level token stored in synapse.json under `channels.slack`
-
-### Onboarding Wizard
-
-- [x] **ONB-01**: `synapse onboard` CLI command launches an interactive setup wizard (typer + questionary + rich)
-- [x] **ONB-02**: Wizard presents all 25 supported LLM providers grouped by category; user selects one or more
-- [x] **ONB-03**: For each selected provider, wizard prompts for API key (masked input), then makes a live `max_tokens=1` validation call before accepting
-- [x] **ONB-04**: Wizard presents all supported channels; user selects which to enable
-- [x] **ONB-05**: For each enabled channel, wizard collects required credentials and validates connectivity
-- [x] **ONB-06**: For WhatsApp, wizard triggers QR code display and waits for scan confirmation
-- [x] **ONB-07**: Wizard writes completed config to `~/.synapse/synapse.json` with `chmod 600`
-- [x] **ONB-08**: Wizard detects existing `~/.openclaw/` data and offers to run migration script
-- [x] **ONB-09**: `synapse onboard --non-interactive` supports automation via env vars or flags (CI/Docker use case)
-- [x] **ONB-10**: GitHub Copilot uses OAuth device flow in the wizard (open browser → user enters code → wizard polls for token)
-
-### Session Metrics & Health
-
-- [x] **SESS-01**: System tracks per-session token usage (input, output, total) in SQLite `sessions` table in `memory.db`
-- [x] **SESS-02**: `GET /api/sessions` endpoint returns JSON matching the schema previously returned by `openclaw sessions list --json`
-- [x] **SESS-03**: `state.py` reads session metrics from internal SQLite instead of shelling out to `openclaw sessions list`
-- [x] **HLTH-01**: `GET /health` reports status of: LLM provider connectivity, each active channel, Baileys bridge subprocess, SQLite databases
-- [x] **HLTH-02**: `synapse_health.sh` is updated to check internal health endpoint instead of openclaw process
-- [x] **HLTH-03**: `synapse_start.sh` / `synapse_stop.sh` no longer reference or depend on the openclaw binary
+**Defined:** 2026-04-06
+**Core Value:** An AI that knows you deeply, grows with you continuously, and reaches
+out to you first — on your machine, under your full control.
 
 ---
 
-## v2 Requirements
+## v2.0 Requirements
 
-### Extended Channels
+Requirements for the v2.0 milestone. Maps to vision document Phases 5–9.
 
-- **EXT-01**: Matrix channel (nio-bot) — encrypted room support optional (requires libolm)
-- **EXT-02**: IRC channel (jaraco/irc asyncio mode) — low-traffic bots only; asyncio write limitation documented
-- **EXT-03**: Signal channel (signal-cli JSON-RPC + signalbot Python wrapper) — requires Java 17+, phone number registration
-- **EXT-04**: Google Chat channel (google-apps-chat async SDK) — requires Google Cloud project + public webhook URL
-- **EXT-05**: Mattermost channel (mattermostdriver)
-- **EXT-06**: LINE channel (line-bot-sdk)
-- **EXT-07**: Zalo channel
-- **EXT-08**: Feishu/Lark channel
-- **EXT-09**: Nostr channel
-- **EXT-10**: Twitch channel
+### Skill Architecture (Phase 5)
 
-### Advanced Provider Features
+- [ ] **SKILL-01**: A skill is a directory containing SKILL.md (YAML metadata + instructions), an optional scripts/ subdirectory, an optional references/ subdirectory, and optional assets/
+- [ ] **SKILL-02**: Skills are discovered at startup by scanning ~/.synapse/skills/ for valid SKILL.md files — no restart required to detect new skills added while running
+- [ ] **SKILL-03**: Each skill's SKILL.md declares a `description` field used for routing — the router matches incoming intent to skill descriptions without hardcoded dispatch tables
+- [ ] **SKILL-04**: A skill-creator skill exists at ~/.synapse/skills/skill-creator/ — it generates a new skill directory from within conversation, including SKILL.md, scripts/, and references/
+- [ ] **SKILL-05**: Community skills can be installed by dropping a directory into ~/.synapse/skills/ — no package manager or pip install required
+- [ ] **SKILL-06**: Skill execution is sandboxed — a failing skill does not crash the main conversation loop; errors are caught, logged, and reported to the user
+- [ ] **SKILL-07**: Skill metadata (name, description, version, author) is readable via `GET /skills` endpoint
 
-- **PROV-01**: Venice AI support (openai-compat pattern + confirmed endpoint URL)
-- **PROV-02**: Xiaomi MiLM support (needs endpoint URL confirmation)
-- **PROV-03**: Qwen/DashScope native prefix (verify dashscope/ vs openai-compat)
-- **PROV-04**: LiteLLM gateway (custom LiteLLM deployment as proxy)
-- **PROV-05**: Cloudflare AI Gateway and Vercel AI Gateway prefix support
+### Safe Self-Modification + Rollback (Phase 6)
 
-### Identity & UX
+- [ ] **MOD-01**: Before any Zone 2 modification, Synapse explains in plain language what it will change and why — and waits for explicit yes
+- [ ] **MOD-02**: After confirmation, Synapse executes the modification and writes a timestamped snapshot to ~/.synapse/snapshots/
+- [ ] **MOD-03**: On modification failure, Synapse auto-reverts to the pre-modification state and informs the user what happened
+- [ ] **MOD-04**: User can roll back to a prior snapshot by date: "go back to how you were on March 15"
+- [ ] **MOD-05**: User can roll back to a prior snapshot by description: "undo the last change", "you were better last week"
+- [ ] **MOD-06**: Rolling back never destroys forward history — the user can roll forward again
+- [ ] **MOD-07**: Zone 1 components (api_gateway.py, auth, core loop, self-modification engine, rollback) are immutable to model-initiated writes — Sentinel enforces this
+- [ ] **MOD-08**: Zone 2 components are explicitly listed and writable with consent — cron, MCP integrations, model routing, memory arch, SBS profile depth, pipeline stages, AI name/personality
+- [ ] **MOD-09**: `GET /snapshots` lists all snapshots with timestamps and change descriptions
+- [ ] **MOD-10**: Each snapshot is self-contained and restorable in isolation — restoring snapshot N does not require all prior snapshots to be intact
 
-- **IDEN-01**: Cross-channel user identity unification (same person on Telegram + WhatsApp = one profile)
-- **IDEN-02**: Per-channel SBS persona overrides
+### Subagent System (Phase 7)
+
+- [ ] **AGENT-01**: The main conversation can spawn an isolated sub-agent with a task description and optional context
+- [ ] **AGENT-02**: Sub-agents run in isolated asyncio tasks — a crashed sub-agent does not affect the parent conversation
+- [ ] **AGENT-03**: Sub-agent results return to the parent conversation as a structured message
+- [ ] **AGENT-04**: Multiple sub-agents can run in parallel — independent tasks do not wait on each other
+- [ ] **AGENT-05**: Sub-agents have access to memory and tools but operate with a scoped context window — they do not receive the full parent conversation history by default
+- [ ] **AGENT-06**: Long-running sub-agents (> 30s) send progress updates to the parent at configurable intervals
+- [ ] **AGENT-07**: `GET /agents` lists active and recently completed sub-agent tasks with status
+
+### Onboarding Wizard v2 (Phase 8)
+
+- [ ] **ONBOARD2-01**: `python -m synapse setup` completes full setup — model selection, API key entry, validation, persona configuration — in under 5 minutes for a fresh user
+- [ ] **ONBOARD2-02**: The wizard builds an initial SBS profile via targeted questions (communication style, interests, privacy preferences) — user reaches a meaningful baseline without prior conversations
+- [ ] **ONBOARD2-03**: The wizard offers WhatsApp history import during setup — python scripts/import_whatsapp.py is presented as an option, not a required step
+- [ ] **ONBOARD2-04**: The wizard supports `--non-interactive` flag with env vars for headless/Docker/CI setups
+- [ ] **ONBOARD2-05**: After wizard completion, `python -m synapse setup --verify` confirms all configured providers and channels respond correctly
+
+### Browser Tool (Phase 9)
+
+- [ ] **BROWSE-01**: Synapse can fetch and read web pages during a conversation when the user asks about current information
+- [ ] **BROWSE-02**: Web content is summarized and injected into the conversation context — raw HTML is never passed to the LLM
+- [ ] **BROWSE-03**: Browser requests respect the Zone 1/Zone 2 privacy boundary — private/spicy hemisphere conversations never trigger web fetches
+- [ ] **BROWSE-04**: Browser tool is implemented as a skill (SKILL.md) — it can be disabled or replaced without touching the core pipeline
+- [ ] **BROWSE-05**: Search results include source URLs — the user can verify provenance
+
+---
+
+## v3.0 Requirements (Deferred — Proactive Architecture Evolution)
+
+To be detailed at v3.0 milestone initialization.
+
+### Proactive Proposals
+- **PROACT-01**: Synapse observes patterns and proposes architecture extensions: "You ask me to check your email every morning. Want me to just do that automatically?"
+- **PROACT-02**: All proposals follow the same consent protocol as explicit user requests — explain → confirm → execute → snapshot
+- **PROACT-03**: User can suppress proactive proposals per category (cron, integrations, routing changes)
+
+### Pattern Recognition
+- **PATTERN-01**: Synapse tracks recurring manual requests over a configurable window (default: 3 occurrences in 7 days)
+- **PATTERN-02**: Recurring patterns trigger a proposal — not an automatic change
+
+---
+
+## v4.0 Requirements (Deferred — The Jarvis Threshold)
+
+To be detailed at v4.0 milestone initialization.
+
+- A mature instance manages parts of the user's digital life
+- The AI has its own name, personality, and relationship — shaped through conversation
+- Feels less like software, more like a presence
+- Not superhuman intelligence — deep familiarity, persistent context, proactive capability
 
 ---
 
@@ -138,14 +91,11 @@
 
 | Feature | Reason |
 |---------|--------|
-| iMessage | macOS-only closed platform; incompatible with self-hosted OSS goal |
-| BlueBubbles relay | Niche iOS relay; not widely used; defer indefinitely |
-| Tlon/Urbit | Too niche for v1 |
-| Official WhatsApp Cloud API | Requires Meta Business approval; not accessible to self-hosters |
-| Voice channels | High complexity; out of scope for text assistant |
-| Porting OpenClaw TypeScript code directly | Python-native implementations are cleaner; MIT allows copying but not necessary |
-| E2EE Matrix (v1) | libolm system dep adds complexity; defer to v2 |
-| OpenClaw backwards compatibility | Synapse must run without openclaw — no shims that require it |
+| Real-time multi-user sessions | Per-user architecture by design; sharing would require rearchitecting Zone 1 |
+| Hosted/cloud service | Self-hosted only — user data, user machine, user control |
+| Mobile native app | Web-first; mobile via existing channels (WhatsApp, Telegram) |
+| Model fine-tuning | Synapse influences behavior via prompting, not weights |
+| Plugin marketplace with pip packages | Skills-as-directories is simpler, safer, AI-writable without code execution |
 
 ---
 
@@ -153,92 +103,46 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CONF-01 | Phase 1 → Phase 9 (verification) | Partial — code correct, VERIFICATION.md missing |
-| CONF-02 | Phase 1 → Phase 9 (verification) | Partial — code correct, VERIFICATION.md missing |
-| CONF-03 | Phase 1 → Phase 9 (verification) | Partial — code correct, VERIFICATION.md missing |
-| CONF-04 | Phase 1 → Phase 9 (verification) | Partial — code correct, VERIFICATION.md missing |
-| CONF-05 | Phase 1 → Phase 9 (verification) | Partial — code correct, VERIFICATION.md missing |
-| CONF-06 | Phase 1 → Phase 9 (verification) | Partial — code correct, VERIFICATION.md missing |
-| CONF-07 | Phase 1 → Phase 9 (verification) | Partial — code correct, VERIFICATION.md missing |
-| LLM-01 | Phase 2 → Phase 9 (cleanup) | Complete — translate_banglish() router tests added (09-02) |
-| LLM-02 | Phase 2: LLM Provider Layer | Complete (02-02) |
-| LLM-03 | Phase 2: LLM Provider Layer | Complete (02-02) |
-| LLM-04 | Phase 2: LLM Provider Layer | Complete (02-02) |
-| LLM-05 | Phase 2: LLM Provider Layer | Complete (02-02) |
-| LLM-06 | Phase 2: LLM Provider Layer | Complete (02-02) |
-| LLM-07 | Phase 2: LLM Provider Layer | Complete (02-02) |
-| LLM-08 | Phase 2: LLM Provider Layer | Complete (02-02) |
-| LLM-09 | Phase 2: LLM Provider Layer | Complete (02-02) |
-| LLM-10 | Phase 2: LLM Provider Layer | Complete (02-02) |
-| LLM-11 | Phase 2: LLM Provider Layer | Complete (02-02) |
-| LLM-12 | Phase 2: LLM Provider Layer | Complete (02-02) |
-| LLM-13 | Phase 2: LLM Provider Layer | Complete (02-02) |
-| LLM-14 | Phase 2: LLM Provider Layer | Complete (02-02) |
-| LLM-15 | Phase 2: LLM Provider Layer | Complete (02-02) |
-| LLM-16 | Phase 2 → Phase 9 (cleanup) | Complete — synapse.json.example with translate role created (09-02) |
-| LLM-17 | Phase 2: LLM Provider Layer | Complete (02-02) |
-| LLM-18 | Phase 2: LLM Provider Layer | Complete |
-| CHAN-01 | Phase 3: Channel Abstraction Layer | Complete |
-| CHAN-02 | Phase 3: Channel Abstraction Layer | Complete |
-| CHAN-03 | Phase 3: Channel Abstraction Layer | Complete |
-| CHAN-04 | Phase 3: Channel Abstraction Layer | Complete |
-| CHAN-05 | Phase 3: Channel Abstraction Layer | Complete |
-| CHAN-06 | Phase 3: Channel Abstraction Layer | Complete |
-| CHAN-07 | Phase 3: Channel Abstraction Layer | Complete |
-| WA-01 | Phase 4: WhatsApp — Baileys Bridge | Complete |
-| WA-02 | Phase 4: WhatsApp — Baileys Bridge | Complete |
-| WA-03 | Phase 4: WhatsApp — Baileys Bridge | Complete |
-| WA-04 | Phase 4: WhatsApp — Baileys Bridge | Complete |
-| WA-05 | Phase 4: WhatsApp — Baileys Bridge | Complete |
-| WA-06 | Phase 4: WhatsApp — Baileys Bridge | Complete |
-| WA-07 | Phase 4 → Phase 9 (cleanup) | Complete — GET /qr route added to api_gateway.py (09-03) |
-| WA-08 | Phase 4: WhatsApp — Baileys Bridge | Complete |
-| TEL-01 | Phase 5 → Phase 8 (gap fix) | Complete — flood adapter wired; type mismatch fixed; integration test passing |
-| TEL-02 | Phase 5: Core Channels — Telegram, Discord, Slack | Complete |
-| TEL-03 | Phase 5 → Phase 8 (gap fix) | Complete — MessageTask with channel_id='telegram' verified in test_channel_pipeline.py |
-| TEL-04 | Phase 5: Core Channels — Telegram, Discord, Slack | Complete |
-| DIS-01 | Phase 5 → Phase 8 (gap fix) | Complete — _make_flood_enqueue wired; integration test passing |
-| DIS-02 | Phase 5: Core Channels — Telegram, Discord, Slack | Complete |
-| DIS-03 | Phase 5 → Phase 8 (gap fix) | Complete — MessageTask with channel_id='discord' verified in test_channel_pipeline.py |
-| DIS-04 | Phase 5: Core Channels — Telegram, Discord, Slack | Complete |
-| SLK-01 | Phase 5 → Phase 8 (gap fix) | Complete — _make_flood_enqueue wired; integration test passing |
-| SLK-02 | Phase 5: Core Channels — Telegram, Discord, Slack | Complete |
-| SLK-03 | Phase 5 → Phase 8 (gap fix) | Complete — MessageTask with channel_id='slack' verified in test_channel_pipeline.py |
-| SLK-04 | Phase 5: Core Channels — Telegram, Discord, Slack | Complete |
-| ONB-01 | Phase 6: Onboarding Wizard | Complete |
-| ONB-02 | Phase 6: Onboarding Wizard | Complete |
-| ONB-03 | Phase 6: Onboarding Wizard | Complete |
-| ONB-04 | Phase 6: Onboarding Wizard | Complete |
-| ONB-05 | Phase 6: Onboarding Wizard | Complete |
-| ONB-06 | Phase 6: Onboarding Wizard | Complete |
-| ONB-07 | Phase 6: Onboarding Wizard | Complete |
-| ONB-08 | Phase 6: Onboarding Wizard | Complete |
-| ONB-09 | Phase 6: Onboarding Wizard | Complete |
-| ONB-10 | Phase 6: Onboarding Wizard | Complete |
-| SESS-01 | Phase 7: Session Metrics, Health & Cleanup | Complete |
-| SESS-02 | Phase 7: Session Metrics, Health & Cleanup | Complete |
-| SESS-03 | Phase 7: Session Metrics, Health & Cleanup | Complete |
-| HLTH-01 | Phase 7: Session Metrics, Health & Cleanup | Complete |
-| HLTH-02 | Phase 7: Session Metrics, Health & Cleanup | Complete |
-| HLTH-03 | Phase 7: Session Metrics, Health & Cleanup | Complete |
-| TEL-01 (gap) | Phase 8: Fix Channel Inbound Pipeline | Complete |
-| TEL-03 (gap) | Phase 8: Fix Channel Inbound Pipeline | Complete |
-| DIS-01 (gap) | Phase 8: Fix Channel Inbound Pipeline | Complete |
-| DIS-03 (gap) | Phase 8: Fix Channel Inbound Pipeline | Complete |
-| SLK-01 (gap) | Phase 8: Fix Channel Inbound Pipeline | Complete |
-| SLK-03 (gap) | Phase 8: Fix Channel Inbound Pipeline | Complete |
-| CONF-01–07 (gap) | Phase 9: Verification Backfill & LLM Cleanup | Pending |
-| LLM-01 (gap) | Phase 9: Verification Backfill & LLM Cleanup | Complete — test_translate_banglish_uses_router added (09-02) |
-| LLM-16 (gap) | Phase 9: Verification Backfill & LLM Cleanup | Complete — synapse.json.example with translate role (09-02) |
-| WA-07 (gap) | Phase 9: Verification Backfill & LLM Cleanup | Complete — GET /qr route added to api_gateway.py (09-03) |
+| SKILL-01 | Phase 1 | Pending |
+| SKILL-02 | Phase 1 | Pending |
+| SKILL-03 | Phase 1 | Pending |
+| SKILL-04 | Phase 1 | Pending |
+| SKILL-05 | Phase 1 | Pending |
+| SKILL-06 | Phase 1 | Pending |
+| SKILL-07 | Phase 1 | Pending |
+| MOD-01 | Phase 2 | Pending |
+| MOD-02 | Phase 2 | Pending |
+| MOD-03 | Phase 2 | Pending |
+| MOD-04 | Phase 2 | Pending |
+| MOD-05 | Phase 2 | Pending |
+| MOD-06 | Phase 2 | Pending |
+| MOD-07 | Phase 2 | Pending |
+| MOD-08 | Phase 2 | Pending |
+| MOD-09 | Phase 2 | Pending |
+| MOD-10 | Phase 2 | Pending |
+| AGENT-01 | Phase 3 | Pending |
+| AGENT-02 | Phase 3 | Pending |
+| AGENT-03 | Phase 3 | Pending |
+| AGENT-04 | Phase 3 | Pending |
+| AGENT-05 | Phase 3 | Pending |
+| AGENT-06 | Phase 3 | Pending |
+| AGENT-07 | Phase 3 | Pending |
+| ONBOARD2-01 | Phase 4 | Pending |
+| ONBOARD2-02 | Phase 4 | Pending |
+| ONBOARD2-03 | Phase 4 | Pending |
+| ONBOARD2-04 | Phase 4 | Pending |
+| ONBOARD2-05 | Phase 4 | Pending |
+| BROWSE-01 | Phase 5 | Pending |
+| BROWSE-02 | Phase 5 | Pending |
+| BROWSE-03 | Phase 5 | Pending |
+| BROWSE-04 | Phase 5 | Pending |
+| BROWSE-05 | Phase 5 | Pending |
 
 **Coverage:**
-- v1 requirements: 71 total
-- Mapped to phases: 71
-- Satisfied: 61 | Partial: 4 | Pending (gap closure): 0 | Unmapped: 0
-- Gap closure phases: Phase 8 (TEL-01, TEL-03, DIS-01, DIS-03, SLK-01, SLK-03) — COMPLETE; Phase 9 (CONF-01–07 — pending; LLM-01, LLM-16 — COMPLETE via 09-02; WA-07 — COMPLETE via 09-03)
-- Updated: 2026-03-03 (Phase 9 Plan 03 complete — WA-07 gap closed)
+- v2.0 requirements: 34 total
+- Mapped to phases: 34
+- Unmapped: 0 ✓
 
 ---
-*Requirements defined: 2026-03-02*
-*Last updated: 2026-03-02 — traceability expanded to per-requirement rows; phase names aligned with ROADMAP.md*
+*Requirements defined: 2026-04-06*
+*Last updated: 2026-04-06 after v2.0 milestone initialization*

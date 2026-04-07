@@ -1,0 +1,26 @@
+# personas.yaml.example
+#
+# Copy this file to personas.yaml and customize it for your instance.
+# personas.yaml is gitignored — it stays on your machine only.
+#
+# Run the onboarding wizard to generate this automatically:
+#   python -m synapse setup
+#
+# Each persona is a separate "mode" Synapse runs in.
+# You can have one persona (just yourself) or multiple (you + partner, team, etc.)
+
+personas:
+  - id: user_1                          # Used in API calls: POST /chat/user_1
+    display_name: "Primary User"
+    description: "Main user — personal assistant mode"
+    whatsapp_phones: []                 # Phone numbers that route to this persona
+    whatsapp_keywords: []               # Keywords that trigger this persona
+
+  # Uncomment to add a second persona (e.g., partner, work mode)
+  # - id: user_2
+  #   display_name: "Second User"
+  #   description: "Second user persona"
+  #   whatsapp_phones: []
+  #   whatsapp_keywords: []
+
+default_persona: user_1

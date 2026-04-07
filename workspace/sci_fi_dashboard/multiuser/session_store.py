@@ -580,3 +580,30 @@ class SessionStore:
         path = store_path or self._path
         raw_store = await asyncio.to_thread(_load_store_sync, path)
         return {k: _entry_from_dict(v) for k, v in raw_store.items()}
+
+    async def delete(self, session_key: str) -> None:
+        """Remove session_key from the store, evicting cache and on-disk entry.
+
+        Use before update() when you need to rotate the session_id (e.g. /new command,
+        POST /reset). _merge_entry() keeps session_id stable once set, so delete() is
+        the only way to force a fresh UUID on the next update() call.
+        """
+        norm_key = session_key.lower()
+        lock_key = self._lock_key
+
+        if lock_key not in _STORE_LOCKS:
+            _STORE_LOCKS[lock_key] = asyncio.Lock()
+        lock = _STORE_LOCKS[lock_key]
+
+        async with lock:
+            await asyncio.to_thread(self._delete_sync, norm_key)
+
+        _cache_invalidate(norm_key)
+
+    def _delete_sync(self, norm_key: str) -> None:
+        """Synchronous portion of delete — runs inside asyncio.to_thread."""
+        fl = SynapseFileLock(Path(str(self._path) + ".lock"), timeout=30)
+        with fl:
+            store = _load_store_sync(self._path)
+            store.pop(norm_key, None)  # no-op if key doesn't exist
+            _save_store_sync(self._path, store)

@@ -38,11 +38,11 @@ async def call_ag_code(messages: list) -> str:
     return await deps.synapse_llm_router.call("code", messages, temperature=0.2, max_tokens=1000)
 
 
-async def call_ag_oracle(messages: list) -> str:
+async def call_ag_oracle(messages: list, temperature: float = 0.7, max_tokens: int = 1500) -> str:
     """AG_ORACLE (The Architect): routes to 'analysis' role in model_mappings."""
     print("[BLDG] Calling The Architect (analysis role)...")
     return await deps.synapse_llm_router.call(
-        "analysis", messages, temperature=0.7, max_tokens=1500
+        "analysis", messages, temperature=temperature, max_tokens=max_tokens
     )
 
 

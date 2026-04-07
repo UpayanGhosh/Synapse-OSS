@@ -1,7 +1,7 @@
 """
 lancedb_store.py — LanceDB-backed VectorStore for Synapse-OSS.
 
-Replaces Qdrant with an embedded, pip-installable vector DB.
+Embedded, pip-installable vector DB for Synapse-OSS.
 Zero Docker dependency — data lives at ~/.synapse/workspace/db/lancedb/.
 
 Design notes:
@@ -55,7 +55,7 @@ def _build_schema(embedding_dimensions: int) -> pa.Schema:
 
 
 class LanceDBVectorStore(VectorStore):
-    """Embedded LanceDB vector store — drop-in replacement for QdrantVectorStore."""
+    """Embedded LanceDB vector store for Synapse-OSS."""
 
     def __init__(
         self,

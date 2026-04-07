@@ -90,6 +90,9 @@ WRITABLE_ZONES: set[str] = {
     "data/exports/",  # User-requested exports
     "generated/",  # Any generated content
     "logs/",  # Application logs
+    "skills/",  # User-defined skills
+    "diary/",  # Diary entries
+    "cron/",  # Cron job definitions
     os.path.expanduser("~/.synapse/"),  # User data dir (SBS data lives here now)
 }
 

@@ -111,7 +111,27 @@ async def persona_chat(
         if session_mode not in ["safe", "spicy"]:
             session_mode = "safe"
 
-        # Using the new MemoryEngine for hybrid search + graph context
+        # Layer 1: Always inject permanent profile docs (relationship_memories + distillations).
+        # These 10-15 docs are the core knowledge about the user — always relevant, ~500 tokens.
+        # They live in memory.db but are tiny enough to include every time.
+        _permanent_facts = []
+        try:
+            from sci_fi_dashboard.db import get_db_connection as _get_db
+            _db = _get_db()
+            # Relationship memories first (core knowledge, compact)
+            _rel = _db.execute(
+                "SELECT content FROM documents WHERE filename='relationship_memory' ORDER BY id ASC"
+            ).fetchall()
+            # Latest distillation only (avoid token bloat)
+            _dist = _db.execute(
+                "SELECT content FROM documents WHERE filename='memory_distillation' ORDER BY id DESC LIMIT 1"
+            ).fetchall()
+            _db.close()
+            _permanent_facts = [r[0] for r in _rel if r[0]] + [r[0] for r in _dist if r[0]]
+        except Exception:
+            pass
+
+        # Layer 2: Vector search for conversation-specific context (WhatsApp chunks etc.)
         mem_response = deps.memory_engine.query(user_msg, limit=5, with_graph=True)
         try:
             _get_emitter().emit("memory.query_done", {
@@ -122,14 +142,19 @@ async def persona_chat(
         except Exception:
             pass
 
-        # Format results for the prompt
+        # Format results for the prompt — permanent profile first, then dynamic context
         results_list = mem_response.get("results", [])
-        formatted_facts = "\n".join(
-            [f"* {r['content']} (Source: {r['source']})" for r in results_list]
+        dynamic_facts = "\n".join(
+            [f"* {r['content']}" for r in results_list]
         )
+        profile_block = "\n".join([f"* {f}" for f in _permanent_facts])
         graph_ctx = mem_response.get("graph_context", "")
 
-        memory_context = f"{formatted_facts}\n\n{graph_ctx}"
+        memory_context = (
+            f"[PERMANENT USER PROFILE]\n{profile_block}\n\n"
+            f"[RECENT CONTEXT FROM MEMORY]\n{dynamic_facts}\n\n"
+            f"{graph_ctx}"
+        ).strip()
         retrieval_method = mem_response.get("tier", "standard")
     except Exception as e:
         print(f"[WARN] Memory Engine Error: {e}")
@@ -156,7 +181,7 @@ async def persona_chat(
     if deps._synapse_cfg.session.get("dual_cognition_enabled", True):
         dc_timeout = deps._synapse_cfg.session.get("dual_cognition_timeout", 5.0)
         try:
-            from sci_fi_dashboard.llm_wrappers import call_gemini_flash
+            from sci_fi_dashboard.llm_wrappers import call_ag_oracle
 
             cognitive_merge = await asyncio.wait_for(
                 deps.dual_cognition.think(
@@ -164,7 +189,7 @@ async def persona_chat(
                     chat_id=request.user_id or "default",
                     conversation_history=request.history,
                     target=target,
-                    llm_fn=call_gemini_flash,
+                    llm_fn=call_ag_oracle,
                     pre_cached_memory=mem_response,
                 ),
                 timeout=dc_timeout,
@@ -211,6 +236,43 @@ async def persona_chat(
         cognitive_merge = CognitiveMerge()
         cognitive_context = ""
 
+    # Phase 1.2 — Message Length Mirroring
+    # Match response length to the incoming message so a "k" doesn't get a paragraph.
+    _word_count = len(user_msg.split())
+    if _word_count <= 3:
+        _length_hint = "Tiny message. Reply in 1-2 words max. Match the casual brevity."
+    elif _word_count <= 10:
+        _length_hint = "Short message. Keep your reply short — 1-2 sentences at most."
+    elif _word_count <= 30:
+        _length_hint = "Medium message. Match the length — roughly 2-4 sentences."
+    else:
+        _length_hint = ""  # Long message — no constraint
+
+    # Phase 1.1 — Situational Awareness Block
+    # Inject current time, day, and last-seen gap so Synapse eases back in naturally.
+    try:
+        from datetime import datetime, timezone, timedelta
+        _IST = timezone(timedelta(hours=5, minutes=30))
+        _now = datetime.now(_IST)
+        _weekday = _now.strftime("%A")
+        _time_str = _now.strftime("%I:%M %p")
+        _situational_parts = [f"It's {_weekday}, {_time_str} IST."]
+
+        # Gap since last message (uses last row in conversation history as proxy)
+        if request.history:
+            # History entries don't carry timestamps — use rough heuristic
+            _situational_parts.append("(Conversation continuing.)")
+        else:
+            _situational_parts.append("Fresh conversation — ease in naturally.")
+
+        _situational_block = " ".join(_situational_parts)
+        if _length_hint:
+            _situational_block += f" LENGTH RULE: {_length_hint}"
+    except Exception:
+        _situational_block = ""
+        if _length_hint:
+            _situational_block = f"LENGTH RULE: {_length_hint}"
+
     # 3. Assemble System Prompt
     sbs_orchestrator = deps.get_sbs_for_target(target)
 
@@ -222,16 +284,17 @@ async def persona_chat(
 
     base_instructions = (
         "You are Synapse. Follow the persona profile below precisely. "
-        "A block of RETRIEVED MEMORIES will follow — treat these as ground truth "
-        "about the user's real life. Always weave specific details from those memories "
-        "into your reply, even in casual greetings. Reference names, events, and "
-        "ongoing situations naturally rather than waiting to be asked."
+        "A block of RETRIEVED MEMORIES will follow. Use those memories to give contextual, "
+        "relevant replies. Only reference what is explicitly in the memories — never invent "
+        "people, events, or details that are not there."
     )
-    proactive_block = (
+    _proactive_raw = (
         deps._proactive_engine.get_prompt_injection()
         if deps._proactive_engine
         else ""
     )
+    # Merge proactive context + situational awareness block
+    proactive_block = "\n\n".join(p for p in [_proactive_raw, _situational_block] if p)
     system_prompt = sbs_orchestrator.get_system_prompt(
         base_instructions, proactive_block
     )
@@ -241,19 +304,43 @@ async def persona_chat(
             "role": "system",
             "content": (
                 f"--- RETRIEVED MEMORIES ---\n"
-                f"These are real facts about the user's life. Weave specific details from "
-                f"these memories naturally into your response — proactively reference them "
-                f"even in casual greetings (e.g. ask about Jordan, mention the cat, "
-                f"reference work or hobbies). Don't just acknowledge them — USE them.\n\n"
+                f"These are real facts about the user's life retrieved from memory. "
+                f"Use ONLY what is in these memories — do not invent, hallucinate, or add "
+                f"names, people, events, or details that are not explicitly present below.\n\n"
                 f"{memory_context}\n--- END MEMORIES ---"
             ),
         },
     ]
-    if cognitive_context:
-        messages.append({"role": "system", "content": cognitive_context})
+    # Phase 3.3 — Emotional Trajectory injection
+    # Append 72h peak-end weighted trajectory to cognitive context for richer merges.
+    _trajectory_summary = ""
+    try:
+        if deps.dual_cognition.trajectory:
+            _trajectory_summary = deps.dual_cognition.trajectory.get_summary()
+    except Exception:
+        pass
+
+    _full_cognitive = "\n\n".join(p for p in [cognitive_context, _trajectory_summary] if p)
+    if _full_cognitive:
+        messages.append({"role": "system", "content": _full_cognitive})
     if mcp_context:
         messages.append({"role": "system", "content": mcp_context})
+
     messages.extend(request.history)
+
+    # Permanent profile + language rule injected RIGHT before the user turn.
+    # Small models (Gemma4:e4b) have strong recency bias — context far from
+    # the user message gets ignored. Placing this last ensures it's read.
+    if _permanent_facts:
+        _profile_lines = "\n".join([f"- {f}" for f in _permanent_facts])
+        messages.append({
+            "role": "system",
+            "content": (
+                f"USER PROFILE (always true, use this to personalize your reply):\n"
+                f"{_profile_lines}"
+            ),
+        })
+
     messages.append({"role": "user", "content": user_msg})
 
     t0 = time.perf_counter()
@@ -646,9 +733,9 @@ async def persona_chat(
             completion_tokens=0,
             total_tokens=0,
         )
-    out_tokens = result.completion_tokens
-    in_tokens = result.prompt_tokens
-    total_tokens = result.total_tokens
+    out_tokens = result.completion_tokens or 0
+    in_tokens = result.prompt_tokens or 0
+    total_tokens = result.total_tokens or 0
     actual_model = result.model
     model_used = actual_model
 
@@ -657,7 +744,7 @@ async def persona_chat(
         from litellm import get_model_info
 
         info = get_model_info(actual_model)
-        max_context = info.get("max_input_tokens", 1_000_000)
+        max_context = info.get("max_input_tokens") or 1_000_000
     except Exception:
         pass
 
