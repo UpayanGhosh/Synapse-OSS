@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Proactive Architecture Evolution
 status: unknown
-last_updated: "2026-04-07T13:37:59.222Z"
+last_updated: "2026-04-07T13:39:12.067Z"
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 22
-  completed_plans: 9
+  completed_plans: 11
 ---
 
 # Project State
@@ -61,6 +61,8 @@ Before starting Phase 1:
 - [Phase 04-onboarding-wizard-v2]: channel validation functions raise ValueError not return bool -- wrapped in try/except in verify_steps.py
 - [Phase 03-subagent-system]: Sub-agents use 'analysis' role (Gemini Pro) by default for deep reasoning tasks
 - [Phase 03-subagent-system]: ProgressReporter.stop() does not await cancellation — safe for both sync and async callers
+- [Phase 03-subagent-system]: AgentRegistry._task_refs is a GC anchor set; task cancellation uses name convention agent-<id>
+- [Phase 04-onboarding-wizard-v2]: Only sbs_the_creator seeded by wizard; domain layer writes both interests dict and active_domains list for compiler consumption; verify_steps import deferred in setup command
 
 ### Pending Todos
 
