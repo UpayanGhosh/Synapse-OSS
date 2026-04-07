@@ -225,7 +225,7 @@ class SkillCreator:
                 {"role": "user", "content": user_message},
             ]
             raw_response = await llm_router.call(
-                "analysis", messages, temperature=0.3, max_tokens=500
+                "analysis", messages, temperature=0.3, max_tokens=800
             )
 
             # T-01-17: parse JSON; handle bare JSON or markdown code block
