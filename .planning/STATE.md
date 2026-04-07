@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Proactive Architecture Evolution
 status: unknown
-last_updated: "2026-04-07T14:00:00.000Z"
+last_updated: "2026-04-07T14:35:00.000Z"
 progress:
   total_phases: 5
   completed_phases: 2
   total_plans: 22
-  completed_plans: 15
+  completed_plans: 16
 ---
 
 # Project State
@@ -23,11 +23,11 @@ See: .planning/PROJECT.md (updated 2026-04-06)
 ## Current Position
 
 Phase: 05 (browser-tool) — EXECUTING
-Plan: 2 of 4 complete (Plan 03 next)
+Plan: 3 of 4 complete (Plan 04 next)
 Status: Executing Phase 05
-Last activity: 2026-04-07 -- Phase 05 Plan 02 completed
+Last activity: 2026-04-07 -- Phase 05 Plan 03 completed
 
-Progress: [#######░░░░░░░░░░░░░░░░░░░░░░] 15/22 plans complete
+Progress: [########░░░░░░░░░░░░░░░░░░░░░] 16/22 plans complete
 
 ## Pre-Work Checklist
 
@@ -72,6 +72,10 @@ Before starting Phase 1:
 - [Phase 03-subagent-system]: Crash isolation tests use two SubAgentRunners sharing one AgentRegistry — cleanest way to control per-agent LLM behaviour without coupling runners
 - [Phase 03-subagent-system]: Integration tests patch deps singletons at module level using save/restore pattern — avoids complex mock.patch context managers for module globals
 - [Phase 04-onboarding-wizard-v2]: Task 2 (run tests) skipped — user explicitly requested code-only execution; tests written by reading actual source files
+- [Phase 05-browser-tool]: entry_point field in SkillManifest is generic — any skill declares pre-processing via "scripts/file.py:function" without modifying SkillRunner
+- [Phase 05-browser-tool]: _load_sibling_module() uses importlib.util.spec_from_file_location() — no sys.path manipulation, no namespace pollution, TOCTOU-safe
+- [Phase 05-browser-tool]: Hemisphere guard is the FIRST check in run_browser_skill — fires before any import or network call
+- [Phase 05-browser-tool]: Phase 01 skill framework (schema.py, loader.py, registry.py, watcher.py, router.py, runner.py) created as Rule 3 blocking fix since Phase 01 was never executed
 
 ### Pending Todos
 
@@ -91,7 +95,7 @@ None active. v2.0 ready to begin after branch merge.
 
 ## Session Continuity
 
-Last session: 2026-04-07 (Phase 03-04 complete — subagent test suite)
-Stopped at: Completed 03-subagent-system/03-04-PLAN.md — subagent system test suite (unit + integration)
+Last session: 2026-04-07 (Phase 05-03 complete — browser skill orchestrator + skill framework)
+Stopped at: Completed 05-browser-tool/05-03-PLAN.md — browser_skill.py orchestrator with hemisphere guard, importlib entry_point dispatch in SkillRunner, full skill system framework created
 Resume file: None
-Next step: Phase 03 fully complete (all 4 plans done). Phase 05 (browser-tool) Plan 03 is next.
+Next step: Continue Phase 05-browser-tool from Plan 04

@@ -55,7 +55,7 @@ Requirements for the v2.0 milestone. Maps to vision document Phases 5–9.
 
 - [x] **BROWSE-01**: Synapse can fetch and read web pages during a conversation when the user asks about current information
 - [x] **BROWSE-02**: Web content is summarized and injected into the conversation context — raw HTML is never passed to the LLM
-- [ ] **BROWSE-03**: Browser requests respect the Zone 1/Zone 2 privacy boundary — private/spicy hemisphere conversations never trigger web fetches
+- [x] **BROWSE-03**: Browser requests respect the Zone 1/Zone 2 privacy boundary — private/spicy hemisphere conversations never trigger web fetches
 - [x] **BROWSE-04**: Browser tool is implemented as a skill (SKILL.md) — it can be disabled or replaced without touching the core pipeline
 - [x] **BROWSE-05**: Search results include source URLs — the user can verify provenance
 
@@ -134,7 +134,7 @@ To be detailed at v4.0 milestone initialization.
 | ONBOARD2-05 | Phase 4 | Complete |
 | BROWSE-01 | Phase 5 | Complete |
 | BROWSE-02 | Phase 5 | Complete |
-| BROWSE-03 | Phase 5 | Pending |
+| BROWSE-03 | Phase 5 | Complete |
 | BROWSE-04 | Phase 5 | Complete |
 | BROWSE-05 | Phase 5 | Complete |
 
