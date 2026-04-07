@@ -13,6 +13,7 @@ import psutil
 from sci_fi_dashboard import _deps as deps
 from sci_fi_dashboard.conv_kg_extractor import run_batch_extraction
 from sci_fi_dashboard.schemas import ChatRequest
+from sci_fi_dashboard.session_ingest import _ingest_session_background
 from synapse_config import SynapseConfig
 
 logger = logging.getLogger(__name__)
@@ -230,6 +231,55 @@ class _LLMClientAdapter:
 # Module-level set prevents GC of fire-and-forget background tasks (Research Pitfall 6).
 _background_tasks: set[asyncio.Task] = set()
 
+# GC anchor for session ingestion background tasks (/new command)
+_session_ingest_tasks: set[asyncio.Task] = set()
+
+
+async def _handle_new_command(
+    session_key: str,
+    agent_id: str,
+    data_root: "Path",
+    session_store,
+    hemisphere: str = "safe",
+) -> str:
+    """Archive current transcript, fire full memory-loop ingestion, rotate session ID.
+
+    The old JSONL is renamed (not deleted).
+    Background task runs vector + KG ingestion on the archived transcript.
+    Returns confirmation immediately — callers must NOT call the LLM.
+    """
+    from sci_fi_dashboard.multiuser.transcript import transcript_path, archive_transcript
+
+    entry = await session_store.get(session_key)
+    archived_path = None
+
+    if entry is not None:
+        old_path = transcript_path(entry, data_root, agent_id)
+        archived_path = await archive_transcript(old_path)  # returns Path (fixed in 00-02 Task 0)
+
+    # Clear in-memory cache
+    deps.conversation_cache.invalidate(session_key)
+
+    # Rotate session ID → new JSONL on next message
+    # CRITICAL: delete() first — _merge_entry() never overwrites session_id via update()
+    await session_store.delete(session_key)
+    await session_store.update(session_key, {"compaction_count": 0})
+
+    # Fire-and-forget: full memory loop (vector + KG) in background
+    if archived_path is not None:
+        task = asyncio.create_task(
+            _ingest_session_background(
+                archived_path=archived_path,
+                agent_id=agent_id,
+                session_key=session_key,
+                hemisphere=hemisphere,
+            )
+        )
+        _session_ingest_tasks.add(task)
+        task.add_done_callback(_session_ingest_tasks.discard)
+
+    return "Session archived! I'll remember everything. Starting fresh now."
+
 
 async def process_message_pipeline(
     user_msg: str, chat_id: str, mcp_context: str = "", *, is_group: bool = False
@@ -285,6 +335,17 @@ async def process_message_pipeline(
         entry = await store.update(session_key, {})
 
     t_path = transcript_path(entry, data_root, target)
+
+    # ------------------------------------------------------------------
+    # /new command: archive session + full memory loop + rotate session
+    # ------------------------------------------------------------------
+    if user_msg.strip().lower() == "/new":
+        return await _handle_new_command(
+            session_key=session_key,
+            agent_id=target,
+            data_root=data_root,
+            session_store=store,
+        )
 
     # ------------------------------------------------------------------
     # Step 4: Load history with cache (per D-10, D-13, Research Pitfall 7)

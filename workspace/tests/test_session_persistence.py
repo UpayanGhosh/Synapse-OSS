@@ -413,3 +413,136 @@ def test_session_reset_404_for_unknown(api_client):
     """POST /api/sessions/{key}/reset returns 404 for a nonexistent key."""
     resp = api_client.post("/api/sessions/nonexistent:key:here/reset")
     assert resp.status_code == 404
+
+
+class TestSessionResetCommand:
+    """Tests for /new: archive + full memory loop + fresh start."""
+
+    @pytest.mark.asyncio
+    async def test_new_returns_confirmation(self, tmp_path):
+        from sci_fi_dashboard.multiuser.session_store import SessionStore
+        import sci_fi_dashboard.pipeline_helpers as ph
+
+        store = SessionStore("the_creator", data_root=tmp_path)
+        session_key = "agent:the_creator:whatsapp:dm:+1234567890"
+        await store.update(session_key, {})
+
+        reply = await ph._handle_new_command(
+            session_key=session_key, agent_id="the_creator",
+            data_root=tmp_path, session_store=store,
+        )
+        assert any(w in reply.lower() for w in ("archive", "reset", "fresh", "remember"))
+
+    @pytest.mark.asyncio
+    async def test_new_archives_transcript(self, tmp_path):
+        from sci_fi_dashboard.multiuser.session_store import SessionStore
+        from sci_fi_dashboard.multiuser.transcript import transcript_path, append_message
+        import sci_fi_dashboard.pipeline_helpers as ph
+
+        store = SessionStore("the_creator", data_root=tmp_path)
+        session_key = "agent:the_creator:whatsapp:dm:+1234567890"
+        entry = await store.update(session_key, {})
+        t_path = transcript_path(entry, tmp_path, "the_creator")
+        t_path.parent.mkdir(parents=True, exist_ok=True)
+        await append_message(t_path, {"role": "user", "content": "hello"})
+        await append_message(t_path, {"role": "assistant", "content": "hi"})
+
+        await ph._handle_new_command(
+            session_key=session_key, agent_id="the_creator",
+            data_root=tmp_path, session_store=store,
+        )
+
+        assert not t_path.exists()
+        archived = list(t_path.parent.glob(f"{entry.session_id}.jsonl.deleted.*"))
+        assert len(archived) == 1
+
+    @pytest.mark.asyncio
+    async def test_new_rotates_session_id(self, tmp_path):
+        from sci_fi_dashboard.multiuser.session_store import SessionStore
+        import sci_fi_dashboard.pipeline_helpers as ph
+
+        store = SessionStore("the_creator", data_root=tmp_path)
+        session_key = "agent:the_creator:whatsapp:dm:+1234567890"
+        old_entry = await store.update(session_key, {})
+
+        await ph._handle_new_command(
+            session_key=session_key, agent_id="the_creator",
+            data_root=tmp_path, session_store=store,
+        )
+
+        new_entry = await store.get(session_key)
+        assert new_entry.session_id != old_entry.session_id
+
+    @pytest.mark.asyncio
+    async def test_background_ingestion_runs_full_loop(self, tmp_path, monkeypatch):
+        """Background task calls both add_memory (vector) and extract (KG) per batch."""
+        from sci_fi_dashboard.multiuser.transcript import append_message
+        from sci_fi_dashboard import session_ingest
+        import sci_fi_dashboard._deps as deps
+
+        # Write archived JSONL with 6 turns
+        archived = tmp_path / "abc.jsonl.deleted.1234567890000"
+        archived.parent.mkdir(parents=True, exist_ok=True)
+        for i in range(6):
+            await append_message(archived, {"role": "user", "content": f"msg {i}"})
+            await append_message(archived, {"role": "assistant", "content": f"reply {i}"})
+
+        # Mock vector
+        vec_calls = []
+
+        def mock_add_memory(content, category=None, hemisphere=None):
+            vec_calls.append(content)
+            return {}
+
+        monkeypatch.setattr(deps.memory_engine, "add_memory", mock_add_memory)
+
+        # Mock KG extractor
+        kg_calls = []
+
+        async def mock_extract(text):
+            kg_calls.append(text)
+            return {"facts": [], "triples": [], "validated_triples": []}
+
+        monkeypatch.setattr(session_ingest, "BATCH_SIZE", 3)
+        monkeypatch.setattr(session_ingest, "BATCH_SLEEP_S", 0.0)
+
+        # Patch ConvKGExtractor to return mock
+        from sci_fi_dashboard import conv_kg_extractor
+
+        class MockExtractor:
+            def __init__(self, *a, **kw):
+                pass
+
+            async def extract(self, text):
+                return await mock_extract(text)
+
+        monkeypatch.setattr(conv_kg_extractor, "ConvKGExtractor", MockExtractor)
+
+        await session_ingest._ingest_session_background(
+            archived_path=archived,
+            agent_id="the_creator",
+            session_key="agent:the_creator:whatsapp:dm:+1234567890",
+        )
+
+        assert len(vec_calls) == 2, f"Expected 2 vector batches, got {len(vec_calls)}"
+        assert len(kg_calls) == 2, f"Expected 2 KG extraction calls, got {len(kg_calls)}"
+        assert "[WhatsApp session" in vec_calls[0]
+
+    @pytest.mark.asyncio
+    async def test_history_empty_after_new(self, tmp_path):
+        from sci_fi_dashboard.multiuser.session_store import SessionStore
+        from sci_fi_dashboard.multiuser.transcript import transcript_path, load_messages
+        import sci_fi_dashboard.pipeline_helpers as ph
+
+        store = SessionStore("the_creator", data_root=tmp_path)
+        session_key = "agent:the_creator:whatsapp:dm:+1234567890"
+
+        await ph._handle_new_command(
+            session_key=session_key, agent_id="the_creator",
+            data_root=tmp_path, session_store=store,
+        )
+
+        new_entry = await store.get(session_key)
+        new_path = transcript_path(new_entry, tmp_path, "the_creator")
+        messages = await load_messages(new_path, limit=50)
+        assert messages == []
