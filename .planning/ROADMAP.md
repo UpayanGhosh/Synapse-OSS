@@ -38,9 +38,9 @@ Details at v4.0 milestone init.
 
 ## Phases
 
-- [ ] **Phase 0: Session & Context Persistence** — Wire the multiuser/ session infrastructure into the WhatsApp pipeline; every message builds on conversation history instead of starting fresh
-- [ ] **Phase 1: Skill Architecture** — Skills-as-directories: SKILL.md format, startup discovery, description-based routing, skill-creator skill (vision Phase 5)
-- [ ] **Phase 2: Safe Self-Modification + Rollback** — Full consent protocol + snapshot engine + Zone 1/Zone 2 hard enforcement + rollback by date/description (vision Phase 6)
+- [x] **Phase 0: Session & Context Persistence** — Wire the multiuser/ session infrastructure into the WhatsApp pipeline; every message builds on conversation history instead of starting fresh (completed 2026-04-07)
+- [x] **Phase 1: Skill Architecture** — Skills-as-directories: SKILL.md format, startup discovery, description-based routing, skill-creator skill (vision Phase 5) (completed 2026-04-07)
+- [x] **Phase 2: Safe Self-Modification + Rollback** — Full consent protocol + snapshot engine + Zone 1/Zone 2 hard enforcement + rollback by date/description (vision Phase 6) (completed 2026-04-07)
 - [x] **Phase 3: Subagent System** — Spawn isolated async sub-agents, parallel execution, result return, progress updates (vision Phase 7) (completed 2026-04-07)
 - [x] **Phase 4: Onboarding Wizard v2** — `python -m synapse setup` under 5 min, initial SBS profile from questions, history import offer (vision Phase 8) (completed 2026-04-07)
 - [x] **Phase 5: Browser Tool** — Live web access as a skill, summarized injection, privacy-boundary enforcement (vision Phase 9) (completed 2026-04-07)
@@ -100,11 +100,11 @@ conversation by the skill-creator skill itself.
 **Plans**: 5 plans
 
 Plans:
-- [ ] 01-01-PLAN.md — Define SKILL.md schema (YAML frontmatter + instructions body) + create SkillLoader class with validation
-- [ ] 01-02-PLAN.md — Implement SkillRegistry: startup scan, hot-reload watcher, GET /skills endpoint
-- [ ] 01-03-PLAN.md — Implement description-based SkillRouter: embed descriptions at load, cosine-match incoming intent
-- [ ] 01-04-PLAN.md — Wire SkillRegistry + SkillRouter into api_gateway.py pipeline (post-traffic-cop routing step)
-- [ ] 01-05-PLAN.md — Create skill-creator skill: SKILL.md template + scripts/create_skill.py + test coverage
+- [x] 01-01-PLAN.md — Define SKILL.md schema (YAML frontmatter + instructions body) + create SkillLoader class with validation
+- [x] 01-02-PLAN.md — Implement SkillRegistry: startup scan, hot-reload watcher, GET /skills endpoint
+- [x] 01-03-PLAN.md — Implement description-based SkillRouter: embed descriptions at load, cosine-match incoming intent
+- [x] 01-04-PLAN.md — Wire SkillRegistry + SkillRouter into api_gateway.py pipeline (post-traffic-cop routing step)
+- [x] 01-05-PLAN.md — Create skill-creator skill: SKILL.md template + scripts/create_skill.py + test coverage
 
 ---
 
@@ -130,11 +130,11 @@ cryptographically immutable to model writes. Ships together with rollback — no
 **Plans**: 6 plans (estimated)
 
 Plans:
-- [ ] 02-01-PLAN.md — Create SnapshotEngine: write/list/restore snapshot lifecycle + test_snapshot_engine.py
-- [ ] 02-02-PLAN.md — Implement Zone 1/Zone 2 registry in Sentinel: IMMUTABLE_PATHS + WRITABLE_ZONES constants, enforce at write time
-- [ ] 02-03-PLAN.md — Implement ConsentProtocol: explain → confirm → execute → snapshot orchestration with timeout and no-answer handling
-- [ ] 02-04-PLAN.md — Wire ConsentProtocol into api_gateway.py: detect modification intents, invoke protocol before any Zone 2 write
-- [ ] 02-05-PLAN.md — Implement rollback: by snapshot ID, by date string, by natural language description ("undo last", "go back to last week")
+- [x] 02-01-PLAN.md — Create SnapshotEngine: write/list/restore snapshot lifecycle + test_snapshot_engine.py
+- [x] 02-02-PLAN.md — Implement Zone 1/Zone 2 registry in Sentinel: IMMUTABLE_PATHS + WRITABLE_ZONES constants, enforce at write time
+- [x] 02-03-PLAN.md — Implement ConsentProtocol: explain → confirm → execute → snapshot orchestration with timeout and no-answer handling
+- [x] 02-04-PLAN.md — Wire ConsentProtocol into api_gateway.py: detect modification intents, invoke protocol before any Zone 2 write
+- [x] 02-05-PLAN.md — Implement rollback: by snapshot ID, by date string, by natural language description ("undo last", "go back to last week")
 - [ ] 02-06-PLAN.md — Integration tests: full consent → execute → snapshot → rollback cycle; Zone 1 write rejection; auto-revert on failure
 
 ---
@@ -158,10 +158,10 @@ crashing it if they fail.
 **Plans**: 4 plans
 
 Plans:
-- [ ] 03-01-PLAN.md — SubAgent dataclass + AgentRegistry CRUD lifecycle + GET /agents endpoint
-- [ ] 03-02-PLAN.md — SubAgentRunner: isolated asyncio execution, scoped memory snapshots, ProgressReporter callbacks
-- [ ] 03-03-PLAN.md — Spawn intent keyword gate + pipeline wiring in chat_pipeline.py + result delivery via channel.send()
-- [ ] 03-04-PLAN.md — Unit + integration tests: parallel timing, crash isolation, progress updates, result delivery, API endpoint
+- [x] 03-01-PLAN.md — SubAgent dataclass + AgentRegistry CRUD lifecycle + GET /agents endpoint
+- [x] 03-02-PLAN.md — SubAgentRunner: isolated asyncio execution, scoped memory snapshots, ProgressReporter callbacks
+- [x] 03-03-PLAN.md — Spawn intent keyword gate + pipeline wiring in chat_pipeline.py + result delivery via channel.send()
+- [x] 03-04-PLAN.md — Unit + integration tests: parallel timing, crash isolation, progress updates, result delivery, API endpoint
 
 ---
 
@@ -184,10 +184,10 @@ questions, not just blank defaults.
 **Plans**: 4 plans
 
 Plans:
-- [ ] 04-01-PLAN.md — Setup entrypoint + SBS profile init module + persona questions in interactive wizard
-- [ ] 04-02-PLAN.md — Verify subcommand: parallel provider + channel validation with pass/fail output
-- [ ] 04-03-PLAN.md — Non-interactive SBS env var support + input validation
-- [ ] 04-04-PLAN.md — Test coverage for all v2 wizard features (ONBOARD2-01 through ONBOARD2-05)
+- [x] 04-01-PLAN.md — Setup entrypoint + SBS profile init module + persona questions in interactive wizard
+- [x] 04-02-PLAN.md — Verify subcommand: parallel provider + channel validation with pass/fail output
+- [x] 04-03-PLAN.md — Non-interactive SBS env var support + input validation
+- [x] 04-04-PLAN.md — Test coverage for all v2 wizard features (ONBOARD2-01 through ONBOARD2-05)
 
 ---
 
@@ -212,8 +212,8 @@ community-extended without touching the core pipeline.
 Plans:
 - [x] 05-01-PLAN.md — Create browser skill directory: SKILL.md + scripts/fetch_and_summarize.py + SSRF guard reuse + trafilatura content extraction
 - [x] 05-02-PLAN.md — Implement web search via DuckDuckGo (DDGS): rate limiting, result ranking, source URL attribution
-- [ ] 05-03-PLAN.md — Wire browser skill orchestrator: hemisphere privacy guard + search->fetch->summarize chain + SkillRunner session context
-- [ ] 05-04-PLAN.md — Integration tests: SSRF rejection, HTML-free LLM prompts, hemisphere guard, source URLs, skill-disabled fallback
+- [x] 05-03-PLAN.md — Wire browser skill orchestrator: hemisphere privacy guard + search->fetch->summarize chain + SkillRunner session context
+- [x] 05-04-PLAN.md — Integration tests: SSRF rejection, HTML-free LLM prompts, hemisphere guard, source URLs, skill-disabled fallback
 
 ---
 
@@ -247,12 +247,12 @@ Phases execute in dependency order: 0 → 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 0. Session & Context Persistence | 0/4 | Planned | — |
-| 1. Skill Architecture | 0/5 | Planned | — |
-| 2. Safe Self-Modification + Rollback | 0/6 | Pending | — |
-| 3. Subagent System | 4/4 | Complete   | 2026-04-07 |
-| 4. Onboarding Wizard v2 | 4/4 | Complete   | 2026-04-07 |
-| 5. Browser Tool | 4/4 | Complete   | 2026-04-07 |
+| 0. Session & Context Persistence | 5/5 | Complete | 2026-04-07 |
+| 1. Skill Architecture | 5/5 | Complete | 2026-04-07 |
+| 2. Safe Self-Modification + Rollback | 5/6 | In Progress | — |
+| 3. Subagent System | 4/4 | Complete | 2026-04-07 |
+| 4. Onboarding Wizard v2 | 4/4 | Complete | 2026-04-07 |
+| 5. Browser Tool | 4/4 | Complete | 2026-04-07 |
 
 **v1.0 Archive:** All 10 phases, 38 plans — COMPLETE (2026-03-03)
 See archived ROADMAP in `.planning/phases/` for historical reference.
