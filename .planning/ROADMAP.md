@@ -100,11 +100,11 @@ conversation by the skill-creator skill itself.
 **Plans**: 5 plans
 
 Plans:
-- [x] 01-01-PLAN.md — Define SKILL.md schema (YAML frontmatter + instructions body) + create SkillLoader class with validation
-- [x] 01-02-PLAN.md — Implement SkillRegistry: startup scan, hot-reload watcher, GET /skills endpoint
-- [x] 01-03-PLAN.md — Implement description-based SkillRouter: embed descriptions at load, cosine-match incoming intent
-- [x] 01-04-PLAN.md — Wire SkillRegistry + SkillRouter into api_gateway.py pipeline (post-traffic-cop routing step)
-- [x] 01-05-PLAN.md — Create skill-creator skill: SKILL.md template + scripts/create_skill.py + test coverage
+- [ ] 01-01-PLAN.md — Define SKILL.md schema (YAML frontmatter + instructions body) + create SkillLoader class with validation
+- [ ] 01-02-PLAN.md — Implement SkillRegistry: startup scan, hot-reload watcher, GET /skills endpoint
+- [ ] 01-03-PLAN.md — Implement description-based SkillRouter: embed descriptions at load, cosine-match incoming intent
+- [ ] 01-04-PLAN.md — Wire SkillRegistry + SkillRouter into api_gateway.py pipeline (post-traffic-cop routing step)
+- [ ] 01-05-PLAN.md — Create skill-creator skill: SKILL.md template + scripts/create_skill.py + test coverage
 
 ---
 
@@ -127,14 +127,14 @@ cryptographically immutable to model writes. Ships together with rollback — no
   - Zone 1 enforcement must happen at the filesystem write level (Sentinel), not just as a prompt instruction — LLMs can be manipulated
   - Cron job creation is Zone 2 but requires OS-level scheduling (schtasks on Windows, cron on Linux) — test both platforms
   - Rollback of a cron job must also remove the scheduled task from the OS, not just the skill directory
-**Plans**: 6 plans
+**Plans**: 6 plans (estimated)
 
 Plans:
-- [x] 02-01-PLAN.md — Create SnapshotEngine: write/list/restore snapshot lifecycle + test_snapshot_engine.py
-- [x] 02-02-PLAN.md — Implement Zone 1/Zone 2 registry in Sentinel: IMMUTABLE_PATHS + WRITABLE_ZONES constants, enforce at write time
-- [x] 02-03-PLAN.md — Implement ConsentProtocol: explain → confirm → execute → snapshot orchestration with timeout and no-answer handling
-- [x] 02-04-PLAN.md — Wire ConsentProtocol into api_gateway.py: detect modification intents, invoke protocol before any Zone 2 write
-- [x] 02-05-PLAN.md — Implement rollback: by snapshot ID, by date string, by natural language description ("undo last", "go back to last week")
+- [ ] 02-01-PLAN.md — Create SnapshotEngine: write/list/restore snapshot lifecycle + test_snapshot_engine.py
+- [ ] 02-02-PLAN.md — Implement Zone 1/Zone 2 registry in Sentinel: IMMUTABLE_PATHS + WRITABLE_ZONES constants, enforce at write time
+- [ ] 02-03-PLAN.md — Implement ConsentProtocol: explain → confirm → execute → snapshot orchestration with timeout and no-answer handling
+- [ ] 02-04-PLAN.md — Wire ConsentProtocol into api_gateway.py: detect modification intents, invoke protocol before any Zone 2 write
+- [ ] 02-05-PLAN.md — Implement rollback: by snapshot ID, by date string, by natural language description ("undo last", "go back to last week")
 - [ ] 02-06-PLAN.md — Integration tests: full consent → execute → snapshot → rollback cycle; Zone 1 write rejection; auto-revert on failure
 
 ---
@@ -249,8 +249,8 @@ Phases execute in dependency order: 0 → 1 → 2 → 3 → 4 → 5
 |-------|----------------|--------|-----------|
 | 0. Session & Context Persistence | 0/4 | Planned | — |
 | 1. Skill Architecture | 0/5 | Planned | — |
-| 2. Safe Self-Modification + Rollback | 0/6 | Planned | — |
-| 3. Subagent System | 0/4 | Pending | — |
+| 2. Safe Self-Modification + Rollback | 0/6 | Pending | — |
+| 3. Subagent System | 2/4 | In Progress|  |
 | 4. Onboarding Wizard v2 | 1/4 | In Progress|  |
 | 5. Browser Tool | 0/4 | Pending | — |
 
