@@ -327,6 +327,24 @@ async def process_message_pipeline(
     logger.info("Session key: %s", session_key)
 
     # ------------------------------------------------------------------
+    # Step 2b: Sub-agent spawn detection (Phase 3)
+    # ------------------------------------------------------------------
+    from sci_fi_dashboard.subagent.spawn import maybe_spawn_agent
+
+    # TODO(multi-channel): channel_id is hardcoded to "whatsapp" because
+    # process_message_pipeline() does not receive channel_id from its caller.
+    # When a second channel gains pipeline access, thread channel_id from
+    # MessageTask through process_message_pipeline's signature instead.
+    spawn_reply = await maybe_spawn_agent(
+        user_msg=user_msg,
+        chat_id=chat_id,
+        channel_id="whatsapp",
+        session_key=session_key,
+    )
+    if spawn_reply is not None:
+        return spawn_reply  # Short-circuit: agent spawned, return acknowledgment as str
+
+    # ------------------------------------------------------------------
     # Step 3: Get or create session entry (per D-18 corrected, D-19)
     # ------------------------------------------------------------------
     store = SessionStore(agent_id=target, data_root=data_root)

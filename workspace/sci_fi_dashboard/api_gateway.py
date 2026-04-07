@@ -176,11 +176,17 @@ async def lifespan(app: FastAPI):
 
     app.state.session_actor_queue = SessionActorQueue()
 
-    # Initialize AgentRegistry (Phase 3: SubAgent System)
+    # Initialize AgentRegistry + SubAgentRunner (Phase 3: SubAgent System)
     from sci_fi_dashboard.subagent import AgentRegistry
+    from sci_fi_dashboard.subagent.runner import SubAgentRunner
 
     deps.agent_registry = AgentRegistry()
-    logger.info("[SubAgent] AgentRegistry initialized")
+    deps.agent_runner = SubAgentRunner(
+        registry=deps.agent_registry,
+        channel_registry=deps.channel_registry,
+        llm_router=deps.synapse_llm_router,
+    )
+    logger.info("[SubAgent] SubAgent system initialized (registry + runner)")
 
     # Initialize models catalog
     from models_catalog import ensure_models_catalog

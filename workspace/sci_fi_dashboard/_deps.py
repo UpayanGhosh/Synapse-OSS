@@ -301,8 +301,12 @@ pending_consents: dict = {}
 # ---------------------------------------------------------------------------
 # Phase 3: SubAgent System (optional — initialized in lifespan)
 # ---------------------------------------------------------------------------
-# AgentRegistry singleton. Initialized in api_gateway.py lifespan to None here
-# so the routes module can import _deps safely before the app starts.
+# AgentRegistry and SubAgentRunner singletons.  Both initialized in
+# api_gateway.py lifespan (not here at module level) to avoid asyncio
+# event-loop issues at import time.  Declared as None so that routes and
+# pipeline_helpers can import _deps safely before the app starts.
 from sci_fi_dashboard.subagent import AgentRegistry as _AgentRegistry  # noqa: E402
+from sci_fi_dashboard.subagent.runner import SubAgentRunner as _SubAgentRunner  # noqa: E402
 
 agent_registry: "_AgentRegistry | None" = None
+agent_runner: "_SubAgentRunner | None" = None
