@@ -97,6 +97,19 @@ WRITABLE_ZONES: set[str] = {
 }
 
 # ============================================================
+# ZONE BOUNDARIES (v2.0 — Self-Modification / Rollback)
+# Used by SnapshotEngine and ConsentProtocol to scope captures.
+# Plan 02-02 will expand these with full descriptions (ZONE_2_DESCRIPTIONS).
+# ============================================================
+
+# Zone 2: adaptive paths that the AI can modify WITH user consent + snapshot.
+# Relative to data_root (~/.synapse/).  No trailing slashes.
+ZONE_2_PATHS: tuple[str, ...] = (
+    "skills",        # User-defined skill directories
+    "state/agents",  # Per-agent cron/session state
+)
+
+# ============================================================
 # DANGEROUS OPERATIONS -- Always denied regardless of path
 # ============================================================
 FORBIDDEN_OPERATIONS: set[str] = {
