@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Proactive Architecture Evolution
 status: unknown
-last_updated: "2026-04-07T13:39:14.842Z"
+last_updated: "2026-04-07T13:45:36.004Z"
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 22
-  completed_plans: 12
+  completed_plans: 13
 ---
 
 # Project State
@@ -27,7 +27,7 @@ Plan: 2 of 4 complete (Plan 03 next)
 Status: Executing Phase 05
 Last activity: 2026-04-07 -- Phase 05 Plan 02 completed
 
-Progress: [######░░░░░░░░░░░░░░░░░░░░░░░] 12/22 plans complete
+Progress: [######░░░░░░░░░░░░░░░░░░░░░░░] 13/22 plans complete
 
 ## Pre-Work Checklist
 
@@ -67,6 +67,8 @@ Before starting Phase 1:
 - [Phase 05-browser-tool]: DDGS imported lazily inside _search_ddgs_sync() for graceful ImportError fallback in async search()
 - [Phase 05-browser-tool]: Module-level _last_request_time monotonic float provides per-process rate limiting without external state
 - [Phase 04-onboarding-wizard-v2]: Non-interactive SBS env vars deferred-imported inside try/except — zero cost for pipelines that don't use SBS seeding; SBS block placed after write_config() so SBS failure never impacts config write
+- [Phase 03-subagent-system]: Spawn interception in process_message_pipeline not persona_chat — pipeline has chat_id/session_key, ChatRequest does not
+- [Phase 03-subagent-system]: channel_id hardcoded to whatsapp in pipeline_helpers with TODO(multi-channel) comment — tracked tech debt
 
 ### Pending Todos
 
@@ -87,6 +89,6 @@ None active. v2.0 ready to begin after branch merge.
 ## Session Continuity
 
 Last session: 2026-04-07
-Stopped at: Completed 04-onboarding-wizard-v2/04-03-PLAN.md — non-interactive SBS env var seeding with validation
+Stopped at: Completed 03-subagent-system/03-03-PLAN.md — spawn intent detection + pipeline wiring
 Resume file: None
-Next step: Continue Phase 04-onboarding-wizard-v2 from Plan 04 (or continue Phase 05-browser-tool from Plan 03)
+Next step: Phase 03 complete (all 3 plans done). Continue Phase 04 or 05 as next priority.
