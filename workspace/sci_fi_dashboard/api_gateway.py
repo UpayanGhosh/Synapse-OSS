@@ -37,6 +37,7 @@ from sci_fi_dashboard.whatsapp_bridge import ensure_bridge_db
 
 # Route modules
 from sci_fi_dashboard.routes import (
+    agents as agents_routes,
     chat,
     health,
     knowledge,
@@ -174,6 +175,12 @@ async def lifespan(app: FastAPI):
     from gateway.session_actor import SessionActorQueue
 
     app.state.session_actor_queue = SessionActorQueue()
+
+    # Initialize AgentRegistry (Phase 3: SubAgent System)
+    from sci_fi_dashboard.subagent import AgentRegistry
+
+    deps.agent_registry = AgentRegistry()
+    logger.info("[SubAgent] AgentRegistry initialized")
 
     # Initialize models catalog
     from models_catalog import ensure_models_catalog
@@ -365,6 +372,7 @@ app.include_router(snapshots.router)
 app.include_router(websocket.router)
 app.include_router(pipeline_routes.router)
 app.include_router(skills.router)
+app.include_router(agents_routes.router)
 
 # Dashboard static files
 _static_dir = _Path(__file__).parent / "static"
