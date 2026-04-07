@@ -255,7 +255,7 @@ async def _handle_new_command(
 
     if entry is not None:
         old_path = transcript_path(entry, data_root, agent_id)
-        archived_path = await archive_transcript(old_path)  # returns Path (fixed in 00-02 Task 0)
+        archived_path = await archive_transcript(old_path) if old_path.exists() else None
 
     # Clear in-memory cache
     deps.conversation_cache.invalidate(session_key)
