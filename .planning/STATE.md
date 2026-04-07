@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Proactive Architecture Evolution
 status: unknown
-last_updated: "2026-04-07T13:39:12.067Z"
+last_updated: "2026-04-07T13:39:14.842Z"
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 22
-  completed_plans: 11
+  completed_plans: 12
 ---
 
 # Project State
@@ -18,16 +18,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-06)
 
 **Core value:** An AI that knows you deeply, grows with you continuously, and reaches out to you first — on your machine, under your full control.
-**Current focus:** Phase 01 — skill-architecture
+**Current focus:** Phase 05 — browser-tool
 
 ## Current Position
 
 Phase: 05 (browser-tool) — EXECUTING
-Plan: 1 of 4 complete (Plan 02 next)
+Plan: 2 of 4 complete (Plan 03 next)
 Status: Executing Phase 05
-Last activity: 2026-04-07 -- Phase 05 Plan 01 completed
+Last activity: 2026-04-07 -- Phase 05 Plan 02 completed
 
-Progress: [######░░░░░░░░░░░░░░░░░░░░░░░] 10/22 plans complete
+Progress: [######░░░░░░░░░░░░░░░░░░░░░░░] 12/22 plans complete
 
 ## Pre-Work Checklist
 
@@ -63,6 +63,9 @@ Before starting Phase 1:
 - [Phase 03-subagent-system]: ProgressReporter.stop() does not await cancellation — safe for both sync and async callers
 - [Phase 03-subagent-system]: AgentRegistry._task_refs is a GC anchor set; task cancellation uses name convention agent-<id>
 - [Phase 04-onboarding-wizard-v2]: Only sbs_the_creator seeded by wizard; domain layer writes both interests dict and active_domains list for compiler consumption; verify_steps import deferred in setup command
+- [Phase 03-subagent-system]: agent_registry initialized in FastAPI lifespan (not _deps.py module level) to avoid event-loop issues at import time
+- [Phase 05-browser-tool]: DDGS imported lazily inside _search_ddgs_sync() for graceful ImportError fallback in async search()
+- [Phase 05-browser-tool]: Module-level _last_request_time monotonic float provides per-process rate limiting without external state
 
 ### Pending Todos
 

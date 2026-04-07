@@ -121,6 +121,16 @@ None - no external service configuration required. `trafilatura` is optional; th
 - Plan 05-03 (wiring fetch_and_summarize into the skill pipeline) requires Phase 01 SkillRunner to be available.
 - The `format_for_context()` function is the injection point for Plan 05-03 — it produces the text block to prepend to the LLM system/user prompt.
 
+## Self-Check: PASSED
+
+- FOUND: ~/.synapse/skills/browser/SKILL.md
+- FOUND: ~/.synapse/skills/browser/scripts/__init__.py
+- FOUND: ~/.synapse/skills/browser/scripts/fetch_and_summarize.py
+- FOUND: requirements-optional.txt (trafilatura line confirmed)
+- FOUND: .planning/phases/05-browser-tool/05-01-SUMMARY.md
+- FOUND: commit 8df5a70 (feat: browser skill + trafilatura dependency)
+- FOUND: commit d0957ac (docs: plan metadata)
+
 ---
 *Phase: 05-browser-tool*
 *Completed: 2026-04-07*
