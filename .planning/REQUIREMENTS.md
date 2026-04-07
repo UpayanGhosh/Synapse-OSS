@@ -48,7 +48,7 @@ Requirements for the v2.0 milestone. Maps to vision document Phases 5–9.
 - [x] **ONBOARD2-01**: `python -m synapse setup` completes full setup — model selection, API key entry, validation, persona configuration — in under 5 minutes for a fresh user
 - [x] **ONBOARD2-02**: The wizard builds an initial SBS profile via targeted questions (communication style, interests, privacy preferences) — user reaches a meaningful baseline without prior conversations
 - [x] **ONBOARD2-03**: The wizard offers WhatsApp history import during setup — python scripts/import_whatsapp.py is presented as an option, not a required step
-- [ ] **ONBOARD2-04**: The wizard supports `--non-interactive` flag with env vars for headless/Docker/CI setups
+- [x] **ONBOARD2-04**: The wizard supports `--non-interactive` flag with env vars for headless/Docker/CI setups
 - [x] **ONBOARD2-05**: After wizard completion, `python -m synapse setup --verify` confirms all configured providers and channels respond correctly
 
 ### Browser Tool (Phase 9)
@@ -130,7 +130,7 @@ To be detailed at v4.0 milestone initialization.
 | ONBOARD2-01 | Phase 4 | Complete |
 | ONBOARD2-02 | Phase 4 | Complete |
 | ONBOARD2-03 | Phase 4 | Complete |
-| ONBOARD2-04 | Phase 4 | Pending |
+| ONBOARD2-04 | Phase 4 | Complete |
 | ONBOARD2-05 | Phase 4 | Complete |
 | BROWSE-01 | Phase 5 | Complete |
 | BROWSE-02 | Phase 5 | Complete |

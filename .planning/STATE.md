@@ -66,6 +66,7 @@ Before starting Phase 1:
 - [Phase 03-subagent-system]: agent_registry initialized in FastAPI lifespan (not _deps.py module level) to avoid event-loop issues at import time
 - [Phase 05-browser-tool]: DDGS imported lazily inside _search_ddgs_sync() for graceful ImportError fallback in async search()
 - [Phase 05-browser-tool]: Module-level _last_request_time monotonic float provides per-process rate limiting without external state
+- [Phase 04-onboarding-wizard-v2]: Non-interactive SBS env vars deferred-imported inside try/except — zero cost for pipelines that don't use SBS seeding; SBS block placed after write_config() so SBS failure never impacts config write
 
 ### Pending Todos
 
@@ -86,6 +87,6 @@ None active. v2.0 ready to begin after branch merge.
 ## Session Continuity
 
 Last session: 2026-04-07
-Stopped at: Completed 05-browser-tool-02-PLAN.md — DuckDuckGo web search with rate limiting, SearchResult/SearchResponse dataclasses
+Stopped at: Completed 04-onboarding-wizard-v2/04-03-PLAN.md — non-interactive SBS env var seeding with validation
 Resume file: None
-Next step: Continue Phase 05-browser-tool from Plan 03
+Next step: Continue Phase 04-onboarding-wizard-v2 from Plan 04 (or continue Phase 05-browser-tool from Plan 03)
