@@ -1,12 +1,12 @@
 # Requirements: Synapse-OSS
 
-**Defined:** 2026-04-06 (v2.0) | 2026-04-08 (v3.0)
+**Defined:** 2026-04-06 (v2.0) | 2026-04-08 (v4.0)
 **Core Value:** An AI that knows you deeply, grows with you continuously, and reaches
 out to you first — on your machine, under your full control.
 
 ---
 
-## v3.0 Requirements — Bioinspired Memory Architecture
+## v4.0 Requirements — Bioinspired Memory Architecture
 
 Requirements derived from 29 research papers, 57 Q&As, 7 follow-ups.
 Master spec: `memory-vault/research/architecture-spec.md`.
@@ -131,9 +131,9 @@ Requirements for the v2.0 milestone. Maps to vision document Phases 5–9.
 
 ---
 
-## v4.0 Requirements (Deferred — Proactive Architecture Evolution)
+## v5.0 Requirements (Deferred — Proactive Architecture Evolution)
 
-To be detailed at v4.0 milestone initialization.
+To be detailed at v5.0 milestone initialization.
 
 ### Proactive Proposals
 - **PROACT-01**: Synapse observes patterns and proposes architecture extensions
@@ -151,9 +151,9 @@ To be detailed at v4.0 milestone initialization.
 
 ---
 
-## v5.0 Requirements (Deferred — The Jarvis Threshold)
+## v6.0 Requirements (Deferred — The Jarvis Threshold)
 
-To be detailed at v5.0 milestone initialization.
+To be detailed at v6.0 milestone initialization.
 
 - A mature instance manages parts of the user's digital life
 - The AI has its own name, personality, and relationship — shaped through conversation
@@ -171,7 +171,7 @@ To be detailed at v5.0 milestone initialization.
 | Model fine-tuning | Synapse influences behavior via prompting, not weights |
 | Plugin marketplace with pip packages | Skills-as-directories is simpler, safer, AI-writable without code execution |
 | GPU-accelerated Hopfield | CPU-only for OSS accessibility; GPU path deferred to scaling milestone |
-| Multimodal memory (images, audio) | Text-only memory ceiling ~80% of human subsystems; multimodal is v5.0+ |
+| Multimodal memory (images, audio) | Text-only memory ceiling ~80% of human subsystems; multimodal is v6.0+ |
 | External vector DB migration | LanceDB sufficient for personal scale (<100K docs); Qdrant upgrade path documented only |
 | Real-time distributed memory sync | Per-user, single-machine architecture by design |
 
@@ -260,10 +260,10 @@ To be detailed at v5.0 milestone initialization.
 
 **Coverage:**
 - v2.0 requirements: 34 total (17 complete, 17 pending)
-- v3.0 requirements: 42 total (0 complete, 42 pending)
-- Mapped to phases: 34 (v2.0) + 42 (v3.0) = 76 total
+- v4.0 requirements: 42 total (0 complete, 42 pending)
+- Mapped to phases: 34 (v2.0) + 42 (v4.0) = 76 total
 - Unmapped: 0
 
 ---
-*Requirements defined: 2026-04-06 (v2.0) | 2026-04-08 (v3.0)*
-*Last updated: 2026-04-08 after v3.0 roadmap creation — all 42 v3.0 requirements mapped to phases 6-11*
+*Requirements defined: 2026-04-06 (v2.0) | 2026-04-08 (v4.0)*
+*Last updated: 2026-04-08 after v4.0 roadmap creation — all 42 v4.0 requirements mapped to phases 6-11*

@@ -2,11 +2,11 @@
 
 ---
 
-## v3.0 — Bioinspired Memory Architecture (CURRENT)
+## v4.0 — Bioinspired Memory Architecture (CURRENT)
 
 ### Overview
 
-v2.0 gave Synapse extensibility (skills, self-modification, subagents). v3.0 gives it a
+v2.0 gave Synapse extensibility (skills, self-modification, subagents). v4.0 gives it a
 human-calibrated memory. This milestone transforms the single-channel vector search into a
 neuroscience-inspired system covering ~65% of human memory subsystems: dual-channel retrieval,
 Ebbinghaus adaptive decay, two-phase CLS consolidation (SWS gist + REM association), Modern
@@ -16,11 +16,11 @@ repair, query intelligence, and a full embedding migration to bge-m3.
 The research basis is 29 papers, 57 Q&As, and 7 follow-ups consolidated into a master spec
 at `memory-vault/research/architecture-spec.md`. All 17 tunable parameters are locked.
 
-Phase numbering continues from v2.0 (last phase was 5). v3.0 phases are 6–11.
+Phase numbering continues from v2.0 (last phase was 5). v4.0 phases are 6–11.
 
 ### Phase Numbering
 
-- Integer phases (6–11): v3.0 milestone work
+- Integer phases (6–11): v4.0 milestone work
 - Decimal phases (N.1, N.2): Urgent insertions created via `/gsd-insert-phase`
 - v2.0 phases (0–5) archived below for reference
 
@@ -42,7 +42,7 @@ Phase numbering continues from v2.0 (last phase was 5). v3.0 phases are 6–11.
 RRF, the hemisphere isolation bug is fixed, and the query router classifies every incoming
 query before search begins.
 **Depends on**: v2.0 phases complete (refactor/optimize merged to main). Phase 6 is the
-foundation for all subsequent v3.0 phases.
+foundation for all subsequent v4.0 phases.
 **Requirements**: RETR-01, RETR-02, RETR-04, RETR-05
 **Success Criteria** (what must be TRUE):
   1. A keyword search ("what did I say about my Python project") returns results from the BM25/FTS5 channel that the dense-only path misses — confirmed by comparing result sets before and after
@@ -150,7 +150,7 @@ representation that all channels operate on — migrating mid-build would invali
 
 ---
 
-## Progress (v3.0)
+## Progress (v4.0)
 
 **Execution Order:**
 Phases execute in dependency order: 6 → 7 → 8 → 9 → 10 → 11
@@ -193,7 +193,7 @@ all channels live, full health/sessions API. 38 plans, 10 phases, 100% complete.
 **v2.0 (CURRENT):** The Adaptive Core — Phases 5–9 from the vision document.
 6 phases, est. 27+ plans.
 
-**v3.0 (CURRENT — Bioinspired Memory Architecture):** See above.
+**v4.0 (CURRENT — Bioinspired Memory Architecture):** See above.
 
 ### Phase Numbering
 
@@ -398,7 +398,7 @@ Phases execute in dependency order: 0 → 1 → 2 → 3 → 4 → 5
 
 ## Future Milestones
 
-### v4.0: Proactive Architecture Evolution (Target: 2027)
+### v5.0: Proactive Architecture Evolution (Target: 2027)
 Synapse stops waiting to be asked. It observes recurring patterns and proposes its own
 extensions. "You've asked me to check your email every morning 5 times this week. Want
 me to just do that automatically?" Same consent protocol — but Synapse initiates.
@@ -409,7 +409,7 @@ Key capabilities:
 - Suppression: user can mute proposals per category
 - Divergence metric: track how differently each instance has evolved from the baseline
 
-### v5.0: The Jarvis Threshold (Target: 2028)
+### v6.0: The Jarvis Threshold (Target: 2028)
 A mature Synapse instance manages parts of the user's digital life. It has its own name,
 its own personality, its own relationship with its user — shaped entirely through
 conversation, not configuration panels.

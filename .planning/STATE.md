@@ -1,6 +1,6 @@
 ---
 gsd_state_version: 1.0
-milestone: v3.0
+milestone: v4.0
 milestone_name: Bioinspired Memory Architecture
 status: roadmap-created
 last_updated: "2026-04-08T00:00:00.000Z"
@@ -18,14 +18,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-08)
 
 **Core value:** An AI that knows you deeply, grows with you continuously, and reaches out to you first — on your machine, under your full control.
-**Current focus:** v3.0 milestone — Bioinspired Memory Architecture — roadmap created, ready for Phase 6 planning
+**Current focus:** v4.0 milestone — Bioinspired Memory Architecture — roadmap created, ready for Phase 6 planning
 
 ## Current Position
 
 Phase: Not started (roadmap created)
 Plan: —
 Status: Roadmap created — ready for `/gsd-plan-phase 6`
-Last activity: 2026-04-08 — v3.0 roadmap created (6 phases, 42 requirements mapped)
+Last activity: 2026-04-08 — v4.0 roadmap created (6 phases, 42 requirements mapped)
 
 Progress: [░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 0/0 plans complete
 
@@ -44,11 +44,11 @@ Before starting Phase 6:
 |-----------|--------|--------|-------------|
 | v1.0 | 2026-03-03 | COMPLETE | OSS independence — all OpenClaw deps removed |
 | v2.0 | 2026 | IN PROGRESS | The Adaptive Core — phases 0-2 remaining (skill system, self-mod, session persistence) |
-| v3.0 | 2026 | CURRENT | Bioinspired Memory Architecture — neuroscience-inspired retrieval, consolidation, decay |
-| v4.0 | 2027 | Future | Proactive Architecture Evolution |
-| v5.0 | 2028 | Future | The Jarvis Threshold |
+| v4.0 | 2026 | CURRENT | Bioinspired Memory Architecture — neuroscience-inspired retrieval, consolidation, decay |
+| v5.0 | 2027 | Future | Proactive Architecture Evolution |
+| v6.0 | 2028 | Future | The Jarvis Threshold |
 
-## v3.0 Phase Summary
+## v4.0 Phase Summary
 
 | Phase | Name | Requirements | Status |
 |-------|------|--------------|--------|
@@ -59,7 +59,7 @@ Before starting Phase 6:
 | 10 | Query Intelligence + Contextual Retrieval | ASSOC-03–06, CONSOL-05–06, QUERY-01–03 | Not started |
 | 11 | Embedding Migration | EMBED-01–03 | Not started |
 
-**Total v3.0 requirements:** 42 across 7 categories
+**Total v4.0 requirements:** 42 across 7 categories
 **Mapped:** 42/42
 
 ## Accumulated Context
@@ -69,7 +69,7 @@ Before starting Phase 6:
 - v2.0 initialized from GitHub Discussion #29 (vision document)
 - Phase 2 (Self-Modification) MUST ship together with rollback — non-negotiable
 - Skills-as-directories chosen over Python plugin system: simpler, AI-writable, no pip install
-- v3.0 research basis: 29 papers, 57 Q&As, 7 follow-ups → architecture-spec.md (master spec)
+- v4.0 research basis: 29 papers, 57 Q&As, 7 follow-ups → architecture-spec.md (master spec)
 - All 17 tunable parameters locked with paper-sourced defaults
 - RRF k=20 (not k=60) tuned for personal scale (<100K docs)
 - bge-m3 chosen over nomic-embed-text for multilingual + Matryoshka support
@@ -101,7 +101,7 @@ None active. Roadmap created. Ready for phase planning.
 
 ## Session Continuity
 
-Last session: 2026-04-08 (v3.0 roadmap creation — 6 phases, 42 requirements, 100% coverage)
+Last session: 2026-04-08 (v4.0 roadmap creation — 6 phases, 42 requirements, 100% coverage)
 Stopped at: Roadmap written
 Resume file: None
 Next step: `/gsd-plan-phase 6` — Retrieval Foundation

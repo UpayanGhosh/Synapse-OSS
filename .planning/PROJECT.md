@@ -47,7 +47,7 @@ first — all on your machine, with your data, under your full control.
 - [ ] `python -m synapse setup` completes full setup in under 5 minutes
 - [ ] Browser tool provides live web access during chat
 
-<!-- v3.0 — Bioinspired Memory Architecture -->
+<!-- v4.0 — Bioinspired Memory Architecture -->
 - [ ] Hybrid retrieval: BM25 via FTS5 + dense via LanceDB + RRF fusion
 - [ ] MMR diversification prevents redundant retrieval results
 - [ ] Memory strength tracks access frequency with Ebbinghaus decay curve
@@ -70,7 +70,7 @@ first — all on your machine, with your data, under your full control.
 - Mobile native app — web-first; mobile access via channels (WhatsApp, Telegram)
 - Model fine-tuning — Synapse influences behavior through prompting, not weights
 
-## Current Milestone: v3.0 Bioinspired Memory Architecture
+## Current Milestone: v4.0 Bioinspired Memory Architecture
 
 **Goal:** Transform Synapse's memory from single-channel vector search into a neuroscience-inspired
 system with dual retrieval, adaptive forgetting, consolidation, associative recall, and contextual
@@ -157,4 +157,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-08 after v3.0 milestone initialization — Bioinspired Memory Architecture*
+*Last updated: 2026-04-08 after v4.0 milestone initialization — Bioinspired Memory Architecture*
