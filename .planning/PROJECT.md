@@ -33,19 +33,14 @@ first — all on your machine, with your data, under your full control.
 
 ### Active
 
-<!-- v2.0 — The Adaptive Core -->
-- [ ] User can define a skill as a directory (SKILL.md + scripts/ + references/)
-- [ ] Skills are discovered at startup from ~/.synapse/skills/
-- [ ] Skills are routed by description match, not hardcoded dispatch
-- [ ] A skill-creator skill generates new skills from within conversation
-- [ ] Every Zone 2 modification follows: explain → confirm → execute → snapshot
-- [ ] User can roll back to any prior snapshot by date or natural language
-- [ ] Auto-revert fires on any modification that breaks the core loop
-- [ ] Zone 1 (gateway/auth/core loop) is immutable to model writes
-- [ ] Sub-agents can be spawned for parallel or long-running work
-- [ ] Sub-agent results return to the parent conversation
-- [ ] `python -m synapse setup` completes full setup in under 5 minutes
-- [ ] Browser tool provides live web access during chat
+<!-- v3.0 — OpenClaw Feature Harvest -->
+- [ ] User can chat via any of 10+ LLM providers without code changes (OpenAI, Anthropic, DeepSeek, Mistral, Together)
+- [ ] 10+ bundled skills available out of the box (weather, reminders, notes, web scrape, translate, summarize, image describe)
+- [ ] User receives voice replies on WhatsApp via TTS (ElevenLabs or edge-tts)
+- [ ] User can request image generation ("draw me X") and receive it in chat
+- [ ] Cron jobs run in isolated agent contexts with separate memory
+- [ ] Web control panel provides real-time interactive dashboard with SSE
+- [ ] User can have real-time voice conversations via streaming transcription
 
 ### Out of Scope
 
@@ -56,12 +51,24 @@ first — all on your machine, with your data, under your full control.
 
 ## Context
 
-**What's shipped:** v1.0 OSS independence milestone is complete (all 10 phases, 38 plans).
-Synapse-OSS now runs on any machine with zero OpenClaw dependency. All channels are live.
-Memory, SBS, Dual Cognition, and Proactive outreach are operational.
+**What's shipped:**
+- v1.0 OSS independence (10 phases, 38 plans) — all channels, memory, SBS, Dual Cognition, proactive outreach
+- v2.0 Proactive Architecture (6 phases, 22 plans) — skill system, safe self-modification, subagents, onboarding wizard v2, browser tool, embedding refactor, Qdrant→LanceDB, ollama made optional, Docker removed
 
-**Current branch:** `refactor/optimize` — KG pipeline refactored (async LLM-router
-extraction, Qdrant removed). Merge to `develop` → `main` before v2.0 work begins.
+**Current branch:** `develop` — v2.0 merged and pushed (2026-04-08). Ready for v3.0 work.
+
+## Current Milestone: v3.0 OpenClaw Feature Harvest
+
+**Goal:** Port high-value design patterns from the OpenClaw TypeScript codebase (6000+ files, 47 providers, 53 skills) into Synapse-OSS Python — concepts not code, depth not breadth.
+
+**Target features:**
+- Expanded LLM provider routing (OpenAI, Anthropic native, DeepSeek, Mistral, Together)
+- Bundled skills library (~10 most useful: weather, reminders, notes, translate, summarize)
+- TTS / voice output (ElevenLabs or edge-tts for WhatsApp voice replies)
+- Image generation (DALL-E/Flux via API)
+- Cron with isolated agents (each job runs in its own agent context)
+- Web control panel (interactive real-time dashboard, not just static HTML)
+- Realtime voice streaming (streaming Whisper or WebRTC for live voice chat)
 
 **Architecture zones (non-negotiable):**
 - Zone 1 (immutable): API gateway, auth, keys, core message loop, self-modification
@@ -115,4 +122,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-07 after Phase 01 (skill-architecture) completion — skill system live, 90 tests passing, UAT verified*
+*Last updated: 2026-04-08 — v3.0 milestone started (OpenClaw Feature Harvest)*
