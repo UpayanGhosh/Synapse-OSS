@@ -33,19 +33,13 @@ first — all on your machine, with your data, under your full control.
 
 ### Active
 
-<!-- v2.0 — The Adaptive Core (phases 0-2 remaining) -->
-- [ ] User can define a skill as a directory (SKILL.md + scripts/ + references/)
-- [ ] Skills are discovered at startup from ~/.synapse/skills/
-- [ ] Skills are routed by description match, not hardcoded dispatch
-- [ ] A skill-creator skill generates new skills from within conversation
-- [ ] Every Zone 2 modification follows: explain → confirm → execute → snapshot
-- [ ] User can roll back to any prior snapshot by date or natural language
-- [ ] Auto-revert fires on any modification that breaks the core loop
-- [ ] Zone 1 (gateway/auth/core loop) is immutable to model writes
-- [ ] Sub-agents can be spawned for parallel or long-running work
-- [ ] Sub-agent results return to the parent conversation
-- [ ] `python -m synapse setup` completes full setup in under 5 minutes
-- [ ] Browser tool provides live web access during chat
+<!-- v3.0 — OpenClaw Feature Harvest (IN PROGRESS on develop) -->
+- [ ] LLM provider expansion (OpenRouter, Groq, Cohere, Perplexity, budget-fallback)
+- [ ] Bundled skills library (summarizer, translator, code-reviewer, file-ops, calendar)
+- [ ] TTS voice output — speak replies via channel-native audio
+- [ ] Image generation — gpt-image-1 / DALL-E integration with hemisphere guard
+- [ ] Cron wiring + web control panel dashboard
+- [ ] Realtime voice streaming (bidirectional)
 
 <!-- v4.0 — Bioinspired Memory Architecture -->
 - [ ] Hybrid retrieval: BM25 via FTS5 + dense via LanceDB + RRF fusion
@@ -70,7 +64,7 @@ first — all on your machine, with your data, under your full control.
 - Mobile native app — web-first; mobile access via channels (WhatsApp, Telegram)
 - Model fine-tuning — Synapse influences behavior through prompting, not weights
 
-## Current Milestone: v4.0 Bioinspired Memory Architecture
+## Next Milestone: v4.0 Bioinspired Memory Architecture (after v3.0)
 
 **Goal:** Transform Synapse's memory from single-channel vector search into a neuroscience-inspired
 system with dual retrieval, adaptive forgetting, consolidation, associative recall, and contextual
@@ -95,9 +89,7 @@ integrity — covering ~65% of human memory subsystems.
 
 ## Context
 
-**What's shipped:** v1.0 OSS independence (10 phases, 38 plans). v2.0 phases 3-5 complete
-(subagents, onboarding wizard v2, browser tool). v2.0 phases 0-2 remain (session persistence,
-skill architecture, self-mod + rollback).
+**What's shipped:** v1.0 OSS independence (10 phases, 38 plans). v2.0 The Adaptive Core (6 phases, all complete — skills, self-mod, subagents, browser). v3.0 OpenClaw Feature Harvest in progress on `develop` (providers, TTS, image gen, voice — phases 6-11).
 
 **Current branch:** `refactor/optimize` — KG pipeline refactored (async LLM-router
 extraction, Qdrant removed). Merge to `develop` → `main` before execution begins.

@@ -2,11 +2,11 @@
 
 ---
 
-## v4.0 — Bioinspired Memory Architecture (CURRENT)
+## v4.0 — Bioinspired Memory Architecture (NEXT — after v3.0)
 
 ### Overview
 
-v2.0 gave Synapse extensibility (skills, self-modification, subagents). v4.0 gives it a
+v2.0 gave Synapse extensibility (skills, self-modification, subagents). v3.0 gives it new capabilities (providers, TTS, image gen, voice). v4.0 gives it a
 human-calibrated memory. This milestone transforms the single-channel vector search into a
 neuroscience-inspired system covering ~65% of human memory subsystems: dual-channel retrieval,
 Ebbinghaus adaptive decay, two-phase CLS consolidation (SWS gist + REM association), Modern
@@ -168,7 +168,7 @@ Phases execute in dependency order: 6 → 7 → 8 → 9 → 10 → 11
 
 ---
 
-## v2.0 — The Adaptive Core (IN PROGRESS — phases 0-2 remaining)
+## v2.0 — The Adaptive Core (COMPLETE — 2026-04-08)
 
 ### Overview
 
@@ -190,10 +190,11 @@ skills as its output format — every modification produces a skill, not raw cod
 **v1.0 (COMPLETE — 2026-03-03):** OSS independence — all OpenClaw deps removed,
 all channels live, full health/sessions API. 38 plans, 10 phases, 100% complete.
 
-**v2.0 (CURRENT):** The Adaptive Core — Phases 5–9 from the vision document.
-6 phases, est. 27+ plans.
+**v2.0 (COMPLETE — 2026-04-08):** The Adaptive Core — 6 phases, all complete.
 
-**v4.0 (CURRENT — Bioinspired Memory Architecture):** See above.
+**v3.0 (IN PROGRESS — develop branch):** OpenClaw Feature Harvest — phases 6-11 (LLM provider expansion, skills library, TTS, image gen, cron v2, dashboard, realtime voice).
+
+**v4.0 (NEXT — this branch):** Bioinspired Memory Architecture — See above.
 
 ### Phase Numbering
 

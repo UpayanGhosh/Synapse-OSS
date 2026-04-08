@@ -43,8 +43,9 @@ Before starting Phase 6:
 | Milestone | Target | Status | Description |
 |-----------|--------|--------|-------------|
 | v1.0 | 2026-03-03 | COMPLETE | OSS independence — all OpenClaw deps removed |
-| v2.0 | 2026 | IN PROGRESS | The Adaptive Core — phases 0-2 remaining (skill system, self-mod, session persistence) |
-| v4.0 | 2026 | CURRENT | Bioinspired Memory Architecture — neuroscience-inspired retrieval, consolidation, decay |
+| v2.0 | 2026-04-08 | COMPLETE | The Adaptive Core — skills, self-mod, subagents, browser |
+| v3.0 | 2026 | IN PROGRESS | OpenClaw Feature Harvest — providers, skills library, TTS, image gen, cron v2, dashboard, voice |
+| v4.0 | 2026 | NEXT | Bioinspired Memory Architecture — neuroscience-inspired retrieval, consolidation, decay |
 | v5.0 | 2027 | Future | Proactive Architecture Evolution |
 | v6.0 | 2028 | Future | The Jarvis Threshold |
 
