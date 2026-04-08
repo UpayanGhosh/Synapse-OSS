@@ -5,8 +5,10 @@ echo "╚═══════════════════════�
 echo ""
 
 echo "=== Processes ==="
+EXPECTED=1
+grep -q '"ollama"' ~/.synapse/synapse.json 2>/dev/null && EXPECTED=2
 PROCS=$(pgrep -fl "uvicorn|ollama" 2>/dev/null | grep -v "vscode\|isort" | wc -l)
-echo "Running: $PROCS (expected: 2)"
+echo "Running: $PROCS (expected: $EXPECTED)"
 pgrep -fl "uvicorn|ollama" 2>/dev/null | grep -v "vscode\|isort"
 echo ""
 

@@ -21,7 +21,7 @@ def get_embedding(text):
 
 
 def extract_structured_data(content):
-    """Uses Local LLM to extract facts and graph triples."""
+    """Uses configured LLM provider to extract facts and graph triples."""
     prompt = f"""
     Analyze the following text and extract:
     1. A list of 'atomic_facts' (short, independent statements).

@@ -99,7 +99,6 @@ if %ERRORLEVEL% EQU 0 (
         where ollama >nul 2>&1
         if %ERRORLEVEL% EQU 0 (
             start "Ollama" /min ollama serve
-            start "Ollama Pull" /min ollama pull nomic-embed-text
             echo    [OK] Started.
         ) else (
             echo    [--] Ollama not installed - local embedding and The Vault will be disabled.
