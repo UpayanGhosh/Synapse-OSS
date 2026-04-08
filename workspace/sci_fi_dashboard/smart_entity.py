@@ -5,22 +5,41 @@ from flashtext import KeywordProcessor
 
 
 class EntityGate:
-    def __init__(self, entities_file="entities.json"):
+    def __init__(self, graph_store=None, entities_file="entities.json"):
         self.keyword_processor = KeywordProcessor()
         # Resolve path relative to this script
         base_dir = os.path.dirname(os.path.abspath(__file__))
         self.entities_file = os.path.join(base_dir, entities_file)
-        self.load_entities()
+        self._load_from_graph(graph_store)
+        self._load_aliases(self.entities_file)
 
-    def load_entities(self):
-        """Loads entities from a JSON file in the format {StandardName: [Variation1, Variation2]}"""
-        if os.path.exists(self.entities_file):
-            with open(self.entities_file) as f:
-                entities_dict = json.load(f)
-                self.keyword_processor.add_keywords_from_dict(entities_dict)
-                print(f"[OK] Loaded {len(entities_dict)} entity groups from {self.entities_file}")
-        else:
-            print(f"[WARN] Warning: Entities file {self.entities_file} not found. Starting empty.")
+    def _load_from_graph(self, graph_store) -> None:
+        """Loads entity names from a SQLiteGraph (or duck-typed equivalent) into FlashText."""
+        if graph_store is None:
+            print("[WARN] EntityGate: no graph_store provided — skipping KG load")
+            return
+        names = graph_store.get_all_node_names()
+        for name in names:
+            self.keyword_processor.add_keyword(name)
+        print(f"[OK] EntityGate: loaded {len(names)} entities from knowledge graph")
+
+    def _load_aliases(self, entities_file: str) -> None:
+        """Merges optional alias overrides from a JSON file on top of KG-loaded names."""
+        if not os.path.exists(entities_file):
+            print(f"[WARN] EntityGate: alias file {entities_file} not found — skipping")
+            return
+        with open(entities_file, encoding="utf-8") as f:
+            raw = json.load(f)
+        if not raw:
+            # Empty dict is normal for OSS repo — skip silently
+            return
+        # Normalize: values may be lists (variations) or ints (counts from bulk extractor)
+        aliases_dict = {
+            k: v if isinstance(v, list) else [k]
+            for k, v in raw.items()
+        }
+        self.keyword_processor.add_keywords_from_dict(aliases_dict)
+        print(f"[OK] EntityGate: merged {len(aliases_dict)} alias groups from {entities_file}")
 
     def extract_entities(self, text):
         """
@@ -50,7 +69,7 @@ class EntityGate:
 
 if __name__ == "__main__":
     # Quick Test
-    gate = EntityGate()
+    gate = EntityGate()   # no graph, no aliases — still runnable standalone
 
     test_sentences = [
         "I need to fix the py script for synapse.",

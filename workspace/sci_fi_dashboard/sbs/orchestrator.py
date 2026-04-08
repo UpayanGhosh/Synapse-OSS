@@ -4,6 +4,8 @@ import re
 from datetime import datetime
 from pathlib import Path
 
+from sci_fi_dashboard.pipeline_emitter import get_emitter as _get_emitter
+
 from .ingestion.logger import ConversationLogger
 from .ingestion.schema import RawMessage
 from .injection.compiler import PromptCompiler
@@ -123,6 +125,13 @@ class SBSOrchestrator:
 
         # C4+M5: Run realtime processing FIRST, copy results into message, THEN log
         rt_results = self.realtime.process(message)
+        try: _get_emitter().emit("sbs.layer_read", {
+            "layer_name": "emotional_state",
+            "mood": rt_results.get("rt_mood_signal", ""),
+            "sentiment": rt_results.get("rt_sentiment", ""),
+            "language": rt_results.get("rt_language", ""),
+        })
+        except Exception: pass
         message.rt_sentiment = rt_results.get("rt_sentiment")
         message.rt_language = rt_results.get("rt_language")
         message.rt_mood_signal = rt_results.get("rt_mood_signal")
@@ -159,7 +168,15 @@ class SBSOrchestrator:
         Returns the complete system prompt with injected persona profile.
         Optionally appends a proactive awareness block from the ProactiveAwarenessEngine.
         """
+        try: _get_emitter().emit("sbs.read_start", {"target": getattr(self, "_target", "unknown")})
+        except Exception: pass
         persona_block = self.compiler.compile()
+        try: _get_emitter().emit("sbs.compile_done", {
+            "total_chars": len(persona_block),
+            "token_estimate": len(persona_block) // 4,
+            "layers_included": 7,
+        })
+        except Exception: pass
         parts = []
         if base_instructions:
             parts.append(base_instructions)

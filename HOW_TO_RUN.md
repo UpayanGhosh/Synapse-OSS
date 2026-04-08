@@ -23,7 +23,7 @@ Your Phone (WhatsApp)
   │  (cloud LLMs)    │  ← REQUIRED for memory & ingestion   │
   └──────────────────┴──────────────────────────────────────┘
         ↓
-  Qdrant + SQLite            ← memory databases
+  LanceDB + SQLite           ← memory databases (embedded, zero Docker)
 ```
 
 **What runs on your machine:** Ollama, the Synapse API gateway, the Baileys WhatsApp bridge, and the databases.
@@ -51,7 +51,7 @@ Your Phone (WhatsApp)
 
 ## Part 1 — Install Prerequisites
 
-You need **four things** before you start. Install them in order.
+You need **three things** before you start. Install them in order. (Docker is no longer required — LanceDB is embedded.)
 
 ---
 
@@ -102,26 +102,7 @@ You need version **3.11 or higher**. 3.12 and 3.13 also work.
 
 ---
 
-### 1.3 — Docker Desktop
-
-Docker runs the Qdrant vector database (long-term memory storage).
-
-**Check if you have it:**
-```bash
-docker --version
-docker info   # Should say "Server: Docker Engine" — if this fails, Docker isn't running
-```
-
-**Install:**
-- **macOS:** [docs.docker.com/desktop/install/mac-install](https://docs.docker.com/desktop/install/mac-install/)
-- **Windows:** [docs.docker.com/desktop/install/windows-install](https://docs.docker.com/desktop/install/windows-install/)
-- **Linux:** [docs.docker.com/desktop/install/linux-install](https://docs.docker.com/desktop/install/linux-install/) — or use Docker Engine without Desktop
-
-> **After installing Docker Desktop on Windows or Mac:** Launch the application and wait for the whale icon in the system tray to stop animating. Docker must be *running* before you start Synapse.
-
----
-
-### 1.4 — Ollama (Required — powers memory and ingestion)
+### 1.3 — Ollama (Required — powers memory and ingestion)
 
 Ollama runs the `nomic-embed-text` embedding model locally. This model converts every
 message and memory into a 768-dimensional vector — the foundation of Synapse's semantic
@@ -400,7 +381,7 @@ Double-click `synapse_onboard.bat` in File Explorer. Or from a terminal:
 ### What the onboarding script does — step by step
 
 **Step 1: Checks your tools**
-Verifies Git, Python, Docker, and Ollama are installed and working. If Ollama is missing,
+Verifies Git, Python, and Ollama are installed and working. If Ollama is missing,
 it installs it automatically (via Homebrew on macOS, the official installer on Linux).
 Fails with a clear message if anything else is missing.
 
@@ -450,7 +431,7 @@ abort) so you can add a key later without re-running the full onboard.
 
 | Service | Purpose |
 |---------|---------|
-| Qdrant (Docker) | Vector database for semantic memory |
+| LanceDB (embedded) | Vector database for semantic memory |
 | Ollama | Embedding model (`nomic-embed-text`) — required for memory ingestion |
 | Synapse API Gateway | The brain — handles memory, routing, persona |
 
@@ -506,7 +487,7 @@ synapse_start.bat
 ```
 
 The start script automatically:
-- Starts Docker / Qdrant if not already running
+- Initializes LanceDB vector store (embedded, no Docker needed)
 - Starts Ollama (required for memory embedding)
 - Starts the Synapse API Gateway (which in turn spawns the Baileys WhatsApp bridge)
 
@@ -541,7 +522,7 @@ synapse_stop.bat
 Expected output:
 ```
 [OK] Gateway    (8000)
-[OK] Qdrant     (6333)
+[OK] LanceDB    (embedded)
 [OK] Ollama     (11434)
 ```
 
@@ -553,7 +534,7 @@ is disabled — see the [Troubleshooting](#troubleshooting) section.
 ```cmd
 curl.exe http://localhost:8000/health
 curl.exe http://localhost:11434
-netstat -ano | findstr ":8000 :6333 :11434"
+netstat -ano | findstr ":8000 :11434"
 ```
 
 ---
@@ -563,7 +544,7 @@ netstat -ano | findstr ":8000 :6333 :11434"
 | Service | Port | Required | What it does |
 |---------|------|----------|--------------|
 | Synapse API Gateway | 8000 | Yes | Main brain — memory, routing, persona |
-| Qdrant | 6333 | Yes | Vector memory database |
+| LanceDB | embedded | Yes | Vector memory database (`~/.synapse/workspace/db/lancedb/`) |
 | Ollama | 11434 | Yes | Embedding model (`nomic-embed-text`) for ingestion |
 | Baileys Bridge | 5010 | Internal | WhatsApp bridge — managed by the gateway, not user-facing |
 
@@ -797,20 +778,16 @@ pip install -r requirements.txt
 
 ---
 
-### Docker errors — "Cannot connect to Docker daemon"
+### LanceDB fails to initialize
 
-Docker Desktop is not running. Launch Docker Desktop and wait for it to fully start
-(the whale icon stops animating). Then run the start script again.
-
----
-
-### Qdrant fails to start
+LanceDB is embedded and requires no external service. If it fails, check that
+`~/.synapse/workspace/db/lancedb/` is writable:
 
 ```bash
-# Remove and recreate the container
-docker rm -f antigravity_qdrant
-docker run -d --name antigravity_qdrant -p 6333:6333 -p 6334:6334 qdrant/qdrant
+ls -la ~/.synapse/workspace/db/
 ```
+
+If the directory is missing, it will be created automatically on first run.
 
 ---
 
@@ -971,7 +948,7 @@ docker compose up --build
 docker compose down
 ```
 
-This starts Qdrant and the Synapse API Gateway in containers.
+This starts the Synapse API Gateway in a container. LanceDB is embedded and requires no separate container.
 
 ---
 

@@ -90,7 +90,7 @@ _The bot creates these folders automatically on boot. If you don't see them yet,
 
 ## 3. The "Cold Start" Problem (Building the Soul)
 
-When you first boot this system, the databases (`memory.db` and Qdrant) are completely empty. Because the bot relies on RAG (Retrieval-Augmented Generation) to simulate a "humanoid" long-term memory, **it will temporarily feel like a normal, amnesiac AI** during your first few conversations.
+When you first boot this system, the databases (`memory.db` and LanceDB) are completely empty. Because the bot relies on RAG (Retrieval-Augmented Generation) to simulate a "humanoid" long-term memory, **it will temporarily feel like a normal, amnesiac AI** during your first few conversations.
 
 This is the "Cold Start" problem. To fix this and jump-start its "soul", you have two options:
 

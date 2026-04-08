@@ -59,28 +59,12 @@ def with_retry(retries: int = 3, delay: float = 0.5):
 # Paths
 WORKSPACE_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.append(WORKSPACE_ROOT)
-# Note: scripts/v2_migration might not exist yet or might be elsewhere,
-# but I will keep it as per user's provision.
-sys.path.append(os.path.join(WORKSPACE_ROOT, "scripts", "v2_migration"))
 
-try:
-    from scripts.v2_migration.qdrant_handler import QdrantVectorStore
-except ImportError:
-    # Fallback to absolute import if package structure is tricky
-    sys.path.append(os.path.join(WORKSPACE_ROOT, "sci_fi_dashboard"))
-    from retriever import QdrantVectorStore  # noqa: E402
-
-try:
-    import ollama
-
-    OLLAMA_AVAILABLE = True
-except ImportError:
-    ollama = None
-    OLLAMA_AVAILABLE = False
+from sci_fi_dashboard.vector_store import LanceDBVectorStore
+from sci_fi_dashboard.embedding import get_provider
+from sci_fi_dashboard.pipeline_emitter import get_emitter as _get_emitter
 
 # Configuration
-EMBEDDING_MODEL = "nomic-embed-text"
-OLLAMA_KEEP_ALIVE = "0"  # CRITICAL: zero persistence
 RERANK_MODEL_NAME = "ms-marco-TinyBERT-L-2-v2"
 
 
@@ -105,7 +89,7 @@ class MemoryEngine:
         Accept shared graph_store and keyword_processor from gateway
         to avoid duplication.
         """
-        self.qdrant_store = QdrantVectorStore()
+        self.vector_store = LanceDBVectorStore()
 
         # SHARED -- not duplicated
         self.graph_store = graph_store
@@ -114,63 +98,24 @@ class MemoryEngine:
         # Lazy-loaded reranker
         self._ranker = None
         self._ranker_lock = threading.Lock()
-        self._st_model = None  # lazy-loaded sentence-transformers fallback
 
-        if OLLAMA_AVAILABLE:
-            print("[OK] MemoryEngine initialized (Ollama available -- nomic-embed-text)")
+        # Embedding provider (via abstraction layer)
+        self._embed_provider = get_provider()
+        if self._embed_provider is not None:
+            print(f"[OK] MemoryEngine initialized (embedding: {self._embed_provider.info().name})")
         else:
-            print("[WARN] Ollama not found -- local embedding and The Vault disabled")
-            print("[WARN] Embedding fallback: sentence-transformers all-MiniLM-L6-v2 (384-dim)")
-            print("[WARN] If DB has existing 768-dim vectors, re-ingest to restore semantic search")
+            print("[WARN] MemoryEngine: No embedding provider available -- semantic search disabled")
         print("[OK] MemoryEngine initialized (shared graph, no duplication)")
 
-    def _sentence_transformer_embed(self, text: str) -> tuple:
-        """Fallback embedding using all-MiniLM-L6-v2 (384-dim). Lazy-loaded."""
-        if self._st_model is None:
-            from sentence_transformers import SentenceTransformer
-
-            self._st_model = SentenceTransformer("all-MiniLM-L6-v2")
-        return tuple(self._st_model.encode(text).tolist())
-
-    def __init_embedding_cache(self):
-        """Initialize manual embedding cache (not using @lru_cache to avoid caching failures)."""
-        if not hasattr(self, "_embedding_cache"):
-            self._embedding_cache = {}
-            self._embedding_cache_maxsize = 500
-
-    def get_embedding(self, text: str) -> tuple | None:
-        self.__init_embedding_cache()
-
-        if text in self._embedding_cache:
-            return self._embedding_cache[text]
-
-        result = self._compute_embedding(text)
-        if result is not None:
-            # Evict oldest entry if cache is full
-            if len(self._embedding_cache) >= self._embedding_cache_maxsize:
-                oldest_key = next(iter(self._embedding_cache))
-                del self._embedding_cache[oldest_key]
-            self._embedding_cache[text] = result
-        return result
-
-    def _compute_embedding(self, text: str) -> tuple | None:
-        """Compute embedding, returning None on failure (never caches failures)."""
-        if not OLLAMA_AVAILABLE:
-            try:
-                return self._sentence_transformer_embed(text)
-            except Exception as e:
-                print(f"[WARN] Sentence-transformer embedding failed: {e}")
-                return None
+    @lru_cache(maxsize=500)  # noqa: B019
+    def get_embedding(self, text: str) -> tuple:
+        if self._embed_provider is None:
+            return tuple([0.0] * 768)
         try:
-            response = ollama.embeddings(
-                model=EMBEDDING_MODEL,
-                prompt=text,
-                keep_alive=OLLAMA_KEEP_ALIVE,
-            )
-            return tuple(response["embedding"])
+            return tuple(self._embed_provider.embed_query(text))
         except Exception as e:
             print(f"[WARN] Embedding generation failed: {e}")
-            return None
+            return tuple([0.0] * self._embed_provider.dimensions)
 
     def _get_ranker(self) -> Ranker:
         if self._ranker is None:
@@ -196,14 +141,28 @@ class MemoryEngine:
         limit: int = 5,
         with_graph: bool = True,
         hemisphere: str = "safe",
+        seed_entities: list[str] | None = None,
     ) -> dict:
         start = time.time()
+        try: _get_emitter().emit("memory.query_start", {"text": text[:80]})
+        except Exception: pass
+        _query_start = time.time()
+
+        # First-person pronouns → include seed_entities in graph lookup even if
+        # no entity name appears literally in the query text ("my condition" etc.)
+        _FIRST_PERSON = {"i", "my", "me", "mine", "myself", "i've", "i'm", "i'd", "i'll"}
+        _is_self_referential = bool(_FIRST_PERSON & set(text.lower().split()))
 
         try:
             # Entity extraction (shared keyword_processor)
             entities = []
             if self.keyword_processor:
                 entities = self.keyword_processor.extract_keywords(text)
+
+            # Inject seed_entities for self-referential queries so the KG is
+            # consulted even when the user writes "my X" instead of their name
+            if seed_entities and (_is_self_referential or not entities):
+                entities = list(dict.fromkeys(entities + seed_entities))
 
             # Graph context (shared graph_store)
             graph_context = ""
@@ -227,8 +186,12 @@ class MemoryEngine:
             else:
                 routing = "Default (Hybrid)"
 
-            # Qdrant search with hemisphere filtering
+            # LanceDB search with hemisphere filtering
+            try: _get_emitter().emit("memory.embedding_start", {})
+            except Exception: pass
             query_vec_tuple = self.get_embedding(text)
+            try: _get_emitter().emit("memory.embedding_done", {"dims": len(query_vec_tuple) if hasattr(query_vec_tuple, "__len__") else 768})
+            except Exception: pass
             if query_vec_tuple is None:
                 return {
                     "results": [],
@@ -239,36 +202,24 @@ class MemoryEngine:
                 }
             query_vec = list(query_vec_tuple)
 
-            # Build hemisphere filter for Qdrant
+            # Build hemisphere filter (SQL WHERE clause for LanceDB)
             # Spicy sessions see both safe + spicy; safe sessions see only safe
-            from qdrant_client.http import models as qdrant_models
-
             if hemisphere == "spicy":
-                hemisphere_filter = qdrant_models.Filter(
-                    should=[
-                        qdrant_models.FieldCondition(
-                            key="hemisphere_tag",
-                            match=qdrant_models.MatchValue(value="safe"),
-                        ),
-                        qdrant_models.FieldCondition(
-                            key="hemisphere_tag",
-                            match=qdrant_models.MatchValue(value="spicy"),
-                        ),
-                    ]
-                )
+                hemisphere_filter = "hemisphere_tag IN ('safe', 'spicy')"
             else:
-                hemisphere_filter = qdrant_models.Filter(
-                    must=[
-                        qdrant_models.FieldCondition(
-                            key="hemisphere_tag",
-                            match=qdrant_models.MatchValue(value="safe"),
-                        )
-                    ]
-                )
+                hemisphere_filter = "hemisphere_tag = 'safe'"
 
-            q_results = self.qdrant_store.search(
+            try: _get_emitter().emit("memory.lancedb_search_start", {"hemisphere": hemisphere, "limit": limit * 3})
+            except Exception: pass
+            _search_start = time.time()
+            q_results = self.vector_store.search(
                 query_vec, limit=limit * 3, query_filter=hemisphere_filter
             )
+            try: _get_emitter().emit("memory.lancedb_search_done", {
+                "num_candidates": len(q_results),
+                "latency_ms": round((time.time() - _search_start) * 1000),
+            })
+            except Exception: pass
 
             # Apply 3-factor scoring: relevance + temporal + importance
             for r in q_results:
@@ -279,6 +230,12 @@ class MemoryEngine:
                 )
 
             q_results.sort(key=lambda x: x["combined_score"], reverse=True)
+            try:
+                _top_scored = q_results[:5]
+                _get_emitter().emit("memory.scoring", {
+                    "results": [{"text": r.get("metadata", {}).get("text", "")[:60], "score": round(r.get("combined_score", 0), 3), "semantic": round(r.get("score", 0), 3)} for r in _top_scored]
+                })
+            except Exception: pass
 
             # Smart gate -- fast path
             high_conf = [
@@ -292,12 +249,14 @@ class MemoryEngine:
             ]
 
             if len(high_conf) >= limit:
+                try: _get_emitter().emit("memory.fast_gate_hit", {"threshold": 0.80, "top_score": round(high_conf[0].get("combined_score", 0), 3) if high_conf else 0})
+                except Exception: pass
                 return {
                     "results": [
                         {
                             "content": x["metadata"]["text"],
                             "score": x["combined_score"],
-                            "source": "qdrant_fast",
+                            "source": "lancedb_fast",
                         }
                         for x in high_conf[:limit]
                     ],
@@ -307,29 +266,44 @@ class MemoryEngine:
                     "routing": routing,
                 }
 
-            # Reranker fallback
-            ranker = self._get_ranker()
-            candidates = [
-                {
-                    "id": r["id"],
-                    "text": r["metadata"]["text"],
-                    "meta": {"score": r["combined_score"]},
+            # Reranker fallback (gracefully degrades to scored results if reranker fails)
+            try: _get_emitter().emit("memory.reranking_start", {})
+            except Exception: pass
+            try:
+                ranker = self._get_ranker()
+                candidates = [
+                    {
+                        "id": r["id"],
+                        "text": r["metadata"]["text"],
+                        "meta": {"score": r["combined_score"]},
+                    }
+                    for r in q_results
+                ]
+                ranked = ranker.rerank(RerankRequest(query=text, passages=candidates))
+                return {
+                    "results": [
+                        {"content": x["text"], "score": float(x["score"]), "source": "lancedb_reranked"}
+                        for x in ranked[:limit]
+                    ],
+                    "tier": "reranked",
+                    "entities": entities,
+                    "graph_context": graph_context,
+                    "elapsed": f"{time.time() - start:.4f}s",
+                    "routing": routing,
                 }
-                for r in q_results
-            ]
-            ranked = ranker.rerank(RerankRequest(query=text, passages=candidates))
-
-            return {
-                "results": [
-                    {"content": x["text"], "score": float(x["score"]), "source": "qdrant_reranked"}
-                    for x in ranked[:limit]
-                ],
-                "tier": "reranked",
-                "entities": entities,
-                "graph_context": graph_context,
-                "elapsed": f"{time.time() - start:.4f}s",
-                "routing": routing,
-            }
+            except Exception as rerank_err:
+                print(f"[WARN] Reranker failed ({rerank_err}) — falling back to scored results")
+                return {
+                    "results": [
+                        {"content": r["metadata"]["text"], "score": r["combined_score"], "source": "lancedb_scored"}
+                        for r in q_results[:limit]
+                    ],
+                    "tier": "scored_fallback",
+                    "entities": entities,
+                    "graph_context": graph_context,
+                    "elapsed": f"{time.time() - start:.4f}s",
+                    "routing": routing,
+                }
         except Exception as e:
             print(f"[WARN] Memory query failed: {e}")
             return {
@@ -378,9 +352,9 @@ class MemoryEngine:
                 except Exception as vec_err:
                     print(f"[WARN] vec_items insert failed (vector search disabled?): {vec_err}")
 
-                # Also upsert to Qdrant for ANN search
+                # Also upsert to LanceDB for ANN search
                 try:
-                    self.qdrant_store.upsert_facts([{
+                    self.vector_store.upsert_facts([{
                         "id": doc_id,
                         "vector": list(embedding),
                         "metadata": {
@@ -390,8 +364,8 @@ class MemoryEngine:
                             "importance": importance,
                         },
                     }])
-                except Exception as qdrant_err:
-                    print(f"[WARN] Qdrant upsert failed: {qdrant_err}")
+                except Exception as lancedb_err:
+                    print(f"[WARN] LanceDB upsert failed: {lancedb_err}")
 
                 cursor.execute(
                     "UPDATE documents SET processed = 1 WHERE id = ?", (doc_id,)
@@ -502,22 +476,26 @@ class MemoryEngine:
             except ImportError:
                 pass
 
-            # Local fallback
-            if OLLAMA_AVAILABLE:
+            # Local Ollama fallback (optional import)
+            try:
+                import ollama
+
                 response = ollama.chat(
                     model="llama3.2:3b",
                     messages=[
                         {"role": "system", "content": system},
                         {"role": "user", "content": prompt},
                     ],
-                    keep_alive=OLLAMA_KEEP_ALIVE,
+                    keep_alive="0",
                 )
                 return {
                     "response": response["message"]["content"],
                     "model": "llama3.2:3b",
                     "source": "local_fallback",
                 }
-            else:
-                return {"error": "Ollama not available and cloud LLM router unavailable"}
+            except ImportError:
+                pass
+
+            return {"error": "No LLM backend available (cloud router and local Ollama both unavailable)"}
         except Exception as e:
             return {"error": str(e)}

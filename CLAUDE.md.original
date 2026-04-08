@@ -10,7 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ./synapse_onboard.sh        # Mac/Linux
 synapse_onboard.bat         # Windows (double-click or run from cmd)
 
-# Start all services (Qdrant, Ollama, API Gateway, OpenClaw)
+# Start all services (Ollama, API Gateway)
 ./synapse_start.sh          # Mac/Linux
 synapse_start.bat           # Windows (double-click or run from cmd)
 
@@ -161,7 +161,7 @@ All known race conditions resolved (see `workspace/Vulnerabilities.md`):
 |---------|------|
 | API Gateway (FastAPI) | 8000 |
 | Memory/tools server | 8989 |
-| Qdrant | 6333 |
+| LanceDB | embedded |
 | Ollama | 11434 |
 | OpenClaw OAuth proxy | 8080 |
 

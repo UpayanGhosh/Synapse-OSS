@@ -1,14 +1,10 @@
 """
-Retriever Module -- Queries memory.db using sentence-transformers for vector search.
+Retriever Module -- Queries memory.db using the EmbeddingProvider abstraction for vector search.
 
-Uses all-MiniLM-L6-v2 for embedding (matching the PC build) and sqlite-vec
+Uses the configured EmbeddingProvider (via get_provider()) for embeddings, with sqlite-vec
 for cosine distance search against both atomic_facts_vec and vec_items tables.
 
-NOTE: The existing DB was built with `nomic-embed-text` via Ollama. This
-retriever provides a fallback path using sentence-transformers for when
-Ollama is not available. If Ollama IS running, we prefer it for embedding
-consistency. Otherwise, we fall back to FTS (full-text search) which works
-perfectly without any embedding model at all.
+Falls back to FTS (full-text search) if no embedding provider is available.
 """
 
 import json
@@ -21,70 +17,24 @@ try:
 except ImportError:
     from db import get_db_connection
 
-# --- Configuration ---
-# DB_PATH is now managed by db.py, but we keep a reference if needed for other utils
-# or we can just rely entirely on get_db_connection()
-
-# Try to use Ollama embeddings first (same model as DB was built with)
-EMBEDDING_MODEL_OLLAMA = "nomic-embed-text"
-
-# Sentence-Transformers fallback
-EMBEDDING_MODEL_ST = "all-MiniLM-L6-v2"
-
-# Globals
-_embedder = None
-_embed_mode = None  # "ollama" or "sentence-transformers" or "fts_only"
-
-
-def _init_embedder():
-    """Initialize the embedding model. Try Ollama first, then sentence-transformers, then FTS-only."""
-    global _embedder, _embed_mode
-
-    if _embed_mode is not None:
-        return
-
-    # 1. Try Ollama (same model as DB)
+try:
+    from sci_fi_dashboard.embedding import get_provider
+except ImportError:
     try:
-        import ollama
-
-        # Quick test
-        result = ollama.embeddings(model=EMBEDDING_MODEL_OLLAMA, prompt="test")
-        if result and "embedding" in result:
-            _embed_mode = "ollama"
-            print(f"[OK] Retriever: Using Ollama ({EMBEDDING_MODEL_OLLAMA}) -- exact DB match")
-            return
-    except Exception:
-        pass
-
-    # 2. Try sentence-transformers
-    try:
-        from sentence_transformers import SentenceTransformer
-
-        _embedder = SentenceTransformer(EMBEDDING_MODEL_ST)
-        _embed_mode = "sentence-transformers"
-        print(f"[OK] Retriever: Using sentence-transformers ({EMBEDDING_MODEL_ST})")
-        return
+        from embedding import get_provider
     except ImportError:
-        pass
-
-    # 3. FTS-only mode (no vector search)
-    _embed_mode = "fts_only"
-    print("[WARN] Retriever: No embedding model available. Using FTS-only mode.")
+        get_provider = lambda: None  # noqa: E731
 
 
-def get_embedding(text: str) -> list | None:
-    """Generate an embedding vector for the given text."""
-    _init_embedder()
-
-    if _embed_mode == "ollama":
-        import ollama
-
-        result = ollama.embeddings(model=EMBEDDING_MODEL_OLLAMA, prompt=text)
-        return result["embedding"]
-    elif _embed_mode == "sentence-transformers":
-        vec = _embedder.encode(text).tolist()
-        return vec
-    else:
+def get_embedding(text: str) -> list[float] | None:
+    """Generate an embedding vector for the given text. Returns None on failure."""
+    provider = get_provider()
+    if provider is None:
+        return None
+    try:
+        return provider.embed_query(text)
+    except Exception as e:
+        print(f"[WARN] get_embedding failed: {e}")
         return None
 
 
@@ -111,13 +61,14 @@ def query_memories(
 
     Falls back to FTS if no embedding model is available.
     """
-    _init_embedder()
+    provider = get_provider()
+    embed_mode = provider.info().name if provider is not None else "fts_only"
     conn = get_db_connection()
     results = {
         "facts": [],
         "documents": [],
         "relationships": [],
-        "method": _embed_mode,
+        "method": embed_mode,
     }
 
     try:
@@ -403,7 +354,8 @@ def get_db_stats() -> dict:
 
         stats["db_size_mb"] = round(os.path.getsize(DB_PATH) / (1024 * 1024), 1)
 
-    stats["embed_mode"] = _embed_mode or "not_initialized"
+    _provider = get_provider()
+    stats["embed_mode"] = _provider.info().name if _provider is not None else "not_available"
 
     conn.close()
     return stats

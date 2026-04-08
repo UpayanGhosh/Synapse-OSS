@@ -139,6 +139,18 @@ def _run_non_interactive(
         SYNAPSE_HOME             — override default ~/.synapse data root
         SYNAPSE_GATEWAY_TOKEN    — WebSocket control-plane auth token
 
+    Optional SBS persona env vars (all optional — absent means use defaults silently):
+        SYNAPSE_COMMUNICATION_STYLE  — preferred comm style
+                                       (casual_and_witty, formal_and_precise,
+                                        technical_depth, creative_and_playful)
+        SYNAPSE_ENERGY_LEVEL         — energy/mood baseline
+                                       (high_energy, calm_and_steady, adaptive)
+        SYNAPSE_INTERESTS            — comma-separated topic list
+                                       (technology, music, wellness, finance,
+                                        science, arts, sports, cooking)
+        SYNAPSE_PRIVACY_LEVEL        — privacy sensitivity
+                                       (open, selective, private)
+
     Exit codes:
         0 — config written successfully
         1 — required env var missing or validation failed
@@ -247,6 +259,73 @@ def _run_non_interactive(
     write_config(data_root, config)
     typer.echo(f"Config written to {data_root / 'synapse.json'}")
 
+    # --- SBS profile seeding from env vars (all optional) ---
+    communication_style = os.environ.get("SYNAPSE_COMMUNICATION_STYLE", "").strip()
+    energy_level = os.environ.get("SYNAPSE_ENERGY_LEVEL", "").strip()
+    interests_raw = os.environ.get("SYNAPSE_INTERESTS", "").strip()
+    privacy_level = os.environ.get("SYNAPSE_PRIVACY_LEVEL", "").strip()
+
+    if any([communication_style, energy_level, interests_raw, privacy_level]):
+        try:
+            from cli.sbs_profile_init import (  # noqa: PLC0415
+                ENERGY_CHOICES,
+                INTEREST_CHOICES,
+                PRIVACY_CHOICES,
+                STYLE_CHOICES,
+                initialize_sbs_from_wizard,
+            )
+
+            # Validate communication_style
+            if communication_style and communication_style not in STYLE_CHOICES:
+                typer.echo(
+                    f"WARNING: SYNAPSE_COMMUNICATION_STYLE='{communication_style}' is not valid. "
+                    f"Valid: {', '.join(STYLE_CHOICES)}. Using default 'casual_and_witty'.",
+                    err=True,
+                )
+                communication_style = "casual_and_witty"
+
+            # Validate energy_level
+            if energy_level and energy_level not in ENERGY_CHOICES:
+                typer.echo(
+                    f"WARNING: SYNAPSE_ENERGY_LEVEL='{energy_level}' is not valid. "
+                    f"Valid: {', '.join(ENERGY_CHOICES)}. Using default 'calm_and_steady'.",
+                    err=True,
+                )
+                energy_level = "calm_and_steady"
+
+            # Validate privacy_level
+            if privacy_level and privacy_level not in PRIVACY_CHOICES:
+                typer.echo(
+                    f"WARNING: SYNAPSE_PRIVACY_LEVEL='{privacy_level}' is not valid. "
+                    f"Valid: {', '.join(PRIVACY_CHOICES)}. Using default 'selective'.",
+                    err=True,
+                )
+                privacy_level = "selective"
+
+            # Parse and validate interests (comma-separated, filter unknowns)
+            parsed_interests = [i.strip().lower() for i in interests_raw.split(",") if i.strip()]
+            unknown_interests = [i for i in parsed_interests if i not in INTEREST_CHOICES]
+            if unknown_interests:
+                typer.echo(
+                    f"WARNING: Unknown interests ignored: {', '.join(unknown_interests)}. "
+                    f"Valid: {', '.join(INTEREST_CHOICES)}",
+                    err=True,
+                )
+                parsed_interests = [i for i in parsed_interests if i in INTEREST_CHOICES]
+
+            initialize_sbs_from_wizard(
+                {
+                    "communication_style": communication_style or "casual_and_witty",
+                    "energy_level": energy_level or "calm_and_steady",
+                    "interests": parsed_interests,
+                    "privacy_level": privacy_level or "selective",
+                },
+                data_root=data_root,
+            )
+            typer.echo("SBS profile initialized from environment variables.")
+        except Exception as exc:  # noqa: BLE001
+            typer.echo(f"WARNING: SBS profile initialization failed: {exc}", err=True)
+
     # --- Environment validation ---
     _validate_environment(config)
 
@@ -319,6 +398,7 @@ def _handle_reset(reset_scope: str, data_root: Path) -> None:
 _KNOWN_MODELS: dict[str, list[dict[str, str]]] = {
     "gemini": [
         {"value": "gemini/gemini-2.5-flash", "label": "Gemini 2.5 Flash (fast, cheap)"},
+        {"value": "gemini/gemini-2.5-flash-lite", "label": "Gemini 2.5 Flash-Lite (fastest, free tier)"},
         {"value": "gemini/gemini-2.5-pro", "label": "Gemini 2.5 Pro (best quality)"},
         {"value": "gemini/gemini-2.0-flash", "label": "Gemini 2.0 Flash"},
     ],
@@ -369,6 +449,7 @@ _ROLES: list[tuple[str, str, list[str]]] = [
     ("code", "Code generation & debugging", ["anthropic", "openai", "github_copilot", "groq"]),
     ("analysis", "Analysis & deep research", ["gemini", "openai", "github_copilot", "anthropic"]),
     ("review", "Code review & critique", ["anthropic", "openai", "github_copilot", "gemini"]),
+    ("kg", "Knowledge Graph extraction (background, always Gemini free tier)", ["gemini"]),
 ]
 
 
@@ -384,6 +465,8 @@ def _build_model_mappings(providers: list[str]) -> dict:
     """Generate sensible model_mappings automatically (QuickStart / non-interactive)."""
     mappings: dict = {}
     for role, _desc, prefs in _ROLES:
+        if role == "kg":
+            continue  # handled below — always Gemini Flash-Lite
         model = _auto_pick(providers, prefs, _KNOWN_MODELS)
         if model:
             mappings[role] = {"model": model, "fallback": None}
@@ -391,6 +474,14 @@ def _build_model_mappings(providers: list[str]) -> dict:
     # vault: always ollama (local-only by design)
     if "ollama" in providers:
         mappings["vault"] = {"model": "ollama_chat/llama3.3", "fallback": None}
+
+    # kg: always Gemini Flash-Lite (free tier, 1000 req/day)
+    # This is independent of the user's chat provider choice.
+    if "gemini" in providers:
+        mappings["kg"] = {
+            "model": "gemini/gemini-2.5-flash-lite",
+            "fallback": "gemini/gemini-2.5-flash",
+        }
 
     return mappings
 
@@ -424,6 +515,8 @@ def _build_model_mappings_interactive(providers: list[str], prompter: "object") 
 
     mappings: dict = {}
     for role, desc, prefs in _ROLES:
+        if role == "kg":
+            continue  # handled below — always Gemini Flash-Lite
         default = _auto_pick(providers, prefs, _KNOWN_MODELS)
         selected = prompter.select(  # type: ignore[attr-defined]
             f"{role} ({desc}):",
@@ -435,6 +528,15 @@ def _build_model_mappings_interactive(providers: list[str], prompter: "object") 
     # vault: always ollama (local-only by design)
     if "ollama" in providers:
         mappings["vault"] = {"model": "ollama_chat/llama3.3", "fallback": None}
+
+    # kg: always Gemini Flash-Lite (free tier, 1000 req/day)
+    # Not user-configurable — memory engine runs on Gemini regardless of chat provider.
+    if "gemini" in providers:
+        mappings["kg"] = {
+            "model": "gemini/gemini-2.5-flash-lite",
+            "fallback": "gemini/gemini-2.5-flash",
+        }
+        _print("[dim]   KG role auto-set to Gemini 2.5 Flash-Lite (free tier)[/]")
 
     return mappings
 
@@ -768,6 +870,106 @@ def _collect_provider_keys(
 
 
 # ---------------------------------------------------------------------------
+# SBS persona-seeding step (inserted between config write and daemon install)
+# ---------------------------------------------------------------------------
+
+
+def _run_sbs_questions(prompter: "object", data_root: Path) -> None:
+    """Collect persona-seeding answers and write to SBS profile layers.
+
+    Called at the end of _run_interactive_impl(), after config is written
+    but before the daemon install step. Failure here must never crash the wizard.
+
+    Asks 4 targeted questions:
+      1. Communication style preference
+      2. Energy / mood level
+      3. Topic interests (multi-select)
+      4. Privacy sensitivity
+
+    Then offers an optional WhatsApp history import.
+    """
+    import subprocess  # noqa: PLC0415
+
+    from cli.sbs_profile_init import (  # noqa: PLC0415
+        ENERGY_DISPLAY_MAP,
+        PRIVACY_DISPLAY_MAP,
+        STYLE_DISPLAY_MAP,
+        initialize_sbs_from_wizard,
+    )
+
+    _print("\n[bold cyan]--- Persona Profile ---[/]")
+
+    # --- Q1: Communication style ---
+    style_display = prompter.select(  # type: ignore[attr-defined]
+        "How should Synapse communicate with you by default?",
+        choices=list(STYLE_DISPLAY_MAP.keys()),
+        default="Casual and witty",
+    )
+
+    # --- Q2: Energy / mood level ---
+    energy_display = prompter.select(  # type: ignore[attr-defined]
+        "How would you describe your typical energy level?",
+        choices=list(ENERGY_DISPLAY_MAP.keys()),
+        default="Calm and steady",
+    )
+
+    # --- Q3: Interests (multi-select) ---
+    interest_displays = prompter.multiselect(  # type: ignore[attr-defined]
+        "What topics are you most interested in? (select all that apply)",
+        choices=["Technology", "Music", "Wellness", "Finance", "Science", "Arts", "Sports", "Cooking"],
+    )
+
+    # --- Q4: Privacy sensitivity ---
+    privacy_display = prompter.select(  # type: ignore[attr-defined]
+        "How sensitive are you about personal data in conversations?",
+        choices=list(PRIVACY_DISPLAY_MAP.keys()),
+        default="Selective - use judgment",
+    )
+
+    # --- Map display values to internal values ---
+    answers = {
+        "communication_style": STYLE_DISPLAY_MAP.get(style_display, "casual_and_witty"),
+        "energy_level": ENERGY_DISPLAY_MAP.get(energy_display, "calm_and_steady"),
+        "interests": [topic.lower() for topic in (interest_displays or [])],
+        "privacy_level": PRIVACY_DISPLAY_MAP.get(privacy_display, "selective"),
+    }
+
+    # --- Write profile layers ---
+    try:
+        initialize_sbs_from_wizard(answers, data_root)
+        _print("[green]Persona profile seeded.[/]")
+    except Exception:  # noqa: BLE001
+        import logging  # noqa: PLC0415
+
+        logging.getLogger(__name__).warning(
+            "SBS profile init failed — wizard continues", exc_info=True
+        )
+        _print("[yellow]Persona profile setup skipped (non-fatal).[/]")
+
+    # --- Optional: WhatsApp history import ---
+    if prompter.confirm(  # type: ignore[attr-defined]
+        "Would you like to import existing WhatsApp chat history?", default=False
+    ):
+        wa_file = prompter.text(  # type: ignore[attr-defined]
+            "Path to WhatsApp export (.txt file)", default=""
+        )
+        if wa_file:
+            from pathlib import Path as _Path  # noqa: PLC0415
+
+            wa_path = _Path(wa_file)
+            if wa_path.exists():
+                subprocess.run(
+                    [sys.executable, "scripts/import_whatsapp.py", wa_file, "--hemisphere", "safe"],
+                    check=False,
+                )
+                _print("[green]WhatsApp history import started.[/]")
+            else:
+                _print(f"[yellow]File not found: {wa_file} — import skipped.[/]")
+        else:
+            _print("[dim]No file provided — WhatsApp import skipped.[/]")
+
+
+# ---------------------------------------------------------------------------
 # Interactive wizard — main entry point
 # ---------------------------------------------------------------------------
 
@@ -956,6 +1158,11 @@ def _run_interactive_impl(
     # --- Step 10: Write config (ONB-07) ---
     write_config(data_root, config)
     cfg_file = data_root / "synapse.json"
+
+    # --- Step 10b: Persona profile seeding ---
+    # SBS questions run after synapse.json is written so SynapseConfig.load()
+    # inside initialize_sbs_from_wizard() resolves the correct profile path.
+    _run_sbs_questions(prompter=prompter, data_root=data_root)
 
     # --- Step 11: Daemon install ---
     _wizard_daemon_install(prompter=prompter, config=config, data_root=data_root, flow=flow)

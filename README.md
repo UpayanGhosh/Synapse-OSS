@@ -289,7 +289,17 @@ Most AI systems personalize in relatively shallow ways:
 - custom instructions
 - recent chat history
 
-Those can help, but they usually do not create a real sense of continuity.
+| Problem | How Most Bots Handle It | How Synapse Handles It |
+| --- | --- | --- |
+| **Memory** | Stuff messages into context window until it overflows | Hybrid RAG -- SQLite knowledge graph + sqlite-vec embeddings + LanceDB vector search + FlashRank reranking. 37,868+ vocabulary terms, **<350ms P95 retrieval**, 3.4x faster than v1. Zero Docker dependency. |
+| **Personality** | Static system prompt, same tone forever | Soul-Brain Sync -- a 3-stage pipeline (realtime sentiment capture, batch distillation every 50 messages, prompt injection) continuously builds a living **2KB behavioral profile**. Personality is not configured. It is learned. |
+| **Model selection** | One model for everything (expensive or dumb) | Mixture of Agents -- intent classifier routes to **6 providers** (Gemini, Claude, Ollama, OpenRouter, Groq, local Vault) through `litellm.Router`. Casual chat does not burn expensive API credits. Swap providers by editing JSON config, zero code changes. |
+| **Privacy** | Everything goes to cloud APIs | The Vault -- sensitive conversations route to a local Ollama model. **Hemisphere-enforced memory separation**: "safe" (cloud) and "spicy" (local-only) are physically partitioned. Zero cross-contamination, verified by automated integrity tests. |
+| **Thinking** | Generate first token immediately | Dual Cognition -- generates an inner monologue, calculates a tension score (0.0--1.0) between memory and current message, then responds. It thinks before it speaks. |
+| **Channels** | One messaging platform, tightly coupled | **4 channels** (WhatsApp, Telegram, Discord, Slack) normalized to a single `ChannelMessage` DTO. Memory, persona, and model routing are completely channel-blind. Adding a 5th channel requires ~100 lines -- just implement `BaseChannel`. |
+| **Message reliability** | Webhook timeout, lost messages, duplicates | Async pipeline -- 3-second FloodGate batching, 5-minute deduplication window, bounded 100-task async queue, 2 concurrent MessageWorkers. **Zero dropped messages** under real load. |
+| **RAM on consumer hardware** | "Just buy a bigger server" | Replaced NetworkX (155MB in-RAM graph) with SQLite (<1.2MB) after profiling showed 81% RAM pressure on 8GB hardware. Lazy-loading ToxicScorer (unloads after 30s idle), `OLLAMA_KEEP_ALIVE=0` model eviction, thermal-aware background workers. **99.2% memory reduction.** |
+| **Voice** | Ignore or crash | Groq Whisper -- 2-4s cloud transcription, zero local RAM impact, then processed through the full cognitive pipeline like any other message. |
 
 SBS is different because it is not just storing facts about the user. It is
 trying to build a persistent behavioral layer:
@@ -304,6 +314,19 @@ That is a deeper form of personalization than "the user likes X" or "the user
 works at Y."
 
 It is personalization at the level of behavioral continuity.
+
+| Metric | Before (v1.0) | After (Phoenix v3) | What Changed |
+| --- | --- | :---: | --- |
+| **Knowledge Graph Footprint** | ~155MB in-RAM (NetworkX) | **<1.2MB** (SQLite) | NetworkX loaded the entire graph into RAM, causing 81% memory pressure on an 8GB host. SQLite reads from disk on demand. **99.2% reduction.** |
+| **Host RAM Usage** | 81.3% | **<25%** | Consolidated 4 separate processes (LanceDB, NetworkX, memory server, gateway) into a single FastAPI app. LanceDB provides embedded vector search with zero Docker overhead. **3.3x lower.** |
+| **Retrieval Latency (P95)** | ~1.2s | **<350ms** | High-confidence results (>0.80) bypass FlashRank reranker entirely. Only ambiguous queries pay the reranking overhead. **3.4x faster.** |
+| **Vocabulary Diversity** | ~5,000 static terms | **37,868+** | Continuous ingestion from 4 years of conversation logs via the SBS batch pipeline. **7.6x richer.** |
+| **Message Pipeline** | Synchronous (webhook timeout) | **Async queue** (202 Accepted) | FloodGate batching (3s window) + deduplication (5-min window) + bounded TaskQueue (max 100) + 2 concurrent MessageWorkers. **Zero dropped messages** under single-user load. |
+| **Behavioral Profile** | None (static system prompt) | **2KB, rebuilt every 50 messages** | Soul-Brain Sync: 3-stage pipeline (realtime -> batch -> injection). 8 profile layers distilled from conversation patterns. |
+| **Cognitive Overhead (TTFT)** | N/A | **2-5s** | Dual Cognition pipeline: inner monologue generation + tension scoring before response. Quality-for-speed trade-off. |
+| **Test Coverage** | Manual | **302 tests across 24 files** | Unit, integration, smoke, performance, end-to-end, and acceptance tests. Async-native (`asyncio_mode = auto`). |
+| **Channel Support** | WhatsApp only | **4 channels** | WhatsApp, Telegram, Discord, Slack -- all normalized to a single DTO through `BaseChannel` ABC. |
+| **Bridge Recovery** | Manual restart | **5s auto-restart** | Exponential backoff (up to 5 attempts) on Baileys bridge crash. |
 
 ## Why That Matters To The User
 
@@ -562,6 +585,8 @@ If you try it and hit issues, that is useful feedback.
 
 ## Quick Start
 
+> **Full setup guide** (API keys, Ollama, channel linking): [HOW_TO_RUN.md](HOW_TO_RUN.md)
+
 If you want to run Synapse locally:
 
 ### 1. Clone the repo
@@ -635,7 +660,7 @@ Contributions are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) first.
 
 ## License
 
-> **Full setup guide** (Qdrant, Ollama, channel configuration, persona config): [HOW_TO_RUN.md](HOW_TO_RUN.md)
+> **Full setup guide** (Ollama, channel configuration, persona config): [HOW_TO_RUN.md](HOW_TO_RUN.md)
 >
 > **Persona customization** (how to make Synapse yours): [SETUP_PERSONA.md](SETUP_PERSONA.md)
 
@@ -662,7 +687,7 @@ A lightweight intent classifier routes each message to the best-fit model throug
 
 ### Hybrid Memory Retrieval (RAG)
 
-The `MemoryEngine` combines a SQLite knowledge graph (subject-predicate-object triples) with sqlite-vec embeddings and Qdrant vector search (`nomic-embed-text`). A temporal scoring function blends semantic similarity with recency. High-confidence results (>0.80) skip the FlashRank reranker (ms-marco-TinyBERT) for speed; lower-confidence candidates pass through for precision. Result: **<350ms P95 retrieval** across 37,868+ vocabulary terms.
+The `MemoryEngine` combines a SQLite knowledge graph (subject-predicate-object triples) with sqlite-vec embeddings and LanceDB vector search (`nomic-embed-text`). A temporal scoring function blends semantic similarity with recency. High-confidence results (>0.80) skip the FlashRank reranker (ms-marco-TinyBERT) for speed; lower-confidence candidates pass through for precision. Result: **<350ms P95 retrieval** across 37,868+ vocabulary terms.
 
 ### Soul-Brain Sync (Continuous Behavioral Profiling)
 
@@ -707,7 +732,7 @@ A background worker that prunes stale knowledge graph triples and optimizes data
 | :--- | :--- |
 | **System Design** | Consolidated a 4-process architecture into a single FastAPI process. Replaced NetworkX (155MB) with SQLite (<1.2MB) after profiling showed 81% RAM pressure. **99.2% memory reduction.** |
 | **Async Systems** | Built an async queue-push message gateway with FloodGate batching, deduplication, bounded queue, and 2 concurrent workers. **Zero dropped messages** under real load. |
-| **Database Engineering** | Dual-database architecture (memory.db + knowledge_graph.db) with WAL mode, atomic transactions, sqlite-vec for ANN search, and a migration path from Qdrant to eliminate container dependencies. |
+| **Database Engineering** | Dual-database architecture (memory.db + knowledge_graph.db) with WAL mode, atomic transactions, sqlite-vec for ANN search, and LanceDB embedded vector store (zero Docker dependency). |
 | **ML Pipeline Orchestration** | Multi-model intent router dispatching to 6 providers through `litellm.Router` with per-role fallback configuration. Vendor-agnostic -- swap providers via JSON config. |
 | **Performance Optimization** | Lazy-loading patterns (Toxic-BERT on-demand, 30s idle unload), model eviction (`keep_alive: 0`), FlashRank fast-gate bypass for high-confidence queries, thermal-aware workers. |
 | **Privacy Engineering** | Hemisphere-enforced memory separation with zero cross-contamination. Air-gapped local inference. Automated integrity verification. |
@@ -725,10 +750,10 @@ A background worker that prunes stale knowledge graph triples and optimizes data
 | Languages | Python 3.11, JavaScript (Node.js 18+), Bash |
 | Frameworks | FastAPI, Uvicorn, asyncio |
 | LLM Routing | `litellm.Router` -- provider-agnostic, config-driven, per-role fallbacks |
-| Databases | SQLite (WAL mode), sqlite-vec (ANN embeddings), Qdrant (active) |
+| Databases | SQLite (WAL mode), sqlite-vec (ANN embeddings), LanceDB (embedded vector search) |
 | AI/ML | Ollama, Google Gemini, Anthropic Claude, OpenRouter, Groq Whisper, Toxic-BERT, FlashRank (ms-marco-TinyBERT), sentence-transformers, Crawl4AI |
 | Messaging | Baileys (WhatsApp), python-telegram-bot (Telegram), discord.py (Discord), slack-bolt + slack-sdk (Slack) |
-| Infrastructure | macOS `launchd`, OrbStack/Docker, distributed compute (remote GPU node) |
+| Infrastructure | macOS `launchd`, distributed compute (remote GPU node) |
 | Testing | pytest, asyncio_mode=auto, 302 tests (unit / integration / smoke / performance / e2e / acceptance) |
 | Config | `~/.synapse/synapse.json` -- single config file for all providers, channels, model mappings |
 
@@ -739,7 +764,7 @@ A background worker that prunes stale knowledge graph triples and optimizes data
 | Service | Port |
 | --- | --- |
 | API Gateway (FastAPI) | 8000 |
-| Qdrant | 6333 |
+| LanceDB | embedded (`~/.synapse/workspace/db/lancedb/`) |
 | Ollama | 11434 |
 | Baileys bridge (WhatsApp, internal) | 5010 |
 

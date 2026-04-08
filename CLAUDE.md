@@ -2,12 +2,30 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## OSS Development Workflow (CRITICAL — read before every push)
+
+**Testing uses personal data. Commits follow OSS standards. Never mix them.**
+
+- **During development/testing**: Personal data is fine — real `~/.synapse/` DBs, personal `entities.json`, personal `synapse.json` tokens, real chat history. This is how features are validated.
+- **Before any `git commit` or `git push`**: Apply OSS standards:
+  - No personal data files (e.g., `entities.json` extracted from real chats — ~3.9MB, 110K entities)
+  - No tokens, API keys, or personal credentials in committed files
+  - No `synapse.json` with real `gateway_token` or `providers` keys
+  - `entities.json` ships as an empty `{}` placeholder — users populate it via their own extraction
+  - Config files ship with example/placeholder values, not real ones
+  - Test fixtures use synthetic data, not personal messages
+
+**Pre-push checklist:**
+1. Is `entities.json` empty `{}`? (never commit real extracted entities)
+2. Are all tokens/keys in `.gitignore`d files only?
+3. Does the code work for a fresh OSS install, not just this personal setup?
+
 ## Code Graph (Default Behaviour)
 
 A persistent structural knowledge graph of this codebase is available via the `code-review-graph` MCP server.
 **Always prefer graph tools over reading files for orientation and impact analysis.**
 
-| When you want to… | Use this tool | Instead of… |
+| When you want to... | Use this tool | Instead of... |
 |---|---|---|
 | Understand what a file/function does | `semantic_search_nodes_tool` | reading the file |
 | Find what calls a function | `query_graph_tool` (callers) | grep |
@@ -93,9 +111,9 @@ Two SBS instances run simultaneously: `sbs_the_creator` (primary user, casual/si
 ### Memory (Hybrid RAG)
 - `memory.db` — SQLite + sqlite-vec, documents + embeddings, WAL mode
 - `knowledge_graph.db` — subject–predicate–object triples (SQLiteGraph)
-- Qdrant at `:6333` — high-speed ANN search
+- LanceDB (embedded, `~/.synapse/workspace/db/lancedb/`) — high-speed ANN search (zero Docker)
 
-Retrieval: embed (Ollama `nomic-embed-text`) → ANN+FTS → FlashRank rerank (ms-marco-TinyBERT-L-2-v2). Fast Gate skips reranker if ≥ limit results score > 0.80. DBs live at `~/.synapse/workspace/db/`.
+Retrieval: embed (Ollama `nomic-embed-text`) → LanceDB ANN+FTS → FlashRank rerank (ms-marco-TinyBERT-L-2-v2). Fast Gate skips reranker if ≥ limit results score > 0.80. DBs live at `~/.synapse/workspace/db/`.
 
 Dual hemispheres: `hemisphere_tag = "safe"|"spicy"`. The Vault role only ever touches the `spicy` hemisphere — enforces zero cloud leakage for private sessions.
 
@@ -170,7 +188,7 @@ Primary runtime config. Key sections:
 Keys can also be stored in `synapse.json → providers` — `_inject_provider_keys()` writes them to `os.environ` at startup.
 
 ## Ports
-API:8000 | Baileys Bridge:5010 (internal) | Tools MCP:8989 | Qdrant:6333 | Ollama:11434 | OAuth:8080
+API:8000 | Baileys Bridge:5010 (internal) | Tools MCP:8989 | Ollama:11434 | OAuth:8080
 
 ## Critical Gotchas
 
@@ -204,3 +222,42 @@ grep "^SYMBOL_NAME	" workspace/tags   # 1215 symbols indexed
 
 ## Code Style
 Python 3.11 | line-length 100 | ruff + black | asyncio throughout (no Redis/Celery) | SQLite WAL mode
+
+<!-- code-review-graph MCP tools -->
+## MCP Tools: code-review-graph
+
+**IMPORTANT: This project has a knowledge graph. ALWAYS use the
+code-review-graph MCP tools BEFORE using Grep/Glob/Read to explore
+the codebase.** The graph is faster, cheaper (fewer tokens), and gives
+you structural context (callers, dependents, test coverage) that file
+scanning cannot.
+
+### When to use graph tools FIRST
+
+- **Exploring code**: `semantic_search_nodes` or `query_graph` instead of Grep
+- **Understanding impact**: `get_impact_radius` instead of manually tracing imports
+- **Code review**: `detect_changes` + `get_review_context` instead of reading entire files
+- **Finding relationships**: `query_graph` with callers_of/callees_of/imports_of/tests_for
+- **Architecture questions**: `get_architecture_overview` + `list_communities`
+
+Fall back to Grep/Glob/Read **only** when the graph doesn't cover what you need.
+
+### Key Tools
+
+| Tool | Use when |
+|------|----------|
+| `detect_changes` | Reviewing code changes � gives risk-scored analysis |
+| `get_review_context` | Need source snippets for review � token-efficient |
+| `get_impact_radius` | Understanding blast radius of a change |
+| `get_affected_flows` | Finding which execution paths are impacted |
+| `query_graph` | Tracing callers, callees, imports, tests, dependencies |
+| `semantic_search_nodes` | Finding functions/classes by name or keyword |
+| `get_architecture_overview` | Understanding high-level codebase structure |
+| `refactor_tool` | Planning renames, finding dead code |
+
+### Workflow
+
+1. The graph auto-updates on file changes (via hooks).
+2. Use `detect_changes` for code review.
+3. Use `get_affected_flows` to understand impact.
+4. Use `query_graph` pattern="tests_for" to check coverage.

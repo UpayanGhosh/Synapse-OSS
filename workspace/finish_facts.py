@@ -1,7 +1,5 @@
-import json
 import sqlite3
 import struct
-import urllib.request
 
 from synapse_config import SynapseConfig
 from tqdm import tqdm
@@ -20,6 +18,10 @@ def finish_facts():
     except:
         conn.load_extension("vec0")  # Fallback to local dylib
 
+    from sci_fi_dashboard.embedding import get_provider
+
+    provider = get_provider()
+
     cur = conn.cursor()
     cur.execute("SELECT id, content FROM atomic_facts")
     facts = cur.fetchall()
@@ -27,28 +29,11 @@ def finish_facts():
     print(f"[PROC] Finalizing {len(facts)} Atomic Facts on Mac...")
     for f_id, content in tqdm(facts):
         try:
-            payload = json.dumps({"model": "nomic-embed-text", "input": [content[:1024]]}).encode(
-                "utf-8"
+            emb = provider.embed_documents([content[:1024]])[0]
+            cur.execute(
+                "INSERT OR REPLACE INTO atomic_facts_vec(fact_id, embedding) VALUES (?, ?)",
+                (f_id, struct.pack(f"{len(emb)}f", *emb)),
             )
-            req = urllib.request.Request(
-                "http://127.0.0.1:11434/api/embed",
-                data=payload,
-                headers={"Content-Type": "application/json"},
-            )
-            with urllib.request.urlopen(req) as resp:
-                data = json.loads(resp.read().decode())
-                if "embeddings" in data and len(data["embeddings"]) > 0:
-                    emb = data["embeddings"][0]
-                    # Ensure embedding is 768 dimensions
-                    if len(emb) == 768:
-                        cur.execute(
-                            "INSERT OR REPLACE INTO atomic_facts_vec(fact_id, embedding) VALUES (?, ?)",
-                            (f_id, struct.pack("768f", *emb)),
-                        )
-                    else:
-                        print(f"[WARN] Fact {f_id}: dimension mismatch {len(emb)}")
-                else:
-                    print(f"[WARN] Fact {f_id}: no embedding returned")
         except Exception as e:
             print(f"[ERROR] Error processing fact {f_id}: {e}")
 

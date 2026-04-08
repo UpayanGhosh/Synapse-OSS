@@ -38,6 +38,7 @@ from sci_fi_dashboard.sbs.orchestrator import SBSOrchestrator  # noqa: E402
 from sci_fi_dashboard.smart_entity import EntityGate  # noqa: E402
 from sci_fi_dashboard.sqlite_graph import SQLiteGraph  # noqa: E402
 from sci_fi_dashboard.toxic_scorer_lazy import LazyToxicScorer  # noqa: E402
+from sci_fi_dashboard.multiuser.conversation_cache import ConversationCache  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Phase 3: Tool Execution Loop (optional)
@@ -86,6 +87,24 @@ except ImportError:
     _TOOL_FEATURES_AVAILABLE = False
 
 # ---------------------------------------------------------------------------
+# Phase 1 (v2.0): Skill Architecture (optional)
+# ---------------------------------------------------------------------------
+try:
+    from sci_fi_dashboard.skills.registry import SkillRegistry as _SkillRegistry  # noqa: E402
+    from sci_fi_dashboard.skills.router import SkillRouter as _SkillRouter  # noqa: E402
+    from sci_fi_dashboard.skills.watcher import SkillWatcher as _SkillWatcher  # noqa: E402
+    from sci_fi_dashboard.skills.runner import SkillRunner as _SkillRunner  # noqa: E402
+
+    _SKILL_SYSTEM_AVAILABLE = True
+except ImportError:
+    _SKILL_SYSTEM_AVAILABLE = False
+
+# Singletons — initialized in lifespan if skill system is available
+skill_registry: "_SkillRegistry | None" = None
+skill_router: "_SkillRouter | None" = None
+skill_watcher: "_SkillWatcher | None" = None
+
+# ---------------------------------------------------------------------------
 # Tool execution loop constants
 # ---------------------------------------------------------------------------
 MAX_TOOL_ROUNDS = 5
@@ -101,7 +120,7 @@ tool_registry: "ToolRegistry | None" = None  # initialized in lifespan if availa
 hook_runner: "ToolHookRunner | None" = None
 audit_logger: "ToolAuditLogger | None" = None
 brain = SQLiteGraph()
-gate = EntityGate(entities_file="entities.json")
+gate = EntityGate(graph_store=brain, entities_file="entities.json")
 conflicts = ConflictManager(conflicts_file="conflicts.json")
 toxic_scorer = LazyToxicScorer(idle_timeout=30.0)
 emotional_trajectory = EmotionalTrajectory()
@@ -112,6 +131,7 @@ dual_cognition = DualCognitionEngine(
     toxic_scorer=toxic_scorer,
     emotional_trajectory=emotional_trajectory,
 )
+conversation_cache = ConversationCache(max_entries=200, ttl_s=300)
 
 # ---------------------------------------------------------------------------
 # Async Gateway Components
@@ -201,6 +221,11 @@ sbs_registry: dict[str, SBSOrchestrator] = {
 }
 
 
+def _check_rate_limit(request: "Request | None" = None) -> None:  # noqa: F821
+    """Rate-limit guard (not yet implemented — pass-through)."""
+    pass
+
+
 def _resolve_target(raw_target: str) -> str:
     """Map a raw chat_id / phone number / keyword to a persona ID."""
     t = raw_target.lower()
@@ -229,9 +254,33 @@ load_env_file(anchor=Path(__file__))
 from synapse_config import SynapseConfig  # noqa: E402
 
 from sci_fi_dashboard.llm_router import LLMResult, SynapseLLMRouter  # noqa: E402
+from sci_fi_dashboard.schemas import ChatRequest, WhatsAppLoopTestRequest  # noqa: E402
+from sci_fi_dashboard.middleware import (  # noqa: E402
+    _require_gateway_auth,
+    validate_api_key,
+    validate_bridge_token,
+)
+from sci_fi_dashboard.whatsapp_bridge import (  # noqa: E402
+    get_inbound_message,
+    normalize_phone,
+)
+from sci_fi_dashboard.chat_pipeline import persona_chat  # noqa: E402
 
 _synapse_cfg = SynapseConfig.load()
 synapse_llm_router = SynapseLLMRouter(_synapse_cfg)
 
 # Module-level proactive engine reference — set in lifespan after engine starts
 _proactive_engine = None
+
+# ---------------------------------------------------------------------------
+# Phase 3: SubAgent System (optional — initialized in lifespan)
+# ---------------------------------------------------------------------------
+# AgentRegistry and SubAgentRunner singletons.  Both initialized in
+# api_gateway.py lifespan (not here at module level) to avoid asyncio
+# event-loop issues at import time.  Declared as None so that routes and
+# pipeline_helpers can import _deps safely before the app starts.
+from sci_fi_dashboard.subagent import AgentRegistry as _AgentRegistry  # noqa: E402
+from sci_fi_dashboard.subagent.runner import SubAgentRunner as _SubAgentRunner  # noqa: E402
+
+agent_registry: "_AgentRegistry | None" = None
+agent_runner: "_SubAgentRunner | None" = None

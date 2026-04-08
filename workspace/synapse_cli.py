@@ -98,6 +98,57 @@ def onboard(
 
 
 @app.command()
+def setup(
+    non_interactive: bool = typer.Option(
+        False,
+        "--non-interactive",
+        envvar="SYNAPSE_NON_INTERACTIVE",
+        help="Read all inputs from env vars; no prompts (CI/Docker use).",
+    ),
+    flow: str = typer.Option(
+        "quickstart",
+        "--flow",
+        envvar="SYNAPSE_FLOW",
+        help="Wizard flow: 'quickstart' (default) or 'advanced'.",
+    ),
+    accept_risk: bool = typer.Option(
+        False,
+        "--accept-risk",
+        envvar="SYNAPSE_ACCEPT_RISK",
+        help="Required with --non-interactive.",
+    ),
+    verify: bool = typer.Option(
+        False,
+        "--verify",
+        help="Verify existing config — test each provider and channel.",
+    ),
+    reset: str | None = typer.Option(
+        None,
+        "--reset",
+        envvar="SYNAPSE_RESET",
+        help=(
+            "Back up existing data before wizard starts. "
+            "Values: config | config+creds+sessions | full"
+        ),
+    ),
+) -> None:
+    """Setup Synapse — configure providers, channels, and persona profile."""
+    if verify:
+        from cli.verify_steps import run_verify  # noqa: PLC0415
+
+        raise typer.Exit(run_verify(non_interactive=non_interactive))
+    else:
+        from cli.onboard import run_wizard  # noqa: PLC0415
+
+        run_wizard(
+            non_interactive=non_interactive,
+            flow=flow,
+            accept_risk=accept_risk,
+            reset=reset,
+        )
+
+
+@app.command()
 def chat() -> None:
     """Start the AI Gateway interactive chat interface."""
     from main import start_chat

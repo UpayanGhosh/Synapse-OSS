@@ -19,23 +19,36 @@ echo.
 
 REM --- Guard: .env must exist ---
 if not exist "%PROJECT_ROOT%\.env" (
-    echo [X] No .env file found.
-    echo.
-    echo     Run this first:
-    echo        copy "%PROJECT_ROOT%\.env.example" "%PROJECT_ROOT%\.env"
-    echo     Then open .env and add your GEMINI_API_KEY.
-    echo.
-    pause
-    exit /b 1
+    if exist "%PROJECT_ROOT%\.env.example" (
+        copy "%PROJECT_ROOT%\.env.example" "%PROJECT_ROOT%\.env" >nul
+        echo [OK] Created .env from .env.example
+    ) else (
+        type nul > "%PROJECT_ROOT%\.env"
+        echo [OK] Created empty .env
+    )
 )
 
-REM --- Guard: Docker must be running ---
-docker info >nul 2>&1
+REM --- Check for Gemini API key (required for memory/KG engine) ---
+findstr /R "^GEMINI_API_KEY=.\{20,\}" "%PROJECT_ROOT%\.env" >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
-    echo [X] Docker is not running. Please start Docker Desktop and try again.
     echo.
-    pause
-    exit /b 1
+    echo    Synapse's memory engine needs a Google Gemini API key.
+    echo    This is FREE - no credit card, no billing, 1000 requests/day.
+    echo    Get yours at: https://aistudio.google.com/apikey
+    echo.
+    echo    NOTE: This is separate from your chat LLM.
+    echo    You can use any provider for chatting ^(Copilot, OpenAI, etc.^)
+    echo    but memory always runs on Gemini free tier in the background.
+    echo.
+    set /p "GEMINI_KEY=   Paste your Gemini API key (or press Enter to skip): "
+    if defined GEMINI_KEY (
+        echo GEMINI_API_KEY=!GEMINI_KEY!>> "%PROJECT_ROOT%\.env"
+        echo    [OK] Gemini key saved ^(powers Knowledge Graph + memory^)
+    ) else (
+        echo    [--] Skipped. Synapse will chat but memory won't build.
+        echo         Add GEMINI_API_KEY to .env later.
+    )
+    echo.
 )
 
 REM --- First-run: Python environment ---
@@ -77,22 +90,8 @@ if not exist "%PROJECT_ROOT%\.venv\Scripts\python.exe" (
     echo.
 )
 
-REM --- 1. Qdrant ---
-echo [1/3] Starting Qdrant...
-docker start antigravity_qdrant >nul 2>&1
-if %ERRORLEVEL% EQU 0 (
-    echo    [OK] Started.
-) else (
-    docker run -d --name antigravity_qdrant -p 6333:6333 -p 6334:6334 qdrant/qdrant >nul 2>&1
-    if %ERRORLEVEL% EQU 0 (
-        echo    [OK] Created and started.
-    ) else (
-        echo    [--] Qdrant unavailable - vector search will be disabled.
-    )
-)
-
-REM --- 2. Ollama ---
-echo [2/3] Starting Ollama...
+REM --- 1. Ollama ---
+echo [1/2] Starting Ollama...
 tasklist /FI "IMAGENAME eq ollama.exe" 2>nul | find /I "ollama.exe" >nul
 if %ERRORLEVEL% NEQ 0 (
     where ollama >nul 2>&1
@@ -107,8 +106,8 @@ if %ERRORLEVEL% NEQ 0 (
     echo    [OK] Already running.
 )
 
-REM --- 3. API Gateway ---
-echo [3/3] Starting API Gateway...
+REM --- 2. API Gateway ---
+echo [2/2] Starting API Gateway...
 netstat -ano | findstr ":8000" | find "LISTENING" >nul
 if %ERRORLEVEL% NEQ 0 (
     mkdir "%USERPROFILE%\.synapse\logs" >nul 2>&1

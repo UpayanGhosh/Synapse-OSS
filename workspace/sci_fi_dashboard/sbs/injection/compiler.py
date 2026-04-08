@@ -107,6 +107,9 @@ Absolute rules:
             "excited": "He's hyped about something. Share his excitement, be enthusiastic.",
             "frustrated": "Something's annoying him. Be patient, acknowledge the frustration, help solve it.",
             "neutral": "Normal mode. Be your usual self.",
+            # Wizard-sourced moods (mapped from energy_level by sbs_profile_init)
+            "energetic": "User is high-energy right now. Match their enthusiasm and keep the pace up.",
+            "calm": "User prefers a calm, steady interaction. Be measured and thoughtful in tone.",
         }
 
         instruction = mood_instructions.get(mood, mood_instructions["neutral"])
@@ -131,6 +134,7 @@ User's current Banglish terms (use these naturally): {term_list}"""
         style = linguistic.get("current_style", {})
         banglish_ratio = style.get("banglish_ratio", 0.3)
         drift = style.get("drift_direction", "stable")
+        preferred_style = style.get("preferred_style", "")
 
         # Convert ratio to instruction
         if banglish_ratio > 0.5:
@@ -140,11 +144,21 @@ User's current Banglish terms (use these naturally): {term_list}"""
         else:
             lang_instruction = "Primarily English with occasional Banglish flavor."
 
+        # Map preferred_style (written by setup wizard) to a tone directive
+        style_directives = {
+            "casual_and_witty": "Keep your tone casual, warm, and witty. Use humor where natural.",
+            "formal_and_precise": "Keep your tone professional and precise. Avoid slang or excessive informality.",
+            "technical_depth": "Prioritize technical depth and accuracy. Be thorough in explanations.",
+            "creative_and_playful": "Be creative and playful in your responses. Use metaphors and colorful language.",
+        }
+        tone_line = style_directives.get(preferred_style, "")
+
         return f"""[COMMUNICATION STYLE]
 {lang_instruction}
 Banglish trend: {drift}.
 Avg message length preference: {style.get("avg_message_length", 15)} words.
-Emoji usage: {"common" if style.get("emoji_frequency", 0) > 0.2 else "occasional" if style.get("emoji_frequency", 0) > 0.05 else "rare"}."""
+Emoji usage: {"common" if style.get("emoji_frequency", 0) > 0.2 else "occasional" if style.get("emoji_frequency", 0) > 0.05 else "rare"}.
+{tone_line}""".rstrip()
 
     def _compile_exemplars(self, exemplars: dict, max_chars: int) -> str:
         pairs = exemplars.get("pairs", [])
@@ -172,11 +186,25 @@ User is currently focused on: {", ".join(active[:3])}.
 Tailor technical depth accordingly."""
 
     def _compile_interaction(self, interaction: dict) -> str:
+        parts = []
+
         peak = interaction.get("peak_hours", [])
-        if not peak:
+        if peak:
+            peak_str = ", ".join(f"{h}:00" for h in peak[:3])
+            parts.append(f"User's peak active hours: {peak_str}.")
+            parts.append(f"Preferred response length: ~{int(interaction.get('avg_response_length', 50))} words.")
+
+        # privacy_sensitivity written by setup wizard via sbs_profile_init
+        privacy = interaction.get("privacy_sensitivity", "")
+        privacy_directives = {
+            "open": "User is comfortable with open data storage. Remember details freely for personalization.",
+            "selective": "User prefers selective memory. Store key preferences but avoid logging sensitive personal details.",
+            "private": "User values maximum privacy. Minimize data retention. Do not reference past conversations unless explicitly asked.",
+        }
+        if privacy and privacy in privacy_directives:
+            parts.append(privacy_directives[privacy])
+
+        if not parts:
             return ""
 
-        peak_str = ", ".join(f"{h}:00" for h in peak[:3])
-        return f"""[INTERACTION PATTERN]
-User's peak active hours: {peak_str}.
-Preferred response length: ~{int(interaction.get("avg_response_length", 50))} words."""
+        return "[INTERACTION PATTERN]\n" + "\n".join(parts)

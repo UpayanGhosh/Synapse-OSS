@@ -41,7 +41,7 @@ flowchart LR
         subgraph Mem[Cognitive Memory]
             ME[Memory Engine]
             ME <--> M1[SQLite Graph]
-            ME <--> M2[Qdrant Vector]
+            ME <--> M2[LanceDB Vector]
         end
         subgraph DC[Dual Cognition]
             DCE[DualCognitionEngine]
@@ -275,12 +275,12 @@ graph LR
 | ---------------------- | ---------------------- | ---------- | --------------------------------------- |
 | `memory.db`          | SQLite                 | local file | Document store & embedding queue        |
 | `knowledge_graph.db` | SQLite (graph)         | local file | Subject–Predicate–Object triple store |
-| Qdrant                 | Qdrant (native binary) | `:6333`  | High-speed semantic vector search       |
+| LanceDB                | LanceDB (embedded)     | local file | High-speed semantic vector search       |
 
 **Retrieval Tiers:**
 
 1. **Fast Gate** — if ≥ `limit` results score > 0.80, return immediately (no reranker overhead).
-2. **Reranked** — `FlashRank` (ms-marco-TinyBERT-L-2-v2) re-scores all Qdrant candidates for higher precision.
+2. **Reranked** — `FlashRank` (ms-marco-TinyBERT-L-2-v2) re-scores all vector candidates for higher precision.
 
 **Temporal Routing:**
 
@@ -461,7 +461,7 @@ Both the standalone `gentle_worker.py` (for independent maintenance) and the inl
 | ------------------------------ | --------- | ----------------------------------- |
 | Core API Gateway               | `8000`  | FastAPI / Uvicorn                   |
 | Baileys Bridge (WhatsApp)      | `5010`  | Node.js subprocess (internal only)  |
-| Qdrant Vector DB               | `6333`  | Qdrant (OrbStack container)         |
+| LanceDB                        | local   | Embedded vector DB (pip-installed)  |
 | Ollama (local — embeddings)   | `11434` | Ollama                              |
 | Ollama (remote — Vault)       | `11434` | Ollama (configurable remote host)   |
 
@@ -515,7 +515,7 @@ workspace/
 │   ├── sqlite_graph.py         # SQLite knowledge graph
 │   ├── toxic_scorer_lazy.py    # Lazy-loaded toxicity scorer
 │   ├── dual_cognition.py       # Inner monologue engine
-│   ├── retriever.py            # Qdrant + reranker utilities
+│   ├── retriever.py            # Vector search + reranker utilities
 │   ├── persona.py              # Persona loading helpers
 │   ├── build_persona.py        # Static persona builder
 │   ├── conflict_resolver.py    # Conflict graph manager

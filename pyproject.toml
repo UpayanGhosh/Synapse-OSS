@@ -21,6 +21,8 @@ dependencies = [
     "typer[all]>=0.24.0",
     "questionary>=2.1.0",
     "qrcode>=8.0",
+    "fastembed>=0.4.0",
+    "lancedb>=0.6.0",
 ]
 
 [project.urls]

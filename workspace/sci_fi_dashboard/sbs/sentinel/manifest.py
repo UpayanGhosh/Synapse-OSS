@@ -90,8 +90,24 @@ WRITABLE_ZONES: set[str] = {
     "data/exports/",  # User-requested exports
     "generated/",  # Any generated content
     "logs/",  # Application logs
+    "skills/",  # User-defined skills
+    "diary/",  # Diary entries
+    "cron/",  # Cron job definitions
     os.path.expanduser("~/.synapse/"),  # User data dir (SBS data lives here now)
 }
+
+# ============================================================
+# ZONE BOUNDARIES (v2.0 — Self-Modification / Rollback)
+# Used by SnapshotEngine and ConsentProtocol to scope captures.
+# Plan 02-02 will expand these with full descriptions (ZONE_2_DESCRIPTIONS).
+# ============================================================
+
+# Zone 2: adaptive paths that the AI can modify WITH user consent + snapshot.
+# Relative to data_root (~/.synapse/).  No trailing slashes.
+ZONE_2_PATHS: tuple[str, ...] = (
+    "skills",        # User-defined skill directories
+    "state/agents",  # Per-agent cron/session state
+)
 
 # ============================================================
 # DANGEROUS OPERATIONS -- Always denied regardless of path
@@ -108,4 +124,29 @@ FORBIDDEN_OPERATIONS: set[str] = {
     "importlib",
     "chmod",  # Permission changes
     "chown",
+}
+
+# ============================================================
+# ZONE CONSTANTS — Named references for Phase 2 self-modification
+# These derive from the sets above and provide symbolic names
+# for SnapshotEngine, ConsentProtocol, and tests.
+# ============================================================
+
+# Zone 1: Immutable to model-initiated writes.
+# Union of CRITICAL_FILES and CRITICAL_DIRECTORIES.
+# Sentinel classifies these as CRITICAL (total lockout) or PROTECTED (read-only).
+ZONE_1_PATHS: frozenset[str] = frozenset(CRITICAL_FILES | CRITICAL_DIRECTORIES)
+
+# Zone 2: Writable with consent — the subset of ~/.synapse/ that self-modification targets.
+# These are relative to data_root (~/.synapse/) — SnapshotEngine resolves them.
+# IMPORTANT: No trailing slashes. SnapshotEngine joins these with data_root directly.
+ZONE_2_PATHS: tuple[str, ...] = (
+    "skills",                    # User skill directories (Phase 1 output format)
+    "state/agents",              # CronStore per-agent cron.json files
+)
+
+# Human-readable descriptions for consent protocol explanations
+ZONE_2_DESCRIPTIONS: dict[str, str] = {
+    "skills": "Skill capabilities (what Synapse can do)",
+    "state/agents": "Scheduled job definitions (cron reminders, recurring tasks)",
 }

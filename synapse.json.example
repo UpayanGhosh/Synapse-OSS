@@ -50,11 +50,34 @@
     "translate": {
       "model": "openrouter/meta-llama/llama-3.3-70b-instruct",
       "fallback": "groq/llama-3.3-70b-versatile"
+    },
+    "kg": {
+      "model": "gemini/gemini-2.5-flash-lite",
+      "fallback": "gemini/gemini-2.5-flash"
     }
   },
 
   "session": {
     "dual_cognition_enabled": true,
     "dual_cognition_timeout": 5.0
+  },
+
+  "embedding": {
+    "provider": "auto",
+    "model": null,
+    "cache_dir": null,
+    "threads": null
+  },
+
+  "vector_store": {
+    "backend": "lancedb",
+    "lancedb": { "db_path": null, "table_name": "memories" }
+  },
+
+  "kg_extraction": {
+    "enabled": true,
+    "min_messages": 15,
+    "extract_interval_seconds": 1200,
+    "kg_role": "kg"
   }
 }

@@ -2,7 +2,7 @@
 
 ## Step 1: Install MCP dependency
 
-Add to `workspace/requirements.txt` (after the Qdrant section):
+Add to `workspace/requirements.txt` (after the vector DB section):
 
 ```
 # --- MCP (Model Context Protocol) ---

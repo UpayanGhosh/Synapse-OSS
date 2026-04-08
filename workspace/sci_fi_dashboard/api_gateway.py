@@ -22,6 +22,9 @@ from contextlib import asynccontextmanager, suppress
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path as _Path
 
 from sci_fi_dashboard import _deps as deps
 from sci_fi_dashboard.channel_setup import register_optional_channels
@@ -34,10 +37,12 @@ from sci_fi_dashboard.whatsapp_bridge import ensure_bridge_db
 
 # Route modules
 from sci_fi_dashboard.routes import (
+    agents as agents_routes,
     chat,
     health,
     knowledge,
     persona,
+    pipeline as pipeline_routes,
     sessions,
     websocket,
     whatsapp,
@@ -52,6 +57,24 @@ register_optional_channels()
 # ---------------------------------------------------------------------------
 # App Lifecycle
 # ---------------------------------------------------------------------------
+
+# --- Embedding Provider Status ---
+try:
+    from sci_fi_dashboard.embedding import get_provider as _get_emb_provider  # noqa: E402
+
+    _emb_provider = _get_emb_provider()
+    if _emb_provider:
+        _info = _emb_provider.info()
+        logger.info(
+            "[Embedding] Provider: %s | Model: %s | Dims: %s",
+            _info.name,
+            _info.model,
+            _info.dimensions,
+        )
+    else:
+        logger.warning("[Embedding] No provider available -- semantic search disabled")
+except Exception as _emb_exc:
+    logger.warning("[Embedding] Provider init failed: %s", _emb_exc)
 
 
 @asynccontextmanager
@@ -149,6 +172,18 @@ async def lifespan(app: FastAPI):
 
     app.state.session_actor_queue = SessionActorQueue()
 
+    # Initialize AgentRegistry + SubAgentRunner (Phase 3: SubAgent System)
+    from sci_fi_dashboard.subagent import AgentRegistry
+    from sci_fi_dashboard.subagent.runner import SubAgentRunner
+
+    deps.agent_registry = AgentRegistry()
+    deps.agent_runner = SubAgentRunner(
+        registry=deps.agent_registry,
+        channel_registry=deps.channel_registry,
+        llm_router=deps.synapse_llm_router,
+    )
+    logger.info("[SubAgent] SubAgent system initialized (registry + runner)")
+
     # Initialize models catalog
     from models_catalog import ensure_models_catalog
 
@@ -196,10 +231,73 @@ async def lifespan(app: FastAPI):
         deps._proactive_engine = app.state.proactive_engine
         logger.info("[PROACTIVE] Engine started")
 
+    # CronService — proactive scheduled messages
+    app.state.cron_service = None
+    try:
+        from sci_fi_dashboard.cron_service import CronService
+        app.state.cron_service = CronService(channel_registry=deps.channel_registry)
+        await app.state.cron_service.start()
+        logger.info("[CRON] CronService started")
+    except Exception as _cron_exc:
+        logger.warning("[CRON] CronService init failed (non-fatal): %s", _cron_exc)
+
+    # Phase 1 (v2.0): Skill Architecture
+    if deps._SKILL_SYSTEM_AVAILABLE:
+        try:
+            from sci_fi_dashboard.skills.registry import SkillRegistry
+            from sci_fi_dashboard.skills.router import SkillRouter
+            from sci_fi_dashboard.skills.watcher import SkillWatcher
+
+            _skills_dir = deps._synapse_cfg.data_root / "skills"
+            _skills_dir.mkdir(parents=True, exist_ok=True)
+
+            deps.skill_registry = SkillRegistry(_skills_dir)
+            deps.skill_router = SkillRouter()
+            deps.skill_router.update_skills(deps.skill_registry.list_skills())
+
+            # Wire hot-reload: when watcher triggers reload, also update router embeddings
+            _original_reload = deps.skill_registry.reload
+
+            def _reload_with_router_update():
+                _original_reload()
+                if deps.skill_router is not None:
+                    deps.skill_router.update_skills(deps.skill_registry.list_skills())
+
+            deps.skill_registry.reload = _reload_with_router_update
+
+            deps.skill_watcher = SkillWatcher(
+                skills_dir=_skills_dir,
+                registry=deps.skill_registry,
+                debounce_seconds=2.0,
+            )
+            deps.skill_watcher.start()
+
+            _skill_count = len(deps.skill_registry.list_skills())
+            logger.info(
+                "[Skills] Skill system initialized: %d skill(s) loaded from %s",
+                _skill_count,
+                _skills_dir,
+            )
+        except Exception as exc:
+            logger.warning("[Skills] Skill system init failed (non-fatal): %s", exc)
+            deps.skill_registry = None
+            deps.skill_router = None
+            deps.skill_watcher = None
+    else:
+        logger.info("[Skills] skills module not available -- skill system disabled")
+
     yield
 
     # --- Shutdown ---
     print("[STOP] Shutting down...")
+
+    # Stop skill watcher
+    if deps.skill_watcher is not None:
+        try:
+            deps.skill_watcher.stop()
+        except Exception:
+            pass
+
     deps.brain.save_graph()
 
     for persona_id, sbs in deps.sbs_registry.items():
@@ -212,6 +310,8 @@ async def lifespan(app: FastAPI):
     worker_task.cancel()
     if hasattr(app.state, "proactive_engine") and app.state.proactive_engine:
         await app.state.proactive_engine.stop()
+    if hasattr(app.state, "cron_service") and app.state.cron_service:
+        await app.state.cron_service.stop()
     if hasattr(app.state, "mcp_client") and app.state.mcp_client:
         await app.state.mcp_client.disconnect_all()
     if hasattr(app.state, "retry_queue"):
@@ -247,6 +347,18 @@ app.include_router(persona.router)
 app.include_router(knowledge.router)
 app.include_router(sessions.router)
 app.include_router(websocket.router)
+app.include_router(pipeline_routes.router)
+app.include_router(agents_routes.router)
+
+# Dashboard static files
+_static_dir = _Path(__file__).parent / "static"
+if _static_dir.exists():
+    app.mount("/static", StaticFiles(directory=str(_static_dir)), name="static")
+
+
+@app.get("/dashboard")
+async def dashboard():
+    return RedirectResponse(url="/static/dashboard/index.html")
 
 
 # ---------------------------------------------------------------------------

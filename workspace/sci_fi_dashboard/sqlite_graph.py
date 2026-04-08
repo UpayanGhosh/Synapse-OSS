@@ -116,7 +116,7 @@ class SQLiteGraph:
             """SELECT source, relation, target, weight
                FROM edges
                WHERE source = ? OR target = ?
-               ORDER BY weight DESC LIMIT 20""",
+               ORDER BY weight DESC LIMIT 50""",
             (entity, entity),
         ).fetchall()
 

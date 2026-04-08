@@ -324,19 +324,90 @@ else
 fi
 
 echo ""
-echo "🔑 Step 3: Configuring LLM access..."
+echo "🧠 Step 3: Configuring Synapse's memory engine..."
+echo ""
+echo "Synapse's memory system (Knowledge Graph) needs a Google Gemini API key."
+echo "This is FREE — no credit card, no billing, 1000 requests/day."
+echo ""
+echo "   Get your key at: https://aistudio.google.com/apikey"
+echo "   (Sign in with Google → Create API Key → Copy it)"
+echo ""
+echo "   NOTE: This is separate from your chat LLM."
+echo "   You can use any provider for chatting (Copilot, OpenAI, Claude, etc.)"
+echo "   but Synapse's memory always runs on Gemini free tier in the background."
 echo ""
 
-# Check if a direct Gemini key is present
+# Check if a direct Gemini key is already present
 if grep -qE "^GEMINI_API_KEY=.{20,}" "$SCRIPT_DIR/.env" 2>/dev/null; then
-    echo "   ✓ GEMINI_API_KEY found in .env — Synapse will call Gemini directly"
+    echo "   ✓ GEMINI_API_KEY already configured in .env"
 else
-    echo ""
-    echo "   ⚠  No LLM configured yet. Synapse will start but replies will fail."
-    echo "   Fix by adding to .env:"
-    echo "      GEMINI_API_KEY=<key>           (free at aistudio.google.com)"
-    echo ""
+    while true; do
+        read -p "   Paste your Gemini API key (or press Enter to skip): " gemini_key
+
+        if [ -z "$gemini_key" ]; then
+            echo ""
+            echo "   ⚠  Skipped. Synapse will chat but memory won't build."
+            echo "   Add later to .env:  GEMINI_API_KEY=<your_key>"
+            echo ""
+            break
+        fi
+
+        # Basic validation — Gemini keys are typically 39+ chars starting with "AI"
+        if [ ${#gemini_key} -lt 20 ]; then
+            echo "   That doesn't look right (too short). Try again."
+            continue
+        fi
+
+        # Write to .env
+        if grep -q "^GEMINI_API_KEY=" "$SCRIPT_DIR/.env" 2>/dev/null; then
+            sed -i.bak "s|^GEMINI_API_KEY=.*|GEMINI_API_KEY=$gemini_key|" "$SCRIPT_DIR/.env"
+            rm -f "$SCRIPT_DIR/.env.bak"
+        else
+            echo "GEMINI_API_KEY=$gemini_key" >> "$SCRIPT_DIR/.env"
+        fi
+
+        # Also write to synapse.json if it exists
+        SYNAPSE_HOME_DIR="${SYNAPSE_HOME:-$HOME/.synapse}"
+        SYNAPSE_JSON="$SYNAPSE_HOME_DIR/synapse.json"
+        if [ -f "$SYNAPSE_JSON" ]; then
+            python3 -c "
+import json, sys
+try:
+    with open('$SYNAPSE_JSON') as f:
+        cfg = json.load(f)
+    cfg.setdefault('providers', {}).setdefault('gemini', {})['api_key'] = '$gemini_key'
+    with open('$SYNAPSE_JSON', 'w') as f:
+        json.dump(cfg, f, indent=2)
+except Exception as e:
+    print(f'   Warning: Could not update synapse.json: {e}', file=sys.stderr)
+" 2>/dev/null
+        fi
+
+        echo "   ✓ Gemini key saved (powers Knowledge Graph + memory)"
+        echo ""
+        break
+    done
 fi
+
+echo ""
+echo "🗣️  Now configure your CHAT provider..."
+echo ""
+echo "   Which LLM do you want for chatting? (separate from memory)"
+echo "   You can configure this in synapse.json later, or set an env var now:"
+echo ""
+echo "   Provider          Env variable              Free?"
+echo "   ─────────────────────────────────────────────────────"
+echo "   Gemini (default)  GEMINI_API_KEY            Yes (already set above)"
+echo "   GitHub Copilot    (auto via VS Code login)  With Pro subscription"
+echo "   OpenAI            OPENAI_API_KEY            Paid"
+echo "   Anthropic         ANTHROPIC_API_KEY         Paid"
+echo "   Groq              GROQ_API_KEY              Free tier available"
+echo "   OpenRouter        OPENROUTER_API_KEY        Free models available"
+echo "   Ollama (local)    (no key needed)           Free (needs GPU)"
+echo ""
+echo "   For now, Gemini will handle both chat and memory."
+echo "   Edit ~/.synapse/synapse.json to change your chat provider later."
+echo ""
 
 # Create ~/.synapse/synapse.json from synapse.json.example if it doesn't exist
 SYNAPSE_HOME_DIR="${SYNAPSE_HOME:-$HOME/.synapse}"
@@ -369,22 +440,8 @@ echo ""
 # Ensure log directory exists before any nohup redirects
 mkdir -p ~/.synapse/logs
 
-echo "[1/4] Starting Docker services (Qdrant)..."
-if ! docker info > /dev/null 2>&1; then
-    echo "   ⚠ Docker daemon is not running. Skipping Qdrant."
-    echo "   Start Docker Desktop and re-run, or use synapse_start.sh later."
-elif docker start antigravity_qdrant 2>/dev/null; then
-    echo "   ✓ Qdrant started"
-else
-    echo "   Container not found. Creating Qdrant (may take a few minutes on first run)..."
-    if docker run -d --name antigravity_qdrant \
-        -p 6333:6333 -p 6334:6334 \
-        qdrant/qdrant; then
-        echo "   ✓ Qdrant created and started"
-    else
-        echo "   ⚠ Could not start Qdrant. Vector search will fall back to SQLite."
-    fi
-fi
+echo "[1/4] Vector store: LanceDB (embedded, no Docker needed)..."
+echo "   ✓ LanceDB initialized on first use via pip"
 
 echo ""
 echo "[2/4] Starting Ollama..."

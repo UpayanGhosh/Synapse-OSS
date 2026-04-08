@@ -9,6 +9,8 @@ import time
 from datetime import datetime
 
 from synapse_config import SynapseConfig
+from sci_fi_dashboard.embedding import get_provider
+from sci_fi_dashboard.vector_store import LanceDBVectorStore
 
 try:
     import ollama
@@ -17,21 +19,13 @@ try:
 except ImportError:
     HAS_OLLAMA = False
 
-if not HAS_OLLAMA:
-    print("[ERROR] nightly_ingest.py requires Ollama. Install from https://ollama.com")
-    _sys.exit(1)
-from qdrant_client import QdrantClient
-from qdrant_client.http import models
-
 # --- CONFIGURATION ---
 DB_PATH = str(SynapseConfig.load().db_dir / "memory.db")
-EMBEDDING_MODEL = "nomic-embed-text"
 THINK_MODEL = "llama3.2:3b"
 
 
 def get_embedding(text):
-    response = ollama.embeddings(model=EMBEDDING_MODEL, prompt=text)
-    return response["embedding"]
+    return get_provider().embed_documents([text])[0]
 
 
 def extract_structured_data(content):
@@ -80,14 +74,14 @@ def ingest_nightly():
         print("No pending logs to ingest.")
         return
 
-    qdrant = QdrantClient(host="localhost", port=6333)
+    lance_store = LanceDBVectorStore()
 
     for doc_id, content, ts in rows:
         print(f"  -> Processing document {doc_id}...")
         data = extract_structured_data(content)
 
-        # 1. Update Qdrant (Atomic Facts)
-        points = []
+        # 1. Update LanceDB (Atomic Facts)
+        facts_batch = []
         for fact in data.get("atomic_facts", []):
             vec = get_embedding(fact)
             cursor.execute(
@@ -95,20 +89,18 @@ def ingest_nightly():
             )
             fact_id = cursor.lastrowid
 
-            points.append(
-                models.PointStruct(
-                    id=fact_id,
-                    vector=vec,
-                    payload={
-                        "text": fact,
-                        "source_id": doc_id,
-                        "unix_timestamp": ts or int(time.time()),
-                    },
-                )
-            )
+            facts_batch.append({
+                "id": fact_id,
+                "vector": list(vec),
+                "metadata": {
+                    "text": fact,
+                    "source_id": doc_id,
+                    "unix_timestamp": ts or int(time.time()),
+                },
+            })
 
-        if points:
-            qdrant.upsert(collection_name="atomic_facts", points=points)
+        if facts_batch:
+            lance_store.upsert_facts(facts_batch)
 
         # 2. Update Knowledge Graph (with Archival Logic)
         for rel_data in data.get("relations", []):

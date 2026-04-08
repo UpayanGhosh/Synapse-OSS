@@ -55,6 +55,28 @@ class SBSConfig:
 
 
 @dataclass(frozen=True)
+class KGExtractionConfig:
+    """Configuration for background KG extraction from conversation messages.
+
+    Override via the ``"kg_extraction"`` key in ``synapse.json``.
+
+    Attributes:
+        enabled:                  Master switch for background extraction.
+        min_messages:             Minimum new messages before a batch runs.
+        extract_interval_seconds: Target cadence in seconds (informational;
+                                  actual cadence is governed by gentle_worker_loop).
+        kg_role:                  LLM role used for KG extraction calls.
+                                  Defaults to ``"kg"``; falls back to ``"casual"``
+                                  at runtime if not present in model_mappings.
+    """
+
+    enabled: bool = True
+    min_messages: int = 15
+    extract_interval_seconds: int = 1200
+    kg_role: str = "kg"
+
+
+@dataclass(frozen=True)
 class SynapseConfig:
     """Immutable configuration snapshot for a single Synapse-OSS process.
 
@@ -79,6 +101,9 @@ class SynapseConfig:
     mcp: dict = field(default_factory=dict)
     sbs: SBSConfig = field(default_factory=SBSConfig)
     validated_schema: Any = field(default=None, repr=False)
+    embedding: dict = field(default_factory=dict)
+    vector_store: dict = field(default_factory=dict)
+    kg_extraction: KGExtractionConfig = field(default_factory=KGExtractionConfig)
 
     @classmethod
     def load(cls) -> "SynapseConfig":
@@ -107,6 +132,9 @@ class SynapseConfig:
         session: dict[str, Any] = {}
         mcp: dict[str, Any] = {}
         sbs_raw: dict[str, Any] = {}
+        embedding: dict[str, Any] = {}
+        vector_store: dict[str, Any] = {}
+        kg_extraction_raw: dict[str, Any] = {}
 
         config_file = data_root / "synapse.json"
         validated = None
@@ -126,11 +154,20 @@ class SynapseConfig:
             session = raw.get("session", {})
             mcp = raw.get("mcp", {})
             sbs_raw = raw.get("sbs", {})
+            embedding = raw.get("embedding", {})
+            vector_store = raw.get("vector_store", {})
+            kg_extraction_raw = raw.get("kg_extraction", {})
 
         # Build SBSConfig from the "sbs" key (missing keys use dataclass defaults)
         sbs_config = SBSConfig(**{
             k: v for k, v in sbs_raw.items()
             if k in SBSConfig.__dataclass_fields__
+        })
+
+        # Build KGExtractionConfig from the "kg_extraction" key
+        kg_config = KGExtractionConfig(**{
+            k: v for k, v in kg_extraction_raw.items()
+            if k in KGExtractionConfig.__dataclass_fields__
         })
 
         return cls(
@@ -146,6 +183,9 @@ class SynapseConfig:
             mcp=mcp,
             sbs=sbs_config,
             validated_schema=validated,
+            embedding=embedding,
+            vector_store=vector_store,
+            kg_extraction=kg_config,
         )
 
 
