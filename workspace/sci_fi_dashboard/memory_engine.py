@@ -476,26 +476,6 @@ class MemoryEngine:
             except ImportError:
                 pass
 
-            # Local Ollama fallback (optional import)
-            try:
-                import ollama
-
-                response = ollama.chat(
-                    model="llama3.2:3b",
-                    messages=[
-                        {"role": "system", "content": system},
-                        {"role": "user", "content": prompt},
-                    ],
-                    keep_alive="0",
-                )
-                return {
-                    "response": response["message"]["content"],
-                    "model": "llama3.2:3b",
-                    "source": "local_fallback",
-                }
-            except ImportError:
-                pass
-
-            return {"error": "No LLM backend available (cloud router and local Ollama both unavailable)"}
+            return {"error": "No LLM backend available (cloud router unavailable)"}
         except Exception as e:
             return {"error": str(e)}

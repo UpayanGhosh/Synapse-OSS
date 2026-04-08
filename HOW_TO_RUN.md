@@ -932,26 +932,6 @@ python main.py verify    # Run 3-point inspection (health, air-gap, latency)
 
 ---
 
-### Run with Docker Compose (alternative deployment)
-
-If you prefer running the entire stack in Docker instead of natively:
-
-```bash
-# Copy your .env first
-cp .env.example .env
-# Edit .env and add your keys
-
-# Build and start
-docker compose up --build
-
-# Stop
-docker compose down
-```
-
-This starts the Synapse API Gateway in a container. LanceDB is embedded and requires no separate container.
-
----
-
 ### Useful API endpoints
 
 All endpoints are at `http://localhost:8000`:

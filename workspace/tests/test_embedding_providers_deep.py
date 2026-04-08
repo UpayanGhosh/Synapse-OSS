@@ -3,7 +3,7 @@
 Covers edge cases, contract enforcement, error paths, singleton lifecycle,
 and thread safety that the initial dev tests missed.
 
-All tests are mock-based — zero real fastembed / ollama / gemini calls.
+All tests are mock-based — zero real fastembed / gemini calls.
 """
 from __future__ import annotations
 
@@ -11,18 +11,12 @@ import os
 import sys
 import types
 import unittest
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
 
 # ---------------------------------------------------------------------------
 # Shared helpers
 # ---------------------------------------------------------------------------
-
-
-def _make_fake_ollama_module():
-    mod = types.ModuleType("ollama")
-    mod.embeddings = MagicMock()
-    return mod
 
 
 def _make_numpy_array(values: list[float]):
@@ -41,17 +35,6 @@ def _make_fastembed_provider(embedder=None):
     p._cache_dir = None
     p._threads = 1
     p._embedder = embedder
-    return p
-
-
-def _make_ollama_provider(available: bool = True, model: str | None = None):
-    """Build an OllamaProvider bypassing __init__."""
-    from sci_fi_dashboard.embedding.ollama_provider import OllamaProvider
-
-    p = OllamaProvider.__new__(OllamaProvider)
-    p._model_name = model or OllamaProvider.DEFAULT_MODEL
-    p._api_base = "http://localhost:11434"
-    p._available = available
     return p
 
 
@@ -218,133 +201,7 @@ class TestFastEmbedThreadCountCapsAt4(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# 2. OllamaProvider — Behaviour & Error Paths
-# ---------------------------------------------------------------------------
-
-
-class TestOllamaKeepAlive(unittest.TestCase):
-    """embed_query must pass keep_alive='5m', never '0'."""
-
-    def test_ollama_keep_alive_is_5m_not_0(self):
-        fake_ollama = _make_fake_ollama_module()
-        fake_ollama.embeddings.return_value = {"embedding": [0.0] * 768}
-
-        with patch.dict(sys.modules, {"ollama": fake_ollama}):
-            provider = _make_ollama_provider(available=True)
-            provider.embed_query("test")
-
-        _, kwargs = fake_ollama.embeddings.call_args
-        self.assertEqual(kwargs.get("keep_alive"), "5m",
-                         "keep_alive must be '5m' for actual embed calls")
-
-
-class TestOllamaBatchPreservesOrder(unittest.TestCase):
-    """embed_documents must return vectors in the same order as input texts."""
-
-    def test_ollama_batch_preserves_order(self):
-        texts = ["alpha", "beta", "gamma"]
-        # Return distinct embeddings per input so we can distinguish them
-        call_index = {"n": 0}
-
-        def side_effect(**kwargs):
-            idx = call_index["n"]
-            call_index["n"] += 1
-            return {"embedding": [float(idx)] * 768}
-
-        fake_ollama = _make_fake_ollama_module()
-        fake_ollama.embeddings.side_effect = side_effect
-
-        with patch.dict(sys.modules, {"ollama": fake_ollama}):
-            provider = _make_ollama_provider(available=True)
-            results = provider.embed_documents(texts)
-
-        self.assertEqual(len(results), 3)
-        # First vector should have all 0.0 values, second 1.0, third 2.0
-        self.assertAlmostEqual(results[0][0], 0.0)
-        self.assertAlmostEqual(results[1][0], 1.0)
-        self.assertAlmostEqual(results[2][0], 2.0)
-
-
-class TestOllamaEmbedDocumentsPrefix(unittest.TestCase):
-    """embed_documents must prepend 'search_document: ' to each text."""
-
-    def test_ollama_embed_documents_prefix(self):
-        fake_ollama = _make_fake_ollama_module()
-        fake_ollama.embeddings.return_value = {"embedding": [0.0] * 768}
-
-        with patch.dict(sys.modules, {"ollama": fake_ollama}):
-            provider = _make_ollama_provider(available=True)
-            provider.embed_documents(["my document"])
-
-        _, kwargs = fake_ollama.embeddings.call_args
-        prompt = kwargs.get("prompt", "")
-        self.assertTrue(
-            prompt.startswith("search_document: "),
-            f"Expected 'search_document: ' prefix, got: {prompt!r}",
-        )
-
-
-class TestOllamaUnavailableDoesNotRaiseOnInit(unittest.TestCase):
-    """OllamaProvider.__init__ must not raise even when ollama is unreachable."""
-
-    def test_ollama_unavailable_does_not_raise_on_init(self):
-        fake_ollama = _make_fake_ollama_module()
-        fake_ollama.embeddings.side_effect = ConnectionError("refused")
-
-        with patch.dict(sys.modules, {"ollama": fake_ollama}):
-            # Re-import to get the patched module
-            if "sci_fi_dashboard.embedding.ollama_provider" in sys.modules:
-                del sys.modules["sci_fi_dashboard.embedding.ollama_provider"]
-            from sci_fi_dashboard.embedding.ollama_provider import OllamaProvider
-
-            # Should not raise
-            try:
-                provider = OllamaProvider()
-            except Exception as exc:
-                self.fail(f"OllamaProvider() raised unexpectedly: {exc}")
-
-        self.assertFalse(provider.available)
-
-
-class TestOllamaEmbedQueryWhenUnavailable(unittest.TestCase):
-    """embed_query when _available=False must raise or propagate a clear error.
-
-    The provider does NOT guard against this in its current implementation —
-    the call will simply attempt the ollama import and call, which will fail
-    when ollama itself raises. We verify that OllamaProvider doesn't silently
-    swallow errors for disabled providers.
-    """
-
-    def test_ollama_embed_query_when_unavailable_raises(self):
-        fake_ollama = _make_fake_ollama_module()
-        fake_ollama.embeddings.side_effect = ConnectionError("refused")
-
-        with patch.dict(sys.modules, {"ollama": fake_ollama}):
-            provider = _make_ollama_provider(available=False)
-            # The implementation always calls ollama regardless of _available.
-            # A ConnectionError should propagate out.
-            with self.assertRaises(Exception):
-                provider.embed_query("test")
-
-
-class TestOllamaInfoMetadata(unittest.TestCase):
-    """info() must return correct ProviderInfo for Ollama."""
-
-    def test_ollama_info_returns_correct_metadata(self):
-        from sci_fi_dashboard.embedding.base import ProviderInfo
-
-        provider = _make_ollama_provider(available=True)
-        info = provider.info()
-
-        self.assertIsInstance(info, ProviderInfo)
-        self.assertEqual(info.name, "ollama")
-        self.assertEqual(info.dimensions, 768)
-        self.assertFalse(info.requires_network,
-                         "Ollama is local — requires_network should be False")
-
-
-# ---------------------------------------------------------------------------
-# 3. GeminiAPIProvider — Guards & Contracts
+# 2. GeminiAPIProvider — Guards & Contracts
 # ---------------------------------------------------------------------------
 
 
@@ -470,7 +327,7 @@ class TestGeminiOutputDimensionality(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# 4. Factory Lifecycle & Singleton
+# 3. Factory Lifecycle & Singleton
 # ---------------------------------------------------------------------------
 
 
@@ -547,23 +404,6 @@ class TestFactoryReturnsNoneWhenNoProviderAvailable(_FactoryTestBase):
             result = get_provider()
 
         self.assertIsNone(result)
-
-
-class TestFactoryExplicitOllamaConfig(_FactoryTestBase):
-    """create_provider({'embedding': {'provider': 'ollama'}}) must return OllamaProvider."""
-
-    def test_factory_explicit_ollama_config(self):
-        mock_ollama_instance = MagicMock()
-        mock_ollama_instance.available = True
-
-        with patch("sci_fi_dashboard.embedding.factory._create_explicit",
-                   return_value=mock_ollama_instance) as mock_explicit:
-            from sci_fi_dashboard.embedding.factory import create_provider
-            result = create_provider({"embedding": {"provider": "ollama"}})
-
-        mock_explicit.assert_called_once_with("ollama", model=None,
-                                               cache_dir=None, threads=None)
-        self.assertIs(result, mock_ollama_instance)
 
 
 class TestFactoryPassesModelToProvider(_FactoryTestBase):
@@ -650,25 +490,6 @@ class TestFastEmbedDocumentOutputIsListOfLists(unittest.TestCase):
             self.assertIsInstance(vec, list)
             for val in vec:
                 self.assertIsInstance(val, float)
-
-
-class TestOllamaCheckAvailabilityUsesKeepAlive0(unittest.TestCase):
-    """_check_availability ping must use keep_alive='0' to avoid model warm-up cost."""
-
-    def test_ollama_availability_check_uses_keep_alive_0(self):
-        fake_ollama = _make_fake_ollama_module()
-        fake_ollama.embeddings.return_value = {"embedding": [0.0] * 768}
-
-        with patch.dict(sys.modules, {"ollama": fake_ollama}):
-            if "sci_fi_dashboard.embedding.ollama_provider" in sys.modules:
-                del sys.modules["sci_fi_dashboard.embedding.ollama_provider"]
-            from sci_fi_dashboard.embedding.ollama_provider import OllamaProvider
-
-            provider = OllamaProvider()
-
-        # The ping during __init__ should have used keep_alive="0"
-        _, kwargs = fake_ollama.embeddings.call_args
-        self.assertEqual(kwargs.get("keep_alive"), "0")
 
 
 class TestGeminiDimensionsProperty(unittest.TestCase):

@@ -12,16 +12,8 @@ from synapse_config import SynapseConfig
 from sci_fi_dashboard.embedding import get_provider
 from sci_fi_dashboard.vector_store import LanceDBVectorStore
 
-try:
-    import ollama
-
-    HAS_OLLAMA = True
-except ImportError:
-    HAS_OLLAMA = False
-
 # --- CONFIGURATION ---
 DB_PATH = str(SynapseConfig.load().db_dir / "memory.db")
-THINK_MODEL = "llama3.2:3b"
 
 
 def get_embedding(text):
@@ -39,10 +31,10 @@ def extract_structured_data(content):
     Text: {content}
     """
     try:
-        response = ollama.chat(
-            model=THINK_MODEL, messages=[{"role": "user", "content": prompt}], format="json"
-        )
-        return json.loads(response["message"]["content"])
+        from skills.llm_router import llm
+
+        response_text = llm.generate(prompt)
+        return json.loads(response_text)
     except Exception as e:
         print(f"Extraction failed: {e}")
         return {"atomic_facts": [], "relations": []}

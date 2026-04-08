@@ -13,8 +13,8 @@ def create_provider(config: dict | None = None) -> EmbeddingProvider:
 
     Priority:
     1. config['embedding']['provider'] if explicitly set (not 'auto')
-    2. FastEmbedProvider if fastembed is importable
-    3. OllamaProvider if ollama is importable and running
+    2. FastEmbedProvider if fastembed is importable (primary — zero external services)
+    3. GeminiAPIProvider if GEMINI_API_KEY is set
     4. Raise RuntimeError
     """
     cfg = (config or {}).get("embedding", {})
@@ -26,7 +26,7 @@ def create_provider(config: dict | None = None) -> EmbeddingProvider:
     if explicit and explicit != "auto":
         return _create_explicit(explicit, model=model, cache_dir=cache_dir, threads=threads)
 
-    # Cascade
+    # Cascade — no external service dependencies
     try:
         import fastembed  # noqa: F401
 
@@ -35,17 +35,17 @@ def create_provider(config: dict | None = None) -> EmbeddingProvider:
         logger.info("[Embedding] Selected provider: FastEmbed (ONNX, local)")
         return FastEmbedProvider(model=model, cache_dir=cache_dir, threads=threads)
     except ImportError:
-        logger.debug("[Embedding] fastembed not installed, trying Ollama...")
+        logger.debug("[Embedding] fastembed not installed, trying Gemini API...")
 
-    try:
-        from sci_fi_dashboard.embedding.ollama_provider import OllamaProvider
+    import os
+    if os.environ.get("GEMINI_API_KEY"):
+        try:
+            from sci_fi_dashboard.embedding.gemini_provider import GeminiAPIProvider
 
-        provider = OllamaProvider(model=model)
-        if provider.available:
-            logger.info("[Embedding] Selected provider: Ollama")
-            return provider
-    except Exception:
-        pass
+            logger.info("[Embedding] Selected provider: Gemini API")
+            return GeminiAPIProvider(model=model)
+        except Exception:
+            pass
 
     raise RuntimeError(
         "No embedding provider available. Install fastembed: pip install fastembed"
@@ -59,10 +59,6 @@ def _create_explicit(
         from sci_fi_dashboard.embedding.fastembed_provider import FastEmbedProvider
 
         return FastEmbedProvider(model=model, cache_dir=cache_dir, threads=threads)
-    elif name == "ollama":
-        from sci_fi_dashboard.embedding.ollama_provider import OllamaProvider
-
-        return OllamaProvider(model=model)
     elif name == "gemini":
         from sci_fi_dashboard.embedding.gemini_provider import GeminiAPIProvider  # Phase 5
 

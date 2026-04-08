@@ -654,7 +654,7 @@ class TestConfigurationCompleteness(unittest.TestCase):
             try:
                 provider = create_provider({"embedding": {"provider": "auto"}})
                 provider_type = type(provider).__name__
-                # The cascade: auto → fastembed (first choice) → OllamaProvider → RuntimeError
+                # The cascade: auto → fastembed (first choice) → RuntimeError
                 self.assertIn(
                     "FastEmbed",
                     provider_type,

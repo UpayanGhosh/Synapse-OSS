@@ -1,13 +1,13 @@
 """Unit tests for the embedding provider abstraction layer.
 
-All tests use unittest.mock — fastembed and ollama do NOT need to be installed.
+All tests use unittest.mock — fastembed does NOT need to be installed.
 """
 from __future__ import annotations
 
 import sys
 import types
 import unittest
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
 
 # ---------------------------------------------------------------------------
@@ -19,13 +19,6 @@ def _make_fake_fastembed_module():
     """Return a minimal fake `fastembed` top-level module."""
     mod = types.ModuleType("fastembed")
     mod.TextEmbedding = MagicMock()
-    return mod
-
-
-def _make_fake_ollama_module():
-    """Return a minimal fake `ollama` top-level module."""
-    mod = types.ModuleType("ollama")
-    mod.embeddings = MagicMock()
     return mod
 
 
@@ -137,51 +130,6 @@ class TestFastEmbedProvider(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# OllamaProvider tests
-# ---------------------------------------------------------------------------
-
-
-class TestOllamaProvider(unittest.TestCase):
-    # 5. OllamaProvider marks itself unavailable when ollama raises
-    def test_ollama_provider_unavailable(self):
-        fake_ollama = _make_fake_ollama_module()
-        fake_ollama.embeddings.side_effect = ConnectionError("refused")
-
-        with patch.dict(sys.modules, {"ollama": fake_ollama}):
-            from sci_fi_dashboard.embedding.ollama_provider import OllamaProvider
-
-            provider = OllamaProvider.__new__(OllamaProvider)
-            provider._model_name = OllamaProvider.DEFAULT_MODEL
-            provider._api_base = "http://localhost:11434"
-            # Directly invoke availability check with the patched module
-            provider._available = provider._check_availability()
-
-        self.assertFalse(provider.available)
-
-    # 6. embed_query passes "search_query: " prefix in the prompt argument
-    def test_ollama_provider_adds_prefix(self):
-        fake_ollama = _make_fake_ollama_module()
-        fake_ollama.embeddings.return_value = {"embedding": [0.1] * 768}
-
-        with patch.dict(sys.modules, {"ollama": fake_ollama}):
-            from sci_fi_dashboard.embedding.ollama_provider import OllamaProvider
-
-            provider = OllamaProvider.__new__(OllamaProvider)
-            provider._model_name = OllamaProvider.DEFAULT_MODEL
-            provider._api_base = "http://localhost:11434"
-            provider._available = True
-
-            provider.embed_query("test input")
-
-        _, kwargs = fake_ollama.embeddings.call_args
-        prompt_used = kwargs.get("prompt") or fake_ollama.embeddings.call_args[0][1]
-        self.assertTrue(
-            prompt_used.startswith("search_query: "),
-            f"Expected 'search_query: ' prefix, got: {prompt_used!r}",
-        )
-
-
-# ---------------------------------------------------------------------------
 # Factory tests
 # ---------------------------------------------------------------------------
 
@@ -221,47 +169,7 @@ class TestFactory(unittest.TestCase):
 
         self.assertIs(result, mock_instance)
 
-    # 8. cascade falls back to Ollama when fastembed is NOT importable
-    def test_factory_cascade_ollama_fallback(self):
-        # Remove fastembed from sys.modules to simulate ImportError
-        modules_backup = sys.modules.copy()
-        sys.modules.pop("fastembed", None)
-
-        try:
-            from sci_fi_dashboard.embedding.factory import create_provider
-
-            mock_ollama_provider = MagicMock()
-            mock_ollama_provider.available = True
-
-            with patch(
-                "sci_fi_dashboard.embedding.factory.OllamaProvider",
-                return_value=mock_ollama_provider,
-                create=True,
-            ):
-                # Simulate fastembed ImportError + Ollama success
-                original_create = create_provider
-
-                def patched_create(config=None):
-                    cfg = (config or {}).get("embedding", {})
-                    # fastembed not importable — raises ImportError
-                    try:
-                        raise ImportError("No module named 'fastembed'")
-                    except ImportError:
-                        pass
-                    # Ollama fallback
-                    from sci_fi_dashboard.embedding.factory import OllamaProvider  # noqa
-
-                    p = mock_ollama_provider
-                    if p.available:
-                        return p
-                    raise RuntimeError("none available")
-
-                result = patched_create()
-                self.assertIs(result, mock_ollama_provider)
-        finally:
-            sys.modules.update(modules_backup)
-
-    # 9. explicit config override — config {"embedding": {"provider": "fastembed"}}
+    # 8. explicit config override — config {"embedding": {"provider": "fastembed"}}
     def test_factory_explicit_config_override(self):
         config = {"embedding": {"provider": "fastembed"}}
 
