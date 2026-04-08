@@ -234,6 +234,31 @@ _background_tasks: set[asyncio.Task] = set()
 # GC anchor for session ingestion background tasks (/new command)
 _session_ingest_tasks: set[asyncio.Task] = set()
 
+# GC anchor for diary generation background tasks (/new command)
+_diary_tasks: set[asyncio.Task] = set()
+
+
+async def _generate_diary_background(
+    archived_path: Path,
+    agent_id: str,
+    session_key: str,
+) -> None:
+    """Background coroutine: generate a diary entry from an archived session transcript."""
+    try:
+        from sci_fi_dashboard.multiuser.transcript import load_messages
+
+        messages = await load_messages(archived_path)
+        if not messages:
+            return
+        await deps.diary_engine.generate_entry(
+            session_id=session_key,
+            user_id=agent_id,
+            messages=messages,
+        )
+        logger.info("[Diary] Entry generated for session %s", session_key)
+    except Exception:
+        logger.warning("[Diary] Background diary generation failed for %s", session_key, exc_info=True)
+
 
 async def _handle_new_command(
     session_key: str,
@@ -277,6 +302,18 @@ async def _handle_new_command(
         )
         _session_ingest_tasks.add(task)
         task.add_done_callback(_session_ingest_tasks.discard)
+
+        # Fire-and-forget: diary entry generation (independent of ingest)
+        if deps.diary_engine is not None:
+            diary_task = asyncio.create_task(
+                _generate_diary_background(
+                    archived_path=archived_path,
+                    agent_id=agent_id,
+                    session_key=session_key,
+                )
+            )
+            _diary_tasks.add(diary_task)
+            diary_task.add_done_callback(_diary_tasks.discard)
 
     return "Session archived! I'll remember everything. Starting fresh now."
 

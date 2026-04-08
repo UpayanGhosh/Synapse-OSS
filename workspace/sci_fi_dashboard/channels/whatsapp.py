@@ -30,6 +30,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 from datetime import datetime
 from pathlib import Path
 
@@ -556,7 +557,99 @@ class WhatsAppChannel(BaseChannel):
                 logger.info("[WA] DM from %s blocked (%s)", cm.user_id, access)
                 return None
 
+        # --- Audio / voice message transcription ---
+        await self._maybe_transcribe_audio(cm, raw_payload)
+
         return cm
+
+    # ------------------------------------------------------------------
+    # Audio transcription
+    # ------------------------------------------------------------------
+
+    async def _maybe_transcribe_audio(
+        self, cm: ChannelMessage, raw_payload: dict
+    ) -> None:
+        """Transcribe audio/voice messages via Groq Whisper and update *cm* in-place.
+
+        If the incoming message is an audio type with a ``mediaUrl``, the audio
+        is downloaded to a temporary file, transcribed, and the resulting text
+        replaces the ChannelMessage ``text`` field (prefixed with
+        ``[Voice message]``).  On failure, a polite fallback is set instead.
+
+        This is a no-op for non-audio messages.
+        """
+        media_type = (raw_payload.get("mediaType") or "").lower()
+        mime_type = (raw_payload.get("mediaMimeType") or "").lower()
+        media_url = raw_payload.get("mediaUrl") or ""
+
+        is_audio = media_type == "audio" or mime_type.startswith("audio/")
+        if not is_audio or not media_url:
+            return
+
+        # Lazy import to avoid circular dependency at module level
+        from sci_fi_dashboard.media.audio_transcriber import transcribe_audio
+
+        # Determine file extension from MIME type for server-side detection
+        ext = ".ogg"
+        if "mp3" in mime_type or "mpeg" in mime_type:
+            ext = ".mp3"
+        elif "mp4" in mime_type or "m4a" in mime_type:
+            ext = ".m4a"
+        elif "wav" in mime_type:
+            ext = ".wav"
+        elif "webm" in mime_type:
+            ext = ".webm"
+
+        tmp_path: Path | None = None
+        try:
+            # Download audio from bridge
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                resp = await client.get(media_url)
+                if resp.status_code != 200:
+                    logger.warning(
+                        "[WA] Audio download failed (HTTP %d) from %s",
+                        resp.status_code,
+                        media_url,
+                    )
+                    cm.text = "I couldn't process that voice message, sorry."
+                    return
+
+            # Write to temp file
+            tmp_fd, tmp_str = tempfile.mkstemp(suffix=ext, prefix="synapse_voice_")
+            tmp_path = Path(tmp_str)
+            try:
+                os.write(tmp_fd, resp.content)
+            finally:
+                os.close(tmp_fd)
+
+            # Transcribe
+            transcript = await transcribe_audio(tmp_path)
+
+            if transcript:
+                cm.text = f"[Voice message] {transcript}"
+                cm.transcript = transcript
+                logger.info(
+                    "[WA] Voice transcription OK for msg %s (%d chars)",
+                    cm.message_id,
+                    len(transcript),
+                )
+            else:
+                cm.text = "I couldn't process that voice message, sorry."
+                logger.warning(
+                    "[WA] Voice transcription returned empty for msg %s",
+                    cm.message_id,
+                )
+
+        except Exception as exc:
+            logger.error("[WA] Audio transcription failed for msg %s: %s", cm.message_id, exc)
+            cm.text = "I couldn't process that voice message, sorry."
+        finally:
+            # Clean up temp file
+            if tmp_path is not None:
+                try:
+                    tmp_path.unlink(missing_ok=True)
+                except OSError:
+                    pass
 
     # ------------------------------------------------------------------
     # Internal helpers

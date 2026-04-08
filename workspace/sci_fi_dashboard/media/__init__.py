@@ -6,6 +6,7 @@ SSRF guard for safe remote downloads.
 """
 
 from .audio_preflight import AudioPreflightResult, check_audio_preflight
+from .audio_transcriber import transcribe_audio
 from .constants import (
     CLEANUP_THROTTLE_SECONDS,
     DEFAULT_TTL_MS,
@@ -34,6 +35,8 @@ __all__ = [
     # audio_preflight
     "AudioPreflightResult",
     "check_audio_preflight",
+    # audio_transcriber
+    "transcribe_audio",
     # constants
     "CLEANUP_THROTTLE_SECONDS",
     "DEFAULT_TTL_MS",

@@ -241,6 +241,12 @@ async def lifespan(app: FastAPI):
     except Exception as _cron_exc:
         logger.warning("[CRON] CronService init failed (non-fatal): %s", _cron_exc)
 
+    # DiaryEngine — generates diary entries on session archive
+    try:
+        deps.init_diary_engine()
+    except Exception as _diary_exc:
+        logger.warning("[Diary] DiaryEngine init failed (non-fatal): %s", _diary_exc)
+
     # Phase 1 (v2.0): Skill Architecture
     if deps._SKILL_SYSTEM_AVAILABLE:
         try:

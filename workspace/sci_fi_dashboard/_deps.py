@@ -284,3 +284,19 @@ from sci_fi_dashboard.subagent.runner import SubAgentRunner as _SubAgentRunner  
 
 agent_registry: "_AgentRegistry | None" = None
 agent_runner: "_SubAgentRunner | None" = None
+
+# ---------------------------------------------------------------------------
+# DiaryEngine (initialized in lifespan via init_diary_engine())
+# ---------------------------------------------------------------------------
+from sci_fi_dashboard.diary_engine import DiaryEngine  # noqa: E402
+
+diary_engine: "DiaryEngine | None" = None
+
+
+def init_diary_engine() -> None:
+    """Create the DiaryEngine singleton, wired to the Gemini Flash LLM."""
+    global diary_engine
+    from sci_fi_dashboard.llm_wrappers import call_gemini_flash
+
+    diary_engine = DiaryEngine(llm_fn=call_gemini_flash)
+    logger.info("[Diary] DiaryEngine initialized")
