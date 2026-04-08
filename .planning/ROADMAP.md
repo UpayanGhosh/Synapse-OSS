@@ -1,76 +1,29 @@
-# Roadmap: Synapse-OSS v2.0 — The Adaptive Core
+# Roadmap: Synapse-OSS
 
-## Overview
+## Milestones
 
-v1.0 gave Synapse a body (model-agnostic, multi-channel, fully self-hosted). v2.0 gives
-it the ability to grow. This milestone ships the five foundational capabilities that turn
-Synapse from a fixed architecture into a living, extensible one: a skill system where
-capability lives in directories not code, a safe self-modification engine with
-user-consented rollback, a subagent system for parallel work, an improved onboarding
-wizard that gets fresh users to a meaningful baseline fast, and a browser tool that
-closes the knowledge cutoff gap.
-
-Phase 2 (Safe Self-Modification) is the most architecturally sensitive. It MUST ship
-with rollback — self-modification without rollback is not an option (learned from Jarvis).
-Phase 1 (Skill Architecture) must ship before Phase 2 because the self-mod engine uses
-skills as its output format — every modification produces a skill, not raw code.
-
-## Milestone Context
-
-**v1.0 (COMPLETE — 2026-03-03):** OSS independence — all OpenClaw deps removed,
-all channels live, full health/sessions API. 38 plans, 10 phases, 100% complete.
-
-**v2.0 (CURRENT):** The Adaptive Core — Phases 5–9 from the vision document.
-6 phases, est. 27+ plans.
-
-**v3.0 (FUTURE — 2027):** Proactive Architecture Evolution — Synapse observes patterns
-and proposes its own extensions. Details at v3.0 milestone init.
-
-**v4.0 (FUTURE — 2028):** The Jarvis Threshold — mature instance manages parts of
-the user's digital life, has its own name and personality shaped through conversation.
-Details at v4.0 milestone init.
-
-## Phase Numbering
-
-- Integer phases (1–5): v2.0 milestone work
-- Decimal phases (N.1, N.2): Urgent insertions between planned phases
-- Previous v1.0 phases archived in `.planning/phases/`
-
-## Phases
-
-- [x] **Phase 0: Session & Context Persistence** — Wire the multiuser/ session infrastructure into the WhatsApp pipeline; every message builds on conversation history instead of starting fresh (completed 2026-04-07)
-- [x] **Phase 1: Skill Architecture** — Skills-as-directories: SKILL.md format, startup discovery, description-based routing, skill-creator skill (vision Phase 5) (completed 2026-04-07)
-- [x] **Phase 2: Safe Self-Modification + Rollback** — Full consent protocol + snapshot engine + Zone 1/Zone 2 hard enforcement + rollback by date/description (vision Phase 6) (completed 2026-04-07)
-- [x] **Phase 3: Subagent System** — Spawn isolated async sub-agents, parallel execution, result return, progress updates (vision Phase 7) (completed 2026-04-07)
-- [x] **Phase 4: Onboarding Wizard v2** — `python -m synapse setup` under 5 min, initial SBS profile from questions, history import offer (vision Phase 8) (completed 2026-04-07)
-- [x] **Phase 5: Browser Tool** — Live web access as a skill, summarized injection, privacy-boundary enforcement (vision Phase 9) (completed 2026-04-07)
+- ✅ **v1.0 OSS Independence** - Phases 0-9 (shipped 2026-03-03)
+- ✅ **v2.0 The Adaptive Core** - Phases 0-5 (shipped 2026-04-08)
+- 🚧 **v3.0 OpenClaw Feature Harvest** - Phases 6-11 (in progress)
 
 ---
 
-## Phase Details
+<details>
+<summary>✅ v1.0 OSS Independence (Phases 0-9) — SHIPPED 2026-03-03</summary>
+
+All channels live, hybrid RAG memory, SBS 8-layer profiling, Dual Cognition Engine, proactive outreach.
+38 plans, 10 phases, 100% complete. See `.planning/phases/` for archive.
+
+</details>
+
+<details>
+<summary>✅ v2.0 The Adaptive Core (Phases 0-5) — SHIPPED 2026-04-08</summary>
+
+Skills-as-directories, safe self-modification + rollback, subagent system, onboarding wizard v2, browser tool, embedding refactor (Qdrant → LanceDB), Ollama made optional, Docker removed.
 
 ### Phase 0: Session & Context Persistence
-**Goal**: Every WhatsApp conversation maintains history across messages. The existing
-`multiuser/` session infrastructure (SessionStore, JSONL transcripts, ConversationCache,
-context_assembler, compaction engine) is wired into `process_message_pipeline()` so
-that `history=[]` is replaced by real conversation history loaded from disk.
-**Depends on**: Nothing. The multiuser/ module is already built — this is wiring only.
-**Requirements**: SESS-01 through SESS-08
-**Success Criteria** (what must be TRUE):
-  1. Send 10 messages in a WhatsApp conversation — message 10 references context from message 1; LLM uses it correctly
-  2. Restart the server — message 11 in the same conversation continues the thread (transcript persisted to disk)
-  3. Two different WhatsApp senders get separate conversation histories (dmScope=per-channel-peer)
-  4. After 50 back-and-forth turns, compaction triggers automatically — conversation continues without errors
-  5. `GET /sessions` returns the active sessions with turn counts and timestamps
-  6. `POST /sessions/{key}/reset` clears the history — next message starts fresh
-  7. `entities.json` is `{}` (OSS-safe) — EntityGate loads from KG, not from personal data file
-  8. Sending `/new` in WhatsApp archives the current session and starts fresh — next message sees empty history
-**Key Risks**:
-  - ConversationCache in `_deps.py` must be a singleton — if instantiated per-request, cache never warms
-  - `build_session_key()` needs `agent_id` (from `deps._resolve_target()`) and `channel` — must be consistent across restarts
-  - Compaction calls the LLM synchronously — must be async and non-blocking to the response path
-  - Token estimation uses chars/4 heuristic — Banglish is ~2 chars/token so context budget is tighter
-**Plans**: 5 plans
+**Goal**: Every WhatsApp conversation maintains history across messages.
+**Plans**: 5/5
 
 Plans:
 - [x] 00-01-PLAN.md — ConversationCache singleton in _deps.py + _LLMClientAdapter class
@@ -79,180 +32,213 @@ Plans:
 - [x] 00-04-PLAN.md — Tests: session key, history load/save, isolation, compaction, sessions API
 - [x] 00-05-PLAN.md — /new command: archive transcript + rotate session ID + confirm reset
 
----
-
 ### Phase 1: Skill Architecture
-**Goal**: Any capability Synapse gains lives in a skill directory, not the core codebase.
-Skills are discovered at startup, routed by description, and can be created from within
-conversation by the skill-creator skill itself.
-**Depends on**: Nothing (first v2.0 phase). Requires refactor/optimize merged to develop.
-**Requirements**: SKILL-01, SKILL-02, SKILL-03, SKILL-04, SKILL-05, SKILL-06, SKILL-07
-**Success Criteria** (what must be TRUE):
-  1. A new skill dropped into ~/.synapse/skills/ is discovered and routable without restarting the server — confirmed by POST /chat triggering the new skill after a hot-reload
-  2. `GET /skills` returns JSON listing all loaded skills with name, description, version — no hardcoded skill list in api_gateway.py
-  3. A skill that raises an unhandled exception is caught at the runner boundary — the conversation continues and the user receives a clear error message, not a 500
-  4. The skill-creator skill, when triggered, produces a correctly structured skill directory with valid SKILL.md YAML in ~/.synapse/skills/<new-skill-name>/
-  5. Installing a community skill by copying its directory into ~/.synapse/skills/ makes it available without pip install or code changes
-**Key Risks**:
-  - Hot-reload without restart requires a file-watcher (watchdog or similar) — must not race with an in-flight request that is currently executing the skill being reloaded
-  - SKILL.md YAML schema must be validated at load time with clear errors — bad community skills should fail loudly at discovery, not silently at routing
-  - The skill-creator skill writes to ~/.synapse/ (Zone 2) — Sentinel must approve this write path; document the approved Zone 2 write paths list
-**Plans**: 5 plans
+**Goal**: Any capability lives in a skill directory, not the core codebase.
+**Plans**: 5/5
 
 Plans:
-- [x] 01-01-PLAN.md — Define SKILL.md schema (YAML frontmatter + instructions body) + create SkillLoader class with validation
+- [x] 01-01-PLAN.md — Define SKILL.md schema + create SkillLoader class with validation
 - [x] 01-02-PLAN.md — Implement SkillRegistry: startup scan, hot-reload watcher, GET /skills endpoint
-- [x] 01-03-PLAN.md — Implement description-based SkillRouter: embed descriptions at load, cosine-match incoming intent
-- [x] 01-04-PLAN.md — Wire SkillRegistry + SkillRouter into api_gateway.py pipeline (post-traffic-cop routing step)
-- [x] 01-05-PLAN.md — Create skill-creator skill: SKILL.md template + scripts/create_skill.py + test coverage
-
----
+- [x] 01-03-PLAN.md — Implement description-based SkillRouter: embed descriptions at load, cosine-match
+- [x] 01-04-PLAN.md — Wire SkillRegistry + SkillRouter into api_gateway.py pipeline
+- [x] 01-05-PLAN.md — Create skill-creator skill: SKILL.md template + scripts/create_skill.py
 
 ### Phase 2: Safe Self-Modification + Rollback
-**Goal**: Synapse can modify its own Zone 2 architecture through conversation — every
-change is explained, confirmed, executed, snapshotted, and reversible. Zone 1 is
-cryptographically immutable to model writes. Ships together with rollback — non-negotiable.
-**Depends on**: Phase 1 (skill system is the output format for self-modification)
-**Requirements**: MOD-01, MOD-02, MOD-03, MOD-04, MOD-05, MOD-06, MOD-07, MOD-08, MOD-09, MOD-10
-**Success Criteria** (what must be TRUE):
-  1. When a user says "remind me to take my medication at 8am every day", Synapse responds with a plain-language description of what it will build (a cron skill), waits for yes, then creates the skill and confirms success
-  2. A snapshot is written to ~/.synapse/snapshots/ before every Zone 2 modification — confirmed by listing the directory before and after
-  3. After a failed modification (intentionally broken test skill), Synapse auto-reverts and the conversation resumes with a description of what went wrong
-  4. "Undo the last change" restores the previous snapshot and the removed capability is gone — confirmed by attempting to trigger it
-  5. "Go back to how you were on [date]" restores the snapshot closest to that date — confirmed by checking which skills exist after restore
-  6. `grep -r "Zone1\|IMMUTABLE" workspace/sci_fi_dashboard/sbs/sentinel/` confirms Sentinel enforces Zone 1 write rejection with a clear error
-**Key Risks**:
-  - CRITICAL: Phase 6 must ship with rollback — self-mod without rollback is not an option. Do not split these into separate phases.
-  - Snapshot atomicity: write to a temp path then os.rename() — partial writes must never corrupt the current state
-  - Zone 1 enforcement must happen at the filesystem write level (Sentinel), not just as a prompt instruction — LLMs can be manipulated
-  - Cron job creation is Zone 2 but requires OS-level scheduling (schtasks on Windows, cron on Linux) — test both platforms
-  - Rollback of a cron job must also remove the scheduled task from the OS, not just the skill directory
-**Plans**: 6 plans (estimated)
+**Goal**: Synapse can modify its own Zone 2 architecture — every change is consented, snapshotted, reversible.
+**Plans**: 5/6 (02-06 integration tests pending)
 
 Plans:
-- [x] 02-01-PLAN.md — Create SnapshotEngine: write/list/restore snapshot lifecycle + test_snapshot_engine.py
-- [x] 02-02-PLAN.md — Implement Zone 1/Zone 2 registry in Sentinel: IMMUTABLE_PATHS + WRITABLE_ZONES constants, enforce at write time
-- [x] 02-03-PLAN.md — Implement ConsentProtocol: explain → confirm → execute → snapshot orchestration with timeout and no-answer handling
-- [x] 02-04-PLAN.md — Wire ConsentProtocol into api_gateway.py: detect modification intents, invoke protocol before any Zone 2 write
-- [x] 02-05-PLAN.md — Implement rollback: by snapshot ID, by date string, by natural language description ("undo last", "go back to last week")
-- [ ] 02-06-PLAN.md — Integration tests: full consent → execute → snapshot → rollback cycle; Zone 1 write rejection; auto-revert on failure
-
----
+- [x] 02-01-PLAN.md — SnapshotEngine: write/list/restore lifecycle + test_snapshot_engine.py
+- [x] 02-02-PLAN.md — Zone 1/Zone 2 registry in Sentinel: IMMUTABLE_PATHS + WRITABLE_ZONES constants
+- [x] 02-03-PLAN.md — ConsentProtocol: explain → confirm → execute → snapshot orchestration
+- [x] 02-04-PLAN.md — Wire ConsentProtocol into api_gateway.py
+- [x] 02-05-PLAN.md — Rollback: by snapshot ID, by date string, by natural language description
+- [ ] 02-06-PLAN.md — Integration tests: full consent → execute → snapshot → rollback cycle
 
 ### Phase 3: Subagent System
-**Goal**: The main conversation can delegate work to isolated async sub-agents that run
-in parallel, report progress, and return results — without blocking the parent or
-crashing it if they fail.
-**Depends on**: Phase 2 (sub-agents use skills; spawning is a Zone 2 action requiring consent)
-**Requirements**: AGENT-01, AGENT-02, AGENT-03, AGENT-04, AGENT-05, AGENT-06, AGENT-07
-**Success Criteria** (what must be TRUE):
-  1. A message "research the latest Python packaging best practices and summarize for me" spawns a sub-agent, returns immediately with "on it, I'll update you when done", and delivers results as a follow-up message
-  2. Two parallel sub-agent tasks complete in total time ≈ max(task1_time, task2_time), not sum — confirmed by timing both
-  3. A sub-agent that raises an unhandled exception is caught — the parent conversation continues and the user receives the error description
-  4. `GET /agents` returns active and recently completed agent tasks with status, task description, start time, and duration
-  5. A sub-agent running > 30s sends a "still working..." progress update to the parent at the configured interval
-**Key Risks**:
-  - Sub-agent memory access must be read-only by default — prevent agents from accidentally writing to the parent's memory context
-  - asyncio task cancellation on sub-agent timeout must be clean — no dangling connections or partially-written memory entries
-  - The result delivery path (sub-agent → parent conversation) requires a callback or queue mechanism compatible with the existing channel send architecture
-**Plans**: 4 plans
+**Goal**: Main conversation can delegate to isolated async sub-agents without blocking the parent.
+**Plans**: 4/4
 
 Plans:
 - [x] 03-01-PLAN.md — SubAgent dataclass + AgentRegistry CRUD lifecycle + GET /agents endpoint
-- [x] 03-02-PLAN.md — SubAgentRunner: isolated asyncio execution, scoped memory snapshots, ProgressReporter callbacks
-- [x] 03-03-PLAN.md — Spawn intent keyword gate + pipeline wiring in chat_pipeline.py + result delivery via channel.send()
-- [x] 03-04-PLAN.md — Unit + integration tests: parallel timing, crash isolation, progress updates, result delivery, API endpoint
-
----
+- [x] 03-02-PLAN.md — SubAgentRunner: isolated asyncio execution, scoped memory snapshots, ProgressReporter
+- [x] 03-03-PLAN.md — Spawn intent gate + pipeline wiring + result delivery via channel.send()
+- [x] 03-04-PLAN.md — Unit + integration tests
 
 ### Phase 4: Onboarding Wizard v2
-**Goal**: A brand-new user runs `python -m synapse setup` and reaches a personalized,
-meaningful baseline in under 5 minutes — with an initial SBS profile built from targeted
-questions, not just blank defaults.
-**Depends on**: Phase 3 (wizard can use sub-agents for parallel provider validation)
-**Requirements**: ONBOARD2-01, ONBOARD2-02, ONBOARD2-03, ONBOARD2-04, ONBOARD2-05
-**Success Criteria** (what must be TRUE):
-  1. A fresh install (no ~/.synapse/) runs `python -m synapse setup` and completes with a working, personalized config in ≤ 5 minutes — timed on a clean machine
-  2. After the wizard, the SBS profile has at least 3 non-empty layers (linguistic, emotional_state, interaction) populated from the wizard's questions — not from default placeholders
-  3. The wizard's question set covers: preferred communication style, topics of interest, privacy sensitivity level, and whether to import existing chat history
-  4. `python -m synapse setup --non-interactive` with all required env vars set completes without any interactive prompts — exit code 0
-  5. `python -m synapse setup --verify` on an existing installation tests each configured provider and channel and reports pass/fail per item
-**Key Risks**:
-  - The 5-minute target includes API key validation live calls — parallel validation (Phase 3 sub-agents) needed to meet the target
-  - SBS profile initialization from wizard answers must use the same profile layer schema as the live SBS engine — no parallel data formats
-  - `--non-interactive` must handle partial env var sets gracefully (clear error listing what's missing, not a cryptic KeyError)
-**Plans**: 4 plans
+**Goal**: Fresh install reaches personalized baseline in under 5 minutes.
+**Plans**: 4/4
 
 Plans:
-- [x] 04-01-PLAN.md — Setup entrypoint + SBS profile init module + persona questions in interactive wizard
-- [x] 04-02-PLAN.md — Verify subcommand: parallel provider + channel validation with pass/fail output
+- [x] 04-01-PLAN.md — Setup entrypoint + SBS profile init + persona questions
+- [x] 04-02-PLAN.md — Verify subcommand: parallel provider + channel validation
 - [x] 04-03-PLAN.md — Non-interactive SBS env var support + input validation
-- [x] 04-04-PLAN.md — Test coverage for all v2 wizard features (ONBOARD2-01 through ONBOARD2-05)
-
----
+- [x] 04-04-PLAN.md — Test coverage for all v2 wizard features
 
 ### Phase 5: Browser Tool
-**Goal**: Synapse can access live web content during conversations, summarize it, and
-inject it into context — implemented as a skill so it can be disabled, replaced, or
-community-extended without touching the core pipeline.
-**Depends on**: Phase 1 (browser tool is a skill), Phase 2 (fetching requires Zone 2 consent on first use)
-**Requirements**: BROWSE-01, BROWSE-02, BROWSE-03, BROWSE-04, BROWSE-05
-**Success Criteria** (what must be TRUE):
-  1. "What's the latest Python release?" triggers a web fetch, summarizes the result, and returns a response that includes the current version number — not training-data stale information
-  2. The raw HTML of the fetched page is never sent to the LLM — confirmed by logging the actual prompt content and asserting no `<html>` tags
-  3. A conversation in the spicy hemisphere never triggers a web fetch — confirmed by sending a privacy-flagged message and asserting no outbound HTTP requests
-  4. Disabling the browser skill by removing its directory from ~/.synapse/skills/ makes web fetches return a graceful "I can't browse right now" — not a 500
-  5. Every response that used a web fetch includes the source URL(s) used
-**Key Risks**:
-  - SSRF guard: must reject requests to private IPs (10.x, 192.168.x, 127.x, localhost) — same guard pattern used in the existing media pipeline
-  - Content extraction quality: raw HTML summarization produces poor results for JS-heavy SPAs — use a readability/article-extraction library (trafilatura or similar), not naive HTML strip
-  - Rate limiting: search engines will block repeated unthrottled fetches — implement exponential backoff + configurable request delay
-**Plans**: 4 plans
+**Goal**: Synapse can access live web content, summarize it, and inject it into context as a skill.
+**Plans**: 4/4
 
 Plans:
-- [x] 05-01-PLAN.md — Create browser skill directory: SKILL.md + scripts/fetch_and_summarize.py + SSRF guard reuse + trafilatura content extraction
-- [x] 05-02-PLAN.md — Implement web search via DuckDuckGo (DDGS): rate limiting, result ranking, source URL attribution
-- [x] 05-03-PLAN.md — Wire browser skill orchestrator: hemisphere privacy guard + search->fetch->summarize chain + SkillRunner session context
-- [x] 05-04-PLAN.md — Integration tests: SSRF rejection, HTML-free LLM prompts, hemisphere guard, source URLs, skill-disabled fallback
+- [x] 05-01-PLAN.md — Browser skill directory: SKILL.md + fetch_and_summarize.py + SSRF guard
+- [x] 05-02-PLAN.md — Web search via DuckDuckGo (DDGS): rate limiting, result ranking, source URLs
+- [x] 05-03-PLAN.md — Browser skill orchestrator: hemisphere guard + search→fetch→summarize chain
+- [x] 05-04-PLAN.md — Integration tests: SSRF rejection, HTML-free prompts, hemisphere guard, source URLs
+
+</details>
 
 ---
 
-## Future Milestones
+## 🚧 v3.0 OpenClaw Feature Harvest (In Progress)
 
-### v3.0: Proactive Architecture Evolution (Target: 2027)
-Synapse stops waiting to be asked. It observes recurring patterns and proposes its own
-extensions. "You've asked me to check your email every morning 5 times this week. Want
-me to just do that automatically?" Same consent protocol — but Synapse initiates.
+**Milestone Goal:** Port high-value design patterns from the OpenClaw TypeScript codebase into Synapse-OSS Python — concepts not code, depth not breadth. Deliver 10+ bundled skills, expanded provider routing, TTS voice output, image generation, cron with isolated agents, a real-time web control panel, and realtime voice streaming.
 
-Key capabilities:
-- Pattern tracker: configurable window (default: 3 occurrences / 7 days) triggers proposal
-- Proposal engine: generates a plain-language description of the proposed change
-- Suppression: user can mute proposals per category
-- Divergence metric: track how differently each instance has evolved from the baseline
+## Phases
 
-### v4.0: The Jarvis Threshold (Target: 2028)
-A mature Synapse instance manages parts of the user's digital life. It has its own name,
-its own personality, its own relationship with its user — shaped entirely through
-conversation, not configuration panels.
+- [ ] **Phase 6: LLM Provider Expansion** - Expose all major providers via config; patch silent litellm budget fallback bug; update onboarding wizard
+- [ ] **Phase 7: Bundled Skills Library** - Ship 10 production-ready skills out of the box with namespace isolation and first-boot installation
+- [ ] **Phase 8: TTS Voice Output** - Voice replies as WhatsApp voice notes (OGG Opus) via edge-tts default + ElevenLabs opt-in
+- [ ] **Phase 9: Image Generation** - "Draw me X" delivers an image in chat via gpt-image-1; runs as BackgroundTask; Vault-safe
+- [ ] **Phase 10: Cron Wiring + Web Control Panel** - Wire CronService to persona_chat() with isolated agents; real-time SSE dashboard
+- [ ] **Phase 11: Realtime Voice Streaming** - Full-duplex voice chat from dashboard: VAD + Groq STT + streaming TTS + barge-in cancel
 
-Not superhuman intelligence. Deep familiarity. Persistent context. Proactive capability.
-An architecture that was literally built by the person it serves.
+## Phase Details
+
+### Phase 6: LLM Provider Expansion
+**Goal**: Users can route to any of 10+ LLM providers by editing synapse.json — no code changes. The litellm budget-fallback bug is patched so failover chains actually work.
+**Depends on**: Nothing (first v3.0 phase; all work is config + 1 bug patch in llm_router.py)
+**Requirements**: PROV-01, PROV-02, PROV-03, PROV-04
+**Success Criteria** (what must be TRUE):
+  1. User adds `deepseek/deepseek-chat` as a provider in synapse.json and the next chat message routes through it — confirmed by litellm debug log showing the provider prefix
+  2. User sets a budget cap for OpenAI in synapse.json; after exceeding it, the next message falls back to the configured fallback provider instead of returning a 500 error
+  3. Running `python -m synapse setup` shows all 10+ providers (OpenAI, Anthropic, DeepSeek, Mistral, Together, Gemini, Groq, Cohere, Ollama, GitHub Copilot) in the provider selection menu
+  4. `croniter` and `sse-starlette` appear in `pip list` on a clean install (declared in requirements.txt)
+**Plans**: TBD
+
+Plans:
+- [ ] 06-01-PLAN.md — TBD
+- [ ] 06-02-PLAN.md — TBD
+- [ ] 06-03-PLAN.md — TBD
+
+---
+
+### Phase 7: Bundled Skills Library
+**Goal**: A fresh Synapse install ships with 10 useful skills ready to invoke. Skills use the `synapse.` namespace prefix to avoid conflicts with user-installed skills. No new infrastructure — uses the existing SkillLoader.
+**Depends on**: Phase 6 (some skills call cloud APIs; provider routing must be stable)
+**Requirements**: SKILL-01, SKILL-02, SKILL-03, SKILL-04
+**Success Criteria** (what must be TRUE):
+  1. On first boot, `~/.synapse/skills/` contains all 10 bundled skill directories (weather, reminders, notes, translate, summarize, web-scrape, news, image-describe, timer, dictionary) — confirmed by `ls ~/.synapse/skills/`
+  2. Saying "what's the weather in Tokyo?" routes to the `synapse.weather` skill without any user configuration beyond a weather API key
+  3. A user-installed skill named `weather` shadows the bundled `synapse.weather` and Synapse logs a warning at startup — the user's version wins
+  4. Disabling `synapse.reminders` by setting `enabled: false` in its SKILL.md means reminder requests return a graceful "I can't set reminders right now" — not a routing error
+  5. All cloud-calling bundled skills declare `cloud_safe: false` in their SKILL.md — confirmed by grepping the bundled skill directories
+**Plans**: TBD
+
+Plans:
+- [ ] 07-01-PLAN.md — TBD
+- [ ] 07-02-PLAN.md — TBD
+- [ ] 07-03-PLAN.md — TBD
+
+---
+
+### Phase 8: TTS Voice Output
+**Goal**: Users receive voice replies as playable WhatsApp voice notes. edge-tts is the zero-cost default (400+ voices, no API key). ElevenLabs is available for premium opt-in. TTS never blocks the chat pipeline.
+**Depends on**: Phase 6 (ElevenLabs uses the provider key injection pattern from PROV work)
+**Requirements**: TTS-01, TTS-02, TTS-03, TTS-04, TTS-05
+**Success Criteria** (what must be TRUE):
+  1. User receives a reply as a WhatsApp voice note (earphone icon visible, inline playable) — the file format is OGG+Opus, not MP3, confirmed by inspecting the Baileys send call parameters (`ptt: true`, `mimetype: audio/ogg; codecs=opus`)
+  2. TTS works out of the box on a fresh install with no API keys configured — edge-tts generates audio using a Microsoft Edge neural voice with zero credentials
+  3. User sets `tts.provider: elevenlabs` and `tts.voice: "Rachel"` in synapse.json — the next voice reply uses ElevenLabs Rachel voice, confirmed by ElevenLabs API call log
+  4. A chat message followed immediately by another chat message does not queue behind TTS synthesis — the text reply arrives first, the voice note arrives seconds later as a separate message (BackgroundTask pattern verified by timing)
+  5. User sets `tts.voice: "en-US-AriaNeural"` in synapse.json — all subsequent voice replies use the configured voice name
+**Plans**: TBD
+
+Plans:
+- [ ] 08-01-PLAN.md — TBD
+- [ ] 08-02-PLAN.md — TBD
+- [ ] 08-03-PLAN.md — TBD
+- [ ] 08-04-PLAN.md — TBD
+
+---
+
+### Phase 9: Image Generation
+**Goal**: Users can request image generation in natural language and receive the image in chat. gpt-image-1 is the default (DALL-E 3 is deprecated May 2026). Runs as BackgroundTask with immediate text acknowledgment. Blocked in Vault hemisphere.
+**Depends on**: Phase 6 (OpenAI API key injection), Phase 8 (reuses BackgroundTask media delivery pattern)
+**Requirements**: IMG-01, IMG-02, IMG-03, IMG-04, IMG-05
+**Success Criteria** (what must be TRUE):
+  1. Saying "draw me a sunset over a cyberpunk city" delivers an image in WhatsApp — the text reply arrives first ("generating..."), the image arrives as a follow-up within 30 seconds
+  2. Traffic Cop classifies the image request as IMAGE role — confirmed by the routing log in `GET /sessions` or gateway debug output showing `role=IMAGE` before the BackgroundTask dispatch
+  3. In a spicy-hemisphere session, saying "draw me X" returns a soft decline ("image generation isn't available in private mode") instead of making an OpenAI API call — confirmed by asserting no outbound HTTP to `api.openai.com/v1/images`
+  4. Setting `image_gen.provider: fal` in synapse.json routes image requests to fal.ai instead of OpenAI — confirmed by fal-client API call appearing in logs
+  5. The immediate text acknowledgment ("working on it...") arrives before image generation completes — confirmed by message timestamp ordering
+**Plans**: TBD
+
+Plans:
+- [ ] 09-01-PLAN.md — TBD
+- [ ] 09-02-PLAN.md — TBD
+- [ ] 09-03-PLAN.md — TBD
+- [ ] 09-04-PLAN.md — TBD
+
+---
+
+### Phase 10: Cron Wiring + Web Control Panel
+**Goal**: CronService is wired to `persona_chat()` so scheduled jobs actually run with isolated agent contexts. The dashboard becomes a real-time interactive control panel — sessions, cron jobs, model routing decisions, memory stats — observable and controllable from a browser.
+**Depends on**: Phase 8 + Phase 9 (dashboard panels have meaningful content only after TTS and image gen are emitting SSE events), Phase 6 (provider routing log panel)
+**Requirements**: CRON-01, CRON-02, CRON-03, CRON-04, DASH-01, DASH-02, DASH-03, DASH-04, DASH-05
+**Success Criteria** (what must be TRUE):
+  1. A cron job defined in synapse.json fires at its scheduled time and the user receives a proactive message — the job ran through `persona_chat()` confirmed by the conversation log showing a cron-originated entry
+  2. Two cron jobs firing simultaneously do not corrupt each other's memory context — each job receives its own isolated memory snapshot, confirmed by log entries showing distinct session keys per job
+  3. Opening `http://127.0.0.1:8000/dashboard` in a browser shows live pipeline events updating in real time via SSE (no page refresh required) — TTS synthesis events, image gen completions, and cron job fires are all visible
+  4. User sends a test message from the dashboard text box and receives a reply in the dashboard — the message flows through the normal `persona_chat()` pipeline
+  5. Navigating to the dashboard from outside `127.0.0.1` (e.g., another machine on the LAN) returns 403 — loopback-only enforcement confirmed
+  6. Dashboard is built with vanilla JS + Tailwind — no npm, no node_modules, no build step required to serve it
+**Plans**: TBD
+
+Plans:
+- [ ] 10-01-PLAN.md — TBD
+- [ ] 10-02-PLAN.md — TBD
+- [ ] 10-03-PLAN.md — TBD
+- [ ] 10-04-PLAN.md — TBD
+- [ ] 10-05-PLAN.md — TBD
+
+---
+
+### Phase 11: Realtime Voice Streaming
+**Goal**: Users can have a full-duplex voice conversation from the dashboard. Silero VAD detects speech boundaries, Groq Whisper transcribes in real time, the LLM response is TTS-streamed back as audio, and barge-in cancels the current TTS playback. Highest complexity — built last.
+**Depends on**: Phase 8 (TTS audio delivery chain is a hard dependency), Phase 10 (dashboard WebSocket infrastructure and VoiceChannel registration)
+**Requirements**: VOICE-01, VOICE-02, VOICE-03, VOICE-04, VOICE-05
+**Success Criteria** (what must be TRUE):
+  1. User clicks "Start Voice" in the dashboard, speaks a sentence, and receives a spoken reply within 3 seconds — full round-trip from mic capture to TTS playback confirmed in a live demo
+  2. Silero VAD correctly ends speech capture after 700ms of silence — confirmed by logging VAD boundary events and asserting no premature cutoffs mid-sentence in a 10-utterance test
+  3. Groq Whisper transcription of a clear English sentence achieves word-error-rate under 10% — confirmed by comparing transcribed text to the known test utterance
+  4. While the AI is speaking a long response, saying a new sentence cancels the current TTS playback and begins processing the new input — barge-in latency under 500ms from speech onset to playback stop
+  5. Closing the voice session tab cleanly terminates the WebSocket, stops mic capture, and releases the audio device — confirmed by asserting no dangling sounddevice streams after tab close
+**Plans**: TBD
+
+Plans:
+- [ ] 11-01-PLAN.md — TBD
+- [ ] 11-02-PLAN.md — TBD
+- [ ] 11-03-PLAN.md — TBD
+- [ ] 11-04-PLAN.md — TBD
 
 ---
 
 ## Progress
 
 **Execution Order:**
-Phases execute in dependency order: 0 → 1 → 2 → 3 → 4 → 5
+Phases execute in dependency order: 6 → 7 → 8 → 9 → 10 → 11
 
-| Phase | Plans Complete | Status | Completed |
-|-------|----------------|--------|-----------|
-| 0. Session & Context Persistence | 5/5 | Complete | 2026-04-07 |
-| 1. Skill Architecture | 5/5 | Complete | 2026-04-07 |
-| 2. Safe Self-Modification + Rollback | 5/6 | In Progress | — |
-| 3. Subagent System | 4/4 | Complete | 2026-04-07 |
-| 4. Onboarding Wizard v2 | 4/4 | Complete | 2026-04-07 |
-| 5. Browser Tool | 4/4 | Complete | 2026-04-07 |
-
-**v1.0 Archive:** All 10 phases, 38 plans — COMPLETE (2026-03-03)
-See archived ROADMAP in `.planning/phases/` for historical reference.
+| Phase | Milestone | Plans Complete | Status | Completed |
+|-------|-----------|----------------|--------|-----------|
+| 0. Session & Context Persistence | v2.0 | 5/5 | Complete | 2026-04-07 |
+| 1. Skill Architecture | v2.0 | 5/5 | Complete | 2026-04-07 |
+| 2. Safe Self-Modification + Rollback | v2.0 | 5/6 | In Progress | — |
+| 3. Subagent System | v2.0 | 4/4 | Complete | 2026-04-07 |
+| 4. Onboarding Wizard v2 | v2.0 | 4/4 | Complete | 2026-04-07 |
+| 5. Browser Tool | v2.0 | 4/4 | Complete | 2026-04-07 |
+| 6. LLM Provider Expansion | v3.0 | 0/TBD | Not started | — |
+| 7. Bundled Skills Library | v3.0 | 0/TBD | Not started | — |
+| 8. TTS Voice Output | v3.0 | 0/TBD | Not started | — |
+| 9. Image Generation | v3.0 | 0/TBD | Not started | — |
+| 10. Cron Wiring + Web Control Panel | v3.0 | 0/TBD | Not started | — |
+| 11. Realtime Voice Streaming | v3.0 | 0/TBD | Not started | — |

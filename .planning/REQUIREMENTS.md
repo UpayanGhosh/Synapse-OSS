@@ -99,44 +99,44 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| PROV-01 | — | Pending |
-| PROV-02 | — | Pending |
-| PROV-03 | — | Pending |
-| PROV-04 | — | Pending |
-| SKILL-01 | — | Pending |
-| SKILL-02 | — | Pending |
-| SKILL-03 | — | Pending |
-| SKILL-04 | — | Pending |
-| TTS-01 | — | Pending |
-| TTS-02 | — | Pending |
-| TTS-03 | — | Pending |
-| TTS-04 | — | Pending |
-| TTS-05 | — | Pending |
-| IMG-01 | — | Pending |
-| IMG-02 | — | Pending |
-| IMG-03 | — | Pending |
-| IMG-04 | — | Pending |
-| IMG-05 | — | Pending |
-| CRON-01 | — | Pending |
-| CRON-02 | — | Pending |
-| CRON-03 | — | Pending |
-| CRON-04 | — | Pending |
-| DASH-01 | — | Pending |
-| DASH-02 | — | Pending |
-| DASH-03 | — | Pending |
-| DASH-04 | — | Pending |
-| DASH-05 | — | Pending |
-| VOICE-01 | — | Pending |
-| VOICE-02 | — | Pending |
-| VOICE-03 | — | Pending |
-| VOICE-04 | — | Pending |
-| VOICE-05 | — | Pending |
+| PROV-01 | Phase 6 | Pending |
+| PROV-02 | Phase 6 | Pending |
+| PROV-03 | Phase 6 | Pending |
+| PROV-04 | Phase 6 | Pending |
+| SKILL-01 | Phase 7 | Pending |
+| SKILL-02 | Phase 7 | Pending |
+| SKILL-03 | Phase 7 | Pending |
+| SKILL-04 | Phase 7 | Pending |
+| TTS-01 | Phase 8 | Pending |
+| TTS-02 | Phase 8 | Pending |
+| TTS-03 | Phase 8 | Pending |
+| TTS-04 | Phase 8 | Pending |
+| TTS-05 | Phase 8 | Pending |
+| IMG-01 | Phase 9 | Pending |
+| IMG-02 | Phase 9 | Pending |
+| IMG-03 | Phase 9 | Pending |
+| IMG-04 | Phase 9 | Pending |
+| IMG-05 | Phase 9 | Pending |
+| CRON-01 | Phase 10 | Pending |
+| CRON-02 | Phase 10 | Pending |
+| CRON-03 | Phase 10 | Pending |
+| CRON-04 | Phase 10 | Pending |
+| DASH-01 | Phase 10 | Pending |
+| DASH-02 | Phase 10 | Pending |
+| DASH-03 | Phase 10 | Pending |
+| DASH-04 | Phase 10 | Pending |
+| DASH-05 | Phase 10 | Pending |
+| VOICE-01 | Phase 11 | Pending |
+| VOICE-02 | Phase 11 | Pending |
+| VOICE-03 | Phase 11 | Pending |
+| VOICE-04 | Phase 11 | Pending |
+| VOICE-05 | Phase 11 | Pending |
 
 **Coverage:**
 - v3.0 requirements: 32 total
-- Mapped to phases: 0
-- Unmapped: 32 (roadmap pending)
+- Mapped to phases: 32
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-04-08*
-*Last updated: 2026-04-08 after initial definition*
+*Last updated: 2026-04-08 — traceability filled after roadmap creation*
