@@ -1,7 +1,7 @@
 """
 CronService — asyncio job scheduler for proactive Synapse messages.
 
-Reads job definitions from ~/.synapse/cron/jobs.json.
+Reads job definitions from <data_root>/cron/jobs.json.
 Each job fires a persona_chat() call at a scheduled interval and delivers
 the response to the specified channel.
 
@@ -9,9 +9,9 @@ Job schema (jobs.json):
 [
   {
     "job_id": "morning_checkin",
-    "schedule": "every_day_at_08:00_IST",
+    "schedule": "every_day_at_08:00",
     "user_id": "the_creator",
-    "channel_id": "whatsapp",
+    "channel_id": "default",
     "payload": "Do a natural morning check-in. Don't mention it's automated.",
     "delivery_mode": "send",
     "enabled": true
@@ -19,9 +19,12 @@ Job schema (jobs.json):
 ]
 
 Schedule format:
-  "every_Nh"         — every N hours (e.g., "every_8h")
-  "every_day_at_HH:MM_IST" — daily at specific IST time
-  "once_at_HH:MM_IST"      — once per day at IST time
+  "every_Nh"              — every N hours (e.g., "every_8h")
+  "every_day_at_HH:MM"   — daily at specific local time
+  "once_at_HH:MM"        — once per day at local time
+
+Timezone: uses system local time by default. Override via
+  synapse.json -> session.timezone_offset_hours (e.g. 5.5 for IST).
 """
 import asyncio
 import json
@@ -32,9 +35,33 @@ from pathlib import Path
 
 logger = logging.getLogger("synapse.cron")
 
-CRON_DIR = Path(os.path.expanduser("~/.synapse/cron"))
+
+def _get_local_tz() -> timezone:
+    """Return the user's configured timezone or system local timezone."""
+    try:
+        from synapse_config import SynapseConfig
+        cfg = SynapseConfig.load()
+        tz_offset = cfg.session.get("timezone_offset_hours")
+        if tz_offset is not None:
+            return timezone(timedelta(hours=float(tz_offset)))
+    except Exception:
+        pass
+    # Fallback: system local timezone
+    local_offset = datetime.now(timezone.utc).astimezone().utcoffset()
+    return timezone(local_offset) if local_offset else timezone.utc
+
+
+def _get_cron_dir() -> Path:
+    """Resolve cron directory from SynapseConfig.data_root."""
+    try:
+        from synapse_config import SynapseConfig
+        return SynapseConfig.load().data_root / "cron"
+    except Exception:
+        return Path(os.path.expanduser("~/.synapse/cron"))
+
+
+CRON_DIR = _get_cron_dir()
 JOBS_FILE = CRON_DIR / "jobs.json"
-IST = timezone(timedelta(hours=5, minutes=30))
 
 
 def _load_jobs() -> list[dict]:
@@ -55,7 +82,7 @@ def _parse_schedule(schedule: str) -> float:
     Parse schedule string into seconds-until-next-fire.
     Returns seconds until the next scheduled time.
     """
-    now_ist = datetime.now(IST)
+    now_local = datetime.now(_get_local_tz())
 
     if schedule.startswith("every_") and schedule.endswith("h"):
         # "every_8h" -> fire every 8 hours
@@ -66,14 +93,16 @@ def _parse_schedule(schedule: str) -> float:
             return 3600  # fallback: every hour
 
     if "at_" in schedule:
-        # "every_day_at_08:00_IST" or "once_at_08:00_IST"
+        # "every_day_at_08:00" or "once_at_08:00" (legacy _IST suffix also accepted)
         try:
-            time_part = schedule.split("at_")[1].split("_")[0]
+            after_at = schedule.split("at_")[1]
+            # Strip optional timezone suffix (e.g. "_IST", "_UTC") for backward compat
+            time_part = after_at.split("_")[0]
             h, m = (int(x) for x in time_part.split(":"))
-            target = now_ist.replace(hour=h, minute=m, second=0, microsecond=0)
-            if target <= now_ist:
+            target = now_local.replace(hour=h, minute=m, second=0, microsecond=0)
+            if target <= now_local:
                 target = target + timedelta(days=1)
-            return (target - now_ist).total_seconds()
+            return (target - now_local).total_seconds()
         except Exception:
             return 86400  # fallback: 24h
 
@@ -108,7 +137,7 @@ class CronService:
                     "job_id": "example_checkin",
                     "schedule": "every_8h",
                     "user_id": "the_creator",
-                    "channel_id": "whatsapp",
+                    "channel_id": "default",
                     "payload": (
                         "Do a natural check-in. Ask how they're doing. "
                         "Reference something from recent conversation if you remember it. "

@@ -16,7 +16,16 @@ from typing import Optional
 
 logger = logging.getLogger("synapse.diary")
 
-DIARY_DIR = Path(os.path.expanduser("~/.synapse/diary"))
+def _get_diary_dir() -> Path:
+    """Resolve diary directory from SynapseConfig.data_root."""
+    try:
+        from synapse_config import SynapseConfig
+        return SynapseConfig.load().data_root / "diary"
+    except Exception:
+        return Path(os.path.expanduser("~/.synapse/diary"))
+
+
+DIARY_DIR = _get_diary_dir()
 
 
 class DiaryEngine:

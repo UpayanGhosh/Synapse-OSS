@@ -139,7 +139,7 @@ async def _ingest_session_background(
         try:
             deps.memory_engine.add_memory(
                 content=text,
-                category="whatsapp_session",
+                category="session",
                 hemisphere=hemisphere,
             )
             ingested_vec += 1

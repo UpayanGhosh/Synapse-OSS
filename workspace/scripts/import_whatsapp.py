@@ -12,8 +12,8 @@ WhatsApp export format:
 
 Usage:
     cd workspace
-    python scripts/import_whatsapp.py chat_export.txt --speaker "Upayan" --hemisphere safe
-    python scripts/import_whatsapp.py chat_export.txt --speaker "Shreya" --hemisphere spicy --dry-run
+    python scripts/import_whatsapp.py chat_export.txt --speaker "YourName" --hemisphere safe
+    python scripts/import_whatsapp.py chat_export.txt --speaker "FriendName" --hemisphere spicy --dry-run
 """
 import argparse
 import re

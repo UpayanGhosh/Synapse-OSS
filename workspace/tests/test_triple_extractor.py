@@ -101,9 +101,9 @@ class TestNormalization(unittest.TestCase):
 
     def test_lowercase_entities(self):
         result = self._normalize({"facts": [
-            {"entity": "Upayan", "content": "Is a developer", "category": "Work"}
+            {"entity": "Alice", "content": "Is a developer", "category": "Work"}
         ], "triples": []})
-        self.assertEqual(result["facts"][0]["entity"], "upayan")
+        self.assertEqual(result["facts"][0]["entity"], "alice")
 
     def test_whitespace_collapse(self):
         result = self._normalize({"facts": [

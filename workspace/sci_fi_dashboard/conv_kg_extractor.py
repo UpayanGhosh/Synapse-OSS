@@ -56,8 +56,8 @@ def _normalize_entity(raw: str) -> str:
     Returns empty string for None/empty input.
 
     Examples:
-        >>> _normalize_entity("  Dr. Upayan Ghosh  ")
-        'upayan ghosh'
+        >>> _normalize_entity("  Dr. Jane Doe  ")
+        'jane doe'
         >>> _normalize_entity("THE Project")
         'project'
         >>> _normalize_entity("Mr.  John   Doe")

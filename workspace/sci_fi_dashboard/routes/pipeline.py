@@ -61,7 +61,10 @@ async def pipeline_state():
         queue_stats = {}
 
     try:
-        sbs_summary = deps.get_sbs_for_target("the_creator").get_profile_summary()
+        # Use configured default persona (falls back to "the_creator")
+        from synapse_config import SynapseConfig
+        _default_target = SynapseConfig.load().session.get("default_persona", "the_creator")
+        sbs_summary = deps.get_sbs_for_target(_default_target).get_profile_summary()
     except Exception:
         sbs_summary = {}
 
@@ -81,7 +84,13 @@ async def pipeline_send(body: dict, background_tasks: BackgroundTasks):
     from sci_fi_dashboard.schemas import ChatRequest
 
     message = (body.get("message") or "").strip()
-    target = body.get("target", "the_creator")
+    # Use configured default persona (falls back to "the_creator")
+    try:
+        from synapse_config import SynapseConfig
+        _default_target = SynapseConfig.load().session.get("default_persona", "the_creator")
+    except Exception:
+        _default_target = "the_creator"
+    target = body.get("target", _default_target)
     if not message:
         return JSONResponse({"error": "message is required"}, status_code=400)
 

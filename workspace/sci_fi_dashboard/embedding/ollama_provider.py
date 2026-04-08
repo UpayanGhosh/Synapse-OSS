@@ -9,8 +9,17 @@ class OllamaProvider(EmbeddingProvider):
     DEFAULT_MODEL = "nomic-embed-text"
     DIMENSIONS = 768
 
-    def __init__(self, model: str | None = None, api_base: str = "http://localhost:11434"):
+    def __init__(self, model: str | None = None, api_base: str | None = None):
         self._model_name = model or self.DEFAULT_MODEL
+        # Read api_base from synapse.json -> providers.ollama.api_base if not provided
+        if api_base is None:
+            try:
+                from synapse_config import SynapseConfig
+                api_base = SynapseConfig.load().providers.get("ollama", {}).get(
+                    "api_base", "http://localhost:11434"
+                )
+            except Exception:
+                api_base = "http://localhost:11434"
         self._api_base = api_base
         self._client = None  # lazy — avoids import at module load
         self._available = self._check_availability()

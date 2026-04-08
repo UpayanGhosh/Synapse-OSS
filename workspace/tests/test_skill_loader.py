@@ -129,12 +129,12 @@ class TestSkillManifest:
             name="test",
             description="A test skill",
             version="1.0.0",
-            author="Upayan",
+            author="TestAuthor",
             triggers=["hey synapse", "hey bot"],
             model_hint="code",
             permissions=["filesystem:write"],
         )
-        assert manifest.author == "Upayan"
+        assert manifest.author == "TestAuthor"
         assert manifest.triggers == ["hey synapse", "hey bot"]
         assert manifest.model_hint == "code"
         assert manifest.permissions == ["filesystem:write"]
@@ -298,7 +298,7 @@ class TestSkillLoaderLoadSkill:
             name: full-skill
             description: A complete skill
             version: 1.2.3
-            author: Upayan
+            author: TestAuthor
             triggers:
               - hey synapse
               - quick help
@@ -311,7 +311,7 @@ class TestSkillLoaderLoadSkill:
         (skill_dir / "SKILL.md").write_text(content, encoding="utf-8")
 
         manifest = SkillLoader.load_skill(skill_dir)
-        assert manifest.author == "Upayan"
+        assert manifest.author == "TestAuthor"
         assert manifest.triggers == ["hey synapse", "quick help"]
         assert manifest.model_hint == "code"
         assert manifest.permissions == ["filesystem:write"]

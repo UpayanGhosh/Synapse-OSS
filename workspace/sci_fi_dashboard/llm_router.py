@@ -306,7 +306,12 @@ _CLAUDE_MAX_USER_AGENT = "claude-cli/1.0.0 (external, cli)"
 
 
 def _get_claude_max_token() -> str:
-    """Read the OAuth token from Claude CLI credentials file."""
+    """Read the OAuth token from Claude CLI credentials file.
+
+    Requires Claude Code CLI to be installed and authenticated.
+    Install: https://docs.anthropic.com/en/docs/claude-code
+    Auth:    Run 'claude' in terminal and complete OAuth login.
+    """
     import json
     import pathlib
 
@@ -317,6 +322,14 @@ def _get_claude_max_token() -> str:
         if not token:
             raise ValueError("No accessToken found in credentials")
         return token
+    except FileNotFoundError:
+        logger.error(
+            "Claude Max requires Claude Code CLI. Install from "
+            "https://docs.anthropic.com/en/docs/claude-code then run "
+            "'claude' to authenticate. Credentials file not found: %s",
+            creds_path,
+        )
+        return "missing"
     except Exception as exc:
         logger.warning("Claude Max credentials read failed: %s", exc)
         return "missing"
@@ -380,8 +393,9 @@ def build_router(model_mappings: dict, providers: dict) -> Router:
         elif primary_model.startswith(_OLLAMA_CHAT_PREFIX):
             litellm_params = {"model": primary_model, "timeout": 60, "stream": False}
             litellm_params["api_base"] = ollama_api_base
-            # Prevent repetition loops common in small local models like Gemma4
-            litellm_params["extra_body"] = {"options": {"repeat_penalty": 1.15, "temperature": 0.7}}
+            # Ollama-specific defaults — configurable via model_mappings.<role>.ollama_options
+            ollama_opts = cfg.get("ollama_options", {"repeat_penalty": 1.15, "temperature": 0.7})
+            litellm_params["extra_body"] = {"options": ollama_opts}
         elif primary_model.startswith("ollama/"):
             raise ValueError(
                 f"Role '{role}' uses ollama/ prefix — must be {_OLLAMA_CHAT_PREFIX} for chat calls. "
@@ -414,7 +428,8 @@ def build_router(model_mappings: dict, providers: dict) -> Router:
                 fallback_params = {"model": fallback_model, "timeout": 60, "stream": False}
                 if fallback_model.startswith(_OLLAMA_CHAT_PREFIX):
                     fallback_params["api_base"] = ollama_api_base
-                    fallback_params["extra_body"] = {"options": {"repeat_penalty": 1.15, "temperature": 0.7}}
+                    fb_opts = cfg.get("ollama_options", {"repeat_penalty": 1.15, "temperature": 0.7})
+                    fallback_params["extra_body"] = {"options": fb_opts}
             model_list.append({"model_name": fallback_role, "litellm_params": fallback_params})
             fallbacks.append({role: [fallback_role]})
 

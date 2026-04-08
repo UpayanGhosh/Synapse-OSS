@@ -103,8 +103,7 @@ IGNORE_REGEXES = [
 CATEGORY_MAP = {
     "identity": ["SOUL.md", "CORE.md", "IDENTITY.md", "USER.md", "AGENTS.md",
                  "MEMORY.md", "HEARTBEAT.md"],
-    "persona": ["upayan_profile.json", "shreya_profile.json", "persona.py",
-                "chat_parser.py", "build_persona.py"],
+    "persona": ["persona.py", "chat_parser.py", "build_persona.py"],  # *_profile.json matched by suffix
     "gateway": ["api_gateway.py", "chat_pipeline.py", "retriever.py", "memory_engine.py"],
     "config": ["synapse.json", "synapse_config.py", ".gitignore"],
     "monitor": ["change_tracker.py", "gentle_worker.py"],
@@ -172,6 +171,10 @@ def classify_file(filepath: str) -> str:
     for category, patterns in CATEGORY_MAP.items():
         if basename in patterns:
             return category
+
+    # Match *_profile.json files as persona category
+    if basename.endswith("_profile.json"):
+        return "persona"
 
     if "skills/" in relpath or "skills\\" in relpath:
         return "skills"

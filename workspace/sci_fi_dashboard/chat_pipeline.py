@@ -389,11 +389,13 @@ async def persona_chat(
     # Inject current time, day, and last-seen gap so Synapse eases back in naturally.
     try:
         from datetime import datetime, timezone, timedelta
-        _IST = timezone(timedelta(hours=5, minutes=30))
-        _now = datetime.now(_IST)
+        # Use system local timezone (not hardcoded IST)
+        _local_offset = datetime.now(timezone.utc).astimezone().utcoffset()
+        _local_tz = timezone(_local_offset) if _local_offset else timezone.utc
+        _now = datetime.now(_local_tz)
         _weekday = _now.strftime("%A")
         _time_str = _now.strftime("%I:%M %p")
-        _situational_parts = [f"It's {_weekday}, {_time_str} IST."]
+        _situational_parts = [f"It's {_weekday}, {_time_str}."]
 
         # Gap since last message (uses last row in conversation history as proxy)
         if request.history:

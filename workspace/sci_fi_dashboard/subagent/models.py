@@ -45,7 +45,7 @@ class SubAgent:
     status: AgentStatus = AgentStatus.SPAWNING
 
     # Origin — used to deliver results back to the spawning conversation
-    channel_id: str = "whatsapp"
+    channel_id: str = "default"
     chat_id: str = ""
     parent_session_key: str = ""
 

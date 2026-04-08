@@ -13,6 +13,7 @@ What it does:
 6. Prints a status report
 """
 
+import shutil
 import subprocess
 import sys
 import time
@@ -21,8 +22,8 @@ import json
 import urllib.request
 import urllib.error
 
-OLLAMA_BINARY = r"C:\Users\Shorty0_0\AppData\Local\Programs\Ollama\ollama.exe"
-OLLAMA_HOST = "http://127.0.0.1:11434"
+OLLAMA_BINARY = shutil.which("ollama") or "ollama"
+OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434")
 MODEL = "nomic-embed-text"
 
 STEP = 0
