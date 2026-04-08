@@ -90,20 +90,25 @@ if not exist "%PROJECT_ROOT%\.venv\Scripts\python.exe" (
     echo.
 )
 
-REM --- 1. Ollama ---
-echo [1/2] Starting Ollama...
-tasklist /FI "IMAGENAME eq ollama.exe" 2>nul | find /I "ollama.exe" >nul
-if %ERRORLEVEL% NEQ 0 (
-    where ollama >nul 2>&1
-    if %ERRORLEVEL% EQU 0 (
-        start "Ollama" /min ollama serve
-        start "Ollama Pull" /min ollama pull nomic-embed-text
-        echo    [OK] Started.
+REM --- 1. Ollama (optional — only if configured in synapse.json) ---
+findstr /C:"ollama" "%USERPROFILE%\.synapse\synapse.json" >nul 2>&1
+if %ERRORLEVEL% EQU 0 (
+    echo [1/2] Starting Ollama...
+    tasklist /FI "IMAGENAME eq ollama.exe" 2>nul | find /I "ollama.exe" >nul
+    if %ERRORLEVEL% NEQ 0 (
+        where ollama >nul 2>&1
+        if %ERRORLEVEL% EQU 0 (
+            start "Ollama" /min ollama serve
+            start "Ollama Pull" /min ollama pull nomic-embed-text
+            echo    [OK] Started.
+        ) else (
+            echo    [--] Ollama not installed - local embedding and The Vault will be disabled.
+        )
     ) else (
-        echo    [--] Ollama not installed - local embedding and The Vault will be disabled.
+        echo    [OK] Already running.
     )
 ) else (
-    echo    [OK] Already running.
+    echo [1/2] Ollama: skipped ^(not configured^)
 )
 
 REM --- 2. API Gateway ---

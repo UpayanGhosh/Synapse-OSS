@@ -38,7 +38,11 @@ if [ -n "$HEALTH" ]; then
 else
     echo "❌ Gateway DOWN (or /health not responding)"
 fi
-curl -sf http://localhost:11434/api/tags > /dev/null && echo "✅ Ollama     (11434)" || echo "❌ Ollama DOWN (or not installed)"
+if grep -q '"ollama"' ~/.synapse/synapse.json 2>/dev/null; then
+    curl -sf http://localhost:11434/api/tags > /dev/null && echo "✅ Ollama     (11434)" || echo "❌ Ollama DOWN (or not installed)"
+else
+    echo "-- Ollama     (skipped — not configured)"
+fi
 
 # server.py should NOT be running
 curl -sf http://localhost:8989/health > /dev/null && echo "⚠️  server.py  (8989) — should be OFF" || echo "✅ server.py  (eliminated)"

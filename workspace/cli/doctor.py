@@ -12,12 +12,12 @@ Checks (in order):
   4.  Required bootstrap files present (SOUL.md, AGENTS.md, USER.md, IDENTITY.md)
   5.  Gateway token is set (non-empty)
   6.  At least one LLM provider key is configured
-  7.  Ollama reachable (GET http://localhost:11434/ with 2s timeout)
+  7.  Ollama reachable (only if configured — Ollama is optional)
   8.  API gateway reachable (GET http://localhost:8000/health with 2s timeout)
   9.  workspace-state.json exists and has bootstrapSeededAt set
  10.  No legacy state dirs present (.synapse_old, .clawdbot, .moldbot)
  11.  sqlite-vec importable (required for vector memory)
- 12.  Embedding provider available (fastembed, ollama, or gemini)
+ 12.  Embedding provider available (fastembed or gemini)
 
 Exports:
   doctor_command()    Entry point for the synapse doctor CLI subcommand
@@ -167,12 +167,26 @@ def _check_provider_configured(data_root: Path) -> CheckResult:
 
 
 def _check_ollama_reachable() -> CheckResult:
-    """Check 7: Ollama reachable at http://localhost:11434/ (2s timeout)."""
+    """Check 7: Ollama reachable (only if configured as a provider).
+
+    Skipped entirely if the user has not set up Ollama — Ollama is optional.
+    """
     label = "Ollama reachable"
+    # Only check if user has explicitly configured Ollama as a provider
+    try:
+        from synapse_config import SynapseConfig  # noqa: PLC0415
+
+        cfg = SynapseConfig.load()
+        if "ollama" not in cfg.providers:
+            return CheckResult(True, label, "skipped (not configured — Ollama is optional)")
+    except Exception:
+        return CheckResult(True, label, "skipped (config unreadable)")
+
     try:
         import httpx  # noqa: PLC0415
 
-        r = httpx.get("http://localhost:11434/", timeout=2.0)
+        api_base = cfg.providers.get("ollama", {}).get("api_base", "http://localhost:11434")
+        r = httpx.get(f"{api_base}/", timeout=2.0)
         if r.status_code < 500:
             return CheckResult(True, label, f"HTTP {r.status_code}")
         return CheckResult(False, label, f"HTTP {r.status_code}")

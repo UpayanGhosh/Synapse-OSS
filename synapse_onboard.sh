@@ -47,46 +47,14 @@ all_good=true
 check_tool git       || all_good=false
 check_tool python3   || all_good=false
 check_tool docker    || all_good=false
-# Ollama is required for ingestion and semantic memory -- auto-install if missing
+# Ollama is OPTIONAL — enables local models (The Vault, privacy mode)
 if command -v ollama &> /dev/null; then
-    echo "   ✓ ollama is installed"
+    echo "   ✓ ollama is installed (optional — enables local models)"
 else
-    echo "   Ollama not found. Installing automatically..."
-    if [ "$(uname)" = "Darwin" ]; then
-        # macOS: the Linux install.sh won't work -- use Homebrew if available
-        if command -v brew &> /dev/null; then
-            brew install ollama
-            if ! command -v ollama &> /dev/null; then
-                echo ""
-                echo "❌ Ollama installation via Homebrew failed."
-                echo "   Install manually from https://ollama.com/download then run this script again."
-                echo ""
-                exit 1
-            fi
-            echo "   ✓ Ollama installed via Homebrew"
-        else
-            echo ""
-            echo "❌ Cannot auto-install Ollama on macOS without Homebrew."
-            echo "   Option 1 (recommended): Install Homebrew first:"
-            echo "      /bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\""
-            echo "      brew install ollama"
-            echo "   Option 2: Download the .dmg from https://ollama.com/download"
-            echo "   Then run this script again."
-            echo ""
-            exit 1
-        fi
-    else
-        # Linux: official one-liner installer
-        if curl -fsSL https://ollama.com/install.sh | sh; then
-            echo "   ✓ Ollama installed successfully"
-        else
-            echo ""
-            echo "❌ Ollama installation failed."
-            echo "   Please install manually from https://ollama.com then run this script again."
-            echo ""
-            exit 1
-        fi
-    fi
+    echo "   - ollama: not installed (OPTIONAL)"
+    echo "     Ollama enables local models (The Vault, privacy mode)."
+    echo "     Skip if you don't need local models."
+    echo "     Install later from https://ollama.com if needed."
 fi
 if [ "$all_good" = false ]; then
     echo ""
@@ -444,21 +412,25 @@ echo "[1/4] Vector store: LanceDB (embedded, no Docker needed)..."
 echo "   ✓ LanceDB initialized on first use via pip"
 
 echo ""
-echo "[2/4] Starting Ollama..."
-export OLLAMA_KEEP_ALIVE=0
-export OLLAMA_MAX_LOADED_MODELS=1
-export OLLAMA_NUM_PARALLEL=1
-if ! pgrep -f "ollama serve" > /dev/null; then
-    nohup ollama serve > ~/.synapse/logs/ollama.log 2>&1 &
-    echo "   ✓ Ollama started"
-    sleep 3
+echo "[2/4] Ollama (optional — local models)..."
+if command -v ollama &> /dev/null; then
+    export OLLAMA_KEEP_ALIVE=0
+    export OLLAMA_MAX_LOADED_MODELS=1
+    export OLLAMA_NUM_PARALLEL=1
+    if ! pgrep -f "ollama serve" > /dev/null; then
+        nohup ollama serve > ~/.synapse/logs/ollama.log 2>&1 &
+        echo "   ✓ Ollama started"
+        sleep 3
+    else
+        echo "   ✓ Ollama already running"
+    fi
+    echo "   Pulling required embedding model (nomic-embed-text)..."
+    echo "   (This downloads ~900 MB on first run — please wait)"
+    ollama pull nomic-embed-text
+    echo "   ✓ nomic-embed-text ready"
 else
-    echo "   ✓ Ollama already running"
+    echo "   ✓ Skipped (Ollama not installed — optional)"
 fi
-echo "   Pulling required embedding model (nomic-embed-text)..."
-echo "   (This downloads ~900 MB on first run — please wait)"
-ollama pull nomic-embed-text
-echo "   ✓ nomic-embed-text ready"
 
 echo ""
 echo "[3/4] Starting API Gateway..."

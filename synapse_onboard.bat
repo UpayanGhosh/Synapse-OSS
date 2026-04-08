@@ -51,43 +51,23 @@ if %ERRORLEVEL% NEQ 0 (
     echo    [OK] Docker
 )
 
-REM Check for Ollama — first via PATH, then fallback to the known default install location.
-REM "where ollama" only searches the PATH inherited when this process started, so it misses
-REM Ollama if it was installed in the current session or lives only in the User PATH registry
-REM entry that cmd.exe did not pick up. The fallback covers that case.
+REM Ollama is OPTIONAL — enables local models (The Vault, privacy mode)
 set "OLLAMA_EXE="
 where ollama >nul 2>&1
 if %ERRORLEVEL% EQU 0 (
     set "OLLAMA_EXE=ollama"
 ) else if exist "%LOCALAPPDATA%\Programs\Ollama\ollama.exe" (
     set "OLLAMA_EXE=%LOCALAPPDATA%\Programs\Ollama\ollama.exe"
-    REM Add to PATH for this session so subsequent calls work without full path
     set "PATH=%PATH%;%LOCALAPPDATA%\Programs\Ollama"
 )
 
 if defined OLLAMA_EXE (
-    echo    [OK] Ollama
+    echo    [OK] Ollama ^(optional — enables local models^)
 ) else (
-    echo    Ollama not found. Installing automatically...
-    echo    Downloading installer ^(this may take a moment^)...
-    curl -L -o "%TEMP%\OllamaSetup.exe" "https://ollama.com/download/OllamaSetup.exe"
-    if %ERRORLEVEL% NEQ 0 (
-        echo    [X] Failed to download Ollama installer.
-        echo        Install manually from https://ollama.com then run this script again.
-        set "MISSING=1"
-    ) else (
-        echo    Running Ollama installer silently...
-        "%TEMP%\OllamaSetup.exe" /S
-        timeout /t 15 /nobreak >nul
-        if exist "%LOCALAPPDATA%\Programs\Ollama\ollama.exe" (
-            set "OLLAMA_EXE=%LOCALAPPDATA%\Programs\Ollama\ollama.exe"
-            set "PATH=%PATH%;%LOCALAPPDATA%\Programs\Ollama"
-            echo    [OK] Ollama installed successfully
-        ) else (
-            echo    [X] Ollama install did not complete. Install manually from https://ollama.com
-            set "MISSING=1"
-        )
-    )
+    echo    [--] Ollama: not installed ^(OPTIONAL^)
+    echo         Ollama enables local models ^(The Vault, privacy mode^).
+    echo         Skip if you don't need local models.
+    echo         Install later from https://ollama.com if needed.
 )
 
 if defined MISSING (
@@ -204,14 +184,18 @@ echo.
 call "%PROJECT_ROOT%\synapse_start.bat"
 
 REM ============================================================
-REM Step 6: Pull the embedding model
+REM Step 6: Pull the embedding model (only if Ollama is installed)
 REM ============================================================
 echo.
-echo Step 6: Pulling required embedding model ^(nomic-embed-text, ~900 MB^)...
-echo This may take several minutes on first run. Please wait...
-echo.
-"%OLLAMA_EXE%" pull nomic-embed-text
-echo    [OK] nomic-embed-text ready.
+if defined OLLAMA_EXE (
+    echo Step 6: Pulling embedding model ^(nomic-embed-text, ~900 MB^)...
+    echo This may take several minutes on first run. Please wait...
+    echo.
+    "%OLLAMA_EXE%" pull nomic-embed-text
+    echo    [OK] nomic-embed-text ready.
+) else (
+    echo Step 6: Ollama model pull skipped ^(Ollama not installed — optional^).
+)
 
 REM ============================================================
 REM Done
