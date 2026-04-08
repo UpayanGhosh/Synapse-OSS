@@ -1,148 +1,142 @@
-# Requirements: Synapse-OSS v2.0 — The Adaptive Core
+# Requirements: Synapse-OSS v3.0 — OpenClaw Feature Harvest
 
-**Defined:** 2026-04-06
-**Core Value:** An AI that knows you deeply, grows with you continuously, and reaches
-out to you first — on your machine, under your full control.
+**Defined:** 2026-04-08
+**Core Value:** An AI that knows you deeply, grows with you continuously, and reaches out to you first — on your machine, under your full control.
 
----
+## v3.0 Requirements
 
-## v2.0 Requirements
+Requirements for this milestone. Each maps to roadmap phases.
 
-Requirements for the v2.0 milestone. Maps to vision document Phases 5–9.
+### LLM Providers
 
-### Skill Architecture (Phase 5)
+- [ ] **PROV-01**: User can add OpenAI, Anthropic, DeepSeek, Mistral, or Together as providers via synapse.json
+- [ ] **PROV-02**: User can set per-provider rate limits and budget caps in config
+- [ ] **PROV-03**: litellm BudgetExceededError triggers fallback chain instead of hard error
+- [ ] **PROV-04**: Onboarding wizard offers all 10+ providers during setup
 
-- [ ] **SKILL-01**: A skill is a directory containing SKILL.md (YAML metadata + instructions), an optional scripts/ subdirectory, an optional references/ subdirectory, and optional assets/
-- [ ] **SKILL-02**: Skills are discovered at startup by scanning ~/.synapse/skills/ for valid SKILL.md files — no restart required to detect new skills added while running
-- [ ] **SKILL-03**: Each skill's SKILL.md declares a `description` field used for routing — the router matches incoming intent to skill descriptions without hardcoded dispatch tables
-- [ ] **SKILL-04**: A skill-creator skill exists at ~/.synapse/skills/skill-creator/ — it generates a new skill directory from within conversation, including SKILL.md, scripts/, and references/
-- [ ] **SKILL-05**: Community skills can be installed by dropping a directory into ~/.synapse/skills/ — no package manager or pip install required
-- [ ] **SKILL-06**: Skill execution is sandboxed — a failing skill does not crash the main conversation loop; errors are caught, logged, and reported to the user
-- [ ] **SKILL-07**: Skill metadata (name, description, version, author) is readable via `GET /skills` endpoint
+### Bundled Skills
 
-### Safe Self-Modification + Rollback (Phase 6)
+- [ ] **SKILL-01**: User gets 10 bundled skills at first install (weather, reminders, notes, translate, summarize, web scrape, news, image describe, timer, dictionary)
+- [ ] **SKILL-02**: Bundled skills live in workspace/skills/bundled/ as SKILL.md directories
+- [ ] **SKILL-03**: Skills declare `cloud_safe: true/false` metadata for Vault hemisphere enforcement
+- [ ] **SKILL-04**: User can disable any bundled skill without affecting others
 
-- [ ] **MOD-01**: Before any Zone 2 modification, Synapse explains in plain language what it will change and why — and waits for explicit yes
-- [ ] **MOD-02**: After confirmation, Synapse executes the modification and writes a timestamped snapshot to ~/.synapse/snapshots/
-- [ ] **MOD-03**: On modification failure, Synapse auto-reverts to the pre-modification state and informs the user what happened
-- [ ] **MOD-04**: User can roll back to a prior snapshot by date: "go back to how you were on March 15"
-- [ ] **MOD-05**: User can roll back to a prior snapshot by description: "undo the last change", "you were better last week"
-- [ ] **MOD-06**: Rolling back never destroys forward history — the user can roll forward again
-- [ ] **MOD-07**: Zone 1 components (api_gateway.py, auth, core loop, self-modification engine, rollback) are immutable to model-initiated writes — Sentinel enforces this
-- [ ] **MOD-08**: Zone 2 components are explicitly listed and writable with consent — cron, MCP integrations, model routing, memory arch, SBS profile depth, pipeline stages, AI name/personality
-- [ ] **MOD-09**: `GET /snapshots` lists all snapshots with timestamps and change descriptions
-- [ ] **MOD-10**: Each snapshot is self-contained and restorable in isolation — restoring snapshot N does not require all prior snapshots to be intact
+### TTS Voice Output
 
-### Subagent System (Phase 7)
+- [ ] **TTS-01**: User receives voice replies as playable WhatsApp voice notes (OGG Opus)
+- [ ] **TTS-02**: edge-tts is the default TTS provider (zero API key, 400+ voices)
+- [ ] **TTS-03**: ElevenLabs is available as premium opt-in TTS provider
+- [ ] **TTS-04**: TTS runs as BackgroundTask — never blocks the chat pipeline
+- [ ] **TTS-05**: User can configure preferred voice in synapse.json
 
-- [x] **AGENT-01**: The main conversation can spawn an isolated sub-agent with a task description and optional context
-- [x] **AGENT-02**: Sub-agents run in isolated asyncio tasks — a crashed sub-agent does not affect the parent conversation
-- [x] **AGENT-03**: Sub-agent results return to the parent conversation as a structured message
-- [x] **AGENT-04**: Multiple sub-agents can run in parallel — independent tasks do not wait on each other
-- [x] **AGENT-05**: Sub-agents have access to memory and tools but operate with a scoped context window — they do not receive the full parent conversation history by default
-- [x] **AGENT-06**: Long-running sub-agents (> 30s) send progress updates to the parent at configurable intervals
-- [x] **AGENT-07**: `GET /agents` lists active and recently completed sub-agent tasks with status
+### Image Generation
 
-### Onboarding Wizard v2 (Phase 8)
+- [ ] **IMG-01**: User can request image generation ("draw me X") and receive it in chat
+- [ ] **IMG-02**: Traffic Cop classifies image requests as IMAGE role
+- [ ] **IMG-03**: gpt-image-1 (OpenAI) is default; Flux (fal.ai) is configurable alternative
+- [ ] **IMG-04**: Image gen respects Vault hemisphere — blocked in spicy mode
+- [ ] **IMG-05**: Generation runs as BackgroundTask with immediate text acknowledgment
 
-- [x] **ONBOARD2-01**: `python -m synapse setup` completes full setup — model selection, API key entry, validation, persona configuration — in under 5 minutes for a fresh user
-- [x] **ONBOARD2-02**: The wizard builds an initial SBS profile via targeted questions (communication style, interests, privacy preferences) — user reaches a meaningful baseline without prior conversations
-- [x] **ONBOARD2-03**: The wizard offers WhatsApp history import during setup — python scripts/import_whatsapp.py is presented as an option, not a required step
-- [x] **ONBOARD2-04**: The wizard supports `--non-interactive` flag with env vars for headless/Docker/CI setups
-- [x] **ONBOARD2-05**: After wizard completion, `python -m synapse setup --verify` confirms all configured providers and channels respond correctly
+### Cron & Isolated Agents
 
-### Browser Tool (Phase 9)
+- [ ] **CRON-01**: Each cron job runs in an isolated agent context with separate memory
+- [ ] **CRON-02**: CronService execute_fn is wired to persona_chat() in gateway lifespan
+- [ ] **CRON-03**: Isolated agents get recent memory context injected as system prefix
+- [ ] **CRON-04**: Cron jobs have configurable timeout and cleanup on failure
 
-- [x] **BROWSE-01**: Synapse can fetch and read web pages during a conversation when the user asks about current information
-- [x] **BROWSE-02**: Web content is summarized and injected into the conversation context — raw HTML is never passed to the LLM
-- [x] **BROWSE-03**: Browser requests respect the Zone 1/Zone 2 privacy boundary — private/spicy hemisphere conversations never trigger web fetches
-- [x] **BROWSE-04**: Browser tool is implemented as a skill (SKILL.md) — it can be disabled or replaced without touching the core pipeline
-- [x] **BROWSE-05**: Search results include source URLs — the user can verify provenance
+### Web Control Panel
 
----
+- [ ] **DASH-01**: Dashboard shows real-time pipeline events via SSE
+- [ ] **DASH-02**: Dashboard displays active sessions, memory stats, and model routing decisions
+- [ ] **DASH-03**: User can send messages from the dashboard (existing pipeline/send endpoint)
+- [ ] **DASH-04**: Dashboard is loopback-only with session token auth
+- [ ] **DASH-05**: Dashboard uses vanilla JS + Tailwind (no React build step)
 
-## v3.0 Requirements (Deferred — Proactive Architecture Evolution)
+### Realtime Voice
 
-To be detailed at v3.0 milestone initialization.
+- [ ] **VOICE-01**: User can have real-time voice conversations via WebSocket from dashboard
+- [ ] **VOICE-02**: Silero VAD detects speech boundaries with conservative defaults
+- [ ] **VOICE-03**: Groq Whisper handles streaming transcription
+- [ ] **VOICE-04**: TTS response streams back as audio chunks
+- [ ] **VOICE-05**: Barge-in (user interrupts AI response) cancels current TTS playback
 
-### Proactive Proposals
-- **PROACT-01**: Synapse observes patterns and proposes architecture extensions: "You ask me to check your email every morning. Want me to just do that automatically?"
-- **PROACT-02**: All proposals follow the same consent protocol as explicit user requests — explain → confirm → execute → snapshot
-- **PROACT-03**: User can suppress proactive proposals per category (cron, integrations, routing changes)
+## Future Requirements
 
-### Pattern Recognition
-- **PATTERN-01**: Synapse tracks recurring manual requests over a configurable window (default: 3 occurrences in 7 days)
-- **PATTERN-02**: Recurring patterns trigger a proposal — not an automatic change
+Deferred beyond v3.0. Tracked but not in current roadmap.
 
----
+### Extended Channels
 
-## v4.0 Requirements (Deferred — The Jarvis Threshold)
+- **CHAN-01**: User can interact via Matrix/Element channel
+- **CHAN-02**: User can interact via Signal channel
 
-To be detailed at v4.0 milestone initialization.
+### Advanced Media
 
-- A mature instance manages parts of the user's digital life
-- The AI has its own name, personality, and relationship — shaped through conversation
-- Feels less like software, more like a presence
-- Not superhuman intelligence — deep familiarity, persistent context, proactive capability
+- **MEDIA-01**: User can request video generation
+- **MEDIA-02**: User can request music generation
 
----
+### Native Apps
+
+- **APP-01**: macOS companion app with system tray
+- **APP-02**: iOS companion app
 
 ## Out of Scope
 
+Explicitly excluded. Documented to prevent scope creep.
+
 | Feature | Reason |
 |---------|--------|
-| Real-time multi-user sessions | Per-user architecture by design; sharing would require rearchitecting Zone 1 |
-| Hosted/cloud service | Self-hosted only — user data, user machine, user control |
-| Mobile native app | Web-first; mobile via existing channels (WhatsApp, Telegram) |
-| Model fine-tuning | Synapse influences behavior via prompting, not weights |
-| Plugin marketplace with pip packages | Skills-as-directories is simpler, safer, AI-writable without code execution |
-
----
+| 47 provider integrations (OpenClaw parity) | Diminishing returns — 10 providers covers 99% of users |
+| 21 channel integrations (OpenClaw parity) | 5 channels (WA/TG/Discord/Slack/Stub) covers all major platforms |
+| Plugin SDK / marketplace | Skill system is simpler, AI-writable, no pip install needed |
+| Docker/Fly.io deployment | Zero-Docker is a core design principle |
+| Native iOS/Android apps | Too much scope — mobile access via WhatsApp/Telegram channels |
+| Model fine-tuning | Synapse influences behavior through prompting, not weights |
+| Multi-user collaboration | Architecture is per-user by design |
 
 ## Traceability
 
+Which phases cover which requirements. Updated during roadmap creation.
+
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SKILL-01 | Phase 1 | Pending |
-| SKILL-02 | Phase 1 | Pending |
-| SKILL-03 | Phase 1 | Pending |
-| SKILL-04 | Phase 1 | Pending |
-| SKILL-05 | Phase 1 | Pending |
-| SKILL-06 | Phase 1 | Pending |
-| SKILL-07 | Phase 1 | Pending |
-| MOD-01 | Phase 2 | Pending |
-| MOD-02 | Phase 2 | Pending |
-| MOD-03 | Phase 2 | Pending |
-| MOD-04 | Phase 2 | Pending |
-| MOD-05 | Phase 2 | Pending |
-| MOD-06 | Phase 2 | Pending |
-| MOD-07 | Phase 2 | Pending |
-| MOD-08 | Phase 2 | Pending |
-| MOD-09 | Phase 2 | Pending |
-| MOD-10 | Phase 2 | Pending |
-| AGENT-01 | Phase 3 | Complete |
-| AGENT-02 | Phase 3 | Complete |
-| AGENT-03 | Phase 3 | Complete |
-| AGENT-04 | Phase 3 | Complete |
-| AGENT-05 | Phase 3 | Complete |
-| AGENT-06 | Phase 3 | Complete |
-| AGENT-07 | Phase 3 | Complete |
-| ONBOARD2-01 | Phase 4 | Complete |
-| ONBOARD2-02 | Phase 4 | Complete |
-| ONBOARD2-03 | Phase 4 | Complete |
-| ONBOARD2-04 | Phase 4 | Complete |
-| ONBOARD2-05 | Phase 4 | Complete |
-| BROWSE-01 | Phase 5 | Complete |
-| BROWSE-02 | Phase 5 | Complete |
-| BROWSE-03 | Phase 5 | Complete |
-| BROWSE-04 | Phase 5 | Complete |
-| BROWSE-05 | Phase 5 | Complete |
+| PROV-01 | — | Pending |
+| PROV-02 | — | Pending |
+| PROV-03 | — | Pending |
+| PROV-04 | — | Pending |
+| SKILL-01 | — | Pending |
+| SKILL-02 | — | Pending |
+| SKILL-03 | — | Pending |
+| SKILL-04 | — | Pending |
+| TTS-01 | — | Pending |
+| TTS-02 | — | Pending |
+| TTS-03 | — | Pending |
+| TTS-04 | — | Pending |
+| TTS-05 | — | Pending |
+| IMG-01 | — | Pending |
+| IMG-02 | — | Pending |
+| IMG-03 | — | Pending |
+| IMG-04 | — | Pending |
+| IMG-05 | — | Pending |
+| CRON-01 | — | Pending |
+| CRON-02 | — | Pending |
+| CRON-03 | — | Pending |
+| CRON-04 | — | Pending |
+| DASH-01 | — | Pending |
+| DASH-02 | — | Pending |
+| DASH-03 | — | Pending |
+| DASH-04 | — | Pending |
+| DASH-05 | — | Pending |
+| VOICE-01 | — | Pending |
+| VOICE-02 | — | Pending |
+| VOICE-03 | — | Pending |
+| VOICE-04 | — | Pending |
+| VOICE-05 | — | Pending |
 
 **Coverage:**
-- v2.0 requirements: 34 total
-- Mapped to phases: 34
-- Unmapped: 0 ✓
+- v3.0 requirements: 32 total
+- Mapped to phases: 0
+- Unmapped: 32 (roadmap pending)
 
 ---
-*Requirements defined: 2026-04-06*
-*Last updated: 2026-04-06 after v2.0 milestone initialization*
+*Requirements defined: 2026-04-08*
+*Last updated: 2026-04-08 after initial definition*
