@@ -88,10 +88,12 @@ STRATEGY_TO_ROLE: dict[str, str] = {
 
 
 async def route_traffic_cop(user_message: str) -> str:
-    """TRAFFIC COP: Classifies message as CASUAL, CODING, ANALYSIS, or REVIEW."""
+    """TRAFFIC COP: Classifies message as CASUAL, CODING, ANALYSIS, REVIEW, or IMAGE."""
     system = (
         "Classify this message. Reply with EXACTLY ONE WORD: "
-        "CASUAL, CODING, ANALYSIS, or REVIEW.\n\n"
+        "CASUAL, CODING, ANALYSIS, REVIEW, or IMAGE.\n\n"
+        "- IMAGE: Draw, generate, or create an image, picture, photo, illustration, or artwork. "
+        "NOT 'draw up a plan', 'create a document', or 'draw conclusions'.\n"
         "- CODING: Write code, debug, script, API, python.\n"
         "- ANALYSIS (Synthesis/Data): Summarize logs, explain history, "
         "deep dive, data aggregation. (Use Gemini Pro Context).\n"
