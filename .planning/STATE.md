@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: OpenClaw Feature Harvest
 status: unknown
-last_updated: "2026-04-09T13:21:04.960Z"
+last_updated: "2026-04-09T13:28:00.000Z"
 progress:
   total_phases: 12
   completed_phases: 6
   total_plans: 47
-  completed_plans: 36
+  completed_plans: 37
 ---
 
 # Project State
@@ -22,12 +22,12 @@ See: .planning/PROJECT.md (updated 2026-04-08)
 
 ## Current Position
 
-Phase: 9 of 11 (Image Generation)
-Plan: 2 of TBD complete in current phase
+Phase: 8 of 11 (TTS Voice Output) — COMPLETE
+Plan: 3 of 3 complete in current phase
 Status: In progress
-Last activity: 2026-04-09 — Phase 9 Plan 02 complete (IMAGE fifth classification label in traffic cop + IMAGE routing branch in chat_pipeline.py)
+Last activity: 2026-04-09 — Phase 8 Plan 03 complete (TTS pipeline wiring + 31 tests — _send_voice_note background task, /media/tts_outbound static mount)
 
-Progress: [███░░░░░░░] 9% (34/47 plans complete)
+Progress: [████░░░░░░] 10% (37/47 plans complete)
 
 ## Milestone Map
 
@@ -67,6 +67,8 @@ Progress: [███░░░░░░░] 9% (34/47 plans complete)
 - [Phase 09-image-generation]: IMAGE branch uses early return placeholder — Plan 03 replaces with BackgroundTask dispatch; STRATEGY_TO_ROLE unchanged
 - [Phase 08-tts-voice-output]: edge-tts is default TTS provider — zero credentials, works out-of-the-box without tts config in synapse.json
 - [Phase 08-tts-voice-output]: ElevenLabs API key read from SynapseConfig.providers directly (not os.environ) to avoid init-time ordering dependency with LLMRouter
+- [Phase 08-tts-voice-output]: Terminal punctuation gate (. ! ? ) ] }) makes TTS and auto-continue mutually exclusive — auto-continue fires for non-terminal replies (cut-off), TTS fires for terminal replies (complete)
+- [Phase 08-tts-voice-output]: Patch path for TTSEngine tests is synapse_config.SynapseConfig.load (deferred local import inside synthesize()), not sci_fi_dashboard.tts.engine.SynapseConfig
 - [Phase 09-image-generation]: gpt-image-1 always returns b64_json — never URL, response_format param omitted; openai and fal-client are lazy-imported inside provider functions to keep them optional
 - [Phase 09-image-generation]: ImageGenEngine API key validation in engine helpers (_generate_openai/_generate_fal), not in provider functions — provider functions are pure and testable
 
@@ -81,7 +83,7 @@ None active.
 
 ## Session Continuity
 
-Last session: 2026-04-09 (Phase 8 Plan 01 execution)
-Stopped at: Completed 08-01-PLAN.md — TTS synthesis engine (TTSEngine, EdgeTTSProvider, ElevenLabsProvider, mp3_to_ogg_opus, SynapseConfig.tts field)
+Last session: 2026-04-09 (Phase 8 Plan 03 execution)
+Stopped at: Completed 08-03-PLAN.md — TTS pipeline wiring (_send_voice_note, /media/tts_outbound mount, 31 tests). Phase 8 TTS Voice Output is complete.
 Resume file: None
-Next step: Execute 08-02-PLAN.md (voice note delivery — /send-voice bridge endpoint and WhatsApp channel send_voice_note)
+Next step: Continue Phase 9 — Image Generation (Plan 03 onward)
