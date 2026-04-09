@@ -10,8 +10,8 @@ Requirements for this milestone. Each maps to roadmap phases.
 ### LLM Providers
 
 - [x] **PROV-01**: User can add OpenAI, Anthropic, DeepSeek, Mistral, or Together as providers via synapse.json
-- [ ] **PROV-02**: User can set per-provider rate limits and budget caps in config
-- [ ] **PROV-03**: litellm BudgetExceededError triggers fallback chain instead of hard error
+- [x] **PROV-02**: User can set per-provider rate limits and budget caps in config
+- [x] **PROV-03**: litellm BudgetExceededError triggers fallback chain instead of hard error
 - [x] **PROV-04**: Onboarding wizard offers all 10+ providers during setup
 
 ### Bundled Skills
@@ -100,8 +100,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | PROV-01 | Phase 6 | Complete |
-| PROV-02 | Phase 6 | Pending |
-| PROV-03 | Phase 6 | Pending |
+| PROV-02 | Phase 6 | Complete |
+| PROV-03 | Phase 6 | Complete |
 | PROV-04 | Phase 6 | Complete |
 | SKILL-01 | Phase 7 | Pending |
 | SKILL-02 | Phase 7 | Pending |
