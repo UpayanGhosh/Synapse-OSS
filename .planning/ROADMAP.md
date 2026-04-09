@@ -190,14 +190,13 @@ Plans:
   4. User sends a test message from the dashboard text box and receives a reply in the dashboard — the message flows through the normal `persona_chat()` pipeline
   5. Navigating to the dashboard from outside `127.0.0.1` (e.g., another machine on the LAN) returns 403 — loopback-only enforcement confirmed
   6. Dashboard is built with vanilla JS + Tailwind — no npm, no node_modules, no build step required to serve it
-**Plans**: TBD
+**Plans**: 4 plans in 3 waves
 
 Plans:
-- [ ] 10-01-PLAN.md — TBD
-- [ ] 10-02-PLAN.md — TBD
-- [ ] 10-03-PLAN.md — TBD
-- [ ] 10-04-PLAN.md — TBD
-- [ ] 10-05-PLAN.md — TBD
+- [ ] 10-01-PLAN.md — Cron wiring: ChatRequest session_key + execute_fn adapter + SSE emission (Wave 1)
+- [ ] 10-02-PLAN.md — Dashboard infra: LoopbackOnlyMiddleware + cron API routes (Wave 1)
+- [ ] 10-03-PLAN.md — Dashboard UI: 4 new panels (sessions, cron, memory, routing) + JS fetch/SSE (Wave 2)
+- [ ] 10-04-PLAN.md — Tests: cron wiring, loopback middleware, cron routes, DASH-05 compliance (Wave 3)
 
 ---
 
