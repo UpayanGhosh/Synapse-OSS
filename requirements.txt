@@ -49,3 +49,9 @@ mcp>=1.0.0                       # Anthropic MCP SDK (Python)
 google-auth>=2.23.0
 google-auth-oauthlib>=1.1.0
 google-api-python-client>=2.100.0
+
+# --- Scheduling ---
+croniter>=6.2.2                  # Cron expression parsing (cron/schedule.py)
+
+# --- Server-Sent Events ---
+sse-starlette>=2.0.0             # SSE endpoint for dashboard pipeline events

@@ -3,14 +3,19 @@
 
   "providers": {
     "anthropic": {"api_key": "YOUR_ANTHROPIC_API_KEY"},
-    "openai": {"api_key": "YOUR_OPENAI_API_KEY"},
+    "openai": {
+      "api_key": "YOUR_OPENAI_API_KEY",
+      "budget_usd": 10.0,
+      "budget_duration": "monthly"
+    },
     "gemini": {"api_key": "YOUR_GEMINI_API_KEY"},
     "groq": {"api_key": "YOUR_GROQ_API_KEY"},
     "openrouter": {"api_key": "YOUR_OPENROUTER_API_KEY"},
     "mistral": {"api_key": "YOUR_MISTRAL_API_KEY"},
-    "together_ai": {"api_key": "YOUR_TOGETHER_AI_API_KEY"},
+    "togetherai": {"api_key": "YOUR_TOGETHER_AI_API_KEY"},
     "xai": {"api_key": "YOUR_XAI_API_KEY"},
-    "cohere": {"api_key": "YOUR_COHERE_API_KEY"}
+    "cohere": {"api_key": "YOUR_COHERE_API_KEY"},
+    "deepseek": {"api_key": "YOUR_DEEPSEEK_API_KEY"}
   },
 
   "channels": {

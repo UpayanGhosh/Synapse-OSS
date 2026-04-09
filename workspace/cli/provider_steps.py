@@ -74,6 +74,7 @@ VALIDATION_MODELS: dict[str, str] = {
     "huggingface": "huggingface/microsoft/DialoGPT-medium",
     "nvidia_nim": "nvidia_nim/meta/llama-3.1-8b-instruct",
     "qianfan": "qianfan/ERNIE-Speed-128K",
+    "deepseek": "deepseek/deepseek-chat",
     # ollama: no litellm call — use validate_ollama() instead
     # github_copilot: no live call — OAuth device flow IS the validation
     # vllm: no litellm call — httpx health check
@@ -100,6 +101,7 @@ _KEY_MAP: dict[str, str] = {
     "huggingface": "HUGGINGFACE_API_KEY",
     "nvidia_nim": "NVIDIA_NIM_API_KEY",
     "qianfan": "QIANFAN_AK",  # Baidu Qianfan uses two keys; primary is AK
+    "deepseek": "DEEPSEEK_API_KEY",
 }
 
 # ---------------------------------------------------------------------------
@@ -119,6 +121,7 @@ PROVIDER_GROUPS: list[dict] = [
             {"key": "xai", "label": "xAI Grok"},
             {"key": "cohere", "label": "Cohere"},
             {"key": "togetherai", "label": "Together AI"},
+            {"key": "deepseek", "label": "DeepSeek"},
         ],
     },
     {
