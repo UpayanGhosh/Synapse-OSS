@@ -44,6 +44,17 @@ class SkillRegistry:
             len(names),
             ", ".join(names) if names else "(none)",
         )
+        # Detect user skills that shadow bundled synapse.* skills
+        for skill_name in sorted(self._skills):
+            if not skill_name.startswith("synapse."):
+                bundled_name = f"synapse.{skill_name}"
+                if bundled_name in self._skills:
+                    logger.warning(
+                        "[Skills] User skill '%s' shadows bundled '%s' — "
+                        "both are loaded; user version may win routing by trigger overlap.",
+                        skill_name,
+                        bundled_name,
+                    )
 
     def reload(self) -> None:
         """Re-scan skills_dir, add new, remove deleted, update changed."""
@@ -73,6 +84,18 @@ class SkillRegistry:
         else:
             logger.debug("[Skills] Hot-reload: no changes detected")
 
+        # Detect user skills that shadow bundled synapse.* skills
+        for skill_name in sorted(self._skills):
+            if not skill_name.startswith("synapse."):
+                bundled_name = f"synapse.{skill_name}"
+                if bundled_name in self._skills:
+                    logger.warning(
+                        "[Skills] User skill '%s' shadows bundled '%s' — "
+                        "both are loaded; user version may win routing by trigger overlap.",
+                        skill_name,
+                        bundled_name,
+                    )
+
     def list_skills(self) -> list[SkillManifest]:
         """Return all loaded skill manifests, sorted by name."""
         with self._lock:
@@ -82,6 +105,34 @@ class SkillRegistry:
         """Return a single skill by name, or None."""
         with self._lock:
             return self._skills.get(name)
+
+    # ------------------------------------------------------------------
+    # Bundled skill seeding
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def seed_bundled_skills(skills_dir: Path) -> int:
+        """Copy bundled skills to user skills_dir on first boot. No-overwrite.
+
+        Returns the number of skills newly copied.
+        """
+        import shutil
+
+        bundled_dir = Path(__file__).parent / "bundled"
+        if not bundled_dir.is_dir():
+            return 0
+
+        count = 0
+        for src in sorted(bundled_dir.iterdir()):
+            if not src.is_dir():
+                continue
+            dst = skills_dir / src.name
+            if dst.exists():
+                continue
+            shutil.copytree(src, dst)
+            logger.info("[Skills] Seeded bundled skill '%s' → %s", src.name, dst)
+            count += 1
+        return count
 
     # ------------------------------------------------------------------
     # Properties
