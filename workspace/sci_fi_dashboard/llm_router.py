@@ -786,9 +786,11 @@ class SynapseLLMRouter:
                     approx_spend = spend["total_tokens"] / 1_000_000
                     if approx_spend >= budget_usd:
                         raise BudgetExceededError(
+                            approx_spend,
+                            budget_usd,
                             f"Provider '{provider_prefix}' budget exceeded: "
                             f"~${approx_spend:.2f} spent vs ${budget_usd:.2f} cap "
-                            f"({budget_duration})"
+                            f"({budget_duration})",
                         )
         try:
             response = await self._router.acompletion(
