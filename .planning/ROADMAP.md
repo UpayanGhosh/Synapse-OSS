@@ -113,12 +113,12 @@ Plans:
   2. User sets a budget cap for OpenAI in synapse.json; after exceeding it, the next message falls back to the configured fallback provider instead of returning a 500 error
   3. Running `python -m synapse setup` shows all 10+ providers (OpenAI, Anthropic, DeepSeek, Mistral, Together, Gemini, Groq, Cohere, Ollama, GitHub Copilot) in the provider selection menu
   4. `croniter` and `sse-starlette` appear in `pip list` on a clean install (declared in requirements.txt)
-**Plans**: TBD
+**Plans**: 3 plans in 2 waves
 
 Plans:
-- [ ] 06-01-PLAN.md — TBD
-- [ ] 06-02-PLAN.md — TBD
-- [ ] 06-03-PLAN.md — TBD
+- [ ] 06-01-PLAN.md — DeepSeek provider maps + requirements.txt deps + synapse.json.example (Wave 1)
+- [ ] 06-02-PLAN.md — BudgetExceededError fallback fix + per-provider budget caps + DeepSeek _KEY_MAP (Wave 1)
+- [ ] 06-03-PLAN.md — Unit tests for provider expansion and budget fallback (Wave 2)
 
 ---
 
@@ -236,7 +236,7 @@ Phases execute in dependency order: 6 → 7 → 8 → 9 → 10 → 11
 | 3. Subagent System | v2.0 | 4/4 | Complete | 2026-04-07 |
 | 4. Onboarding Wizard v2 | v2.0 | 4/4 | Complete | 2026-04-07 |
 | 5. Browser Tool | v2.0 | 4/4 | Complete | 2026-04-07 |
-| 6. LLM Provider Expansion | v3.0 | 0/TBD | Not started | — |
+| 6. LLM Provider Expansion | v3.0 | 0/3 | Planned | — |
 | 7. Bundled Skills Library | v3.0 | 0/TBD | Not started | — |
 | 8. TTS Voice Output | v3.0 | 0/TBD | Not started | — |
 | 9. Image Generation | v3.0 | 0/TBD | Not started | — |
