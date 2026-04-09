@@ -22,12 +22,12 @@ See: .planning/PROJECT.md (updated 2026-04-08)
 
 ## Current Position
 
-Phase: 10 of 12 (Cron Wiring + Web Control Panel) — In Progress
-Plan: 1 of N complete in current phase
+Phase: 10 of 12 (Cron Wiring + Web Control Panel) — Complete
+Plan: 3 of 3 complete in current phase
 Status: In progress
-Last activity: 2026-04-09 — Phase 10 Plan 01 complete (CronService wired to persona_chat via execute_fn, session_key added to ChatRequest, SSE cron events)
+Last activity: 2026-04-09 — Phase 10 Plan 03 complete (four dashboard panels: sessions, cron, memory, routing + SSE handlers)
 
-Progress: [████████░░] 89% (42/47 plans complete)
+Progress: [████████░░] 96% (45/47 plans complete)
 
 ## Milestone Map
 
@@ -86,6 +86,9 @@ Progress: [████████░░] 89% (42/47 plans complete)
 - [Phase 10-cron-wiring/10-01]: old cron_service.py file retained — only api_gateway.py import replaced; tests referencing old file not broken
 - [Phase 10-cron-wiring-web-control-panel]: LoopbackOnlyMiddleware registered after BodySizeLimitMiddleware — Starlette LIFO order means it runs before body-size check
 - [Phase 10-cron-wiring-web-control-panel]: routes/cron.py serializes jobs as plain dicts — cron_service.py stores jobs as JSON dicts loaded from file
+- [Phase 10-cron-wiring-web-control-panel/10-03]: Dashboard memory stats fetched from /persona/status (not /persona/summary which doesn't exist) — response has memory_db field with documents/atomic_facts/entity_links
+- [Phase 10-cron-wiring-web-control-panel/10-03]: Routing decisions panel driven by llm.route SSE event (not pipeline.run_done) — llm.route carries role+model in current codebase; pipeline.run_done added as forward-compat fallback
+- [Phase 10-cron-wiring-web-control-panel/10-03]: formatSchedule() handles both CronSchedule objects (cron/service.py) and legacy schedule strings (cron_service.py) for dual-format compatibility
 
 ### Pending Todos
 
@@ -98,7 +101,7 @@ None active.
 
 ## Session Continuity
 
-Last session: 2026-04-09 (Phase 10 Plan 02 execution)
-Stopped at: Completed 10-02-PLAN.md — LoopbackOnlyMiddleware (DASH-04) + GET /api/cron/jobs + POST /api/cron/jobs/{id}/run (DASH-02)
+Last session: 2026-04-09 (Phase 10 Plan 03 execution)
+Stopped at: Completed 10-03-PLAN.md — four dashboard panels (sessions, cron, memory, routing) + cron SSE handlers + routing decisions panel
 Resume file: None
-Next step: Phase 10 Plan 03 — dashboard HTML/CSS/JS UI consuming cron API endpoints
+Next step: Phase 11 — Realtime Voice Streaming
