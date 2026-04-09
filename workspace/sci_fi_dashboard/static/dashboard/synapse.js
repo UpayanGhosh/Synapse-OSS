@@ -210,6 +210,8 @@ class SSEClient {
       'sbs.read_start', 'sbs.layer_read', 'sbs.compile_done',
       'traffic_cop.start', 'traffic_cop.skip', 'traffic_cop.done',
       'llm.route', 'llm.stream_start', 'llm.stream_done',
+      'cron.job_start', 'cron.job_done', 'cron.job_error',
+      'pipeline.run_done',
     ];
 
     for (const type of allTypes) {
@@ -1072,4 +1074,377 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Connect to SSE stream
   sseClient.connect();
+
+  // Wire new data-panel SSE handlers (cron events + routing decisions)
+  wirePanelEvents(sseClient);
+
+  // Initial data fetch for the four panels
+  refreshSessions();
+  refreshCronJobs();
+  refreshMemoryStats();
+
+  // Periodic auto-refresh
+  setInterval(refreshSessions,    30000);
+  setInterval(refreshCronJobs,    30000);
+  setInterval(refreshMemoryStats, 60000);
+
+  // Manual refresh buttons
+  const btnSessions = document.getElementById('btn-refresh-sessions');
+  if (btnSessions) btnSessions.addEventListener('click', refreshSessions);
+  const btnCron = document.getElementById('btn-refresh-cron');
+  if (btnCron) btnCron.addEventListener('click', refreshCronJobs);
 });
+
+// ---------------------------------------------------------------------------
+// 13. Panel utilities
+// ---------------------------------------------------------------------------
+
+/**
+ * Convert an epoch-milliseconds timestamp to a relative time string.
+ * Returns "—" for null / 0 / undefined values.
+ */
+function relativeTime(ms) {
+  if (!ms) return '—';
+  const delta = Math.floor((Date.now() - ms) / 1000);
+  if (delta < 0)  return 'in ' + _fmtSeconds(-delta);
+  if (delta < 5)  return 'just now';
+  return _fmtSeconds(delta) + ' ago';
+}
+
+function _fmtSeconds(s) {
+  if (s < 60)   return s + 's';
+  if (s < 3600) return Math.floor(s / 60) + 'm';
+  if (s < 86400) return Math.floor(s / 3600) + 'h';
+  return Math.floor(s / 86400) + 'd';
+}
+
+/**
+ * Convert a CronSchedule object (or legacy cron_service.py schedule string)
+ * to a human-readable string.
+ */
+function formatSchedule(schedule) {
+  if (!schedule) return '—';
+  // cron/service.py CronSchedule object
+  if (typeof schedule === 'object') {
+    const kind = schedule.kind;
+    if (kind === 'cron') return 'cron: ' + (schedule.expr || '?');
+    if (kind === 'every') {
+      const ms = schedule.every_ms || 0;
+      if (ms < 3600000) return 'every ' + Math.round(ms / 60000) + 'm';
+      if (ms < 86400000) return 'every ' + Math.round(ms / 3600000) + 'h';
+      return 'every ' + Math.round(ms / 86400000) + 'd';
+    }
+    if (kind === 'at') return 'at ' + (schedule.expr || '?');
+    return String(kind || '?');
+  }
+  // cron_service.py legacy string format ("every_8h", "every_day_at_08:00", etc.)
+  if (typeof schedule === 'string') {
+    if (schedule.startsWith('every_') && schedule.endsWith('h')) {
+      return 'every ' + schedule.split('_')[1];
+    }
+    if (schedule.includes('at_')) {
+      const timePart = schedule.split('at_')[1].split('_')[0];
+      return 'daily at ' + timePart;
+    }
+    return schedule;
+  }
+  return '—';
+}
+
+/**
+ * Return an HTML <span> badge for a job status.
+ * ok → green, error → red, pending / null → yellow
+ */
+function statusBadge(status) {
+  if (!status || status === 'pending') {
+    return '<span style="font-family:\'Fira Code\',monospace;font-size:9px;font-weight:600;' +
+      'background:rgba(245,158,11,0.15);color:#FCD34D;border:1px solid rgba(245,158,11,0.3);' +
+      'border-radius:4px;padding:1px 5px;">PENDING</span>';
+  }
+  if (status === 'ok') {
+    return '<span style="font-family:\'Fira Code\',monospace;font-size:9px;font-weight:600;' +
+      'background:rgba(34,197,94,0.12);color:#86EFAC;border:1px solid rgba(34,197,94,0.25);' +
+      'border-radius:4px;padding:1px 5px;">OK</span>';
+  }
+  return '<span style="font-family:\'Fira Code\',monospace;font-size:9px;font-weight:600;' +
+    'background:rgba(239,68,68,0.12);color:#FCA5A5;border:1px solid rgba(239,68,68,0.25);' +
+    'border-radius:4px;padding:1px 5px;">ERROR</span>';
+}
+
+/**
+ * Return an HTML <span> badge for a routing role.
+ */
+function roleBadge(role) {
+  const roleMap = {
+    CASUAL:   { bg: 'rgba(6,182,212,0.12)',   color: '#67E8F9', border: 'rgba(6,182,212,0.25)' },
+    CODE:     { bg: 'rgba(168,85,247,0.12)',  color: '#D8B4FE', border: 'rgba(168,85,247,0.25)' },
+    ANALYSIS: { bg: 'rgba(245,158,11,0.12)',  color: '#FCD34D', border: 'rgba(245,158,11,0.25)' },
+    VAULT:    { bg: 'rgba(239,68,68,0.12)',   color: '#FCA5A5', border: 'rgba(239,68,68,0.25)' },
+    IMAGE:    { bg: 'rgba(236,72,153,0.12)',  color: '#F9A8D4', border: 'rgba(236,72,153,0.25)' },
+    REVIEW:   { bg: 'rgba(34,197,94,0.12)',   color: '#86EFAC', border: 'rgba(34,197,94,0.25)' },
+  };
+  const label = (role || 'CASUAL').toUpperCase();
+  const style = roleMap[label] || roleMap.CASUAL;
+  return '<span style="font-family:\'Fira Code\',monospace;font-size:9px;font-weight:600;' +
+    'background:' + style.bg + ';color:' + style.color + ';border:1px solid ' + style.border + ';' +
+    'border-radius:4px;padding:1px 5px;">' + escapeHTML(label) + '</span>';
+}
+
+/**
+ * Read the gateway token from the meta tag injected by the server, or from
+ * window.SYNAPSE_TOKEN if pre-set.
+ */
+function _getGatewayToken() {
+  if (window.SYNAPSE_TOKEN) return window.SYNAPSE_TOKEN;
+  const meta = document.querySelector('meta[name="synapse-token"]');
+  return meta ? meta.getAttribute('content') : null;
+}
+
+// ---------------------------------------------------------------------------
+// 14. Sessions panel
+// ---------------------------------------------------------------------------
+function refreshSessions() {
+  const token  = _getGatewayToken();
+  const headers = {};
+  if (token) headers['Authorization'] = 'Bearer ' + token;
+
+  fetch('/api/sessions', { headers })
+    .then(r => r.ok ? r.json() : Promise.reject(r.status))
+    .then(data => {
+      const sessions = Array.isArray(data) ? data : (data.sessions || []);
+      _renderSessions(sessions);
+    })
+    .catch(err => {
+      console.warn('[Sessions] Fetch failed:', err);
+    });
+}
+
+function _renderSessions(sessions) {
+  const tbody = document.getElementById('sessions-tbody');
+  if (!tbody) return;
+
+  if (!sessions.length) {
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:12px;' +
+      'font-family:\'Fira Code\',monospace;font-size:11px;color:#334155;">No active sessions</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = sessions.map(s => {
+    const key   = escapeHTML((s.sessionKey || s.session_key || '—').slice(0, 20));
+    const agent = escapeHTML(s.agentId    || s.agent_id    || '—');
+    const msgs  = s.messageCount ?? s.message_count ?? '—';
+    const upd   = relativeTime(s.updatedAt || s.updated_at || 0);
+    return '<tr style="border-top:1px solid #1E293B;">' +
+      '<td style="padding:5px 6px 5px 0;font-family:\'Fira Code\',monospace;font-size:11px;' +
+        'color:#67E8F9;white-space:nowrap;">' + key + '</td>' +
+      '<td style="padding:5px 6px;font-family:\'Fira Code\',monospace;font-size:11px;' +
+        'color:#94A3B8;">' + agent + '</td>' +
+      '<td style="padding:5px 0 5px 6px;text-align:right;font-family:\'Fira Code\',monospace;' +
+        'font-size:11px;color:#94A3B8;">' + msgs + '</td>' +
+      '<td style="padding:5px 0 5px 6px;text-align:right;font-family:\'Fira Code\',monospace;' +
+        'font-size:11px;color:#475569;white-space:nowrap;">' + upd + '</td>' +
+      '</tr>';
+  }).join('');
+}
+
+// ---------------------------------------------------------------------------
+// 15. Cron Jobs panel
+// ---------------------------------------------------------------------------
+function refreshCronJobs() {
+  const token   = _getGatewayToken();
+  const headers = {};
+  if (token) headers['Authorization'] = 'Bearer ' + token;
+
+  fetch('/api/cron/jobs', { headers })
+    .then(r => r.ok ? r.json() : Promise.reject(r.status))
+    .then(data => {
+      const jobs = Array.isArray(data) ? data : (data.jobs || []);
+      _renderCronJobs(jobs);
+    })
+    .catch(err => {
+      console.warn('[CronJobs] Fetch failed:', err);
+    });
+}
+
+function _renderCronJobs(jobs) {
+  const tbody = document.getElementById('cron-tbody');
+  if (!tbody) return;
+
+  if (!jobs.length) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:12px;' +
+      'font-family:\'Fira Code\',monospace;font-size:11px;color:#334155;">No cron jobs configured</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = jobs.map(j => {
+    const enabled  = j.enabled !== false;
+    const dot      = enabled
+      ? '<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#22C55E;' +
+        'box-shadow:0 0 4px #22C55E;" title="enabled"></span>'
+      : '<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#475569;" title="disabled"></span>';
+    const name     = escapeHTML(j.name || j.job_id || '—');
+    const schedule = escapeHTML(formatSchedule(j.schedule));
+    const state    = j.state || {};
+    const badge    = statusBadge(state.last_run_status || null);
+    const nextRun  = relativeTime(state.next_run_at_ms || null);
+    return '<tr style="border-top:1px solid #1E293B;">' +
+      '<td style="padding:5px 0 5px 0;text-align:center;">' + dot + '</td>' +
+      '<td style="padding:5px 6px;font-family:\'Fira Code\',monospace;font-size:11px;' +
+        'color:#E2E8F0;max-width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + name + '</td>' +
+      '<td style="padding:5px 6px;font-family:\'Fira Code\',monospace;font-size:10px;' +
+        'color:#94A3B8;white-space:nowrap;">' + schedule + '</td>' +
+      '<td style="padding:5px 6px;text-align:center;">' + badge + '</td>' +
+      '<td style="padding:5px 0 5px 6px;text-align:right;font-family:\'Fira Code\',monospace;' +
+        'font-size:11px;color:#475569;white-space:nowrap;">' + nextRun + '</td>' +
+      '</tr>';
+  }).join('');
+}
+
+// ---------------------------------------------------------------------------
+// 16. Memory stats panel
+// ---------------------------------------------------------------------------
+function refreshMemoryStats() {
+  const token   = _getGatewayToken();
+  const headers = {};
+  if (token) headers['Authorization'] = 'Bearer ' + token;
+
+  fetch('/persona/status', { headers })
+    .then(r => r.ok ? r.json() : Promise.reject(r.status))
+    .then(data => {
+      const db = data.memory_db || {};
+      _setMemStat('mem-stat-documents',    db.documents    ?? null);
+      _setMemStat('mem-stat-atomic-facts', db.atomic_facts ?? null);
+      _setMemStat('mem-stat-entity-links', db.entity_links ?? null);
+    })
+    .catch(err => {
+      console.warn('[MemoryStats] Fetch failed:', err);
+    });
+}
+
+function _setMemStat(id, value) {
+  const node = document.getElementById(id);
+  if (!node) return;
+  node.textContent = value !== null && value !== undefined
+    ? Number(value).toLocaleString()
+    : '—';
+}
+
+// ---------------------------------------------------------------------------
+// 17. Cron SSE handlers + Routing decisions panel
+// ---------------------------------------------------------------------------
+function wirePanelEvents(sse) {
+
+  // Track current message text for routing decisions
+  let _currentMsgText = '';
+
+  sse.onEvent('pipeline.start', (d) => {
+    if (d.text) _currentMsgText = d.text;
+  });
+
+  // ---- cron.job_start ----
+  sse.onEvent('cron.job_start', (d) => {
+    const name = d.job_name || d.job_id || 'unknown';
+    _addPipelineNote('cron.job_start', 'CRON: ' + name + ' started', '#F59E0B');
+    // Flash cron panel header briefly
+    _flashPanelHeader('panel-cron', '#F59E0B');
+  });
+
+  // ---- cron.job_done ----
+  sse.onEvent('cron.job_done', (d) => {
+    const name     = d.job_name || d.job_id || 'unknown';
+    const duration = d.duration_ms != null ? ' (' + d.duration_ms + 'ms)' : '';
+    _addPipelineNote('cron.job_done', 'CRON: ' + name + ' completed' + duration, '#22C55E');
+    refreshCronJobs();  // refresh panel with fresh state
+  });
+
+  // ---- cron.job_error ----
+  sse.onEvent('cron.job_error', (d) => {
+    const name  = d.job_name || d.job_id || 'unknown';
+    const error = d.error ? ': ' + d.error.slice(0, 60) : '';
+    _addPipelineNote('cron.job_error', 'CRON: ' + name + ' failed' + error, '#EF4444');
+    refreshCronJobs();  // refresh panel with fresh state
+  });
+
+  // ---- llm.route → routing decisions panel ----
+  sse.onEvent('llm.route', (d) => {
+    if (!d.role && !d.model) return;
+    _addRoutingDecision({
+      ts:      Date.now(),
+      msgText: _currentMsgText,
+      role:    d.role   || 'casual',
+      model:   d.model  || '—',
+    });
+  });
+
+  // ---- pipeline.run_done (future-proof) ----
+  sse.onEvent('pipeline.run_done', (d) => {
+    if (d.role || d.model) {
+      _addRoutingDecision({
+        ts:      Date.now(),
+        msgText: d.text || _currentMsgText,
+        role:    d.role  || 'casual',
+        model:   d.model || '—',
+      });
+    }
+  });
+}
+
+/** Prepend a short note row into the pipeline visualization area. */
+function _addPipelineNote(eventType, text, color) {
+  // Surface as a brief status update in the panel-status-indicator area
+  const statusEl = document.getElementById('panel-status-indicator');
+  if (statusEl) {
+    const prev = statusEl.textContent;
+    statusEl.textContent = escapeHTML(text.slice(0, 50));
+    statusEl.style.color = color;
+    setTimeout(() => {
+      statusEl.textContent = prev;
+      statusEl.style.color = '';
+    }, 3000);
+  }
+}
+
+/** Briefly flash the header text of a panel to indicate activity. */
+function _flashPanelHeader(panelId, color) {
+  const panel = document.getElementById(panelId);
+  if (!panel) return;
+  const header = panel.querySelector('span');
+  if (!header) return;
+  const prevColor = header.style.color;
+  header.style.color = color;
+  header.style.transition = 'color 0.4s';
+  setTimeout(() => {
+    header.style.color = prevColor;
+  }, 1200);
+}
+
+/** Prepend a routing decision row; keep list capped at 10. */
+function _addRoutingDecision(decision) {
+  const list = document.getElementById('routing-list');
+  if (!list) return;
+
+  // Remove empty placeholder
+  const empty = document.getElementById('routing-empty');
+  if (empty) empty.remove();
+
+  const ts      = new Date(decision.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const preview = escapeHTML((decision.msgText || '').slice(0, 40)) || '…';
+  const model   = escapeHTML((decision.model || '').replace(/^[^/]+\//, '')); // strip provider prefix
+
+  const row = document.createElement('div');
+  row.style.cssText = 'display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid #0F172A;';
+  row.innerHTML =
+    '<span style="font-family:\'Fira Code\',monospace;font-size:9px;color:#334155;white-space:nowrap;">' + ts + '</span>' +
+    '<span style="font-family:\'Fira Sans\',sans-serif;font-size:11px;color:#64748B;flex:1;' +
+      'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + preview + '</span>' +
+    roleBadge(decision.role) +
+    '<span style="font-family:\'Fira Code\',monospace;font-size:9px;color:#475569;white-space:nowrap;' +
+      'max-width:90px;overflow:hidden;text-overflow:ellipsis;">' + model + '</span>';
+
+  list.insertBefore(row, list.firstChild);
+
+  // Keep last 10 entries only
+  while (list.children.length > 10) {
+    list.removeChild(list.lastChild);
+  }
+}
