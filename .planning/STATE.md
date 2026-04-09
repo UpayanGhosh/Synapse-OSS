@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: OpenClaw Feature Harvest
-status: unknown
-last_updated: "2026-04-09T13:52:20.393Z"
+status: in_progress
+last_updated: "2026-04-09T14:15:00Z"
 progress:
   total_phases: 12
   completed_phases: 9
   total_plans: 47
-  completed_plans: 41
+  completed_plans: 42
 ---
 
 # Project State
@@ -22,12 +22,12 @@ See: .planning/PROJECT.md (updated 2026-04-08)
 
 ## Current Position
 
-Phase: 11 of 11 (Realtime Voice Streaming) — In Progress
-Plan: 2 of 3 complete in current phase
+Phase: 10 of 12 (Cron Wiring + Web Control Panel) — In Progress
+Plan: 1 of N complete in current phase
 Status: In progress
-Last activity: 2026-04-09 — Phase 11 Plan 02 complete (voice.js: Silero VAD, float32ToWav, AudioContext playback queue, barge-in, tab cleanup)
+Last activity: 2026-04-09 — Phase 10 Plan 01 complete (CronService wired to persona_chat via execute_fn, session_key added to ChatRequest, SSE cron events)
 
-Progress: [████████░░] 85% (40/47 plans complete)
+Progress: [████████░░] 89% (42/47 plans complete)
 
 ## Milestone Map
 
@@ -80,6 +80,11 @@ Progress: [████████░░] 85% (40/47 plans complete)
 - [Phase 11-realtime-voice-streaming/11-02]: Transcription exposed as CustomEvent("synapse:transcription") on window — zero DOM coupling from voice.js
 - [Phase 11-realtime-voice-streaming/11-02]: handleWSMessage is passive — dashboard's existing ws.onmessage delegates to it; voice.js never patches global WS
 
+- [Phase 10-cron-wiring/10-01]: session_key added as explicit Optional field to ChatRequest — persona_chat already uses getattr fallback, field just makes it type-safe
+- [Phase 10-cron-wiring/10-01]: timeout_seconds passed via **kwargs in execute_fn — CronPayload.timeout_seconds flows through to asyncio.wait_for without leaking into ChatRequest
+- [Phase 10-cron-wiring/10-01]: All three SSE emitter calls use lazy try-import inside try/except — emitter optional, cron never blocked by dashboard unavailability
+- [Phase 10-cron-wiring/10-01]: old cron_service.py file retained — only api_gateway.py import replaced; tests referencing old file not broken
+
 ### Pending Todos
 
 - Phase 2 (v2.0): 02-06-PLAN.md integration tests still pending
@@ -91,7 +96,7 @@ None active.
 
 ## Session Continuity
 
-Last session: 2026-04-09 (Phase 11 Plan 02 execution)
-Stopped at: Completed 11-02-PLAN.md — voice.js browser-side voice module (Silero VAD, float32ToWav, AudioContext playback queue, barge-in, tab cleanup, window.SynapseVoice API)
+Last session: 2026-04-09 (Phase 10 Plan 01 execution)
+Stopped at: Completed 10-01-PLAN.md — CronService wired to persona_chat() via execute_fn adapter, session_key on ChatRequest, SSE cron events
 Resume file: None
-Next step: Phase 11 Plan 03 — server-side ws_server.py voice.* handlers + VoiceChannel + VoiceSession (completes full-duplex voice loop)
+Next step: Phase 10 Plan 02 — dashboard REST endpoints for cron CRUD management (GET/POST/PATCH/DELETE /cron/jobs/*)

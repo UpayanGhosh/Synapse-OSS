@@ -236,5 +236,5 @@ Phases execute in dependency order: 6 → 7 → 8 → 9 → 10 → 11
 | 7. Bundled Skills Library | 1/3 | In Progress|  | — |
 | 8. TTS Voice Output | 3/3 | Complete   | 2026-04-09 | — |
 | 9. Image Generation | 3/3 | Complete   | 2026-04-09 | — |
-| 10. Cron Wiring + Web Control Panel | v3.0 | 0/TBD | Not started | — |
+| 10. Cron Wiring + Web Control Panel | 2/4 | In Progress|  | — |
 | 11. Realtime Voice Streaming | 1/3 | In Progress|  | — |

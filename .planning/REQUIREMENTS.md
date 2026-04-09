@@ -39,14 +39,14 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 ### Cron & Isolated Agents
 
-- [ ] **CRON-01**: Each cron job runs in an isolated agent context with separate memory
-- [ ] **CRON-02**: CronService execute_fn is wired to persona_chat() in gateway lifespan
-- [ ] **CRON-03**: Isolated agents get recent memory context injected as system prefix
-- [ ] **CRON-04**: Cron jobs have configurable timeout and cleanup on failure
+- [x] **CRON-01**: Each cron job runs in an isolated agent context with separate memory
+- [x] **CRON-02**: CronService execute_fn is wired to persona_chat() in gateway lifespan
+- [x] **CRON-03**: Isolated agents get recent memory context injected as system prefix
+- [x] **CRON-04**: Cron jobs have configurable timeout and cleanup on failure
 
 ### Web Control Panel
 
-- [ ] **DASH-01**: Dashboard shows real-time pipeline events via SSE
+- [x] **DASH-01**: Dashboard shows real-time pipeline events via SSE
 - [ ] **DASH-02**: Dashboard displays active sessions, memory stats, and model routing decisions
 - [ ] **DASH-03**: User can send messages from the dashboard (existing pipeline/send endpoint)
 - [ ] **DASH-04**: Dashboard is loopback-only with session token auth
@@ -117,11 +117,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | IMG-03 | Phase 9 | Complete |
 | IMG-04 | Phase 9 | Complete |
 | IMG-05 | Phase 9 | Complete |
-| CRON-01 | Phase 10 | Pending |
-| CRON-02 | Phase 10 | Pending |
-| CRON-03 | Phase 10 | Pending |
-| CRON-04 | Phase 10 | Pending |
-| DASH-01 | Phase 10 | Pending |
+| CRON-01 | Phase 10 | Complete |
+| CRON-02 | Phase 10 | Complete |
+| CRON-03 | Phase 10 | Complete |
+| CRON-04 | Phase 10 | Complete |
+| DASH-01 | Phase 10 | Complete |
 | DASH-02 | Phase 10 | Pending |
 | DASH-03 | Phase 10 | Pending |
 | DASH-04 | Phase 10 | Pending |
