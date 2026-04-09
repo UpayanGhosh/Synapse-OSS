@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v3.0
 milestone_name: OpenClaw Feature Harvest
-status: roadmap_ready
-last_updated: "2026-04-08T20:00:00.000Z"
+status: in_progress
+last_updated: "2026-04-09T07:50:00Z"
 progress:
   total_phases: 6
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
+  total_plans: 3
+  completed_plans: 2
 ---
 
 # Project State
@@ -23,11 +23,11 @@ See: .planning/PROJECT.md (updated 2026-04-08)
 ## Current Position
 
 Phase: 6 of 11 (LLM Provider Expansion)
-Plan: 0 of TBD in current phase
-Status: Ready to plan
-Last activity: 2026-04-08 — v3.0 roadmap created (6 phases, 32 requirements mapped)
+Plan: 1 of 3 complete in current phase
+Status: In progress
+Last activity: 2026-04-09 — Phase 6 Plan 01 complete (DeepSeek onboarding + v3.0 deps declared)
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [█░░░░░░░░░] 4% (1/3 plans in phase 6)
 
 ## Milestone Map
 
@@ -49,6 +49,10 @@ Progress: [░░░░░░░░░░] 0%
 - litellm budget-fallback bug (GitHub #10052) patched in Phase 6 — critical correctness dependency for all LLM-reliant phases
 - BackgroundTask pattern used for all media outputs (TTS, image gen) — never inline await in persona_chat()
 - Vault hemisphere isolation enforced at every cloud-API dispatch point across Phases 8-9
+- [06-01] DeepSeek placed in Major Cloud (US) group — USD pricing, globally accessible; not Chinese Providers
+- [06-01] deepseek/deepseek-chat chosen as validation model; deepseek-reasoner excluded (special response format not yet handled)
+- [06-01] together_ai key renamed to togetherai in synapse.json.example to match _KEY_MAP contract (was silently dropping Together AI keys)
+- [06-01] budget_usd/budget_duration documented on openai entry as canonical example for PROV-02 budget enforcement
 
 ### Pending Todos
 
@@ -61,7 +65,7 @@ None active.
 
 ## Session Continuity
 
-Last session: 2026-04-08 (v3.0 roadmap creation)
-Stopped at: Roadmap written — 6 phases (6-11), 32 requirements mapped 100%
+Last session: 2026-04-09 (Phase 6 Plan 01 execution)
+Stopped at: Completed 06-01-PLAN.md — DeepSeek onboarding + v3.0 deps declared
 Resume file: None
-Next step: /gsd:plan-phase 6
+Next step: Execute 06-02-PLAN.md (mirror DeepSeek _KEY_MAP to llm_router.py)
