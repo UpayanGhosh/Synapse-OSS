@@ -151,13 +151,12 @@ Plans:
   3. User sets `tts.provider: elevenlabs` and `tts.voice: "Rachel"` in synapse.json — the next voice reply uses ElevenLabs Rachel voice, confirmed by ElevenLabs API call log
   4. A chat message followed immediately by another chat message does not queue behind TTS synthesis — the text reply arrives first, the voice note arrives seconds later as a separate message (BackgroundTask pattern verified by timing)
   5. User sets `tts.voice: "en-US-AriaNeural"` in synapse.json — all subsequent voice replies use the configured voice name
-**Plans**: TBD
+**Plans**: 3 plans in 2 waves
 
 Plans:
-- [ ] 08-01-PLAN.md — TBD
-- [ ] 08-02-PLAN.md — TBD
-- [ ] 08-03-PLAN.md — TBD
-- [ ] 08-04-PLAN.md — TBD
+- [ ] 08-01-PLAN.md — TTS engine core: edge-tts + ElevenLabs providers, MP3-to-OGG converter, SynapseConfig tts field (Wave 1)
+- [ ] 08-02-PLAN.md — Baileys bridge /send-voice endpoint + WhatsAppChannel.send_voice_note() (Wave 1)
+- [ ] 08-03-PLAN.md — Pipeline wiring: BackgroundTask TTS dispatch, media serving, tests (Wave 2)
 
 ---
 
@@ -237,8 +236,8 @@ Phases execute in dependency order: 6 → 7 → 8 → 9 → 10 → 11
 | 4. Onboarding Wizard v2 | v2.0 | 4/4 | Complete | 2026-04-07 |
 | 5. Browser Tool | v2.0 | 4/4 | Complete | 2026-04-07 |
 | 6. LLM Provider Expansion | v3.0 | 0/3 | Planned | — |
-| 7. Bundled Skills Library | v3.0 | 0/TBD | Not started | — |
-| 8. TTS Voice Output | v3.0 | 0/TBD | Not started | — |
+| 7. Bundled Skills Library | v3.0 | 0/3 | Planned | — |
+| 8. TTS Voice Output | v3.0 | 0/3 | Planned | — |
 | 9. Image Generation | v3.0 | 0/TBD | Not started | — |
 | 10. Cron Wiring + Web Control Panel | v3.0 | 0/TBD | Not started | — |
 | 11. Realtime Voice Streaming | v3.0 | 0/TBD | Not started | — |
