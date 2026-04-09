@@ -257,6 +257,16 @@ class CronService:
         result: dict[str, Any] = {"job_id": job.id, "status": "ok"}
 
         try:
+            from sci_fi_dashboard.pipeline_emitter import get_emitter as _get_emitter
+            _get_emitter().emit("cron.job_start", {
+                "job_id": job.id,
+                "job_name": job.name,
+                "session_target": str(job.session_target),
+            })
+        except Exception:
+            pass  # emitter is optional — never block cron
+
+        try:
             output = await self._run_payload(job)
             duration_ms = int((time.monotonic() - start_mono) * 1000)
 
@@ -274,6 +284,17 @@ class CronService:
             result["delivery"] = delivery_result
             result["output"] = output
 
+            try:
+                from sci_fi_dashboard.pipeline_emitter import get_emitter as _get_emitter
+                _get_emitter().emit("cron.job_done", {
+                    "job_id": job.id,
+                    "job_name": job.name,
+                    "status": result.get("status", "unknown"),
+                    "duration_ms": job.state.last_duration_ms,
+                })
+            except Exception:
+                pass  # emitter is optional — never block cron
+
         except Exception as exc:
             duration_ms = int((time.monotonic() - start_mono) * 1000)
             job.state.last_run_at_ms = now_ms
@@ -284,6 +305,16 @@ class CronService:
             result["status"] = "error"
             result["error"] = str(exc)
             logger.error("Job %s failed: %s", job.id, exc)
+
+            try:
+                from sci_fi_dashboard.pipeline_emitter import get_emitter as _get_emitter
+                _get_emitter().emit("cron.job_error", {
+                    "job_id": job.id,
+                    "job_name": job.name,
+                    "error": str(exc)[:200],
+                })
+            except Exception:
+                pass  # emitter is optional — never block cron
 
             # Failure alerting
             if job.failure_alert:
