@@ -18,8 +18,8 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 - [ ] **SKILL-01**: User gets 10 bundled skills at first install (weather, reminders, notes, translate, summarize, web scrape, news, image describe, timer, dictionary)
 - [ ] **SKILL-02**: Bundled skills live in workspace/skills/bundled/ as SKILL.md directories
-- [ ] **SKILL-03**: Skills declare `cloud_safe: true/false` metadata for Vault hemisphere enforcement
-- [ ] **SKILL-04**: User can disable any bundled skill without affecting others
+- [x] **SKILL-03**: Skills declare `cloud_safe: true/false` metadata for Vault hemisphere enforcement
+- [x] **SKILL-04**: User can disable any bundled skill without affecting others
 
 ### TTS Voice Output
 
@@ -105,8 +105,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PROV-04 | Phase 6 | Complete |
 | SKILL-01 | Phase 7 | Pending |
 | SKILL-02 | Phase 7 | Pending |
-| SKILL-03 | Phase 7 | Pending |
-| SKILL-04 | Phase 7 | Pending |
+| SKILL-03 | Phase 7 | Complete |
+| SKILL-04 | Phase 7 | Complete |
 | TTS-01 | Phase 8 | Pending |
 | TTS-02 | Phase 8 | Pending |
 | TTS-03 | Phase 8 | Pending |

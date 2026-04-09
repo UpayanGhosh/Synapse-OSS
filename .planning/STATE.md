@@ -1,14 +1,14 @@
 ---
 gsd_state_version: 1.0
-milestone: v3.0
+milestone: v1.0
 milestone_name: OpenClaw Feature Harvest
-status: in_progress
-last_updated: "2026-04-09T07:50:00Z"
+status: unknown
+last_updated: "2026-04-09T07:50:44.719Z"
 progress:
-  total_phases: 6
-  completed_phases: 0
-  total_plans: 3
-  completed_plans: 2
+  total_phases: 12
+  completed_phases: 5
+  total_plans: 47
+  completed_plans: 30
 ---
 
 # Project State
@@ -22,12 +22,12 @@ See: .planning/PROJECT.md (updated 2026-04-08)
 
 ## Current Position
 
-Phase: 6 of 11 (LLM Provider Expansion)
-Plan: 1 of 3 complete in current phase
+Phase: 7 of 11 (Bundled Skills Library)
+Plan: 1 of TBD complete in current phase
 Status: In progress
-Last activity: 2026-04-09 — Phase 6 Plan 01 complete (DeepSeek onboarding + v3.0 deps declared)
+Last activity: 2026-04-09 — Phase 7 Plan 01 complete (SkillManifest cloud_safe/enabled fields, shadow warning, seed_bundled_skills)
 
-Progress: [█░░░░░░░░░] 4% (1/3 plans in phase 6)
+Progress: [██░░░░░░░░] 8% (31/47 plans complete)
 
 ## Milestone Map
 
@@ -53,6 +53,8 @@ Progress: [█░░░░░░░░░] 4% (1/3 plans in phase 6)
 - [06-01] deepseek/deepseek-chat chosen as validation model; deepseek-reasoner excluded (special response format not yet handled)
 - [06-01] together_ai key renamed to togetherai in synapse.json.example to match _KEY_MAP contract (was silently dropping Together AI keys)
 - [06-01] budget_usd/budget_duration documented on openai entry as canonical example for PROV-02 budget enforcement
+- [Phase 07-bundled-skills-library]: cloud_safe defaults to True — all existing skills are cloud_safe by default; only new bundled cloud-API skills need to explicitly set False
+- [Phase 07-bundled-skills-library]: synapse.* namespace reserved for bundled skills; user skills shadowing them trigger startup WARNING (not error) — both load but user is informed
 
 ### Pending Todos
 
@@ -65,7 +67,7 @@ None active.
 
 ## Session Continuity
 
-Last session: 2026-04-09 (Phase 6 Plan 01 execution)
-Stopped at: Completed 06-01-PLAN.md — DeepSeek onboarding + v3.0 deps declared
+Last session: 2026-04-09 (Phase 7 Plan 01 execution)
+Stopped at: Completed 07-01-PLAN.md — SkillManifest cloud_safe/enabled fields + shadow warning + seed_bundled_skills
 Resume file: None
-Next step: Execute 06-02-PLAN.md (mirror DeepSeek _KEY_MAP to llm_router.py)
+Next step: Execute 07-02-PLAN.md (author bundled skills: synapse.weather, synapse.reminders)
