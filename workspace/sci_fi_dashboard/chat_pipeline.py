@@ -718,6 +718,11 @@ async def persona_chat(
             role = "analysis"
         elif "REVIEW" in classification:
             role = "review"
+        elif "IMAGE" in classification:
+            role = "image_gen"
+            # NOTE: Full IMAGE dispatch (BackgroundTask + Vault block) wired in 09-03-PLAN
+            print(f"[ROUTE] Classification=IMAGE -> role=image_gen (placeholder)")
+            return {"reply": "Image generation is being set up.", "role": "image_gen", "model": "none", "memory_method": "none"}
         else:
             role = "casual"
 
