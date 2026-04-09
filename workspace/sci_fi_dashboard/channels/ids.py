@@ -12,9 +12,10 @@ CHANNEL_ORDER: tuple[str, ...] = (
     "slack",
     "cli",
     "websocket",
+    "voice",
 )
 
-ChannelId = Literal["whatsapp", "telegram", "discord", "slack", "cli", "websocket"]
+ChannelId = Literal["whatsapp", "telegram", "discord", "slack", "cli", "websocket", "voice"]
 
 # Alias -> canonical ID mapping
 CHANNEL_ALIASES: dict[str, str] = {

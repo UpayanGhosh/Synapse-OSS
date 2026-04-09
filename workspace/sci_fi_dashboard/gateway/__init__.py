@@ -16,6 +16,7 @@ from .ws_protocol import (
     make_response,
     parse_frame,
 )
+from .voice_session import VoiceSession
 from .ws_server import GatewayWebSocket
 
 __all__ = [
@@ -28,6 +29,7 @@ __all__ = [
     "MessageWorker",
     # WebSocket control plane
     "GatewayWebSocket",
+    "VoiceSession",
     "RequestFrame",
     "ResponseFrame",
     "EventFrame",

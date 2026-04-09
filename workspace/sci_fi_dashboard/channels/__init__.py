@@ -30,6 +30,7 @@ from .security import (
 )
 from .stub import StubChannel
 from .thread_bindings import ThreadBinding, ThreadBindingManager
+from .voice_channel import VoiceChannel
 from .whatsapp import WhatsAppChannel
 
 # Optional channel adapters — only importable if their SDK is installed
@@ -68,6 +69,7 @@ __all__ = [
     "TelegramChannel",
     "ThreadBinding",
     "ThreadBindingManager",
+    "VoiceChannel",
     "WhatsAppChannel",
     "is_valid_channel_id",
     "resolve_channel_id",
