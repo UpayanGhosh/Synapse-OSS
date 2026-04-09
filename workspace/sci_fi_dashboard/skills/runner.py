@@ -79,6 +79,25 @@ class SkillRunner:
         t0 = time.perf_counter()
 
         # ------------------------------------------------------------------
+        # VAULT HEMISPHERE GUARD — block cloud-calling skills in private sessions
+        # ------------------------------------------------------------------
+        # cloud_safe: True  = safe in any hemisphere (no external calls)
+        # cloud_safe: False = calls external cloud APIs; blocked in spicy/Vault hemisphere
+        # session_context=None is treated as safe — never blocks
+        if (
+            not manifest.cloud_safe
+            and session_context is not None
+            and session_context.get("session_type") == "spicy"
+        ):
+            elapsed_ms = (time.perf_counter() - t0) * 1000
+            return SkillResult(
+                text=f"The '{manifest.name}' skill isn't available in private mode.",
+                skill_name=manifest.name,
+                error=False,
+                execution_ms=elapsed_ms,
+            )
+
+        # ------------------------------------------------------------------
         # GENERIC ENTRY POINT DISPATCH (importlib-based, no sys.path)
         # ------------------------------------------------------------------
         # If the manifest declares an entry_point, load and call it BEFORE
