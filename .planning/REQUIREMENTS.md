@@ -24,16 +24,16 @@ Requirements for this milestone. Each maps to roadmap phases.
 ### TTS Voice Output
 
 - [x] **TTS-01**: User receives voice replies as playable WhatsApp voice notes (OGG Opus)
-- [ ] **TTS-02**: edge-tts is the default TTS provider (zero API key, 400+ voices)
-- [ ] **TTS-03**: ElevenLabs is available as premium opt-in TTS provider
+- [x] **TTS-02**: edge-tts is the default TTS provider (zero API key, 400+ voices)
+- [x] **TTS-03**: ElevenLabs is available as premium opt-in TTS provider
 - [ ] **TTS-04**: TTS runs as BackgroundTask — never blocks the chat pipeline
-- [ ] **TTS-05**: User can configure preferred voice in synapse.json
+- [x] **TTS-05**: User can configure preferred voice in synapse.json
 
 ### Image Generation
 
 - [ ] **IMG-01**: User can request image generation ("draw me X") and receive it in chat
 - [x] **IMG-02**: Traffic Cop classifies image requests as IMAGE role
-- [ ] **IMG-03**: gpt-image-1 (OpenAI) is default; Flux (fal.ai) is configurable alternative
+- [x] **IMG-03**: gpt-image-1 (OpenAI) is default; Flux (fal.ai) is configurable alternative
 - [ ] **IMG-04**: Image gen respects Vault hemisphere — blocked in spicy mode
 - [ ] **IMG-05**: Generation runs as BackgroundTask with immediate text acknowledgment
 
@@ -108,13 +108,13 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SKILL-03 | Phase 7 | Complete |
 | SKILL-04 | Phase 7 | Complete |
 | TTS-01 | Phase 8 | Complete |
-| TTS-02 | Phase 8 | Pending |
-| TTS-03 | Phase 8 | Pending |
+| TTS-02 | Phase 8 | Complete |
+| TTS-03 | Phase 8 | Complete |
 | TTS-04 | Phase 8 | Pending |
-| TTS-05 | Phase 8 | Pending |
+| TTS-05 | Phase 8 | Complete |
 | IMG-01 | Phase 9 | Pending |
 | IMG-02 | Phase 9 | Complete |
-| IMG-03 | Phase 9 | Pending |
+| IMG-03 | Phase 9 | Complete |
 | IMG-04 | Phase 9 | Pending |
 | IMG-05 | Phase 9 | Pending |
 | CRON-01 | Phase 10 | Pending |

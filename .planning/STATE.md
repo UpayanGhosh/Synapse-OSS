@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: OpenClaw Feature Harvest
 status: unknown
-last_updated: "2026-04-09T13:18:43.223Z"
+last_updated: "2026-04-09T13:21:04.960Z"
 progress:
   total_phases: 12
   completed_phases: 6
   total_plans: 47
-  completed_plans: 34
+  completed_plans: 36
 ---
 
 # Project State
@@ -65,6 +65,10 @@ Progress: [███░░░░░░░] 9% (34/47 plans complete)
 - [Phase 08-tts-voice-output]: PTT voice note requires three fields: audio buffer + ptt: true + mimetype: 'audio/ogg; codecs=opus' — all three required for WhatsApp earphone icon rendering
 - [Phase 09-image-generation]: IMAGE placed first in traffic cop prompt; negative examples prevent false-positive classification of 'draw up a plan', 'create a document'
 - [Phase 09-image-generation]: IMAGE branch uses early return placeholder — Plan 03 replaces with BackgroundTask dispatch; STRATEGY_TO_ROLE unchanged
+- [Phase 08-tts-voice-output]: edge-tts is default TTS provider — zero credentials, works out-of-the-box without tts config in synapse.json
+- [Phase 08-tts-voice-output]: ElevenLabs API key read from SynapseConfig.providers directly (not os.environ) to avoid init-time ordering dependency with LLMRouter
+- [Phase 09-image-generation]: gpt-image-1 always returns b64_json — never URL, response_format param omitted; openai and fal-client are lazy-imported inside provider functions to keep them optional
+- [Phase 09-image-generation]: ImageGenEngine API key validation in engine helpers (_generate_openai/_generate_fal), not in provider functions — provider functions are pure and testable
 
 ### Pending Todos
 
@@ -77,7 +81,7 @@ None active.
 
 ## Session Continuity
 
-Last session: 2026-04-09 (Phase 9 Plan 02 execution)
-Stopped at: Completed 09-02-PLAN.md — IMAGE classification routing (traffic cop + chat_pipeline IMAGE branch with early-return placeholder)
+Last session: 2026-04-09 (Phase 8 Plan 01 execution)
+Stopped at: Completed 08-01-PLAN.md — TTS synthesis engine (TTSEngine, EdgeTTSProvider, ElevenLabsProvider, mp3_to_ogg_opus, SynapseConfig.tts field)
 Resume file: None
-Next step: Execute 09-03-PLAN.md (BackgroundTask image generation dispatch into IMAGE branch)
+Next step: Execute 08-02-PLAN.md (voice note delivery — /send-voice bridge endpoint and WhatsApp channel send_voice_note)
