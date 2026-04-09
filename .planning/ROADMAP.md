@@ -132,12 +132,12 @@ Plans:
   3. A user-installed skill named `weather` shadows the bundled `synapse.weather` and Synapse logs a warning at startup — the user's version wins
   4. Disabling `synapse.reminders` by setting `enabled: false` in its SKILL.md means reminder requests return a graceful "I can't set reminders right now" — not a routing error
   5. All cloud-calling bundled skills declare `cloud_safe: false` in their SKILL.md — confirmed by grepping the bundled skill directories
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 07-01-PLAN.md — TBD
-- [ ] 07-02-PLAN.md — TBD
-- [ ] 07-03-PLAN.md — TBD
+- [ ] 07-01-PLAN.md — Schema + Loader + Registry infrastructure (cloud_safe, enabled fields, shadow warning, seed_bundled_skills)
+- [ ] 07-02-PLAN.md — Author 10 bundled SKILL.md directories with entry_point scripts
+- [ ] 07-03-PLAN.md — SkillRunner cloud_safe enforcement + comprehensive tests for SKILL-01 through SKILL-04
 
 ---
 
