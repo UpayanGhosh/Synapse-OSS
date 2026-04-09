@@ -720,9 +720,79 @@ async def persona_chat(
             role = "review"
         elif "IMAGE" in classification:
             role = "image_gen"
-            # NOTE: Full IMAGE dispatch (BackgroundTask + Vault block) wired in 09-03-PLAN
-            print(f"[ROUTE] Classification=IMAGE -> role=image_gen (placeholder)")
-            return {"reply": "Image generation is being set up.", "role": "image_gen", "model": "none", "memory_method": "none"}
+
+            # --- IMAGE branch: enabled check → Vault block → BackgroundTask dispatch ---
+
+            # 1. Enabled check (image_gen.enabled in synapse.json)
+            if not deps._synapse_cfg.image_gen.get("enabled", True):
+                logger.info("[IMG] Image generation disabled via config")
+                return {
+                    "reply": "Image generation is currently disabled.",
+                    "role": "image_gen_disabled",
+                    "model": "none",
+                    "memory_method": "none",
+                }
+
+            # 2. Vault hemisphere block — NEVER make cloud API calls for spicy sessions
+            if session_mode == "spicy":
+                logger.info("[IMG] Vault block: image generation declined for spicy session")
+                return {
+                    "reply": "Image generation isn't available in private mode.",
+                    "role": "image_blocked",
+                    "model": "none",
+                    "memory_method": "none",
+                }
+
+            # 3. Background helper — defined inline, following auto-continue pattern
+            async def _generate_and_send_image(prompt: str, chat_id: str) -> None:
+                """Generate an image in the background and deliver via send_media."""
+                import asyncio as _asyncio
+
+                from sci_fi_dashboard.image_gen.engine import ImageGenEngine
+                from sci_fi_dashboard.media.store import save_media_buffer
+
+                # TODO: multi-channel support — resolve channel_id from request context
+                # Hardcoded to "whatsapp" — matches continue_conversation() default at
+                # pipeline_helpers.py:151 — only channel that exposes send_media() today.
+                _channel_id = "whatsapp"
+                try:
+                    engine = ImageGenEngine()
+                    img_bytes = await engine.generate(prompt)
+                    if img_bytes is None:
+                        logger.warning("[IMG] Generation returned None for: %.80s", prompt)
+                        return
+                    saved = await _asyncio.to_thread(
+                        save_media_buffer, img_bytes, "image/png", "image_gen_outbound"
+                    )
+                    img_url = (
+                        f"http://127.0.0.1:8000/media/image_gen_outbound/{saved.path.name}"
+                    )
+                    channel = deps.channel_registry.get(_channel_id)
+                    if channel and hasattr(channel, "send_media"):
+                        await channel.send_media(chat_id, img_url, media_type="image", caption="")
+                    else:
+                        logger.warning(
+                            "[IMG] Cannot deliver — channel %r has no send_media()", _channel_id
+                        )
+                except Exception:
+                    logger.exception("[IMG] Background image generation failed — not crashing")
+
+            # 4. Dispatch BackgroundTask
+            _img_chat_id = request.user_id or "default"
+            if background_tasks:
+                background_tasks.add_task(_generate_and_send_image, user_msg, _img_chat_id)
+            else:
+                logger.warning("[IMG] No BackgroundTasks object available. Using asyncio.create_task.")
+                asyncio.create_task(_generate_and_send_image(user_msg, _img_chat_id))
+
+            # 5. Return immediate acknowledgment — user gets text response instantly
+            print(f"[ROUTE] Classification=IMAGE -> role=image_gen (BackgroundTask dispatched)")
+            return {
+                "reply": "Generating your image — it'll be with you in a moment!",
+                "role": "image_gen",
+                "model": "gpt-image-1",
+                "memory_method": "none",
+            }
         else:
             role = "casual"
 
