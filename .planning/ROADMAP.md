@@ -99,7 +99,7 @@ Plans:
 - [ ] **Phase 7: Bundled Skills Library** - Ship 10 production-ready skills out of the box with namespace isolation and first-boot installation
 - [x] **Phase 8: TTS Voice Output** - Voice replies as WhatsApp voice notes (OGG Opus) via edge-tts default + ElevenLabs opt-in (completed 2026-04-09)
 - [x] **Phase 9: Image Generation** - "Draw me X" delivers an image in chat via gpt-image-1; runs as BackgroundTask; Vault-safe (completed 2026-04-09)
-- [ ] **Phase 10: Cron Wiring + Web Control Panel** - Wire CronService to persona_chat() with isolated agents; real-time SSE dashboard
+- [x] **Phase 10: Cron Wiring + Web Control Panel** - Wire CronService to persona_chat() with isolated agents; real-time SSE dashboard (completed 2026-04-09)
 - [ ] **Phase 11: Realtime Voice Streaming** - Full-duplex voice chat from dashboard: VAD + Groq STT + streaming TTS + barge-in cancel
 
 ## Phase Details
@@ -236,5 +236,5 @@ Phases execute in dependency order: 6 → 7 → 8 → 9 → 10 → 11
 | 7. Bundled Skills Library | 1/3 | In Progress|  | — |
 | 8. TTS Voice Output | 3/3 | Complete   | 2026-04-09 | — |
 | 9. Image Generation | 3/3 | Complete   | 2026-04-09 | — |
-| 10. Cron Wiring + Web Control Panel | 3/4 | In Progress|  | — |
+| 10. Cron Wiring + Web Control Panel | 4/4 | Complete   | 2026-04-09 | — |
 | 11. Realtime Voice Streaming | 1/3 | In Progress|  | — |

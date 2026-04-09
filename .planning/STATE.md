@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: OpenClaw Feature Harvest
-status: unknown
-last_updated: "2026-04-09T13:55:51.811Z"
+status: in_progress
+last_updated: "2026-04-09T14:10:11Z"
 progress:
   total_phases: 12
   completed_phases: 9
   total_plans: 47
-  completed_plans: 43
+  completed_plans: 44
 ---
 
 # Project State
@@ -22,12 +22,12 @@ See: .planning/PROJECT.md (updated 2026-04-08)
 
 ## Current Position
 
-Phase: 10 of 12 (Cron Wiring + Web Control Panel) — Complete
-Plan: 3 of 3 complete in current phase
+Phase: 10 of 12 (Cron Wiring + Web Control Panel) — Complete (all 4 plans done)
+Plan: 4 of 4 complete in current phase
 Status: In progress
-Last activity: 2026-04-09 — Phase 10 Plan 03 complete (four dashboard panels: sessions, cron, memory, routing + SSE handlers)
+Last activity: 2026-04-09 — Phase 10 Plan 04 complete (29 tests across 3 files: test_cron_wiring.py, test_loopback_middleware.py, test_cron_routes.py)
 
-Progress: [████████░░] 96% (45/47 plans complete)
+Progress: [████████░░] 96% (44/47 plans complete)
 
 ## Milestone Map
 
@@ -89,6 +89,9 @@ Progress: [████████░░] 96% (45/47 plans complete)
 - [Phase 10-cron-wiring-web-control-panel/10-03]: Dashboard memory stats fetched from /persona/status (not /persona/summary which doesn't exist) — response has memory_db field with documents/atomic_facts/entity_links
 - [Phase 10-cron-wiring-web-control-panel/10-03]: Routing decisions panel driven by llm.route SSE event (not pipeline.run_done) — llm.route carries role+model in current codebase; pipeline.run_done added as forward-compat fallback
 - [Phase 10-cron-wiring-web-control-panel/10-03]: formatSchedule() handles both CronSchedule objects (cron/service.py) and legacy schedule strings (cron_service.py) for dual-format compatibility
+- [Phase 10-cron-wiring-web-control-panel/10-04]: SSE emission tests patch sci_fi_dashboard.pipeline_emitter.get_emitter (not cron.service.get_emitter) — lazy import inside _execute_job() means the source module is the correct patch target
+- [Phase 10-cron-wiring-web-control-panel/10-04]: LoopbackOnlyMiddleware tests use direct dispatch() calls with mock request.client.host — TestClient uses 'testclient' hostname not '127.0.0.1', bypassing the loopback check
+- [Phase 10-cron-wiring-web-control-panel/10-04]: _require_gateway_auth patched via synapse_config.SynapseConfig.load — lazy import inside function body means patch must target the source module, not the middleware module
 
 ### Pending Todos
 
@@ -101,7 +104,7 @@ None active.
 
 ## Session Continuity
 
-Last session: 2026-04-09 (Phase 10 Plan 03 execution)
-Stopped at: Completed 10-03-PLAN.md — four dashboard panels (sessions, cron, memory, routing) + cron SSE handlers + routing decisions panel
+Last session: 2026-04-09 (Phase 10 Plan 04 execution)
+Stopped at: Completed 10-04-PLAN.md — 29 tests for all Phase 10 requirements (CRON-01-04, DASH-01, DASH-02, DASH-04, DASH-05)
 Resume file: None
 Next step: Phase 11 — Realtime Voice Streaming
