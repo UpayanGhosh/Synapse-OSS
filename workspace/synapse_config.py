@@ -104,6 +104,8 @@ class SynapseConfig:
     embedding: dict = field(default_factory=dict)
     vector_store: dict = field(default_factory=dict)
     kg_extraction: KGExtractionConfig = field(default_factory=KGExtractionConfig)
+    image_gen: dict = field(default_factory=dict)
+    tts: dict = field(default_factory=dict)
 
     @classmethod
     def load(cls) -> "SynapseConfig":
@@ -135,6 +137,8 @@ class SynapseConfig:
         embedding: dict[str, Any] = {}
         vector_store: dict[str, Any] = {}
         kg_extraction_raw: dict[str, Any] = {}
+        image_gen: dict[str, Any] = {}
+        tts_raw: dict[str, Any] = {}
 
         config_file = data_root / "synapse.json"
         validated = None
@@ -157,6 +161,8 @@ class SynapseConfig:
             embedding = raw.get("embedding", {})
             vector_store = raw.get("vector_store", {})
             kg_extraction_raw = raw.get("kg_extraction", {})
+            image_gen = raw.get("image_gen", {})
+            tts_raw = raw.get("tts", {})
 
         # Build SBSConfig from the "sbs" key (missing keys use dataclass defaults)
         sbs_config = SBSConfig(**{
@@ -186,6 +192,7 @@ class SynapseConfig:
             embedding=embedding,
             vector_store=vector_store,
             kg_extraction=kg_config,
+            image_gen=image_gen,
         )
 
 

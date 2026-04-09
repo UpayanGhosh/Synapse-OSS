@@ -55,3 +55,6 @@ croniter>=6.2.2                  # Cron expression parsing (cron/schedule.py)
 
 # --- Server-Sent Events ---
 sse-starlette>=2.0.0             # SSE endpoint for dashboard pipeline events
+
+# --- Image Generation ---
+fal-client>=0.13.0               # fal.ai FLUX provider (image_gen/providers/fal_img.py)
