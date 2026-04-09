@@ -480,6 +480,44 @@ def _write_session(role: str, model: str, usage) -> None:
         conn.commit()
 
 
+def get_provider_spend(provider: str, duration: str = "monthly") -> dict:
+    """
+    Return cumulative token counts for a provider within a time window.
+
+    Args:
+        provider: Provider name (e.g., "openai", "deepseek").
+        duration: "daily", "weekly", or "monthly".
+
+    Returns:
+        {"total_tokens": int, "call_count": int}
+    """
+    from sci_fi_dashboard.db import DB_PATH  # noqa: PLC0415
+
+    duration_map = {
+        "daily": "-1 day",
+        "weekly": "-7 days",
+        "monthly": "-30 days",
+    }
+    interval = duration_map.get(duration, "-30 days")
+
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            row = conn.execute(
+                """
+                SELECT COALESCE(SUM(total_tokens), 0) as total_tokens,
+                       COUNT(*) as call_count
+                FROM sessions
+                WHERE model LIKE ? || '%'
+                  AND created_at > datetime('now', ?)
+                """,
+                (f"{provider}/", interval),
+            ).fetchone()
+            return {"total_tokens": row[0], "call_count": row[1]}
+    except Exception as exc:
+        logger.debug("get_provider_spend failed (non-fatal): %s", exc)
+        return {"total_tokens": 0, "call_count": 0}
+
+
 # --- Environment variable resolution ---
 
 _ENV_VAR_RE = re.compile(r"^\$\{([A-Z_][A-Z0-9_]*)\}$")
@@ -731,6 +769,27 @@ class SynapseLLMRouter:
         litellm response object. Handles error classification and session tracking.
         Extra **kwargs (e.g. response_format) are forwarded to litellm acompletion.
         """
+        # --- Pre-call budget enforcement (PROV-02) ---
+        role_cfg = self._config.model_mappings.get(role, {})
+        model_str = role_cfg.get("model", "")
+        provider_prefix = model_str.split("/")[0] if "/" in model_str else ""
+        if provider_prefix:
+            provider_cfg = self._config.providers.get(provider_prefix, {})
+            if isinstance(provider_cfg, dict):
+                budget_usd = provider_cfg.get("budget_usd")
+                budget_duration = provider_cfg.get("budget_duration", "monthly")
+                if budget_usd is not None:
+                    spend = get_provider_spend(provider_prefix, budget_duration)
+                    # Approximate cost: use token count as proxy.
+                    # 1M tokens ~ $1 is a rough average across providers.
+                    # This is a safety net, not a billing system.
+                    approx_spend = spend["total_tokens"] / 1_000_000
+                    if approx_spend >= budget_usd:
+                        raise BudgetExceededError(
+                            f"Provider '{provider_prefix}' budget exceeded: "
+                            f"~${approx_spend:.2f} spent vs ${budget_usd:.2f} cap "
+                            f"({budget_duration})"
+                        )
         try:
             response = await self._router.acompletion(
                 model=role,
