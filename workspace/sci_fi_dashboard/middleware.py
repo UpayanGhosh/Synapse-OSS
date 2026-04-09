@@ -110,3 +110,28 @@ def validate_api_key(request: Request) -> None:
         provided = request.headers.get("x-api-key") or ""
         if not hmac.compare_digest(str(provided), str(api_key)):
             raise HTTPException(status_code=401, detail="Invalid API key")
+
+
+# ---------------------------------------------------------------------------
+# Loopback-Only Guard for Dashboard (DASH-04)
+# ---------------------------------------------------------------------------
+LOOPBACK_HOSTS = frozenset({"127.0.0.1", "::1", "localhost"})
+_DASHBOARD_PREFIXES = ("/dashboard", "/static/dashboard")
+
+
+class LoopbackOnlyMiddleware(BaseHTTPMiddleware):
+    """Restrict /dashboard and /static/dashboard/ to loopback-only access.
+
+    Returns 403 for any request from a non-loopback IP to dashboard routes.
+    This is defense-in-depth — the server already binds to 127.0.0.1 by default.
+    """
+
+    async def dispatch(self, request: Request, call_next):
+        if any(request.url.path.startswith(p) for p in _DASHBOARD_PREFIXES):
+            client_host = request.client.host if request.client else ""
+            if client_host not in LOOPBACK_HOSTS:
+                return JSONResponse(
+                    {"detail": "Dashboard restricted to localhost"},
+                    status_code=403,
+                )
+        return await call_next(request)

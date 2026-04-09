@@ -28,7 +28,7 @@ from pathlib import Path as _Path
 
 from sci_fi_dashboard import _deps as deps
 from sci_fi_dashboard.channel_setup import register_optional_channels
-from sci_fi_dashboard.middleware import BodySizeLimitMiddleware
+from sci_fi_dashboard.middleware import BodySizeLimitMiddleware, LoopbackOnlyMiddleware
 from sci_fi_dashboard.pipeline_helpers import (
     gentle_worker_loop,
     process_message_pipeline,
@@ -373,8 +373,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.add_middleware(BodySizeLimitMiddleware)
+app.add_middleware(LoopbackOnlyMiddleware)
 
 # Include routers
+from sci_fi_dashboard.routes import cron as cron_routes  # noqa: E402
+
 app.include_router(health.router)
 app.include_router(chat.router)
 app.include_router(whatsapp.router)
@@ -384,6 +387,7 @@ app.include_router(sessions.router)
 app.include_router(websocket.router)
 app.include_router(pipeline_routes.router)
 app.include_router(agents_routes.router)
+app.include_router(cron_routes.router)
 
 # Dashboard static files
 _static_dir = _Path(__file__).parent / "static"
