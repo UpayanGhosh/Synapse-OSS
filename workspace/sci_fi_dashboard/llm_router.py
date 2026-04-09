@@ -46,6 +46,14 @@ from litellm import (  # noqa: E402
 )
 from synapse_config import SynapseConfig  # noqa: E402
 
+try:
+    from litellm.exceptions import BudgetExceededError
+except ImportError:
+    # litellm versions before the exception was added — define a placeholder
+    # that will never match a real exception, so the except clause is inert.
+    class BudgetExceededError(Exception):  # type: ignore[no-redef]
+        pass
+
 # gpt-5-mini and other restricted models reject custom temperature/top_p —
 # drop unsupported params silently instead of raising UnsupportedParamsError.
 _litellm_module.drop_params = True
@@ -216,6 +224,7 @@ _KEY_MAP: dict[str, str] = {
     "volcengine": "VOLCENGINE_API_KEY",
     "huggingface": "HUGGINGFACE_API_KEY",
     "nvidia_nim": "NVIDIA_NIM_API_KEY",
+    "deepseek": "DEEPSEEK_API_KEY",
 }
 
 _BEDROCK_MAP: dict[str, str] = {
@@ -780,6 +789,21 @@ class SynapseLLMRouter:
         except BadRequestError as exc:
             logger.error("Bad request for role '%s': %s", role, exc)
             raise
+        except BudgetExceededError as exc:
+            logger.warning("Budget exceeded for role '%s': %s — attempting fallback", role, exc)
+            fallback_cfg = self._config.model_mappings.get(role, {}).get("fallback")
+            if fallback_cfg:
+                fallback_role = f"{role}_fallback"
+                logger.info("Falling back to '%s' after budget exceeded", fallback_role)
+                return await self._router.acompletion(
+                    model=fallback_role,
+                    messages=messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    **kwargs,
+                )
+            logger.error("Budget exceeded for role '%s' with no fallback configured", role)
+            raise
         except Exception as exc:
             # Copilot tokens are short-lived — on "forbidden" errors, refresh
             # the token and retry once before giving up.
@@ -1097,6 +1121,15 @@ class SynapseLLMRouter:
             raise
         except BadRequestError as exc:
             logger.error("Bad request for role '%s' (tools): %s", role, exc)
+            raise
+        except BudgetExceededError as exc:
+            logger.warning("Budget exceeded for role '%s' (tools): %s — attempting fallback", role, exc)
+            fallback_cfg = self._config.model_mappings.get(role, {}).get("fallback")
+            if fallback_cfg:
+                fallback_role = f"{role}_fallback"
+                logger.info("Falling back to '%s' after budget exceeded (tools)", fallback_role)
+                kwargs["model"] = fallback_role
+                return await self._router.acompletion(**kwargs)
             raise
         except Exception as exc:
             # M-03: Copilot 403 refresh — same logic as _do_call()
