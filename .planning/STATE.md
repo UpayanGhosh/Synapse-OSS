@@ -8,7 +8,7 @@ progress:
   total_phases: 12
   completed_phases: 7
   total_plans: 47
-  completed_plans: 37
+  completed_plans: 38
 ---
 
 # Project State
@@ -22,12 +22,12 @@ See: .planning/PROJECT.md (updated 2026-04-08)
 
 ## Current Position
 
-Phase: 8 of 11 (TTS Voice Output) — COMPLETE
+Phase: 9 of 11 (Image Generation) — COMPLETE
 Plan: 3 of 3 complete in current phase
 Status: In progress
-Last activity: 2026-04-09 — Phase 8 Plan 03 complete (TTS pipeline wiring + 31 tests — _send_voice_note background task, /media/tts_outbound static mount)
+Last activity: 2026-04-09 — Phase 9 Plan 03 complete (IMAGE BackgroundTask dispatch, Vault block, /media/image_gen_outbound StaticFiles, 10 tests)
 
-Progress: [████░░░░░░] 10% (37/47 plans complete)
+Progress: [████░░░░░░] 10% (38/47 plans complete)
 
 ## Milestone Map
 
@@ -71,6 +71,9 @@ Progress: [████░░░░░░] 10% (37/47 plans complete)
 - [Phase 08-tts-voice-output]: Patch path for TTSEngine tests is synapse_config.SynapseConfig.load (deferred local import inside synthesize()), not sci_fi_dashboard.tts.engine.SynapseConfig
 - [Phase 09-image-generation]: gpt-image-1 always returns b64_json — never URL, response_format param omitted; openai and fal-client are lazy-imported inside provider functions to keep them optional
 - [Phase 09-image-generation]: ImageGenEngine API key validation in engine helpers (_generate_openai/_generate_fal), not in provider functions — provider functions are pure and testable
+- [Phase 09-image-generation]: IMAGE branch Vault block is defense-in-depth; spicy sessions caught at outer vault routing (line 622) before reaching IMAGE — IMAGE Vault check guards future bypass paths
+- [Phase 09-image-generation]: save_media_buffer() wrapped in asyncio.to_thread() — synchronous file I/O (os.open, os.replace, os.chmod) must not block the event loop
+- [Phase 09-image-generation]: channel_id hardcoded to 'whatsapp' inside _generate_and_send_image() — persona_chat() has no channel_id scope; matches continue_conversation() default at pipeline_helpers.py:151
 
 ### Pending Todos
 
@@ -83,7 +86,7 @@ None active.
 
 ## Session Continuity
 
-Last session: 2026-04-09 (Phase 8 Plan 03 execution)
-Stopped at: Completed 08-03-PLAN.md — TTS pipeline wiring (_send_voice_note, /media/tts_outbound mount, 31 tests). Phase 8 TTS Voice Output is complete.
+Last session: 2026-04-09 (Phase 9 Plan 03 execution)
+Stopped at: Completed 09-03-PLAN.md — IMAGE BackgroundTask dispatch, Vault block, /media/image_gen_outbound StaticFiles mount, 10 tests. Phase 9 Image Generation is complete.
 Resume file: None
-Next step: Continue Phase 9 — Image Generation (Plan 03 onward)
+Next step: Begin Phase 10 — CRON + DASH (dashboard panels require Phase 8 TTS + Phase 9 image gen SSE events)

@@ -98,7 +98,7 @@ Plans:
 - [x] **Phase 6: LLM Provider Expansion** - Expose all major providers via config; patch silent litellm budget fallback bug; update onboarding wizard (completed 2026-04-09)
 - [ ] **Phase 7: Bundled Skills Library** - Ship 10 production-ready skills out of the box with namespace isolation and first-boot installation
 - [x] **Phase 8: TTS Voice Output** - Voice replies as WhatsApp voice notes (OGG Opus) via edge-tts default + ElevenLabs opt-in (completed 2026-04-09)
-- [ ] **Phase 9: Image Generation** - "Draw me X" delivers an image in chat via gpt-image-1; runs as BackgroundTask; Vault-safe
+- [x] **Phase 9: Image Generation** - "Draw me X" delivers an image in chat via gpt-image-1; runs as BackgroundTask; Vault-safe (completed 2026-04-09)
 - [ ] **Phase 10: Cron Wiring + Web Control Panel** - Wire CronService to persona_chat() with isolated agents; real-time SSE dashboard
 - [ ] **Phase 11: Realtime Voice Streaming** - Full-duplex voice chat from dashboard: VAD + Groq STT + streaming TTS + barge-in cancel
 
@@ -235,6 +235,6 @@ Phases execute in dependency order: 6 → 7 → 8 → 9 → 10 → 11
 | 6. LLM Provider Expansion | 3/3 | Complete   | 2026-04-09 | — |
 | 7. Bundled Skills Library | 1/3 | In Progress|  | — |
 | 8. TTS Voice Output | 3/3 | Complete   | 2026-04-09 | — |
-| 9. Image Generation | 2/3 | In Progress|  | — |
+| 9. Image Generation | 3/3 | Complete   | 2026-04-09 | — |
 | 10. Cron Wiring + Web Control Panel | v3.0 | 0/TBD | Not started | — |
 | 11. Realtime Voice Streaming | v3.0 | 0/3 | Planned | — |
