@@ -231,13 +231,42 @@ async def lifespan(app: FastAPI):
         deps._proactive_engine = app.state.proactive_engine
         logger.info("[PROACTIVE] Engine started")
 
-    # CronService — proactive scheduled messages
+    # CronService — proactive scheduled messages (wired to persona_chat via execute_fn)
     app.state.cron_service = None
     try:
-        from sci_fi_dashboard.cron_service import CronService
-        app.state.cron_service = CronService(channel_registry=deps.channel_registry)
+        from sci_fi_dashboard.cron import CronService
+        from sci_fi_dashboard.schemas import ChatRequest
+        from sci_fi_dashboard.chat_pipeline import persona_chat
+
+        async def _cron_execute_fn(message: str, session_key: str, **kwargs) -> str:
+            """Adapter: CronService execute_fn -> persona_chat()."""
+            timeout_s = float(kwargs.pop("timeout_seconds", 300))
+            req = ChatRequest(
+                message=message,
+                session_key=session_key,
+                user_id="the_creator",
+            )
+            try:
+                result = await asyncio.wait_for(
+                    persona_chat(req, "the_creator"),
+                    timeout=timeout_s,
+                )
+            except asyncio.TimeoutError:
+                logger.warning(
+                    "[Cron] Job timed out (session=%s, timeout=%ss)",
+                    session_key, timeout_s,
+                )
+                raise
+            return result.get("reply", "") if isinstance(result, dict) else str(result or "")
+
+        app.state.cron_service = CronService(
+            agent_id="the_creator",
+            data_root=str(deps._synapse_cfg.data_root),
+            execute_fn=_cron_execute_fn,
+            channel_registry=deps.channel_registry,
+        )
         await app.state.cron_service.start()
-        logger.info("[CRON] CronService started")
+        logger.info("[CRON] CronService (cron/) started")
     except Exception as _cron_exc:
         logger.warning("[CRON] CronService init failed (non-fatal): %s", _cron_exc)
 
