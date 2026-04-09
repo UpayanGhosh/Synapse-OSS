@@ -238,6 +238,37 @@ _session_ingest_tasks: set[asyncio.Task] = set()
 _diary_tasks: set[asyncio.Task] = set()
 
 
+async def _send_voice_note(reply: str, chat_id: str) -> None:
+    """Background task: synthesize TTS, save to media store, deliver via WhatsApp."""
+    try:
+        from sci_fi_dashboard.tts import TTSEngine
+        from sci_fi_dashboard.media.store import save_media_buffer
+
+        engine = TTSEngine()
+        ogg_bytes = await engine.synthesize(reply)
+        if not ogg_bytes:
+            return  # TTS disabled, text too long, ffmpeg missing, or synthesis failed
+
+        # Save OGG to media store for bridge to fetch
+        saved = save_media_buffer(
+            ogg_bytes,
+            content_type="audio/ogg",
+            subdir="tts_outbound",
+        )
+
+        # Build local URL for bridge to fetch
+        audio_url = f"http://127.0.0.1:8000/media/tts_outbound/{saved.path.name}"
+
+        # Deliver via WhatsApp channel
+        wa_channel = deps.channel_registry.get("whatsapp")
+        if wa_channel and hasattr(wa_channel, "send_voice_note"):
+            await wa_channel.send_voice_note(chat_id, audio_url)
+        else:
+            logger.warning("TTS: WhatsApp channel not available for voice note delivery")
+    except Exception:
+        logger.exception("TTS background task failed for chat_id=%s", chat_id)
+
+
 async def _generate_diary_background(
     archived_path: Path,
     agent_id: str,
@@ -457,6 +488,25 @@ async def process_message_pipeline(
     task = asyncio.create_task(_save_and_compact())
     _background_tasks.add(task)
     task.add_done_callback(_background_tasks.discard)
+
+    # ------------------------------------------------------------------
+    # Step 7: TTS voice note (fire-and-forget, mutually exclusive with auto-continue)
+    # ------------------------------------------------------------------
+    # Only trigger TTS when:
+    # 1. The reply exists and is non-empty
+    # 2. Auto-continue was NOT triggered for this reply (check: reply ends with terminal punct)
+    # 3. TTS is enabled in config (default: True)
+    # Note: Channel is implicitly WhatsApp — process_message_pipeline is WhatsApp-only.
+    _tts_cfg = cfg.tts if hasattr(cfg, "tts") else {}
+    _tts_enabled = _tts_cfg.get("enabled", True) if _tts_cfg else True
+    _terminals = (".", "!", "?", '"', "'", ")", "]", "}")
+    _reply_stripped = reply.strip()
+    _ends_terminal = bool(_reply_stripped) and _reply_stripped[-1] in _terminals
+
+    if reply and _tts_enabled and _ends_terminal:
+        tts_task = asyncio.create_task(_send_voice_note(reply, chat_id))
+        _background_tasks.add(tts_task)
+        tts_task.add_done_callback(_background_tasks.discard)
 
     return reply
 

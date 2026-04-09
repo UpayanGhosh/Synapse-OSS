@@ -361,6 +361,13 @@ _static_dir = _Path(__file__).parent / "static"
 if _static_dir.exists():
     app.mount("/static", StaticFiles(directory=str(_static_dir)), name="static")
 
+# TTS outbound media files (OGG voice notes served to Baileys bridge)
+from synapse_config import resolve_data_root as _resolve_data_root  # noqa: E402
+
+_tts_media_dir = _resolve_data_root() / "state" / "media" / "tts_outbound"
+_tts_media_dir.mkdir(parents=True, exist_ok=True)
+app.mount("/media/tts_outbound", StaticFiles(directory=str(_tts_media_dir)), name="tts_outbound")
+
 
 @app.get("/dashboard")
 async def dashboard():
