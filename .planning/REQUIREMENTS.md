@@ -54,11 +54,11 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 ### Realtime Voice
 
-- [ ] **VOICE-01**: User can have real-time voice conversations via WebSocket from dashboard
-- [ ] **VOICE-02**: Silero VAD detects speech boundaries with conservative defaults
+- [x] **VOICE-01**: User can have real-time voice conversations via WebSocket from dashboard
+- [x] **VOICE-02**: Silero VAD detects speech boundaries with conservative defaults
 - [ ] **VOICE-03**: Groq Whisper handles streaming transcription
-- [ ] **VOICE-04**: TTS response streams back as audio chunks
-- [ ] **VOICE-05**: Barge-in (user interrupts AI response) cancels current TTS playback
+- [x] **VOICE-04**: TTS response streams back as audio chunks
+- [x] **VOICE-05**: Barge-in (user interrupts AI response) cancels current TTS playback
 
 ## Future Requirements
 
@@ -126,11 +126,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DASH-03 | Phase 10 | Pending |
 | DASH-04 | Phase 10 | Pending |
 | DASH-05 | Phase 10 | Pending |
-| VOICE-01 | Phase 11 | Pending |
-| VOICE-02 | Phase 11 | Pending |
+| VOICE-01 | Phase 11 | Complete |
+| VOICE-02 | Phase 11 | Complete |
 | VOICE-03 | Phase 11 | Pending |
-| VOICE-04 | Phase 11 | Pending |
-| VOICE-05 | Phase 11 | Pending |
+| VOICE-04 | Phase 11 | Complete |
+| VOICE-05 | Phase 11 | Complete |
 
 **Coverage:**
 - v3.0 requirements: 32 total

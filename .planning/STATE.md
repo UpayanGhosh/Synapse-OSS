@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: OpenClaw Feature Harvest
-status: unknown
-last_updated: "2026-04-09T13:47:23.696Z"
+status: in_progress
+last_updated: "2026-04-09T13:52:00Z"
 progress:
   total_phases: 12
   completed_phases: 8
   total_plans: 47
-  completed_plans: 39
+  completed_plans: 40
 ---
 
 # Project State
@@ -22,12 +22,12 @@ See: .planning/PROJECT.md (updated 2026-04-08)
 
 ## Current Position
 
-Phase: 9 of 11 (Image Generation) — COMPLETE
-Plan: 3 of 3 complete in current phase
+Phase: 11 of 11 (Realtime Voice Streaming) — In Progress
+Plan: 2 of 3 complete in current phase
 Status: In progress
-Last activity: 2026-04-09 — Phase 9 Plan 03 complete (IMAGE BackgroundTask dispatch, Vault block, /media/image_gen_outbound StaticFiles, 10 tests)
+Last activity: 2026-04-09 — Phase 11 Plan 02 complete (voice.js: Silero VAD, float32ToWav, AudioContext playback queue, barge-in, tab cleanup)
 
-Progress: [████░░░░░░] 10% (38/47 plans complete)
+Progress: [████████░░] 85% (40/47 plans complete)
 
 ## Milestone Map
 
@@ -74,6 +74,11 @@ Progress: [████░░░░░░] 10% (38/47 plans complete)
 - [Phase 09-image-generation]: IMAGE branch Vault block is defense-in-depth; spicy sessions caught at outer vault routing (line 622) before reaching IMAGE — IMAGE Vault check guards future bypass paths
 - [Phase 09-image-generation]: save_media_buffer() wrapped in asyncio.to_thread() — synchronous file I/O (os.open, os.replace, os.chmod) must not block the event loop
 - [Phase 09-image-generation]: channel_id hardcoded to 'whatsapp' inside _generate_and_send_image() — persona_chat() has no channel_id scope; matches continue_conversation() default at pipeline_helpers.py:151
+- [Phase 11-realtime-voice-streaming/11-02]: redemptionMs set to 700ms per VOICE-02 requirement (plan overrides research default of 1400ms)
+- [Phase 11-realtime-voice-streaming/11-02]: ws.binaryType forced to arraybuffer in startVoice() — eliminates Blob conversion overhead for streaming MP3 chunks
+- [Phase 11-realtime-voice-streaming/11-02]: Barge-in guard re-checks isAISpeaking in scheduleAudioChunk after async decodeAudioData — prevents playing decoded chunk if barge-in fired during decode
+- [Phase 11-realtime-voice-streaming/11-02]: Transcription exposed as CustomEvent("synapse:transcription") on window — zero DOM coupling from voice.js
+- [Phase 11-realtime-voice-streaming/11-02]: handleWSMessage is passive — dashboard's existing ws.onmessage delegates to it; voice.js never patches global WS
 
 ### Pending Todos
 
@@ -86,7 +91,7 @@ None active.
 
 ## Session Continuity
 
-Last session: 2026-04-09 (Phase 9 Plan 03 execution)
-Stopped at: Completed 09-03-PLAN.md — IMAGE BackgroundTask dispatch, Vault block, /media/image_gen_outbound StaticFiles mount, 10 tests. Phase 9 Image Generation is complete.
+Last session: 2026-04-09 (Phase 11 Plan 02 execution)
+Stopped at: Completed 11-02-PLAN.md — voice.js browser-side voice module (Silero VAD, float32ToWav, AudioContext playback queue, barge-in, tab cleanup, window.SynapseVoice API)
 Resume file: None
-Next step: Begin Phase 10 — CRON + DASH (dashboard panels require Phase 8 TTS + Phase 9 image gen SSE events)
+Next step: Phase 11 Plan 03 — server-side ws_server.py voice.* handlers + VoiceChannel + VoiceSession (completes full-duplex voice loop)
