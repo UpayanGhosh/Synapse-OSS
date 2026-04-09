@@ -169,6 +169,46 @@ class CronService:
             task.cancel()
         self._tasks.clear()
 
+    def list(self, enabled_only: bool = False) -> list[dict]:
+        """Return all job definitions, optionally filtered to enabled-only.
+
+        Reads from disk each time so the list reflects the current file state.
+        """
+        jobs = _load_jobs() if enabled_only else self._load_all_jobs()
+        return jobs
+
+    def _load_all_jobs(self) -> list[dict]:
+        """Load all job definitions from disk, including disabled ones."""
+        if not JOBS_FILE.exists():
+            return []
+        try:
+            with open(JOBS_FILE, encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            logger.warning("Failed to load all cron jobs: %s", e)
+            return []
+
+    async def run(self, job_id: str, mode: str = "due") -> dict:
+        """Force-run a specific job by job_id regardless of schedule.
+
+        Parameters
+        ----------
+        job_id:
+            The ``job_id`` field from jobs.json.
+        mode:
+            ``"due"`` or ``"force"`` — both execute immediately.
+        """
+        all_jobs = self._load_all_jobs()
+        job = next((j for j in all_jobs if j.get("job_id") == job_id), None)
+        if job is None:
+            raise KeyError(f"Job {job_id!r} not found")
+        try:
+            await self._fire_job(job)
+            return {"status": "ok", "job_id": job_id}
+        except Exception as exc:
+            logger.exception("[Cron] Force-run failed for job %s", job_id)
+            raise
+
     def reload(self):
         """Hot-reload jobs from disk (cancel old tasks, start new ones)."""
         asyncio.create_task(self._reload_async())
