@@ -11,8 +11,10 @@ Usage:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
+import tempfile
 from pathlib import Path
 
 import httpx
@@ -122,3 +124,55 @@ async def transcribe_audio(
     except Exception as exc:
         logger.error("[Transcribe] Unexpected error for %s: %s", file_path.name, exc)
         return ""
+
+
+# ---------------------------------------------------------------------------
+# In-memory bytes helper for WebSocket voice pipeline
+# ---------------------------------------------------------------------------
+
+
+def _write_temp_wav(wav_bytes: bytes) -> Path:
+    """Write *wav_bytes* to a temporary WAV file and return its Path.
+
+    This is a synchronous helper intentionally — it is called via
+    ``asyncio.to_thread()`` so it never blocks the event loop.
+    """
+    fd, tmp_str = tempfile.mkstemp(suffix=".wav")
+    try:
+        os.write(fd, wav_bytes)
+    finally:
+        os.close(fd)
+    return Path(tmp_str)
+
+
+async def transcribe_bytes(wav_bytes: bytes, language: str = "en") -> str:
+    """Transcribe in-memory WAV bytes using Groq Whisper Large v3.
+
+    Writes *wav_bytes* to a temporary file off the event loop, delegates to
+    ``transcribe_audio()``, and deletes the temp file in a ``finally`` block.
+
+    Parameters
+    ----------
+    wav_bytes:
+        Raw WAV audio data (bytes) captured from a WebSocket binary frame.
+    language:
+        ISO-639-1 language code passed to Whisper.  Defaults to ``"en"``.
+
+    Returns
+    -------
+    str
+        The transcribed text, or ``""`` on any failure (mirrors
+        ``transcribe_audio()`` contract).
+    """
+    if not wav_bytes:
+        logger.warning("[Transcribe] transcribe_bytes() called with empty bytes")
+        return ""
+
+    # Write bytes to a temp file off the event loop (blocking I/O)
+    tmp_path: Path = await asyncio.to_thread(_write_temp_wav, wav_bytes)
+
+    try:
+        return await transcribe_audio(tmp_path, language=language)
+    finally:
+        # Remove temp file off the event loop (blocking I/O)
+        await asyncio.to_thread(tmp_path.unlink, True)
