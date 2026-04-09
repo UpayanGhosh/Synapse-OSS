@@ -417,6 +417,19 @@ class WhatsAppChannel(BaseChannel):
             logger.error("[WA] send_media() failed: %s", exc)
             return False
 
+    async def send_voice_note(self, chat_id: str, audio_url: str) -> bool:
+        """Send OGG Opus audio as a WhatsApp PTT voice note via bridge /send-voice."""
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                r = await client.post(
+                    f"http://127.0.0.1:{self._port}/send-voice",
+                    json={"jid": chat_id, "audioUrl": audio_url},
+                )
+                return r.status_code == 200
+        except httpx.RequestError as exc:
+            logger.error("[WA] send_voice_note() failed: %s", exc)
+            return False
+
     async def send_reaction(self, chat_id: str, message_id: str, emoji: str) -> bool:
         """Send emoji reaction to a message via bridge POST /react."""
         try:
