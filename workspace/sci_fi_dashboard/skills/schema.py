@@ -68,6 +68,11 @@ class SkillManifest:
         entry_point — optional pre-processing entrypoint: "scripts/skill.py:function_name"
                       Used by SkillRunner to call a function before the LLM call.
                       Format: relative path from skill directory : function name
+        cloud_safe  — True (default) = skill makes no external cloud calls and is safe in any
+                      hemisphere. False = skill calls external cloud APIs; it is blocked in the
+                      Vault (spicy) hemisphere to enforce zero cloud-leakage.
+        enabled     — False = skill is skipped during scan_directory and never enters the
+                      registry. Allows users to disable a skill without deleting it.
     """
 
     # Required
@@ -83,3 +88,8 @@ class SkillManifest:
     instructions: str = ""
     path: Path = field(default_factory=lambda: Path("."))
     entry_point: str = ""
+    cloud_safe: bool = True
+    # True  = skill is safe to run in any hemisphere (no external cloud calls)
+    # False = skill calls external cloud APIs; blocked in Vault (spicy) hemisphere
+    enabled: bool = True
+    # False = skill is skipped during scan_directory; never enters the registry

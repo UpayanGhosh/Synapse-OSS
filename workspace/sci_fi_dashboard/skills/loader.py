@@ -112,6 +112,8 @@ class SkillLoader:
             instructions=instructions_body,
             path=skill_dir.resolve(),
             entry_point=str(yaml_data.get("entry_point", "")),
+            cloud_safe=bool(yaml_data.get("cloud_safe", True)),
+            enabled=bool(yaml_data.get("enabled", True)),
         )
 
     @classmethod
@@ -145,6 +147,9 @@ class SkillLoader:
 
             try:
                 manifest = cls.load_skill(entry)
+                if not manifest.enabled:
+                    logger.debug("[Skills] Skipping disabled skill '%s' at %s", manifest.name, entry)
+                    continue
                 manifests.append(manifest)
                 logger.debug("[Skills] Loaded skill '%s' from %s", manifest.name, entry)
             except SkillValidationError as exc:
