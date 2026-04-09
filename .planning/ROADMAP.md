@@ -170,13 +170,12 @@ Plans:
   3. In a spicy-hemisphere session, saying "draw me X" returns a soft decline ("image generation isn't available in private mode") instead of making an OpenAI API call — confirmed by asserting no outbound HTTP to `api.openai.com/v1/images`
   4. Setting `image_gen.provider: fal` in synapse.json routes image requests to fal.ai instead of OpenAI — confirmed by fal-client API call appearing in logs
   5. The immediate text acknowledgment ("working on it...") arrives before image generation completes — confirmed by message timestamp ordering
-**Plans**: TBD
+**Plans**: 3 plans in 2 waves
 
 Plans:
-- [ ] 09-01-PLAN.md — TBD
-- [ ] 09-02-PLAN.md — TBD
-- [ ] 09-03-PLAN.md — TBD
-- [ ] 09-04-PLAN.md — TBD
+- [ ] 09-01-PLAN.md — ImageGenEngine + OpenAI/fal providers + SynapseConfig image_gen field + requirements.txt (Wave 1)
+- [ ] 09-02-PLAN.md — Traffic Cop IMAGE classification + IMAGE routing branch in chat_pipeline (Wave 1)
+- [ ] 09-03-PLAN.md — Pipeline wiring: BackgroundTask dispatch, Vault block, media serving, tests (Wave 2)
 
 ---
 
