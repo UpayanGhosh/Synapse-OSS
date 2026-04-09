@@ -47,9 +47,9 @@ Requirements for this milestone. Each maps to roadmap phases.
 ### Web Control Panel
 
 - [x] **DASH-01**: Dashboard shows real-time pipeline events via SSE
-- [ ] **DASH-02**: Dashboard displays active sessions, memory stats, and model routing decisions
+- [x] **DASH-02**: Dashboard displays active sessions, memory stats, and model routing decisions
 - [ ] **DASH-03**: User can send messages from the dashboard (existing pipeline/send endpoint)
-- [ ] **DASH-04**: Dashboard is loopback-only with session token auth
+- [x] **DASH-04**: Dashboard is loopback-only with session token auth
 - [ ] **DASH-05**: Dashboard uses vanilla JS + Tailwind (no React build step)
 
 ### Realtime Voice
@@ -122,9 +122,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CRON-03 | Phase 10 | Complete |
 | CRON-04 | Phase 10 | Complete |
 | DASH-01 | Phase 10 | Complete |
-| DASH-02 | Phase 10 | Pending |
+| DASH-02 | Phase 10 | Complete |
 | DASH-03 | Phase 10 | Pending |
-| DASH-04 | Phase 10 | Pending |
+| DASH-04 | Phase 10 | Complete |
 | DASH-05 | Phase 10 | Pending |
 | VOICE-01 | Phase 11 | Complete |
 | VOICE-02 | Phase 11 | Complete |
