@@ -368,6 +368,15 @@ _tts_media_dir = _resolve_data_root() / "state" / "media" / "tts_outbound"
 _tts_media_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/media/tts_outbound", StaticFiles(directory=str(_tts_media_dir)), name="tts_outbound")
 
+# Image generation outbound media files (PNG images served to Baileys bridge)
+_img_gen_media_dir = _resolve_data_root() / "state" / "media" / "image_gen_outbound"
+_img_gen_media_dir.mkdir(parents=True, exist_ok=True)
+app.mount(
+    "/media/image_gen_outbound",
+    StaticFiles(directory=str(_img_gen_media_dir)),
+    name="image_gen_outbound",
+)
+
 
 @app.get("/dashboard")
 async def dashboard():
