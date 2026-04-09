@@ -424,6 +424,36 @@ app.post('/send', async (req, res) => {
   }
 });
 
+// POST /send-voice — send OGG Opus audio as a WhatsApp PTT voice note
+app.post('/send-voice', async (req, res) => {
+  if (!sock || connectionState !== 'connected') {
+    return res.status(503).json({ error: 'Bridge not connected', connectionState });
+  }
+  const { jid, audioUrl } = req.body;
+  if (!jid) return res.status(400).json({ error: 'jid is required' });
+  if (!audioUrl) return res.status(400).json({ error: 'audioUrl is required' });
+
+  try {
+    await new Promise((r) => setTimeout(r, 1000 + Math.random() * 2000)); // anti-spam jitter
+
+    const response = await fetch(audioUrl, { signal: AbortSignal.timeout(30000) });
+    if (!response.ok) {
+      return res.status(400).json({ error: `Failed to fetch audio from URL: ${response.status}` });
+    }
+    const buffer = Buffer.from(await response.arrayBuffer());
+
+    const sentMsg = await sock.sendMessage(jid, {
+      audio: buffer,
+      ptt: true,
+      mimetype: 'audio/ogg; codecs=opus',
+    });
+
+    res.json({ ok: true, messageId: sentMsg?.key?.id || null });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /react — send emoji reaction to a message
 app.post('/react', async (req, res) => {
   if (!sock || connectionState !== 'connected') {
