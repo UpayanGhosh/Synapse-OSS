@@ -210,13 +210,12 @@ Plans:
   3. Groq Whisper transcription of a clear English sentence achieves word-error-rate under 10% — confirmed by comparing transcribed text to the known test utterance
   4. While the AI is speaking a long response, saying a new sentence cancels the current TTS playback and begins processing the new input — barge-in latency under 500ms from speech onset to playback stop
   5. Closing the voice session tab cleanly terminates the WebSocket, stops mic capture, and releases the audio device — confirmed by asserting no dangling sounddevice streams after tab close
-**Plans**: TBD
+**Plans**: 3 plans in 2 waves
 
 Plans:
-- [ ] 11-01-PLAN.md — TBD
-- [ ] 11-02-PLAN.md — TBD
-- [ ] 11-03-PLAN.md — TBD
-- [ ] 11-04-PLAN.md — TBD
+- [ ] 11-01-PLAN.md — Server-side voice infrastructure: VoiceSession, VoiceChannel, WS binary frames, voice.* protocol, transcribe_bytes (Wave 1)
+- [ ] 11-02-PLAN.md — Browser-side voice module: VAD init, Float32-to-WAV encoder, AudioContext playback queue, barge-in handler (Wave 1)
+- [ ] 11-03-PLAN.md — Pipeline wiring: VoiceChannel registration, dashboard voice UI, comprehensive tests (Wave 2)
 
 ---
 
@@ -238,4 +237,4 @@ Phases execute in dependency order: 6 → 7 → 8 → 9 → 10 → 11
 | 8. TTS Voice Output | v3.0 | 0/3 | Planned | — |
 | 9. Image Generation | v3.0 | 0/TBD | Not started | — |
 | 10. Cron Wiring + Web Control Panel | v3.0 | 0/TBD | Not started | — |
-| 11. Realtime Voice Streaming | v3.0 | 0/TBD | Not started | — |
+| 11. Realtime Voice Streaming | v3.0 | 0/3 | Planned | — |
