@@ -193,6 +193,7 @@ class SynapseConfig:
             vector_store=vector_store,
             kg_extraction=kg_config,
             image_gen=image_gen,
+            tts=tts_raw,
         )
 
 

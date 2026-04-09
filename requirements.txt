@@ -6,6 +6,8 @@
 # For ML/NLP:    pip install -r requirements-ml.txt
 # For optional:  pip install -r requirements-optional.txt
 # For dev tools: pip install -r requirements-dev.txt
+#
+# System dependency: ffmpeg (required for TTS voice notes — install via apt/brew/winget)
 # ============================================================
 
 # --- Web Framework & Server ---
@@ -58,3 +60,7 @@ sse-starlette>=2.0.0             # SSE endpoint for dashboard pipeline events
 
 # --- Image Generation ---
 fal-client>=0.13.0               # fal.ai FLUX provider (image_gen/providers/fal_img.py)
+
+# --- Text-to-Speech (TTS) ---
+edge-tts>=7.0.0                  # Microsoft Edge neural TTS (zero credentials, 400+ voices)
+elevenlabs>=1.0.0                # ElevenLabs premium TTS SDK (opt-in, requires API key)
