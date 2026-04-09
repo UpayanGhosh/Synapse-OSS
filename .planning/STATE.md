@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: OpenClaw Feature Harvest
 status: unknown
-last_updated: "2026-04-09T07:50:44.719Z"
+last_updated: "2026-04-09T07:58:39.039Z"
 progress:
   total_phases: 12
-  completed_phases: 5
+  completed_phases: 6
   total_plans: 47
-  completed_plans: 30
+  completed_plans: 31
 ---
 
 # Project State
@@ -59,6 +59,8 @@ Progress: [██░░░░░░░░] 8% (31/47 plans complete)
 - [06-02] Fallback uses model_mappings.get(role).get('fallback') NOT self._router.model_list to avoid litellm Router internal coupling
 - [Phase 07-bundled-skills-library]: cloud_safe defaults to True — all existing skills are cloud_safe by default; only new bundled cloud-API skills need to explicitly set False
 - [Phase 07-bundled-skills-library]: synapse.* namespace reserved for bundled skills; user skills shadowing them trigger startup WARNING (not error) — both load but user is informed
+- [Phase 06-llm-provider-expansion]: BudgetExceededError must be raised with (current_cost, max_budget, message) signature matching litellm.exceptions.BudgetExceededError — production code was passing a single string and was fixed
+- [Phase 06-llm-provider-expansion]: qianfan is an intentional _KEY_MAP divergence — provider_steps only, not in llm_router._KEY_MAP; encoded as _PS_ONLY_KEYS in test for documentation
 
 ### Pending Todos
 
@@ -71,7 +73,7 @@ None active.
 
 ## Session Continuity
 
-Last session: 2026-04-09 (Phase 7 Plan 01 execution)
-Stopped at: Completed 07-01-PLAN.md — SkillManifest cloud_safe/enabled fields + shadow warning + seed_bundled_skills
+Last session: 2026-04-09 (Phase 6 Plan 03 execution)
+Stopped at: Completed 06-03-PLAN.md — Phase 6 provider expansion regression tests (10 tests, all passing); BudgetExceededError constructor bug fixed
 Resume file: None
 Next step: Execute 07-02-PLAN.md (author bundled skills: synapse.weather, synapse.reminders)

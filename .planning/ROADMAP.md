@@ -95,7 +95,7 @@ Plans:
 
 ## Phases
 
-- [ ] **Phase 6: LLM Provider Expansion** - Expose all major providers via config; patch silent litellm budget fallback bug; update onboarding wizard
+- [x] **Phase 6: LLM Provider Expansion** - Expose all major providers via config; patch silent litellm budget fallback bug; update onboarding wizard (completed 2026-04-09)
 - [ ] **Phase 7: Bundled Skills Library** - Ship 10 production-ready skills out of the box with namespace isolation and first-boot installation
 - [ ] **Phase 8: TTS Voice Output** - Voice replies as WhatsApp voice notes (OGG Opus) via edge-tts default + ElevenLabs opt-in
 - [ ] **Phase 9: Image Generation** - "Draw me X" delivers an image in chat via gpt-image-1; runs as BackgroundTask; Vault-safe
@@ -232,7 +232,7 @@ Phases execute in dependency order: 6 → 7 → 8 → 9 → 10 → 11
 | 3. Subagent System | v2.0 | 4/4 | Complete | 2026-04-07 |
 | 4. Onboarding Wizard v2 | v2.0 | 4/4 | Complete | 2026-04-07 |
 | 5. Browser Tool | v2.0 | 4/4 | Complete | 2026-04-07 |
-| 6. LLM Provider Expansion | 2/3 | In Progress|  | — |
+| 6. LLM Provider Expansion | 3/3 | Complete   | 2026-04-09 | — |
 | 7. Bundled Skills Library | 1/3 | In Progress|  | — |
 | 8. TTS Voice Output | v3.0 | 0/3 | Planned | — |
 | 9. Image Generation | v3.0 | 0/TBD | Not started | — |
