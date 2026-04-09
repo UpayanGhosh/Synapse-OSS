@@ -22,10 +22,10 @@ See: .planning/PROJECT.md (updated 2026-04-08)
 
 ## Current Position
 
-Phase: 8 of 11 (TTS Voice Output)
+Phase: 9 of 11 (Image Generation)
 Plan: 2 of TBD complete in current phase
 Status: In progress
-Last activity: 2026-04-09 — Phase 8 Plan 02 complete (/send-voice bridge endpoint and WhatsAppChannel.send_voice_note())
+Last activity: 2026-04-09 — Phase 9 Plan 02 complete (IMAGE fifth classification label in traffic cop + IMAGE routing branch in chat_pipeline.py)
 
 Progress: [███░░░░░░░] 9% (34/47 plans complete)
 
@@ -77,7 +77,7 @@ None active.
 
 ## Session Continuity
 
-Last session: 2026-04-09 (Phase 8 Plan 02 execution)
-Stopped at: Completed 08-02-PLAN.md — PTT voice note delivery: /send-voice bridge endpoint and WhatsAppChannel.send_voice_note()
+Last session: 2026-04-09 (Phase 9 Plan 02 execution)
+Stopped at: Completed 09-02-PLAN.md — IMAGE classification routing (traffic cop + chat_pipeline IMAGE branch with early-return placeholder)
 Resume file: None
-Next step: Execute 08-03-PLAN.md (api_gateway TTS dispatch — call send_voice_note() to deliver generated audio)
+Next step: Execute 09-03-PLAN.md (BackgroundTask image generation dispatch into IMAGE branch)

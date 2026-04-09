@@ -32,7 +32,7 @@ Requirements for this milestone. Each maps to roadmap phases.
 ### Image Generation
 
 - [ ] **IMG-01**: User can request image generation ("draw me X") and receive it in chat
-- [ ] **IMG-02**: Traffic Cop classifies image requests as IMAGE role
+- [x] **IMG-02**: Traffic Cop classifies image requests as IMAGE role
 - [ ] **IMG-03**: gpt-image-1 (OpenAI) is default; Flux (fal.ai) is configurable alternative
 - [ ] **IMG-04**: Image gen respects Vault hemisphere — blocked in spicy mode
 - [ ] **IMG-05**: Generation runs as BackgroundTask with immediate text acknowledgment
@@ -113,7 +113,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | TTS-04 | Phase 8 | Pending |
 | TTS-05 | Phase 8 | Pending |
 | IMG-01 | Phase 9 | Pending |
-| IMG-02 | Phase 9 | Pending |
+| IMG-02 | Phase 9 | Complete |
 | IMG-03 | Phase 9 | Pending |
 | IMG-04 | Phase 9 | Pending |
 | IMG-05 | Phase 9 | Pending |
