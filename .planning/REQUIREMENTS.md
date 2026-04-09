@@ -23,7 +23,7 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 ### TTS Voice Output
 
-- [ ] **TTS-01**: User receives voice replies as playable WhatsApp voice notes (OGG Opus)
+- [x] **TTS-01**: User receives voice replies as playable WhatsApp voice notes (OGG Opus)
 - [ ] **TTS-02**: edge-tts is the default TTS provider (zero API key, 400+ voices)
 - [ ] **TTS-03**: ElevenLabs is available as premium opt-in TTS provider
 - [ ] **TTS-04**: TTS runs as BackgroundTask — never blocks the chat pipeline
@@ -107,7 +107,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SKILL-02 | Phase 7 | Pending |
 | SKILL-03 | Phase 7 | Complete |
 | SKILL-04 | Phase 7 | Complete |
-| TTS-01 | Phase 8 | Pending |
+| TTS-01 | Phase 8 | Complete |
 | TTS-02 | Phase 8 | Pending |
 | TTS-03 | Phase 8 | Pending |
 | TTS-04 | Phase 8 | Pending |

@@ -234,7 +234,7 @@ Phases execute in dependency order: 6 → 7 → 8 → 9 → 10 → 11
 | 5. Browser Tool | v2.0 | 4/4 | Complete | 2026-04-07 |
 | 6. LLM Provider Expansion | 3/3 | Complete   | 2026-04-09 | — |
 | 7. Bundled Skills Library | 1/3 | In Progress|  | — |
-| 8. TTS Voice Output | v3.0 | 0/3 | Planned | — |
+| 8. TTS Voice Output | 1/3 | In Progress|  | — |
 | 9. Image Generation | v3.0 | 0/TBD | Not started | — |
 | 10. Cron Wiring + Web Control Panel | v3.0 | 0/TBD | Not started | — |
 | 11. Realtime Voice Streaming | v3.0 | 0/3 | Planned | — |

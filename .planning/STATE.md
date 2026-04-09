@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: OpenClaw Feature Harvest
 status: unknown
-last_updated: "2026-04-09T08:03:38.094Z"
+last_updated: "2026-04-09T13:18:43.223Z"
 progress:
   total_phases: 12
   completed_phases: 6
   total_plans: 47
-  completed_plans: 31
+  completed_plans: 34
 ---
 
 # Project State
@@ -22,12 +22,12 @@ See: .planning/PROJECT.md (updated 2026-04-08)
 
 ## Current Position
 
-Phase: 7 of 11 (Bundled Skills Library)
-Plan: 1 of TBD complete in current phase
+Phase: 8 of 11 (TTS Voice Output)
+Plan: 2 of TBD complete in current phase
 Status: In progress
-Last activity: 2026-04-09 — Phase 7 Plan 01 complete (SkillManifest cloud_safe/enabled fields, shadow warning, seed_bundled_skills)
+Last activity: 2026-04-09 — Phase 8 Plan 02 complete (/send-voice bridge endpoint and WhatsAppChannel.send_voice_note())
 
-Progress: [██░░░░░░░░] 8% (31/47 plans complete)
+Progress: [███░░░░░░░] 9% (34/47 plans complete)
 
 ## Milestone Map
 
@@ -61,6 +61,10 @@ Progress: [██░░░░░░░░] 8% (31/47 plans complete)
 - [Phase 07-bundled-skills-library]: synapse.* namespace reserved for bundled skills; user skills shadowing them trigger startup WARNING (not error) — both load but user is informed
 - [Phase 06-llm-provider-expansion]: BudgetExceededError must be raised with (current_cost, max_budget, message) signature matching litellm.exceptions.BudgetExceededError — production code was passing a single string and was fixed
 - [Phase 06-llm-provider-expansion]: qianfan is an intentional _KEY_MAP divergence — provider_steps only, not in llm_router._KEY_MAP; encoded as _PS_ONLY_KEYS in test for documentation
+- [Phase 08-tts-voice-output]: /send-voice is a separate dedicated endpoint (not a flag on /send) — keeps PTT logic isolated, no risk of breaking existing text/media send
+- [Phase 08-tts-voice-output]: PTT voice note requires three fields: audio buffer + ptt: true + mimetype: 'audio/ogg; codecs=opus' — all three required for WhatsApp earphone icon rendering
+- [Phase 09-image-generation]: IMAGE placed first in traffic cop prompt; negative examples prevent false-positive classification of 'draw up a plan', 'create a document'
+- [Phase 09-image-generation]: IMAGE branch uses early return placeholder — Plan 03 replaces with BackgroundTask dispatch; STRATEGY_TO_ROLE unchanged
 
 ### Pending Todos
 
@@ -73,7 +77,7 @@ None active.
 
 ## Session Continuity
 
-Last session: 2026-04-09 (Phase 6 Plan 03 execution)
-Stopped at: Completed 06-03-PLAN.md — Phase 6 provider expansion regression tests (10 tests, all passing); BudgetExceededError constructor bug fixed
+Last session: 2026-04-09 (Phase 8 Plan 02 execution)
+Stopped at: Completed 08-02-PLAN.md — PTT voice note delivery: /send-voice bridge endpoint and WhatsAppChannel.send_voice_note()
 Resume file: None
-Next step: Execute 07-02-PLAN.md (author bundled skills: synapse.weather, synapse.reminders)
+Next step: Execute 08-03-PLAN.md (api_gateway TTS dispatch — call send_voice_note() to deliver generated audio)
