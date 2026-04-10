@@ -1,0 +1,781 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Synapse - The AI That Actually Knows You</title>
+<style>
+:root {
+  --purple: #8B5CF6;
+  --amber: #F59E0B;
+  --bg: #000000;
+  --bg-card: #0a0a0f;
+  --text: #ffffff;
+  --muted: #6b7280;
+  --border: #1a1a2e;
+  --green: #10B981;
+  --mono: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+  --sans: -apple-system, 'Inter', 'Segoe UI', sans-serif;
+}
+
+*, *::before, *::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  font-size: 16px;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  line-height: 1.6;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::selection {
+  background: var(--purple);
+  color: var(--text);
+}
+
+/* NAV */
+nav {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  padding: 1.5rem 2rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.nav-logo {
+  font-family: var(--mono);
+  font-size: 1.25rem;
+  color: var(--text);
+  text-decoration: none;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.nav-logo span {
+  color: var(--purple);
+}
+
+.nav-links {
+  display: flex;
+  gap: 2rem;
+  list-style: none;
+}
+
+.nav-links a {
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  color: var(--muted);
+  text-decoration: none;
+  transition: color 0.2s;
+  letter-spacing: 0.02em;
+}
+
+.nav-links a:hover {
+  color: var(--purple);
+}
+
+/* HERO */
+.hero {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0 2rem;
+  text-align: center;
+  padding-top: 30vh;
+  padding-bottom: 15vh;
+}
+
+.hero-typing {
+  font-family: var(--mono);
+  font-size: clamp(2rem, 5vw, 4rem);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  min-height: 1.2em;
+  white-space: nowrap;
+}
+
+.hero-typing .prompt {
+  color: var(--purple);
+}
+
+.hero-typing .cursor {
+  color: var(--purple);
+  animation: blink 0.7s step-end infinite;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.hero-sub {
+  font-family: var(--sans);
+  color: #9ca3af;
+  font-size: clamp(1rem, 2vw, 1.25rem);
+  margin-top: 1.5rem;
+  opacity: 0;
+  transform: translateY(10px);
+  transition: opacity 0.6s ease, transform 0.6s ease;
+  max-width: 520px;
+  line-height: 1.7;
+}
+
+.hero-sub.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.hero-actions {
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+  margin-top: 2.5rem;
+  opacity: 0;
+  transform: translateY(10px);
+  transition: opacity 0.6s ease, transform 0.6s ease;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.hero-actions.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.install-pill {
+  font-family: var(--mono);
+  font-size: 0.9rem;
+  background: #111;
+  border: 1px solid var(--purple);
+  border-radius: 999px;
+  padding: 0.65rem 1.5rem;
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+  position: relative;
+}
+
+.install-pill:hover {
+  background: #1a1a2e;
+}
+
+.install-pill .dollar {
+  color: var(--purple);
+}
+
+.install-pill .tooltip {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--purple);
+  color: var(--text);
+  font-size: 0.75rem;
+  padding: 0.25rem 0.75rem;
+  border-radius: 4px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s;
+}
+
+.install-pill .tooltip.show {
+  opacity: 1;
+}
+
+.source-link {
+  font-family: var(--mono);
+  font-size: 0.9rem;
+  color: var(--purple);
+  text-decoration: none;
+  transition: opacity 0.2s;
+}
+
+.source-link:hover {
+  opacity: 0.8;
+}
+
+.hero-channels {
+  margin-top: 4rem;
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  color: var(--muted);
+  letter-spacing: 0.15em;
+  text-transform: lowercase;
+  opacity: 0;
+  transition: opacity 0.6s ease;
+}
+
+.hero-channels.visible {
+  opacity: 1;
+}
+
+/* FEATURE SECTIONS */
+.feature-section {
+  min-height: 80vh;
+  display: flex;
+  align-items: center;
+  padding: 8rem 2rem;
+}
+
+.feature-inner {
+  max-width: 900px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.feature-section.align-left .feature-inner {
+  margin-left: max(2rem, calc((100% - 900px) / 2));
+  margin-right: auto;
+}
+
+.feature-section.align-right .feature-inner {
+  margin-right: max(2rem, calc((100% - 900px) / 2));
+  margin-left: auto;
+  text-align: right;
+}
+
+.feature-section.align-right .code-block {
+  text-align: left;
+}
+
+.feature-headline {
+  font-family: var(--mono);
+  font-size: clamp(1.75rem, 3.5vw, 3rem);
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 1.5rem;
+  letter-spacing: -0.02em;
+}
+
+.feature-headline .paren {
+  color: var(--purple);
+}
+
+.feature-desc {
+  font-family: var(--sans);
+  color: #9ca3af;
+  font-size: 1.05rem;
+  max-width: 500px;
+  line-height: 1.8;
+  margin-bottom: 2.5rem;
+}
+
+.feature-section.align-right .feature-desc {
+  margin-left: auto;
+}
+
+.code-block {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1.5rem 2rem;
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  line-height: 1.8;
+  overflow-x: auto;
+  max-width: 560px;
+}
+
+.feature-section.align-right .code-block {
+  margin-left: auto;
+}
+
+.code-block .key { color: var(--purple); }
+.code-block .val { color: var(--amber); }
+.code-block .str { color: var(--amber); }
+.code-block .brace { color: var(--muted); }
+.code-block .prompt-sym { color: var(--purple); }
+.code-block .label { color: var(--amber); }
+.code-block .comment { color: var(--muted); }
+.code-block .keyword { color: var(--purple); }
+.code-block .local { color: var(--green); }
+.code-block .role { color: var(--purple); }
+.code-block .arrow { color: var(--amber); }
+
+/* ROUTE TABLE */
+.route-table {
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  line-height: 2.2;
+  max-width: 520px;
+}
+
+/* ARCHITECTURE */
+.arch-section {
+  padding: 10rem 2rem;
+  text-align: center;
+}
+
+.arch-title {
+  font-family: var(--mono);
+  font-size: clamp(1.75rem, 3vw, 2.25rem);
+  color: var(--text);
+  letter-spacing: 0.08em;
+  margin-bottom: 5rem;
+  font-weight: 400;
+}
+
+.pipeline {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+}
+
+.pipe-step {
+  text-align: center;
+  position: relative;
+  padding: 1.25rem 2rem;
+}
+
+.pipe-step-name {
+  font-family: var(--mono);
+  font-size: 1rem;
+  color: var(--text);
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+
+.pipe-step-detail {
+  font-family: var(--sans);
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.pipe-connector {
+  width: 1px;
+  height: 2.5rem;
+  background: var(--purple);
+  opacity: 0.4;
+}
+
+.arch-stack {
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin-top: 5rem;
+  letter-spacing: 0.04em;
+}
+
+/* GET STARTED */
+.start-section {
+  padding: 10rem 2rem;
+  text-align: center;
+}
+
+.start-title {
+  font-family: var(--mono);
+  font-size: clamp(1.75rem, 3vw, 2.25rem);
+  color: var(--text);
+  margin-bottom: 3rem;
+  font-weight: 400;
+}
+
+.start-title .prompt-sym {
+  color: var(--purple);
+}
+
+.start-title .cursor {
+  color: var(--purple);
+  animation: blink 0.7s step-end infinite;
+}
+
+.terminal-window {
+  max-width: 640px;
+  margin: 0 auto;
+  background: var(--bg-card);
+  border: 1px solid var(--purple);
+  border-radius: 10px;
+  overflow: hidden;
+  text-align: left;
+}
+
+.terminal-titlebar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  background: #0f0f17;
+  border-bottom: 1px solid var(--border);
+}
+
+.terminal-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #333;
+}
+
+.terminal-dot:nth-child(1) { background: #ff5f57; }
+.terminal-dot:nth-child(2) { background: #febc2e; }
+.terminal-dot:nth-child(3) { background: #28c840; }
+
+.terminal-label {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin-left: 0.5rem;
+}
+
+.terminal-body {
+  padding: 1.5rem 2rem;
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  line-height: 2;
+}
+
+.terminal-body .dollar { color: var(--purple); }
+.terminal-body .cmd { color: var(--text); }
+.terminal-body .comment { color: var(--muted); }
+
+/* FOOTER */
+footer {
+  padding: 4rem 2rem;
+  text-align: center;
+}
+
+footer p {
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+footer a {
+  color: var(--muted);
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+footer a:hover {
+  color: var(--purple);
+}
+
+/* FADE IN */
+.fade-in {
+  opacity: 0;
+  transform: translateY(24px);
+  transition: opacity 0.7s ease, transform 0.7s ease;
+}
+
+.fade-in.in-view {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* RESPONSIVE */
+@media (max-width: 768px) {
+  nav {
+    padding: 1rem;
+  }
+  .nav-links {
+    gap: 1rem;
+  }
+  .nav-links a {
+    font-size: 0.75rem;
+  }
+  .hero {
+    padding-top: 20vh;
+    padding-bottom: 10vh;
+  }
+  .hero-typing {
+    white-space: normal;
+    word-break: break-word;
+  }
+  .feature-section {
+    min-height: auto;
+    padding: 5rem 1.25rem;
+  }
+  .feature-section.align-right .feature-inner {
+    text-align: left;
+  }
+  .feature-section.align-right .feature-desc {
+    margin-left: 0;
+  }
+  .feature-section.align-right .code-block {
+    margin-left: 0;
+  }
+  .code-block {
+    font-size: 0.75rem;
+    padding: 1rem 1.25rem;
+  }
+  .arch-section, .start-section {
+    padding: 6rem 1.25rem;
+  }
+  .terminal-body {
+    font-size: 0.75rem;
+    padding: 1rem 1.25rem;
+  }
+  .install-pill {
+    font-size: 0.8rem;
+  }
+}
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <a href="#" class="nav-logo">synapse<span>_</span></a>
+  <ul class="nav-links">
+    <li><a href="#features">features</a></li>
+    <li><a href="#arch">arch</a></li>
+    <li><a href="#start">start</a></li>
+    <li><a href="https://github.com/UpayanGhosh/Synapse-OSS" target="_blank" rel="noopener">github</a></li>
+  </ul>
+</nav>
+
+<!-- HERO -->
+<section class="hero" id="top">
+  <div class="hero-typing" id="heroTyping" aria-label="> the AI that actually knows you"></div>
+  <p class="hero-sub" id="heroSub">AI that remembers. Personality that adapts. Privacy you control.</p>
+  <div class="hero-actions" id="heroActions">
+    <button class="install-pill" id="installBtn" aria-label="Copy install command">
+      <span class="dollar">$</span> pip install synapse
+      <span class="tooltip" id="installTooltip">Copied!</span>
+    </button>
+    <a href="https://github.com/UpayanGhosh/Synapse-OSS" class="source-link" target="_blank" rel="noopener">View Source &rarr;</a>
+  </div>
+  <p class="hero-channels" id="heroChannels">whatsapp &middot; telegram &middot; discord &middot; slack</p>
+</section>
+
+<!-- FEATURES -->
+<div id="features">
+
+  <!-- Feature 1: SBS -->
+  <section class="feature-section align-left">
+    <div class="feature-inner fade-in">
+      <h2 class="feature-headline">personality.learn<span class="paren">(</span>you<span class="paren">)</span></h2>
+      <p class="feature-desc">8 behavioral layers. Extracted from conversation. No config files. No settings pages. Just talk &mdash; it learns.</p>
+      <div class="code-block">
+        <span class="brace">{</span><br>
+        &nbsp;&nbsp;<span class="key">"linguistic"</span><span class="brace">:</span> <span class="brace">{</span> <span class="key">"formality"</span><span class="brace">:</span> <span class="val">0.3</span><span class="brace">,</span> <span class="key">"banglish_ratio"</span><span class="brace">:</span> <span class="val">0.6</span> <span class="brace">}</span><span class="brace">,</span><br>
+        &nbsp;&nbsp;<span class="key">"emotional"</span><span class="brace">:</span>&nbsp; <span class="brace">{</span> <span class="key">"baseline"</span><span class="brace">:</span> <span class="str">"calm"</span><span class="brace">,</span> <span class="key">"triggers"</span><span class="brace">:</span> <span class="brace">[</span><span class="str">"deadlines"</span><span class="brace">]</span> <span class="brace">}</span><span class="brace">,</span><br>
+        &nbsp;&nbsp;<span class="key">"interaction"</span><span class="brace">:</span> <span class="brace">{</span> <span class="key">"preferred_length"</span><span class="brace">:</span> <span class="str">"brief"</span> <span class="brace">}</span><br>
+        <span class="brace">}</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- Feature 2: Memory -->
+  <section class="feature-section align-right">
+    <div class="feature-inner fade-in">
+      <h2 class="feature-headline">memory.query<span class="paren">(</span>you<span class="paren">)</span></h2>
+      <p class="feature-desc">Vector search. Knowledge graph. Full-text. Reranking. Under 350ms. All embedded. No Docker.</p>
+      <div class="code-block">
+        <span class="prompt-sym">&gt;</span> synapse memory "what did Alice say about the project?"<br>
+        <br>
+        <span class="label">[vector]</span>&nbsp; 3 results (0.87, 0.82, 0.79)<br>
+        <span class="label">[graph]</span>&nbsp;&nbsp; Alice --works_on--&gt; Project Alpha<br>
+        <span class="label">[rerank]</span>&nbsp; top: "Alice mentioned deadline is March 15"<br>
+        <br>
+        Retrieved in 127ms
+      </div>
+    </div>
+  </section>
+
+  <!-- Feature 3: Dual Cognition -->
+  <section class="feature-section align-left">
+    <div class="feature-inner fade-in">
+      <h2 class="feature-headline">brain.think<span class="paren">(</span>message<span class="paren">)</span></h2>
+      <p class="feature-desc">Two streams. Present + Memory. Merge. Inner monologue. Tension score. Then &mdash; and only then &mdash; it responds.</p>
+      <div class="code-block">
+        <span class="label">present</span><span class="brace">:</span>&nbsp; <span class="brace">{</span> <span class="key">sentiment</span><span class="brace">:</span> <span class="str">"positive"</span><span class="brace">,</span> <span class="key">intent</span><span class="brace">:</span> <span class="str">"announcement"</span> <span class="brace">}</span><br>
+        <span class="label">memory</span><span class="brace">:</span>&nbsp;&nbsp; <span class="brace">{</span> <span class="key">context</span><span class="brace">:</span> <span class="str">"job search anxiety, 3 weeks ago"</span> <span class="brace">}</span><br>
+        <span class="label">merge</span><span class="brace">:</span>&nbsp;&nbsp;&nbsp; <span class="brace">{</span> <span class="key">strategy</span><span class="brace">:</span> <span class="str">"celebrate+reassure"</span><span class="brace">,</span> <span class="key">tension</span><span class="brace">:</span> <span class="val">0.4</span> <span class="brace">}</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- Feature 4: Privacy -->
+  <section class="feature-section align-right">
+    <div class="feature-inner fade-in">
+      <h2 class="feature-headline">vault.lock<span class="paren">(</span>private<span class="paren">)</span></h2>
+      <p class="feature-desc">SQL-level hemisphere isolation. Private &rarr; local Ollama. Never touches a cloud API. Not a toggle &mdash; a database guarantee.</p>
+      <div class="code-block">
+        <span class="keyword">SELECT</span> * <span class="keyword">FROM</span> documents<br>
+        <span class="keyword">WHERE</span> hemisphere_tag = <span class="str">'spicy'</span><br>
+        <span class="comment">-- This query ONLY runs on local Ollama. Never cloud.</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- Feature 5: Routing -->
+  <section class="feature-section align-left">
+    <div class="feature-inner fade-in">
+      <h2 class="feature-headline">router.classify<span class="paren">(</span>intent<span class="paren">)</span></h2>
+      <p class="feature-desc">Casual &rarr; Gemini Flash. Code &rarr; Claude Sonnet. Private &rarr; Ollama. 100+ models. Auto fallbacks.</p>
+      <div class="route-table">
+        <span class="role">CASUAL</span>&nbsp;&nbsp;&nbsp; <span class="arrow">&rarr;</span>&nbsp; gemini/gemini-2.0-flash<br>
+        <span class="role">CODE</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <span class="arrow">&rarr;</span>&nbsp; anthropic/claude-sonnet-4-6<br>
+        <span class="role">ANALYSIS</span>&nbsp; <span class="arrow">&rarr;</span>&nbsp; gemini/gemini-2.5-pro<br>
+        <span class="role">VAULT</span>&nbsp;&nbsp;&nbsp;&nbsp; <span class="arrow">&rarr;</span>&nbsp; ollama_chat/llama3.3&nbsp; <span class="local">(local)</span>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<!-- ARCHITECTURE -->
+<section class="arch-section" id="arch">
+  <h2 class="arch-title fade-in">architecture</h2>
+  <div class="pipeline fade-in">
+    <div class="pipe-step">
+      <div class="pipe-step-name">Channel</div>
+      <div class="pipe-step-detail">WhatsApp &middot; Telegram &middot; Discord &middot; Slack</div>
+    </div>
+    <div class="pipe-connector"></div>
+    <div class="pipe-step">
+      <div class="pipe-step-name">Flood Gate</div>
+      <div class="pipe-step-detail">3s batching + dedup</div>
+    </div>
+    <div class="pipe-connector"></div>
+    <div class="pipe-step">
+      <div class="pipe-step-name">Memory</div>
+      <div class="pipe-step-detail">LanceDB + SQLite + KG</div>
+    </div>
+    <div class="pipe-connector"></div>
+    <div class="pipe-step">
+      <div class="pipe-step-name">Cognition</div>
+      <div class="pipe-step-detail">Present + Memory &rarr; Merge</div>
+    </div>
+    <div class="pipe-connector"></div>
+    <div class="pipe-step">
+      <div class="pipe-step-name">LLM Router</div>
+      <div class="pipe-step-detail">100+ models via litellm</div>
+    </div>
+    <div class="pipe-connector"></div>
+    <div class="pipe-step">
+      <div class="pipe-step-name">Reply</div>
+      <div class="pipe-step-detail">Auto-continue + SBS update</div>
+    </div>
+  </div>
+  <p class="arch-stack fade-in">python 3.11 &middot; fastapi &middot; lancedb &middot; sqlite &middot; litellm &middot; asyncio</p>
+</section>
+
+<!-- GET STARTED -->
+<section class="start-section" id="start">
+  <h2 class="start-title fade-in"><span class="prompt-sym">&gt;</span> get started<span class="cursor">_</span></h2>
+  <div class="terminal-window fade-in">
+    <div class="terminal-titlebar">
+      <span class="terminal-dot"></span>
+      <span class="terminal-dot"></span>
+      <span class="terminal-dot"></span>
+      <span class="terminal-label">terminal</span>
+    </div>
+    <div class="terminal-body">
+      <span class="dollar">$</span> <span class="cmd">git clone https://github.com/UpayanGhosh/Synapse-OSS.git</span><br>
+      <span class="dollar">$</span> <span class="cmd">cd Synapse-OSS</span><br>
+      <span class="dollar">$</span> <span class="cmd">pip install -r requirements.txt</span><br>
+      <span class="dollar">$</span> <span class="cmd">python workspace/main.py onboard --flow quickstart</span><br>
+      <span class="dollar">$</span> <span class="cmd">python workspace/main.py chat</span><br>
+      <br>
+      <span class="comment"># Your AI is now running. Say something.</span>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <p>built by <a href="https://github.com/UpayanGhosh" target="_blank" rel="noopener">upayan ghosh</a> &middot; mit license &middot; <a href="https://github.com/UpayanGhosh/Synapse-OSS" target="_blank" rel="noopener">github</a></p>
+</footer>
+
+<script>
+(function() {
+  'use strict';
+
+  // TYPING EFFECT
+  var heroEl = document.getElementById('heroTyping');
+  var fullText = ' the AI that actually knows you';
+  var idx = 0;
+  var typingSpeed = 40;
+
+  // Build initial structure: prompt + cursor
+  heroEl.innerHTML = '<span class="prompt">&gt;</span><span id="heroText"></span><span class="cursor">_</span>';
+  var textEl = document.getElementById('heroText');
+
+  var typeInterval = setInterval(function() {
+    if (idx < fullText.length) {
+      textEl.textContent += fullText[idx];
+      idx++;
+    } else {
+      clearInterval(typeInterval);
+      // After typing done, show subtitle
+      setTimeout(function() {
+        document.getElementById('heroSub').classList.add('visible');
+        // Then show actions
+        setTimeout(function() {
+          document.getElementById('heroActions').classList.add('visible');
+          document.getElementById('heroChannels').classList.add('visible');
+        }, 500);
+      }, 400);
+    }
+  }, typingSpeed);
+
+  // COPY INSTALL COMMAND
+  var installBtn = document.getElementById('installBtn');
+  var tooltip = document.getElementById('installTooltip');
+  installBtn.addEventListener('click', function() {
+    var text = 'pip install synapse';
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text);
+    } else {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.left = '-9999px';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    }
+    tooltip.classList.add('show');
+    setTimeout(function() {
+      tooltip.classList.remove('show');
+    }, 1500);
+  });
+
+  // INTERSECTION OBSERVER FOR FADE-IN
+  var fadeEls = document.querySelectorAll('.fade-in');
+  if ('IntersectionObserver' in window) {
+    var observer = new IntersectionObserver(function(entries) {
+      entries.forEach(function(entry) {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('in-view');
+          observer.unobserve(entry.target);
+        }
+      });
+    }, {
+      threshold: 0.15,
+      rootMargin: '0px 0px -40px 0px'
+    });
+    fadeEls.forEach(function(el) {
+      observer.observe(el);
+    });
+  } else {
+    // Fallback: just show everything
+    fadeEls.forEach(function(el) {
+      el.classList.add('in-view');
+    });
+  }
+})();
+</script>
+</body>
+</html>

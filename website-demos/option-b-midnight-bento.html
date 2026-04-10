@@ -1,0 +1,993 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Synapse — The AI that actually knows you</title>
+<style>
+:root {
+  --bg: #0d1117;
+  --bg-alt: #0a0f14;
+  --card-bg: #161b22;
+  --border: #30363d;
+  --accent: #10B981;
+  --accent-dark: #059669;
+  --text: #e6edf3;
+  --text-muted: #8b949e;
+  --text-dim: #484f58;
+  --font-sans: -apple-system, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+  --radius: 8px;
+  --radius-lg: 12px;
+  --transition: 0.3s ease;
+}
+
+*, *::before, *::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  font-family: var(--font-sans);
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.6;
+  overflow-x: hidden;
+}
+
+a {
+  text-decoration: none;
+  color: inherit;
+}
+
+/* ─── Fade-in Animation ─── */
+.fade-in {
+  opacity: 0;
+  transform: translateY(24px);
+  transition: opacity 0.6s ease, transform 0.6s ease;
+}
+
+.fade-in.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* ─── Container ─── */
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+/* ─── Navigation ─── */
+nav {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  padding: 0 24px;
+}
+
+.nav-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 64px;
+}
+
+.nav-logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 18px;
+  color: var(--text);
+  letter-spacing: -0.02em;
+}
+
+.nav-logo .dot {
+  color: var(--accent);
+  font-size: 14px;
+}
+
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: 32px;
+  list-style: none;
+}
+
+.nav-links a {
+  font-size: 14px;
+  color: var(--text-muted);
+  transition: color var(--transition);
+  font-weight: 500;
+}
+
+.nav-links a:hover {
+  color: var(--text);
+}
+
+.nav-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 20px;
+  padding: 6px 16px;
+  transition: background var(--transition), color var(--transition);
+}
+
+.nav-cta:hover {
+  background: var(--accent);
+  color: #000;
+}
+
+.nav-hamburger {
+  display: none;
+  flex-direction: column;
+  gap: 5px;
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 4px;
+}
+
+.nav-hamburger span {
+  display: block;
+  width: 22px;
+  height: 2px;
+  background: var(--text-muted);
+  border-radius: 2px;
+  transition: transform var(--transition), opacity var(--transition);
+}
+
+/* ─── Hero ─── */
+.hero {
+  text-align: center;
+  padding: 120px 24px 100px;
+}
+
+.hero-badge {
+  display: inline-block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+  letter-spacing: 0.02em;
+  margin-bottom: 24px;
+}
+
+.hero h1 {
+  font-size: clamp(40px, 6vw, 76px);
+  font-weight: 800;
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+  color: var(--text);
+  max-width: 800px;
+  margin: 0 auto 20px;
+}
+
+.hero-subtitle {
+  font-size: clamp(16px, 2vw, 20px);
+  color: var(--text-muted);
+  max-width: 560px;
+  margin: 0 auto 40px;
+  line-height: 1.5;
+}
+
+.hero-ctas {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 40px;
+}
+
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  padding: 12px 28px;
+  background: var(--accent);
+  color: #000;
+  font-weight: 700;
+  font-size: 15px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  transition: background var(--transition), transform 0.15s ease;
+}
+
+.btn-primary:hover {
+  background: var(--accent-dark);
+  transform: translateY(-1px);
+}
+
+.btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  padding: 12px 28px;
+  background: transparent;
+  color: var(--text);
+  font-weight: 600;
+  font-size: 15px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: border-color var(--transition), transform 0.15s ease;
+}
+
+.btn-ghost:hover {
+  border-color: var(--text-muted);
+  transform: translateY(-1px);
+}
+
+.hero-stats {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  font-size: 13px;
+  color: var(--text-muted);
+  flex-wrap: wrap;
+}
+
+.hero-stats .num {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.hero-stats .sep {
+  color: var(--text-dim);
+}
+
+/* ─── Section Headings ─── */
+.section-heading {
+  margin-bottom: 48px;
+}
+
+.section-heading h2 {
+  font-size: clamp(28px, 3.5vw, 40px);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  margin-bottom: 8px;
+}
+
+.section-heading p {
+  font-size: 16px;
+  color: var(--text-muted);
+  max-width: 480px;
+}
+
+/* ─── Bento Grid ─── */
+.features-section {
+  padding: 80px 24px 100px;
+}
+
+.bento-grid {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 16px;
+}
+
+.bento-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 32px;
+  transition: border-color var(--transition);
+  display: flex;
+  flex-direction: column;
+}
+
+.bento-card:hover {
+  border-color: var(--accent);
+}
+
+.bento-card.span-6 {
+  grid-column: span 6;
+}
+
+.bento-card.span-3 {
+  grid-column: span 3;
+}
+
+.bento-card.span-4 {
+  grid-column: span 4;
+}
+
+.bento-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 12px;
+}
+
+.bento-card h3 {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  margin-bottom: 10px;
+  line-height: 1.25;
+}
+
+.bento-card p {
+  font-size: 14px;
+  color: var(--text-muted);
+  line-height: 1.6;
+  flex: 1;
+}
+
+.bento-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.bento-pill {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  font-weight: 500;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 20px;
+  padding: 4px 12px;
+  white-space: nowrap;
+}
+
+.bento-pipeline {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-top: 20px;
+  padding: 16px;
+  background: var(--bg);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+.bento-pipeline .arrow {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+/* ─── Developer Experience ─── */
+.dev-section {
+  padding: 80px 24px 100px;
+}
+
+.dev-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+.terminal-card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  transition: border-color var(--transition);
+}
+
+.terminal-card:hover {
+  border-color: var(--accent);
+}
+
+.terminal-titlebar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--card-bg);
+}
+
+.terminal-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.terminal-dot.red { background: #ff5f57; }
+.terminal-dot.yellow { background: #febc2e; }
+.terminal-dot.green { background: #28c840; }
+
+.terminal-title {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-left: 8px;
+  font-family: var(--font-mono);
+}
+
+.terminal-body {
+  padding: 20px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 2;
+  overflow-x: auto;
+}
+
+.terminal-body .prompt {
+  color: var(--accent);
+  user-select: none;
+}
+
+.terminal-body .cmd {
+  color: var(--text);
+}
+
+/* JSON syntax */
+.json-key { color: var(--accent); }
+.json-str { color: #79c0ff; }
+.json-brace { color: var(--text-muted); }
+.json-body {
+  padding: 20px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.8;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+/* ─── Architecture ─── */
+.arch-section {
+  background: var(--bg-alt);
+  padding: 100px 24px;
+}
+
+.arch-section .section-heading {
+  text-align: center;
+}
+
+.arch-section .section-heading p {
+  margin: 0 auto;
+  max-width: 480px;
+}
+
+.tech-badges {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 56px;
+}
+
+.tech-badge {
+  font-size: 13px;
+  font-family: var(--font-mono);
+  font-weight: 500;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 20px;
+  padding: 6px 18px;
+  white-space: nowrap;
+}
+
+.pipeline-flow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  flex-wrap: wrap;
+  padding: 32px 16px;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow-x: auto;
+}
+
+.pipeline-node {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 16px;
+  white-space: nowrap;
+  transition: border-color var(--transition);
+}
+
+.pipeline-node:hover {
+  border-color: var(--accent);
+}
+
+.pipeline-arrow {
+  color: var(--accent);
+  font-size: 18px;
+  font-weight: 700;
+  padding: 0 8px;
+  flex-shrink: 0;
+}
+
+/* ─── Community ─── */
+.community-section {
+  padding: 100px 24px;
+  text-align: center;
+}
+
+.community-section .section-heading {
+  text-align: center;
+}
+
+.community-section .section-heading p {
+  margin: 0 auto;
+}
+
+.community-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-bottom: 48px;
+}
+
+.community-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 32px 24px;
+  text-align: center;
+  transition: border-color var(--transition);
+}
+
+.community-card:hover {
+  border-color: var(--accent);
+}
+
+.community-card h3 {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 8px;
+}
+
+.community-card p {
+  font-size: 14px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.community-ctas {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+/* ─── Footer ─── */
+footer {
+  border-top: 1px solid var(--border);
+  padding: 40px 24px;
+  text-align: center;
+}
+
+.footer-built {
+  font-size: 14px;
+  color: var(--text-muted);
+  margin-bottom: 16px;
+}
+
+.footer-links {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  margin-bottom: 16px;
+}
+
+.footer-links a {
+  font-size: 13px;
+  color: var(--text-muted);
+  transition: color var(--transition);
+}
+
+.footer-links a:hover {
+  color: var(--accent);
+}
+
+.footer-version {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+/* ─── Responsive ─── */
+@media (max-width: 1024px) {
+  .bento-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .bento-card.span-6,
+  .bento-card.span-4,
+  .bento-card.span-3 {
+    grid-column: span 1;
+  }
+
+  .bento-card.span-6 {
+    grid-column: span 2;
+  }
+
+  .pipeline-flow {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 768px) {
+  .nav-links {
+    display: none;
+    position: absolute;
+    top: 64px;
+    left: 0;
+    right: 0;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+    flex-direction: column;
+    padding: 24px;
+    gap: 20px;
+  }
+
+  .nav-links.open {
+    display: flex;
+  }
+
+  .nav-hamburger {
+    display: flex;
+  }
+
+  .hero {
+    padding: 80px 24px 60px;
+  }
+
+  .bento-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .bento-card.span-6,
+  .bento-card.span-4,
+  .bento-card.span-3 {
+    grid-column: span 1;
+  }
+
+  .dev-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .community-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .pipeline-flow {
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+@media (max-width: 480px) {
+  .hero h1 {
+    font-size: 36px;
+  }
+
+  .hero-ctas {
+    flex-direction: column;
+  }
+
+  .btn-primary, .btn-ghost {
+    width: 100%;
+    justify-content: center;
+  }
+}
+</style>
+</head>
+<body>
+
+<!-- ─── Navigation ─── -->
+<nav>
+  <div class="nav-inner">
+    <a href="#" class="nav-logo">
+      <span class="dot">&#9679;</span> synapse
+    </a>
+    <ul class="nav-links" id="navLinks">
+      <li><a href="#features">Features</a></li>
+      <li><a href="#architecture">Architecture</a></li>
+      <li><a href="#developers">Developers</a></li>
+      <li><a href="#community">Community</a></li>
+      <li><a href="https://github.com/UpayanGhosh/Synapse-OSS" target="_blank" rel="noopener" class="nav-cta">&#9733; Star on GitHub</a></li>
+    </ul>
+    <button class="nav-hamburger" id="navToggle" aria-label="Toggle navigation">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+</nav>
+
+<!-- ─── Hero ─── -->
+<section class="hero">
+  <div class="fade-in">
+    <span class="hero-badge">v3.0 &mdash; Now with Dual Cognition</span>
+    <h1>The AI that actually knows you.</h1>
+    <p class="hero-subtitle">AI that remembers. Personality that adapts. Privacy you control.</p>
+    <div class="hero-ctas">
+      <a href="#developers" class="btn-primary">Get Started</a>
+      <a href="https://github.com/UpayanGhosh/Synapse-OSS" target="_blank" rel="noopener" class="btn-ghost">View on GitHub</a>
+    </div>
+    <div class="hero-stats">
+      <span><span class="num">&#9733; 847</span></span>
+      <span class="sep">&middot;</span>
+      <span><span class="num">127</span> forks</span>
+      <span class="sep">&middot;</span>
+      <span><span class="num">23</span> contributors</span>
+    </div>
+  </div>
+</section>
+
+<!-- ─── Features ─── -->
+<section class="features-section" id="features">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <h2>Features</h2>
+      <p>Everything you need for a personal AI companion.</p>
+    </div>
+
+    <div class="bento-grid">
+      <!-- Row 1: Two large cards (6 cols each) -->
+      <div class="bento-card span-6 fade-in">
+        <span class="bento-label">Persona Engine</span>
+        <h3>Your style, learned &mdash; not configured</h3>
+        <p>8-layer behavioral profile automatically extracted from your conversations. Linguistic patterns, emotional triggers, domain expertise &mdash; all learned, never configured.</p>
+        <div class="bento-pills">
+          <span class="bento-pill">linguistic</span>
+          <span class="bento-pill">interaction</span>
+          <span class="bento-pill">emotional</span>
+          <span class="bento-pill">domain</span>
+          <span class="bento-pill">communication</span>
+          <span class="bento-pill">memory</span>
+          <span class="bento-pill">temporal</span>
+          <span class="bento-pill">relationship</span>
+        </div>
+      </div>
+
+      <div class="bento-card span-6 fade-in">
+        <span class="bento-label">Memory System</span>
+        <h3>Memory that connects the dots</h3>
+        <p>Hybrid RAG: LanceDB vector search + SQLite full-text + FlashRank reranking + knowledge graph. Under 350ms P95. All embedded.</p>
+        <div class="bento-pipeline">
+          Query <span class="arrow">&rarr;</span> Embed <span class="arrow">&rarr;</span> ANN+FTS <span class="arrow">&rarr;</span> Rerank <span class="arrow">&rarr;</span> KG <span class="arrow">&rarr;</span> Context
+        </div>
+      </div>
+
+      <!-- Row 2: Four equal cards (3 cols each) -->
+      <div class="bento-card span-3 fade-in">
+        <span class="bento-label">Reasoning</span>
+        <h3>It thinks before it speaks</h3>
+        <p>Present analysis + memory recall merge into an inner monologue with tension scoring.</p>
+      </div>
+
+      <div class="bento-card span-3 fade-in">
+        <span class="bento-label">Security</span>
+        <h3>Zero cloud leakage</h3>
+        <p>Hemisphere isolation at the SQL level. Private content routes to local Ollama only.</p>
+      </div>
+
+      <div class="bento-card span-3 fade-in">
+        <span class="bento-label">Channels</span>
+        <h3>One brain, everywhere</h3>
+        <p>WhatsApp, Telegram, Discord, Slack &mdash; unified memory across every platform.</p>
+      </div>
+
+      <div class="bento-card span-3 fade-in">
+        <span class="bento-label">LLM Routing</span>
+        <h3>Right model, every time</h3>
+        <p>Intent-based routing to 100+ models. Automatic fallbacks. Token budgets.</p>
+      </div>
+
+      <!-- Row 3: Three equal cards (4 cols each) -->
+      <div class="bento-card span-4 fade-in">
+        <h3>Your AI reaches out first</h3>
+        <p>Polls calendar, email, Slack. Knows your schedule. Proactive check-ins.</p>
+      </div>
+
+      <div class="bento-card span-4 fade-in">
+        <h3>Relationships, not just facts</h3>
+        <p>Auto-extracts subject-predicate-object triples. Maps how people and events connect.</p>
+      </div>
+
+      <div class="bento-card span-4 fade-in">
+        <h3>Time-travel for config</h3>
+        <p>Atomic snapshots before every change. Auto-rollback. 50 restore points.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─── Developer Experience ─── -->
+<section class="dev-section" id="developers">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <h2>Developer Experience</h2>
+      <p>5 minutes to first message.</p>
+    </div>
+
+    <div class="dev-grid">
+      <div class="terminal-card fade-in">
+        <div class="terminal-titlebar">
+          <span class="terminal-dot red"></span>
+          <span class="terminal-dot yellow"></span>
+          <span class="terminal-dot green"></span>
+          <span class="terminal-title">Terminal</span>
+        </div>
+        <div class="terminal-body">
+          <div><span class="prompt">$ </span><span class="cmd">git clone https://github.com/UpayanGhosh/Synapse-OSS.git</span></div>
+          <div><span class="prompt">$ </span><span class="cmd">cd Synapse-OSS && pip install -r requirements.txt</span></div>
+          <div><span class="prompt">$ </span><span class="cmd">python workspace/main.py onboard --flow quickstart</span></div>
+          <div><span class="prompt">$ </span><span class="cmd">python workspace/main.py chat</span></div>
+        </div>
+      </div>
+
+      <div class="terminal-card fade-in">
+        <div class="terminal-titlebar">
+          <span class="terminal-dot red"></span>
+          <span class="terminal-dot yellow"></span>
+          <span class="terminal-dot green"></span>
+          <span class="terminal-title">synapse.json</span>
+        </div>
+        <div class="json-body"><span class="json-brace">{</span>
+  <span class="json-key">"model_mappings"</span><span class="json-brace">:</span> <span class="json-brace">{</span>
+    <span class="json-key">"casual"</span><span class="json-brace">:</span> <span class="json-brace">{</span> <span class="json-key">"model"</span><span class="json-brace">:</span> <span class="json-str">"gemini/gemini-2.0-flash"</span> <span class="json-brace">}</span><span class="json-brace">,</span>
+    <span class="json-key">"code"</span><span class="json-brace">:</span>   <span class="json-brace">{</span> <span class="json-key">"model"</span><span class="json-brace">:</span> <span class="json-str">"anthropic/claude-sonnet-4-6"</span> <span class="json-brace">}</span><span class="json-brace">,</span>
+    <span class="json-key">"vault"</span><span class="json-brace">:</span>  <span class="json-brace">{</span> <span class="json-key">"model"</span><span class="json-brace">:</span> <span class="json-str">"ollama_chat/llama3.3"</span> <span class="json-brace">}</span>
+  <span class="json-brace">}</span>
+<span class="json-brace">}</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─── Architecture ─── -->
+<section class="arch-section" id="architecture">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <h2>Runs everywhere. Depends on nothing.</h2>
+      <p>Zero Docker. Zero Redis. Embedded everything.</p>
+    </div>
+
+    <div class="tech-badges fade-in">
+      <span class="tech-badge">Python 3.11</span>
+      <span class="tech-badge">FastAPI</span>
+      <span class="tech-badge">LanceDB</span>
+      <span class="tech-badge">SQLite WAL</span>
+      <span class="tech-badge">litellm</span>
+      <span class="tech-badge">FlashRank</span>
+      <span class="tech-badge">asyncio</span>
+    </div>
+
+    <div class="pipeline-flow fade-in">
+      <span class="pipeline-node">Channel</span>
+      <span class="pipeline-arrow">&rarr;</span>
+      <span class="pipeline-node">Flood Gate</span>
+      <span class="pipeline-arrow">&rarr;</span>
+      <span class="pipeline-node">Dedup</span>
+      <span class="pipeline-arrow">&rarr;</span>
+      <span class="pipeline-node">Queue</span>
+      <span class="pipeline-arrow">&rarr;</span>
+      <span class="pipeline-node">Worker</span>
+      <span class="pipeline-arrow">&rarr;</span>
+      <span class="pipeline-node">Memory + Cognition</span>
+      <span class="pipeline-arrow">&rarr;</span>
+      <span class="pipeline-node">LLM Router</span>
+      <span class="pipeline-arrow">&rarr;</span>
+      <span class="pipeline-node">Reply</span>
+    </div>
+  </div>
+</section>
+
+<!-- ─── Community ─── -->
+<section class="community-section" id="community">
+  <div class="container">
+    <div class="section-heading fade-in">
+      <h2>Open Source. MIT License. Forever.</h2>
+    </div>
+
+    <div class="community-grid">
+      <div class="community-card fade-in">
+        <h3>Self-Hosted</h3>
+        <p>Your data never leaves your machine.</p>
+      </div>
+      <div class="community-card fade-in">
+        <h3>Extensible</h3>
+        <p>10 MCP tool servers. Add your own.</p>
+      </div>
+      <div class="community-card fade-in">
+        <h3>Lightweight</h3>
+        <p>Runs on a Raspberry Pi 4.</p>
+      </div>
+    </div>
+
+    <div class="community-ctas fade-in">
+      <a href="https://github.com/UpayanGhosh/Synapse-OSS" target="_blank" rel="noopener" class="btn-primary">Contribute on GitHub</a>
+      <a href="https://github.com/UpayanGhosh/Synapse-OSS#readme" target="_blank" rel="noopener" class="btn-ghost">Read the Docs</a>
+    </div>
+  </div>
+</section>
+
+<!-- ─── Footer ─── -->
+<footer>
+  <p class="footer-built">Built with obsession by Upayan Ghosh</p>
+  <div class="footer-links">
+    <a href="https://github.com/UpayanGhosh/Synapse-OSS" target="_blank" rel="noopener">GitHub</a>
+    <a href="https://github.com/UpayanGhosh/Synapse-OSS/blob/main/LICENSE" target="_blank" rel="noopener">License</a>
+    <a href="https://github.com/UpayanGhosh/Synapse-OSS#readme" target="_blank" rel="noopener">Documentation</a>
+  </div>
+  <p class="footer-version">Synapse v3.0</p>
+</footer>
+
+<script>
+/* ─── Mobile Navigation Toggle ─── */
+(function() {
+  var toggle = document.getElementById('navToggle');
+  var links = document.getElementById('navLinks');
+  if (toggle && links) {
+    toggle.addEventListener('click', function() {
+      links.classList.toggle('open');
+    });
+    /* Close menu when a link is clicked */
+    var items = links.querySelectorAll('a');
+    for (var i = 0; i < items.length; i++) {
+      items[i].addEventListener('click', function() {
+        links.classList.remove('open');
+      });
+    }
+  }
+})();
+
+/* ─── Intersection Observer for Fade-in ─── */
+(function() {
+  var targets = document.querySelectorAll('.fade-in');
+  if (!('IntersectionObserver' in window)) {
+    /* Fallback: show everything */
+    for (var i = 0; i < targets.length; i++) {
+      targets[i].classList.add('visible');
+    }
+    return;
+  }
+
+  var observer = new IntersectionObserver(function(entries) {
+    entries.forEach(function(entry) {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible');
+        observer.unobserve(entry.target);
+      }
+    });
+  }, {
+    threshold: 0.1,
+    rootMargin: '0px 0px -40px 0px'
+  });
+
+  targets.forEach(function(target) {
+    observer.observe(target);
+  });
+})();
+</script>
+</body>
+</html>

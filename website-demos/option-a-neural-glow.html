@@ -1,0 +1,1044 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Synapse — The AI That Actually Knows You</title>
+<style>
+:root {
+  --cyan: #00F0FF;
+  --cyan-dim: rgba(0, 240, 255, 0.15);
+  --cyan-glow: rgba(0, 240, 255, 0.4);
+  --purple: #8B5CF6;
+  --pink: #EC4899;
+  --bg: #06060f;
+  --bg-alt: #08081a;
+  --card-bg: rgba(15, 15, 30, 0.7);
+  --card-border: rgba(0, 240, 255, 0.08);
+  --text: #e4e8f1;
+  --text-muted: #8b95a5;
+  --text-dim: #555d6e;
+  --font-sans: -apple-system, 'Inter', 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+  --transition: 0.3s ease;
+}
+
+*, *::before, *::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  font-size: 16px;
+}
+
+body {
+  font-family: var(--font-sans);
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.6;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* --- Dot Grid Background --- */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: radial-gradient(rgba(0, 240, 255, 0.07) 1px, transparent 1px);
+  background-size: 32px 32px;
+  animation: gridDrift 20s linear infinite;
+  z-index: 0;
+  pointer-events: none;
+}
+
+@keyframes gridDrift {
+  0% { background-position: 0 0; }
+  100% { background-position: 32px 64px; }
+}
+
+/* --- Utility --- */
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 24px;
+  position: relative;
+  z-index: 1;
+}
+
+.section-label {
+  font-size: clamp(1.75rem, 4vw, 2.5rem);
+  font-weight: 700;
+  color: #fff;
+  margin-bottom: 0.25em;
+}
+
+.section-sub {
+  color: var(--text-muted);
+  font-size: 1.05rem;
+  margin-bottom: 3rem;
+  max-width: 520px;
+}
+
+/* --- Fade In Animation --- */
+.fade-in {
+  opacity: 0;
+  transform: translateY(24px);
+  transition: opacity 0.7s ease, transform 0.7s ease;
+}
+
+.fade-in.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* --- Nav --- */
+nav {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: rgba(6, 6, 15, 0.72);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid rgba(0, 240, 255, 0.06);
+}
+
+.nav-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 60px;
+}
+
+.nav-logo {
+  font-family: var(--font-mono);
+  font-weight: 800;
+  font-size: 1.2rem;
+  letter-spacing: 0.14em;
+  color: var(--cyan);
+  text-shadow: 0 0 12px var(--cyan-glow), 0 0 30px var(--cyan-dim);
+  text-decoration: none;
+}
+
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  list-style: none;
+}
+
+.nav-links a {
+  color: var(--text-muted);
+  text-decoration: none;
+  font-size: 0.82rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  transition: color var(--transition);
+}
+
+.nav-links a:hover {
+  color: var(--cyan);
+}
+
+.btn-star {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 16px;
+  border: 1px solid var(--cyan);
+  border-radius: 6px;
+  color: var(--cyan);
+  font-size: 0.8rem;
+  text-decoration: none;
+  letter-spacing: 0.04em;
+  transition: all var(--transition);
+  background: transparent;
+}
+
+.btn-star:hover {
+  background: rgba(0, 240, 255, 0.08);
+  box-shadow: 0 0 16px var(--cyan-dim);
+}
+
+.nav-hamburger {
+  display: none;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+}
+
+.nav-hamburger span {
+  display: block;
+  width: 22px;
+  height: 2px;
+  background: var(--text-muted);
+  margin: 5px 0;
+  transition: all var(--transition);
+}
+
+/* --- Hero --- */
+.hero {
+  position: relative;
+  text-align: center;
+  padding: clamp(100px, 14vh, 180px) 24px clamp(80px, 10vh, 140px);
+  overflow: hidden;
+}
+
+.hero-orb {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -55%);
+  width: clamp(400px, 60vw, 800px);
+  height: clamp(400px, 60vw, 800px);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(0, 240, 255, 0.12) 0%, rgba(139, 92, 246, 0.08) 40%, transparent 70%);
+  filter: blur(80px);
+  animation: orbPulse 6s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 0;
+}
+
+@keyframes orbPulse {
+  0%, 100% { opacity: 0.6; transform: translate(-50%, -55%) scale(1); }
+  50% { opacity: 1; transform: translate(-50%, -55%) scale(1.08); }
+}
+
+.hero-content {
+  position: relative;
+  z-index: 1;
+}
+
+.hero-badge {
+  display: inline-block;
+  padding: 6px 20px;
+  border: 1px solid rgba(0, 240, 255, 0.2);
+  border-radius: 100px;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  letter-spacing: 0.08em;
+  margin-bottom: 32px;
+  background: rgba(0, 240, 255, 0.03);
+}
+
+.hero-title {
+  font-size: clamp(2.5rem, 7vw, 5.5rem);
+  font-weight: 800;
+  line-height: 1.08;
+  letter-spacing: -0.02em;
+  max-width: 840px;
+  margin: 0 auto 24px;
+  background: linear-gradient(135deg, var(--cyan) 0%, var(--purple) 50%, var(--pink) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: heroGlow 4s ease-in-out infinite;
+}
+
+@keyframes heroGlow {
+  0%, 100% { filter: brightness(1) drop-shadow(0 0 0px transparent); }
+  50% { filter: brightness(1.12) drop-shadow(0 0 20px rgba(0, 240, 255, 0.15)); }
+}
+
+.hero-sub {
+  font-size: clamp(1rem, 2vw, 1.25rem);
+  color: var(--text-muted);
+  max-width: 560px;
+  margin: 0 auto 40px;
+  font-weight: 400;
+  line-height: 1.6;
+}
+
+.hero-ctas {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-bottom: 40px;
+}
+
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 32px;
+  background: var(--cyan);
+  color: var(--bg);
+  font-weight: 700;
+  font-size: 0.95rem;
+  border-radius: 8px;
+  text-decoration: none;
+  border: none;
+  cursor: pointer;
+  transition: all var(--transition);
+  box-shadow: 0 0 20px rgba(0, 240, 255, 0.25), 0 0 60px rgba(0, 240, 255, 0.1);
+}
+
+.btn-primary:hover {
+  box-shadow: 0 0 30px rgba(0, 240, 255, 0.4), 0 0 80px rgba(0, 240, 255, 0.15);
+  transform: translateY(-1px);
+}
+
+.btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 32px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: var(--text);
+  font-weight: 500;
+  font-size: 0.95rem;
+  border-radius: 8px;
+  text-decoration: none;
+  transition: all var(--transition);
+  background: transparent;
+}
+
+.btn-ghost:hover {
+  border-color: rgba(0, 240, 255, 0.3);
+  color: var(--cyan);
+  background: rgba(0, 240, 255, 0.04);
+}
+
+.hero-channels {
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+/* --- Bento Grid --- */
+.features {
+  padding: 80px 0 100px;
+}
+
+.bento-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+}
+
+.bento-card {
+  background: var(--card-bg);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--card-border);
+  border-radius: 16px;
+  padding: 36px 32px;
+  transition: all var(--transition);
+  position: relative;
+  overflow: hidden;
+}
+
+.bento-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 16px;
+  border: 1px solid transparent;
+  transition: border-color var(--transition);
+  pointer-events: none;
+}
+
+.bento-card:hover {
+  border-color: rgba(0, 240, 255, 0.12);
+  box-shadow: 0 0 20px rgba(0, 240, 255, 0.08), 0 4px 40px rgba(0, 0, 0, 0.3);
+  transform: translateY(-2px);
+}
+
+.bento-card.span-2 {
+  grid-column: span 2;
+}
+
+.card-badge {
+  display: inline-block;
+  padding: 3px 10px;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--cyan);
+  border: 1px solid rgba(0, 240, 255, 0.2);
+  border-radius: 4px;
+  margin-bottom: 16px;
+  letter-spacing: 0.04em;
+}
+
+.card-icon {
+  font-size: 1.6rem;
+  margin-bottom: 16px;
+}
+
+.card-title {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: #fff;
+  margin-bottom: 10px;
+}
+
+.card-desc {
+  color: var(--text-muted);
+  font-size: 0.92rem;
+  line-height: 1.65;
+}
+
+.card-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.card-pills span {
+  padding: 3px 10px;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+  letter-spacing: 0.02em;
+}
+
+.card-pipeline {
+  margin-top: 20px;
+  padding: 16px 20px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 8px;
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+.card-pipeline .arrow {
+  color: var(--cyan);
+  margin: 0 4px;
+}
+
+/* --- Architecture --- */
+.architecture {
+  background: var(--bg-alt);
+  padding: 100px 0;
+  position: relative;
+}
+
+.architecture::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(0, 240, 255, 0.15), transparent);
+}
+
+.arch-title {
+  font-size: clamp(1.75rem, 4vw, 2.75rem);
+  font-weight: 800;
+  color: #fff;
+  text-align: center;
+  margin-bottom: 0.3em;
+}
+
+.arch-sub {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 1.05rem;
+  margin-bottom: 48px;
+}
+
+.tech-stack {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 64px;
+}
+
+.tech-pill {
+  padding: 8px 18px;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--cyan);
+  border: 1px solid rgba(0, 240, 255, 0.2);
+  border-radius: 8px;
+  background: rgba(0, 240, 255, 0.03);
+  transition: all var(--transition);
+  letter-spacing: 0.02em;
+}
+
+.tech-pill:hover {
+  box-shadow: 0 0 16px var(--cyan-dim);
+  border-color: rgba(0, 240, 255, 0.4);
+  background: rgba(0, 240, 255, 0.06);
+}
+
+.pipeline {
+  max-width: 480px;
+  margin: 0 auto;
+}
+
+.pipeline-step {
+  display: flex;
+  align-items: stretch;
+  min-height: 56px;
+}
+
+.pipeline-line {
+  width: 40px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.pipeline-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--cyan);
+  box-shadow: 0 0 8px var(--cyan-glow);
+  flex-shrink: 0;
+  margin-top: 18px;
+}
+
+.pipeline-connector {
+  width: 2px;
+  flex: 1;
+  background: linear-gradient(to bottom, var(--cyan), rgba(0, 240, 255, 0.15));
+}
+
+.pipeline-card {
+  flex: 1;
+  background: var(--card-bg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--card-border);
+  border-radius: 10px;
+  padding: 14px 20px;
+  margin-bottom: 12px;
+  transition: all var(--transition);
+}
+
+.pipeline-card:hover {
+  border-color: rgba(0, 240, 255, 0.15);
+  box-shadow: 0 0 16px rgba(0, 240, 255, 0.06);
+}
+
+.pipeline-card-title {
+  font-weight: 600;
+  font-size: 0.92rem;
+  color: #fff;
+}
+
+.pipeline-card-sub {
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+
+.pipeline-step:last-child .pipeline-connector {
+  display: none;
+}
+
+/* --- Get Started --- */
+.get-started {
+  padding: 100px 0;
+  text-align: center;
+}
+
+.get-started .section-label {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.terminal {
+  max-width: 640px;
+  margin: 0 auto 40px;
+  background: #0a0a18;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  overflow: hidden;
+  text-align: left;
+}
+
+.terminal-bar {
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+  background: rgba(255, 255, 255, 0.03);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  gap: 8px;
+}
+
+.terminal-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.terminal-dot.red { background: #ff5f56; }
+.terminal-dot.yellow { background: #ffbd2e; }
+.terminal-dot.green { background: #27c93f; }
+
+.terminal-title {
+  flex: 1;
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  font-family: var(--font-sans);
+}
+
+.terminal-body {
+  padding: 24px;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  line-height: 2;
+}
+
+.terminal-body .prompt {
+  color: var(--cyan);
+}
+
+.terminal-body .cmd {
+  color: #e4e8f1;
+}
+
+.terminal-body .comment {
+  color: var(--text-dim);
+}
+
+.get-started-ctas {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+/* --- Footer --- */
+footer {
+  padding: 48px 24px 40px;
+  text-align: center;
+  position: relative;
+}
+
+footer::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(0, 240, 255, 0.12), transparent);
+}
+
+.footer-built {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  margin-bottom: 16px;
+}
+
+.footer-links {
+  display: flex;
+  justify-content: center;
+  gap: 24px;
+  margin-bottom: 24px;
+}
+
+.footer-links a {
+  color: var(--text-dim);
+  text-decoration: none;
+  font-size: 0.82rem;
+  transition: color var(--transition);
+}
+
+.footer-links a:hover {
+  color: var(--cyan);
+}
+
+.footer-tagline {
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  opacity: 0.6;
+}
+
+/* --- Responsive --- */
+@media (max-width: 900px) {
+  .bento-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .bento-card.span-2 {
+    grid-column: span 2;
+  }
+}
+
+@media (max-width: 680px) {
+  .nav-links {
+    display: none;
+    position: absolute;
+    top: 60px;
+    left: 0;
+    right: 0;
+    background: rgba(6, 6, 15, 0.95);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    flex-direction: column;
+    padding: 24px;
+    gap: 20px;
+    border-bottom: 1px solid rgba(0, 240, 255, 0.06);
+  }
+
+  .nav-links.open {
+    display: flex;
+  }
+
+  .nav-hamburger {
+    display: block;
+  }
+
+  .bento-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .bento-card.span-2 {
+    grid-column: span 1;
+  }
+
+  .hero {
+    padding: 80px 16px 60px;
+  }
+
+  .hero-title {
+    font-size: clamp(2.2rem, 9vw, 3rem);
+  }
+
+  .terminal-body {
+    font-size: 0.72rem;
+    padding: 16px;
+  }
+
+  .pipeline {
+    max-width: 100%;
+  }
+}
+</style>
+</head>
+<body>
+
+<!-- Navigation -->
+<nav>
+  <div class="nav-inner">
+    <a href="#" class="nav-logo">SYNAPSE</a>
+    <ul class="nav-links" id="navLinks">
+      <li><a href="#features">Features</a></li>
+      <li><a href="#architecture">Architecture</a></li>
+      <li><a href="#get-started">Get Started</a></li>
+      <li><a href="https://github.com/UpayanGhosh/Synapse-OSS" target="_blank" rel="noopener">GitHub</a></li>
+      <li>
+        <a href="https://github.com/UpayanGhosh/Synapse-OSS" target="_blank" rel="noopener" class="btn-star">
+          <span>&#9733;</span> Star on GitHub
+        </a>
+      </li>
+    </ul>
+    <button class="nav-hamburger" id="hamburger" aria-label="Toggle navigation">
+      <span></span>
+      <span></span>
+      <span></span>
+    </button>
+  </div>
+</nav>
+
+<main>
+
+  <!-- Hero -->
+  <section class="hero">
+    <div class="hero-orb" aria-hidden="true"></div>
+    <div class="hero-content">
+      <div class="hero-badge fade-in">Open Source &middot; Self-Hosted &middot; MIT License</div>
+      <h1 class="hero-title fade-in">The AI that actually knows you.</h1>
+      <p class="hero-sub fade-in">AI that remembers. Personality that adapts. Privacy you control.</p>
+      <div class="hero-ctas fade-in">
+        <a href="#get-started" class="btn-primary">Get Started</a>
+        <a href="https://github.com/UpayanGhosh/Synapse-OSS" target="_blank" rel="noopener" class="btn-ghost">View on GitHub &rarr;</a>
+      </div>
+      <p class="hero-channels fade-in">WhatsApp &middot; Telegram &middot; Discord &middot; Slack</p>
+    </div>
+  </section>
+
+  <!-- Features Bento Grid -->
+  <section class="features" id="features">
+    <div class="container">
+      <h2 class="section-label fade-in">Everything you need</h2>
+      <p class="section-sub fade-in">A complete AI companion framework, self-hosted.</p>
+
+      <div class="bento-grid">
+
+        <!-- Card 1: Soul-Brain Sync (span 2) -->
+        <div class="bento-card span-2 fade-in">
+          <span class="card-badge">SBS</span>
+          <h3 class="card-title">Your style, learned &mdash; not configured</h3>
+          <p class="card-desc">8-layer behavioral profile built from your conversations. By message #50, it knows your vocabulary, formality, emoji habits, and emotional triggers. Say &ldquo;too long&rdquo; once &mdash; it adjusts permanently.</p>
+          <div class="card-pills">
+            <span>linguistic</span>
+            <span>interaction</span>
+            <span>emotional</span>
+            <span>domain</span>
+            <span>communication</span>
+            <span>memory</span>
+            <span>temporal</span>
+            <span>relationship</span>
+          </div>
+        </div>
+
+        <!-- Card 2: Dual Cognition -->
+        <div class="bento-card fade-in">
+          <div class="card-icon">&#x1F9E0;</div>
+          <h3 class="card-title">It thinks before it speaks</h3>
+          <p class="card-desc">Two parallel thought streams &mdash; present analysis + memory recall &mdash; merge into an inner monologue with tension scoring before every reply.</p>
+        </div>
+
+        <!-- Card 3: Privacy Vault -->
+        <div class="bento-card fade-in">
+          <div class="card-icon">&#x1F512;</div>
+          <h3 class="card-title">Private stays private. Period.</h3>
+          <p class="card-desc">Hemisphere isolation enforced at the SQL level. Private content routes to local Ollama only. Zero cloud leakage &mdash; not a toggle, a guarantee.</p>
+        </div>
+
+        <!-- Card 4: Hybrid Memory (span 2) -->
+        <div class="bento-card span-2 fade-in">
+          <div class="card-icon">&#x26A1;</div>
+          <h3 class="card-title">Memory that connects the dots</h3>
+          <p class="card-desc">Vector search + knowledge graph + full-text search + neural reranking. &lt;350ms P95. Your AI understands relationships &mdash; not just facts.</p>
+          <div class="card-pipeline">
+            <span>Query</span>
+            <span class="arrow">&rarr;</span>
+            <span>Embed</span>
+            <span class="arrow">&rarr;</span>
+            <span>ANN + FTS</span>
+            <span class="arrow">&rarr;</span>
+            <span>Rerank</span>
+            <span class="arrow">&rarr;</span>
+            <span>KG</span>
+            <span class="arrow">&rarr;</span>
+            <span>Context</span>
+          </div>
+        </div>
+
+        <!-- Card 5: Multi-Channel -->
+        <div class="bento-card fade-in">
+          <div class="card-icon">&#x1F310;</div>
+          <h3 class="card-title">One brain. Every channel.</h3>
+          <p class="card-desc">WhatsApp, Telegram, Discord, Slack &mdash; unified memory and personality across every platform you use.</p>
+        </div>
+
+        <!-- Card 6: Smart Routing -->
+        <div class="bento-card fade-in">
+          <div class="card-icon">&#x1F6A6;</div>
+          <h3 class="card-title">The right model for every message</h3>
+          <p class="card-desc">Intent classification &rarr; optimal model routing. Casual &rarr; Gemini Flash. Code &rarr; Claude. Private &rarr; Local Ollama. 100+ models supported.</p>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- Architecture -->
+  <section class="architecture" id="architecture">
+    <div class="container">
+      <h2 class="arch-title fade-in">Zero Docker. Zero Redis. Zero Postgres.</h2>
+      <p class="arch-sub fade-in">Everything runs embedded. Even on a Raspberry Pi.</p>
+
+      <div class="tech-stack fade-in">
+        <span class="tech-pill">Python 3.11</span>
+        <span class="tech-pill">FastAPI</span>
+        <span class="tech-pill">LanceDB</span>
+        <span class="tech-pill">SQLite WAL</span>
+        <span class="tech-pill">litellm</span>
+        <span class="tech-pill">FlashRank</span>
+        <span class="tech-pill">asyncio</span>
+      </div>
+
+      <div class="pipeline fade-in">
+
+        <div class="pipeline-step">
+          <div class="pipeline-line">
+            <div class="pipeline-dot"></div>
+            <div class="pipeline-connector"></div>
+          </div>
+          <div class="pipeline-card">
+            <div class="pipeline-card-title">Channel</div>
+            <div class="pipeline-card-sub">WhatsApp &middot; Telegram &middot; Discord &middot; Slack</div>
+          </div>
+        </div>
+
+        <div class="pipeline-step">
+          <div class="pipeline-line">
+            <div class="pipeline-dot"></div>
+            <div class="pipeline-connector"></div>
+          </div>
+          <div class="pipeline-card">
+            <div class="pipeline-card-title">Flood Gate</div>
+            <div class="pipeline-card-sub">3s batch + dedup</div>
+          </div>
+        </div>
+
+        <div class="pipeline-step">
+          <div class="pipeline-line">
+            <div class="pipeline-dot"></div>
+            <div class="pipeline-connector"></div>
+          </div>
+          <div class="pipeline-card">
+            <div class="pipeline-card-title">Memory Engine</div>
+            <div class="pipeline-card-sub">vector + graph + FTS</div>
+          </div>
+        </div>
+
+        <div class="pipeline-step">
+          <div class="pipeline-line">
+            <div class="pipeline-dot"></div>
+            <div class="pipeline-connector"></div>
+          </div>
+          <div class="pipeline-card">
+            <div class="pipeline-card-title">Dual Cognition</div>
+            <div class="pipeline-card-sub">present + memory merge</div>
+          </div>
+        </div>
+
+        <div class="pipeline-step">
+          <div class="pipeline-line">
+            <div class="pipeline-dot"></div>
+            <div class="pipeline-connector"></div>
+          </div>
+          <div class="pipeline-card">
+            <div class="pipeline-card-title">Traffic Cop</div>
+            <div class="pipeline-card-sub">intent classification</div>
+          </div>
+        </div>
+
+        <div class="pipeline-step">
+          <div class="pipeline-line">
+            <div class="pipeline-dot"></div>
+            <div class="pipeline-connector"></div>
+          </div>
+          <div class="pipeline-card">
+            <div class="pipeline-card-title">LLM Router</div>
+            <div class="pipeline-card-sub">100+ models</div>
+          </div>
+        </div>
+
+        <div class="pipeline-step">
+          <div class="pipeline-line">
+            <div class="pipeline-dot"></div>
+            <div class="pipeline-connector"></div>
+          </div>
+          <div class="pipeline-card">
+            <div class="pipeline-card-title">Reply</div>
+            <div class="pipeline-card-sub">auto-continue + SBS update</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- Get Started -->
+  <section class="get-started" id="get-started">
+    <div class="container">
+      <h2 class="section-label fade-in">Running in 5 minutes</h2>
+
+      <div class="terminal fade-in">
+        <div class="terminal-bar">
+          <div class="terminal-dot red"></div>
+          <div class="terminal-dot yellow"></div>
+          <div class="terminal-dot green"></div>
+          <span class="terminal-title">Terminal</span>
+        </div>
+        <div class="terminal-body">
+          <div><span class="prompt">$</span> <span class="cmd">git clone https://github.com/UpayanGhosh/Synapse-OSS.git</span></div>
+          <div><span class="prompt">$</span> <span class="cmd">cd Synapse-OSS && pip install -r requirements.txt</span></div>
+          <div><span class="prompt">$</span> <span class="cmd">python workspace/main.py onboard --flow quickstart</span></div>
+          <div><span class="prompt">$</span> <span class="cmd">python workspace/main.py chat</span></div>
+        </div>
+      </div>
+
+      <div class="get-started-ctas fade-in">
+        <a href="https://github.com/UpayanGhosh/Synapse-OSS#readme" target="_blank" rel="noopener" class="btn-ghost">Read the Docs</a>
+        <a href="https://github.com/UpayanGhosh/Synapse-OSS" target="_blank" rel="noopener" class="btn-primary"><span>&#9733;</span> Star on GitHub</a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<!-- Footer -->
+<footer>
+  <p class="footer-built">Built by Upayan Ghosh</p>
+  <div class="footer-links">
+    <a href="https://github.com/UpayanGhosh/Synapse-OSS" target="_blank" rel="noopener">GitHub</a>
+    <a href="https://github.com/UpayanGhosh/Synapse-OSS/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a>
+    <a href="https://github.com/UpayanGhosh/Synapse-OSS#readme" target="_blank" rel="noopener">Documentation</a>
+  </div>
+  <p class="footer-tagline">Synapse &mdash; Your mind, your machine, your AI.</p>
+</footer>
+
+<script>
+(function() {
+  // IntersectionObserver for fade-in animations
+  var observer = new IntersectionObserver(function(entries) {
+    entries.forEach(function(entry) {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible');
+        observer.unobserve(entry.target);
+      }
+    });
+  }, {
+    threshold: 0.08,
+    rootMargin: '0px 0px -40px 0px'
+  });
+
+  document.querySelectorAll('.fade-in').forEach(function(el) {
+    observer.observe(el);
+  });
+
+  // Mobile hamburger toggle
+  var hamburger = document.getElementById('hamburger');
+  var navLinks = document.getElementById('navLinks');
+
+  hamburger.addEventListener('click', function() {
+    navLinks.classList.toggle('open');
+    var spans = hamburger.querySelectorAll('span');
+    if (navLinks.classList.contains('open')) {
+      spans[0].style.transform = 'rotate(45deg) translate(5px, 5px)';
+      spans[1].style.opacity = '0';
+      spans[2].style.transform = 'rotate(-45deg) translate(5px, -5px)';
+    } else {
+      spans[0].style.transform = '';
+      spans[1].style.opacity = '';
+      spans[2].style.transform = '';
+    }
+  });
+
+  // Close mobile nav when a link is clicked
+  navLinks.querySelectorAll('a').forEach(function(link) {
+    link.addEventListener('click', function() {
+      if (navLinks.classList.contains('open')) {
+        navLinks.classList.remove('open');
+        var spans = hamburger.querySelectorAll('span');
+        spans[0].style.transform = '';
+        spans[1].style.opacity = '';
+        spans[2].style.transform = '';
+      }
+    });
+  });
+})();
+</script>
+</body>
+</html>
