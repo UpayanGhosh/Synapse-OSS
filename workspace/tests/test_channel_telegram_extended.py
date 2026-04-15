@@ -19,7 +19,10 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-TEL_AVAILABLE = importlib.util.find_spec("sci_fi_dashboard.channels.telegram") is not None
+TEL_AVAILABLE = (
+    importlib.util.find_spec("sci_fi_dashboard.channels.telegram") is not None
+    and importlib.util.find_spec("telegram") is not None
+)
 
 pytestmark = pytest.mark.skipif(not TEL_AVAILABLE, reason="TelegramChannel not available")
 

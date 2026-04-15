@@ -29,7 +29,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 # ---------------------------------------------------------------------------
 # Conditional import — skip entire module if python-telegram-bot not installed
 # ---------------------------------------------------------------------------
-TEL_AVAILABLE = importlib.util.find_spec("sci_fi_dashboard.channels.telegram") is not None
+TEL_AVAILABLE = (
+    importlib.util.find_spec("sci_fi_dashboard.channels.telegram") is not None
+    and importlib.util.find_spec("telegram") is not None
+)
 
 pytestmark = pytest.mark.skipif(
     not TEL_AVAILABLE,

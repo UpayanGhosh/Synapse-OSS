@@ -14,6 +14,8 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+pytest.importorskip("playwright", reason="playwright not installed (requirements-ml.txt)")
+
 from sci_fi_dashboard.browser.interactions import (
     _BLOCKED_JS_PATTERNS,
     _MAX_SNAPSHOT_CHARS,

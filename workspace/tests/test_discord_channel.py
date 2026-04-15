@@ -28,7 +28,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 # Until 05-02 creates sci_fi_dashboard/channels/discord_channel.py,
 # DIS_AVAILABLE=False and all tests skip cleanly.
 # ---------------------------------------------------------------------------
-DIS_AVAILABLE = importlib.util.find_spec("sci_fi_dashboard.channels.discord_channel") is not None
+DIS_AVAILABLE = (
+    importlib.util.find_spec("sci_fi_dashboard.channels.discord_channel") is not None
+    and importlib.util.find_spec("discord") is not None
+)
 
 pytestmark = pytest.mark.skipif(
     not DIS_AVAILABLE,

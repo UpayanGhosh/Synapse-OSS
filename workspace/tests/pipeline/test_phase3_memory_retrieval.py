@@ -39,6 +39,7 @@ from unittest.mock import MagicMock, patch  # noqa: E402
 import pytest  # noqa: E402
 
 pytest.importorskip("lancedb", reason="lancedb not installed")
+pytest.importorskip("flashrank", reason="flashrank not installed (requirements-ml.txt)")
 
 from sci_fi_dashboard.memory_engine import MemoryEngine  # noqa: E402
 from sci_fi_dashboard.vector_store.lancedb_store import LanceDBVectorStore  # noqa: E402

@@ -31,7 +31,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 # Until Plan 05-03 creates sci_fi_dashboard/channels/slack.py,
 # SLK_AVAILABLE=False and all tests are skipped.
 # ---------------------------------------------------------------------------
-SLK_AVAILABLE = importlib.util.find_spec("sci_fi_dashboard.channels.slack") is not None
+SLK_AVAILABLE = (
+    importlib.util.find_spec("sci_fi_dashboard.channels.slack") is not None
+    and importlib.util.find_spec("slack_bolt") is not None
+)
 
 pytestmark = pytest.mark.skipif(
     not SLK_AVAILABLE,

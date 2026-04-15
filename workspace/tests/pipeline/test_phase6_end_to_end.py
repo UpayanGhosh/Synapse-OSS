@@ -35,6 +35,9 @@ for _p in (_WORKSPACE, os.path.dirname(_WORKSPACE)):
 from unittest.mock import AsyncMock, MagicMock, patch  # noqa: E402
 
 import pytest  # noqa: E402
+
+pytest.importorskip("flashrank", reason="flashrank not installed (requirements-ml.txt)")
+
 from sci_fi_dashboard.chat_pipeline import persona_chat  # noqa: E402
 from sci_fi_dashboard.dual_cognition import CognitiveMerge  # noqa: E402
 from sci_fi_dashboard.llm_router import LLMResult  # noqa: E402
