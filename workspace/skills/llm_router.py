@@ -10,8 +10,8 @@ Dispatches through SynapseLLMRouter.call() from sync context via a thread-pool e
 (avoids RuntimeError: This event loop is already running when called from async
 contexts such as FastAPI request handlers).
 
-If SynapseLLMRouter is unavailable (no synapse.json, missing litellm), falls
-back to local Ollama automatically.
+If SynapseLLMRouter is unavailable (no synapse.json, missing litellm),
+returns an error message.
 """
 
 import asyncio
@@ -28,12 +28,6 @@ _ROOT = os.path.abspath(os.path.join(_DIR, ".."))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
-try:
-    import ollama
-
-    HAS_OLLAMA = True
-except ImportError:
-    HAS_OLLAMA = False
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("LLMRouter")
@@ -95,7 +89,7 @@ class LLMRouter:
             self._synapse_router = SynapseLLMRouter(self._synapse_config)
             logger.info("LLMRouter: SynapseLLMRouter initialized (litellm backend)")
         except Exception as exc:  # noqa: BLE001
-            logger.warning("LLMRouter: SynapseLLMRouter unavailable (%s) — Ollama only", exc)
+            logger.warning("LLMRouter: SynapseLLMRouter unavailable (%s)", exc)
             self._synapse_config = None
             self._synapse_router = None
 
@@ -105,7 +99,7 @@ class LLMRouter:
         system_prompt="You are a helpful assistant.",
         force_kimi=False,  # noqa: ARG002 — preserved for backward compat, ignored
     ) -> str:
-        """Route prompt through SynapseLLMRouter (litellm) with Ollama fallback.
+        """Route prompt through SynapseLLMRouter (litellm).
 
         force_kimi is preserved in the signature for backward compatibility but
         is intentionally ignored — role-based routing replaces the old Kimi path.
@@ -133,8 +127,7 @@ class LLMRouter:
             except Exception as exc:  # noqa: BLE001
                 logger.warning("SynapseLLMRouter failed for role '%s': %s", role, exc)
 
-        # Ollama fallback
-        return self._sanitize(self._call_ollama(prompt, system_prompt))
+        return "Error: LLM router unavailable — configure synapse.json with valid providers."
 
     def _sanitize(self, text: str) -> str:
         """Strip internal reasoning blocks before returning to caller."""
@@ -150,25 +143,16 @@ class LLMRouter:
         text = re.sub(r"\n+Thinking\n+.*?\n+", "\n\n", text, flags=re.IGNORECASE)
         return text.strip()
 
-    def _call_ollama(self, prompt, system_prompt) -> str:
-        if HAS_OLLAMA:
-            try:
-                response = ollama.chat(
-                    model=self.backup_model,
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": prompt},
-                    ],
-                )
-                return response["message"]["content"]
-            except Exception:  # noqa: BLE001
-                pass
-        return "Error: All backends failed."
-
     def embed(self, text, model="text-embedding-004") -> list:  # noqa: ARG002
-        """Return embedding vector for text using local Ollama nomic-embed-text."""
-        if HAS_OLLAMA:
-            return ollama.embeddings(model="nomic-embed-text", prompt=text)["embedding"]
+        """Return embedding vector for text using the configured embedding provider."""
+        try:
+            from sci_fi_dashboard.embedding import get_provider
+
+            provider = get_provider()
+            if provider is not None:
+                return provider.embed_query(text)
+        except Exception:  # noqa: BLE001
+            pass
         return []
 
 

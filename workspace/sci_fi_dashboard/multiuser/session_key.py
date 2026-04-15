@@ -105,9 +105,7 @@ def build_session_key(
 
     # Identity-link substitution applies to direct DMs only when dm_scope != "main".
     if norm_peer_kind == "direct" and dm_scope != "main":
-        linked = resolve_linked_peer_id(
-            sanitized_peer, norm_channel, identity_links, dm_scope
-        )
+        linked = resolve_linked_peer_id(sanitized_peer, norm_channel, identity_links, dm_scope)
         if linked:
             sanitized_peer = linked.lower().strip()
 

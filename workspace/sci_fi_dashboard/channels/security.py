@@ -158,15 +158,15 @@ class PairingStore:
     # Mutations
     # ------------------------------------------------------------------
 
-    def approve(self, sender_id: str) -> None:
+    async def approve(self, sender_id: str) -> None:
         """Add *sender_id* to the approved set and persist via JSONL append."""
         self._approved.add(sender_id)
-        self._append_line({"action": "approve", "sender_id": sender_id})
+        await asyncio.to_thread(self._append_line, {"action": "approve", "sender_id": sender_id})
 
-    def revoke(self, sender_id: str) -> None:
+    async def revoke(self, sender_id: str) -> None:
         """Remove *sender_id* from the approved set and rewrite the file atomically."""
         self._approved.discard(sender_id)
-        self._save()
+        await asyncio.to_thread(self._save)
 
     # ------------------------------------------------------------------
     # Persistence helpers

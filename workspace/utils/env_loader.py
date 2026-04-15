@@ -1,10 +1,10 @@
 """
-Shared .env file loader for OpenClaw.
+Shared .env file loader for Synapse.
 
 Resolves the .env path using the following priority:
-  1. OPENCLAW_ENV_PATH environment variable (explicit override)
-  2. Project root .env  (OpenClaw-OSS/.env)
-  3. Workspace root .env (OpenClaw-OSS/workspace/.env)
+  1. SYNAPSE_ENV_PATH environment variable (explicit override)
+  2. Project root .env  (Synapse-OSS/.env)
+  3. Workspace root .env (Synapse-OSS/workspace/.env)
 """
 
 import os
@@ -20,10 +20,10 @@ def resolve_env_path(anchor: Path | None = None) -> str:
     anchor : Path, optional
         A file inside the project (typically ``Path(__file__)``).
         Used to derive project-root and workspace-root when
-        ``OPENCLAW_ENV_PATH`` is not set.  If *None*, the workspace
+        ``SYNAPSE_ENV_PATH`` is not set.  If *None*, the workspace
         directory containing this module is used as the anchor.
     """
-    explicit = os.environ.get("OPENCLAW_ENV_PATH")
+    explicit = os.environ.get("SYNAPSE_ENV_PATH")
     if explicit:
         return explicit
 
@@ -36,9 +36,9 @@ def resolve_env_path(anchor: Path | None = None) -> str:
     # Heuristic: project root is the first ancestor that is NOT
     # "workspace" or a sub-package inside workspace.
     # Concrete layout:
-    #   OpenClaw-OSS/               <- project root
-    #   OpenClaw-OSS/workspace/     <- workspace root
-    #   OpenClaw-OSS/workspace/sci_fi_dashboard/  <- sub-package
+    #   Synapse-OSS/               <- project root
+    #   Synapse-OSS/workspace/     <- workspace root
+    #   Synapse-OSS/workspace/sci_fi_dashboard/  <- sub-package
     #
     # We try project root first, then workspace root.
 
@@ -70,7 +70,7 @@ def load_env_file(anchor: Path | None = None) -> None:
         return
 
     print(f"[WEB] Loading .env from {env_path}")
-    with open(env_path) as f:
+    with open(env_path, encoding="utf-8") as f:
         for raw_line in f:
             line = raw_line.strip()
             if "=" in line and not line.startswith("#"):

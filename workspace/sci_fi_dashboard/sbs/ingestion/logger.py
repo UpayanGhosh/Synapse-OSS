@@ -1,3 +1,4 @@
+import logging
 import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -5,6 +6,8 @@ from pathlib import Path
 from filelock import FileLock
 
 from .schema import RawMessage
+
+_log = logging.getLogger(__name__)
 
 
 class ConversationLogger:
@@ -60,40 +63,49 @@ class ConversationLogger:
                 CREATE INDEX IF NOT EXISTS idx_role
                 ON messages(role)
             """)
+            conn.commit()
 
     def log(self, message: RawMessage):
-        """Atomic dual-write: JSONL + SQLite."""
+        """Dual-write: SQLite first, then JSONL. If SQLite fails, JSONL is skipped."""
 
-        # 1. Append to JSONL (with file lock for safety)
-        with self.lock, open(self.jsonl_path, "a", encoding="utf-8") as f:
-            f.write(message.model_dump_json() + "\\n")
+        # 1. Insert into SQLite index first (authoritative store)
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.execute(
+                    """
+                    INSERT OR REPLACE INTO messages
+                    (msg_id, timestamp, role, content, session_id, response_to,
+                     char_count, word_count, has_emoji, is_question,
+                     rt_sentiment, rt_language, rt_mood_signal)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                    (
+                        message.msg_id,
+                        message.timestamp.isoformat(),
+                        message.role,
+                        message.content,
+                        message.session_id,
+                        message.response_to,
+                        message.char_count,
+                        message.word_count,
+                        message.has_emoji,
+                        message.is_question,
+                        message.rt_sentiment,
+                        message.rt_language,
+                        message.rt_mood_signal,
+                    ),
+                )
+                conn.commit()
+        except sqlite3.Error:
+            _log.exception("SQLite write failed for msg_id=%s, skipping JSONL", message.msg_id)
+            raise
 
-        # 2. Insert into SQLite index
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute(
-                """
-                INSERT OR REPLACE INTO messages
-                (msg_id, timestamp, role, content, session_id, response_to,
-                 char_count, word_count, has_emoji, is_question,
-                 rt_sentiment, rt_language, rt_mood_signal)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-                (
-                    message.msg_id,
-                    message.timestamp.isoformat(),
-                    message.role,
-                    message.content,
-                    message.session_id,
-                    message.response_to,
-                    message.char_count,
-                    message.word_count,
-                    message.has_emoji,
-                    message.is_question,
-                    message.rt_sentiment,
-                    message.rt_language,
-                    message.rt_mood_signal,
-                ),
-            )
+        # 2. Append to JSONL (archival copy, only after SQLite succeeds)
+        try:
+            with self.lock, open(self.jsonl_path, "a", encoding="utf-8") as f:
+                f.write(message.model_dump_json() + "\n")
+        except OSError:
+            _log.exception("JSONL write failed for msg_id=%s (SQLite OK)", message.msg_id)
 
     def update_realtime_fields(self, msg_id: str, sentiment: float, language: str, mood: str):
         """Called by realtime processor after initial analysis."""

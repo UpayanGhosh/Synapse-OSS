@@ -3,14 +3,19 @@
 
   "providers": {
     "anthropic": {"api_key": "YOUR_ANTHROPIC_API_KEY"},
-    "openai": {"api_key": "YOUR_OPENAI_API_KEY"},
+    "openai": {
+      "api_key": "YOUR_OPENAI_API_KEY",
+      "budget_usd": 10.0,
+      "budget_duration": "monthly"
+    },
     "gemini": {"api_key": "YOUR_GEMINI_API_KEY"},
     "groq": {"api_key": "YOUR_GROQ_API_KEY"},
     "openrouter": {"api_key": "YOUR_OPENROUTER_API_KEY"},
     "mistral": {"api_key": "YOUR_MISTRAL_API_KEY"},
-    "together_ai": {"api_key": "YOUR_TOGETHER_AI_API_KEY"},
+    "togetherai": {"api_key": "YOUR_TOGETHER_AI_API_KEY"},
     "xai": {"api_key": "YOUR_XAI_API_KEY"},
-    "cohere": {"api_key": "YOUR_COHERE_API_KEY"}
+    "cohere": {"api_key": "YOUR_COHERE_API_KEY"},
+    "deepseek": {"api_key": "YOUR_DEEPSEEK_API_KEY"}
   },
 
   "channels": {
@@ -50,6 +55,34 @@
     "translate": {
       "model": "openrouter/meta-llama/llama-3.3-70b-instruct",
       "fallback": "groq/llama-3.3-70b-versatile"
+    },
+    "kg": {
+      "model": "gemini/gemini-2.5-flash-lite",
+      "fallback": "gemini/gemini-2.5-flash"
     }
+  },
+
+  "session": {
+    "dual_cognition_enabled": true,
+    "dual_cognition_timeout": 5.0
+  },
+
+  "embedding": {
+    "provider": "auto",
+    "model": null,
+    "cache_dir": null,
+    "threads": null
+  },
+
+  "vector_store": {
+    "backend": "lancedb",
+    "lancedb": { "db_path": null, "table_name": "memories" }
+  },
+
+  "kg_extraction": {
+    "enabled": true,
+    "min_messages": 15,
+    "extract_interval_seconds": 1200,
+    "kg_role": "kg"
   }
 }

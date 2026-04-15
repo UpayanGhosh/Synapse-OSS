@@ -14,38 +14,26 @@ cd "$project_root"
 LOG_DIR="${SYNAPSE_HOME:-$HOME/.synapse}/logs"
 mkdir -p "$LOG_DIR"
 
-echo "[1/3] Starting Qdrant..."
-if ! docker info > /dev/null 2>&1; then
-    echo "   [--] Docker not running — skipping Qdrant (vector search disabled)"
-elif docker start antigravity_qdrant > /dev/null 2>&1; then
-    echo "   [OK] Started"
-else
-    echo "   Container not found. Creating Qdrant..."
-    if docker run -d --name antigravity_qdrant \
-        -p 6333:6333 -p 6334:6334 \
-        qdrant/qdrant > /dev/null 2>&1; then
-        echo "   [OK] Created and started"
+if grep -q '"ollama"' ~/.synapse/synapse.json 2>/dev/null; then
+    echo "[1/2] Starting Ollama..."
+    if command -v ollama > /dev/null 2>&1; then
+        if ! pgrep -f "ollama serve" > /dev/null; then
+            export OLLAMA_KEEP_ALIVE=0
+            export OLLAMA_MAX_LOADED_MODELS=1
+            export OLLAMA_NUM_PARALLEL=1
+            nohup ollama serve > $LOG_DIR/ollama.log 2>&1 &
+            echo "   [OK] Started"
+        else
+            echo "   [OK] Already running"
+        fi
     else
-        echo "   [--] Could not start Qdrant — vector search will fall back to SQLite"
-    fi
-fi
-
-echo "[2/3] Starting Ollama..."
-if command -v ollama > /dev/null 2>&1; then
-    if ! pgrep -f "ollama serve" > /dev/null; then
-        export OLLAMA_KEEP_ALIVE=0
-        export OLLAMA_MAX_LOADED_MODELS=1
-        export OLLAMA_NUM_PARALLEL=1
-        nohup ollama serve > $LOG_DIR/ollama.log 2>&1 &
-        echo "   [OK] Started"
-    else
-        echo "   [OK] Already running"
+        echo "   [--] Ollama not installed -- local embedding and The Vault will be disabled"
     fi
 else
-    echo "   [--] Ollama not installed -- local embedding and The Vault will be disabled"
+    echo "[1/2] Ollama: skipped (not configured — optional)"
 fi
 
-echo "[3/3] Starting API Gateway..."
+echo "[2/2] Starting API Gateway..."
 if ! pgrep -f "uvicorn.*api_gateway" > /dev/null; then
     source "$project_root/.venv/bin/activate" 2>/dev/null || true
     nohup python -X utf8 -m uvicorn --app-dir "$project_root/workspace" \

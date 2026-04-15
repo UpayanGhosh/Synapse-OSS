@@ -13,13 +13,17 @@
 
 echo "🦞 Awakening Jarvis..."
 
-# 1. Start Ollama (Required for Memory/Embeddings)
-if ! pgrep -x "ollama" > /dev/null; then
-    echo "🧠 Starting Ollama..."
-    open -a Ollama
-    sleep 5
+# 1. Start Ollama (optional — only if configured)
+if grep -q '"ollama"' ~/.synapse/synapse.json 2>/dev/null; then
+    if ! pgrep -x "ollama" > /dev/null; then
+        echo "🧠 Starting Ollama..."
+        open -a Ollama
+        sleep 5
+    else
+        echo "✅ Ollama is running."
+    fi
 else
-    echo "✅ Ollama is running."
+    echo "-- Ollama: skipped (not configured — optional)"
 fi
 
 # 2. Check Redis (Required for Celery Worker)

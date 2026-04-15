@@ -3,7 +3,14 @@ chcp 65001 >nul
 setlocal EnableDelayedExpansion
 
 REM Synapse Onboard Script for Windows
-REM Run this ONCE to configure Synapse, link WhatsApp, and start all services.
+REM Run this ONCE on first setup. For daily use, run synapse_start.bat instead.
+REM
+REM This script is a thin bootstrap launcher:
+REM   1. Checks prerequisites (Python, Docker, Ollama)
+REM   2. Creates .venv and installs dependencies
+REM   3. Hands off to the Python wizard (synapse_cli.py onboard)
+REM   4. Starts all services
+REM   5. Pulls the required embedding model
 
 set "PROJECT_ROOT=%~dp0"
 set "PROJECT_ROOT=%PROJECT_ROOT:~0,-1%"
@@ -18,62 +25,49 @@ echo For daily use, run synapse_start.bat instead.
 echo.
 pause
 
-REM --- Step 1: Prerequisites ---
+REM ============================================================
+REM Step 1: Check prerequisites
+REM ============================================================
 echo.
-echo Step 1: Checking tools...
+echo Step 1: Checking prerequisites...
 echo.
+
+set "MISSING="
 
 where python >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
-    echo    [X] Python not installed. Install from https://python.org
+    echo    [X] Python not found. Install from https://python.org ^(check "Add to PATH"^)
     set "MISSING=1"
 ) else (
-    echo    [OK] Python
+    for /f "tokens=2" %%V in ('python --version 2^>^&1') do set "PY_VER=%%V"
+    echo    [OK] Python !PY_VER!
 )
 
 where docker >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
-    echo    [X] Docker not installed. Install from https://docker.com
+    echo    [X] Docker not found. Install from https://docker.com
     set "MISSING=1"
 ) else (
     echo    [OK] Docker
 )
 
-REM TODO Phase 7: openclaw binary check removed — system runs without openclaw
-REM where openclaw >nul 2>&1
-REM if %ERRORLEVEL% NEQ 0 (
-REM     echo    [X] OpenClaw not installed. Install from https://github.com/openclaw/openclaw/releases
-REM     set "MISSING=1"
-REM ) else (
-REM     echo    [OK] OpenClaw
-REM )
-
+REM Ollama is OPTIONAL — enables local models (The Vault, privacy mode)
+set "OLLAMA_EXE="
 where ollama >nul 2>&1
-if %ERRORLEVEL% NEQ 0 (
-    echo    Ollama not found. Installing automatically...
-    echo    Downloading installer (this may take a moment)...
-    curl -L -o "%TEMP%\OllamaSetup.exe" "https://ollama.com/download/OllamaSetup.exe"
-    if %ERRORLEVEL% NEQ 0 (
-        echo    [X] Failed to download Ollama installer.
-        echo        Install manually from https://ollama.com then run this script again.
-        set "MISSING=1"
-    ) else (
-        echo    Running Ollama installer silently...
-        "%TEMP%\OllamaSetup.exe" /S
-        timeout /t 15 /nobreak >nul
-        REM Refresh PATH in this session so ollama.exe is visible without restart
-        for /f "usebackq tokens=2,*" %%A in (`reg query "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v Path 2^>nul`) do set "SYSTEM_PATH=%%B"
-        set "PATH=%PATH%;%SYSTEM_PATH%"
-        where ollama >nul 2>&1
-        if %ERRORLEVEL% NEQ 0 (
-            echo    [X] Ollama install did not complete. Install manually from https://ollama.com
-            set "MISSING=1"
-        ) else (
-            echo    [OK] Ollama installed successfully
-        )
-    )
+if %ERRORLEVEL% EQU 0 (
+    set "OLLAMA_EXE=ollama"
+) else if exist "%LOCALAPPDATA%\Programs\Ollama\ollama.exe" (
+    set "OLLAMA_EXE=%LOCALAPPDATA%\Programs\Ollama\ollama.exe"
+    set "PATH=%PATH%;%LOCALAPPDATA%\Programs\Ollama"
+)
+
+if defined OLLAMA_EXE (
+    echo    [OK] Ollama ^(optional — enables local models^)
 ) else (
-    echo    [OK] Ollama
+    echo    [--] Ollama: not installed ^(OPTIONAL^)
+    echo         Ollama enables local models ^(The Vault, privacy mode^).
+    echo         Skip if you don't need local models.
+    echo         Install later from https://ollama.com if needed.
 )
 
 if defined MISSING (
@@ -84,117 +78,128 @@ if defined MISSING (
     exit /b 1
 )
 
-REM --- Step 2: .env setup ---
+REM ============================================================
+REM Step 2: Create .env from example if missing
+REM ============================================================
 echo.
-echo Step 2: Checking config...
+echo Step 2: Checking .env...
 echo.
 
 if not exist "%PROJECT_ROOT%\.env" (
     if exist "%PROJECT_ROOT%\.env.example" (
         copy "%PROJECT_ROOT%\.env.example" "%PROJECT_ROOT%\.env" >nul
-        echo [OK] Created .env from .env.example
+        echo    [OK] Created .env from .env.example
     ) else (
         type nul > "%PROJECT_ROOT%\.env"
-        echo [OK] Created empty .env
+        echo    [OK] Created empty .env
     )
-)
-
-REM --- Step 3: Link WhatsApp ---
-echo.
-echo Step 3: Linking WhatsApp...
-echo.
-echo WhatsApp link step deferred. Phase 4 will implement Baileys bridge QR code flow.
-echo.
-
-REM TODO Phase 4: WhatsApp login replaced by Baileys bridge QR code flow
-REM openclaw channels login --channel whatsapp
-REM if %ERRORLEVEL% NEQ 0 (
-REM     echo.
-REM     echo Note: openclaw channels login returned an error.
-REM     echo This is normal if WhatsApp is already linked. Continuing...
-REM     echo.
-REM )
-echo [OK] WhatsApp step noted (deferred to Phase 4).
-
-REM --- Step 4: Phone number ---
-echo.
-echo Step 4: Your phone number...
-echo.
-echo Synapse uses this to know it is YOU messaging it.
-echo Enter your number with country code, e.g. +15551234567
-echo.
-
-:phone_input
-set /p PHONE_NUMBER="Your phone number: "
-
-powershell -Command "if ('%PHONE_NUMBER%' -match '^\+[0-9]{10,15}$') { exit 0 } else { exit 1 }" >nul 2>&1
-if %ERRORLEVEL% NEQ 0 (
-    echo.
-    echo Invalid format. Use E.164 format starting with + and country code.
-    echo   India: +919836939194   US: +15551234567   UK: +447912345678
-    echo.
-    goto phone_input
-)
-
-echo [OK] %PHONE_NUMBER%
-
-REM --- Step 5: Configure Synapse ---
-echo.
-echo Step 5: Saving config...
-echo.
-
-REM TODO Phase 4: phone allowlist moved to synapse.json
-REM openclaw config set channels.whatsapp.allowFrom "[\"%PHONE_NUMBER%\"]" --json >nul 2>&1
-REM if %ERRORLEVEL% NEQ 0 (
-REM     openclaw config set channels.whatsapp.allowFrom "[\"%PHONE_NUMBER%\"]" >nul 2>&1
-REM )
-echo [OK] Phone number noted: %PHONE_NUMBER%
-echo     Configure in %%USERPROFILE%%\.synapse\synapse.json once Phase 4 Baileys bridge is installed.
-
-REM TODO Phase 1: workspace path now read from SYNAPSE_HOME / SynapseConfig
-REM openclaw config set agents.defaults.workspace "%PROJECT_ROOT%\workspace" >nul 2>&1
-echo [OK] Workspace: %PROJECT_ROOT%\workspace (read from SynapseConfig)
-
-REM --- Step 6: Configure LLM access ---
-echo.
-echo Step 6: Configuring LLM access...
-echo.
-
-REM TODO Phase 2: provider token moved to synapse.json
-REM set "GW_TOKEN="
-REM for /f "tokens=*" %%T in ('openclaw config get gateway.auth.token 2^>nul') do set "GW_TOKEN=%%T"
-REM if defined GW_TOKEN (
-REM     ...openclaw gateway token block removed...
-REM )
-
-REM Check for direct Gemini key
-findstr /B /C:"GEMINI_API_KEY=" "%PROJECT_ROOT%\.env" >nul 2>&1
-if %ERRORLEVEL% EQU 0 (
-    echo [OK] GEMINI_API_KEY found in .env -- Synapse will call Gemini directly
 ) else (
-    echo.
-    echo WARNING: No LLM configured. Synapse will start but replies will fail.
-    echo    Fix: add to .env --
-    echo       GEMINI_API_KEY=your_key        (free at aistudio.google.com)
-    echo.
+    echo    [OK] .env already exists
 )
 
-:llm_done
-
-REM --- Step 7: Start everything ---
+REM ============================================================
+REM Step 3: Python virtual environment + dependencies
+REM ============================================================
 echo.
-echo Step 7: Starting Synapse...
+echo Step 3: Setting up Python environment...
+echo.
+
+if not exist "%PROJECT_ROOT%\.venv\Scripts\python.exe" (
+    echo    Creating virtual environment...
+    python -m venv "%PROJECT_ROOT%\.venv"
+    if %ERRORLEVEL% NEQ 0 (
+        echo    [X] Failed to create virtual environment.
+        pause
+        exit /b 1
+    )
+    echo    [OK] Virtual environment created.
+)
+
+echo    Installing core dependencies ^(this takes a minute on first run^)...
+call "%PROJECT_ROOT%\.venv\Scripts\pip.exe" install -r "%PROJECT_ROOT%\requirements.txt" -q
+if %ERRORLEVEL% NEQ 0 (
+    echo    [X] pip install failed. Check requirements.txt and try again.
+    pause
+    exit /b 1
+)
+echo    [OK] Core dependencies installed.
+
+echo    Installing channel dependencies...
+call "%PROJECT_ROOT%\.venv\Scripts\pip.exe" install -r "%PROJECT_ROOT%\requirements-channels.txt" -q
+if %ERRORLEVEL% NEQ 0 (
+    echo    [--] Channel dependencies failed ^(non-fatal^). Run manually if needed:
+    echo         pip install -r requirements-channels.txt
+)
+
+echo    Installing Playwright browser ^(Chromium^)...
+call "%PROJECT_ROOT%\.venv\Scripts\python.exe" -m playwright install chromium >nul 2>&1
+if %ERRORLEVEL% NEQ 0 (
+    echo    [--] Playwright install failed - /browse tool will not work.
+) else (
+    echo    [OK] Playwright ready.
+)
+
+REM ============================================================
+REM Step 4: Python wizard — provider + channel setup
+REM ============================================================
+echo.
+echo Step 4: Running Synapse setup wizard...
+echo.
+echo A new PowerShell window will open for the interactive wizard.
+echo Complete the wizard there, then return to this window.
+echo.
+pause
+
+REM Launch wizard in a new PowerShell window (requires proper ANSI terminal for
+REM questionary checkbox/multiselect to register Space and arrow keypresses).
+REM /wait makes this window block until the PowerShell window is closed.
+REM Exit code is written to a temp file because `start /wait` loses ERRORLEVEL
+REM when PowerShell exits — this is the only reliable way to capture it in cmd.
+
+set "WIZARD_RESULT_FILE=%TEMP%\_synapse_wizard_result.txt"
+echo 1 > "%WIZARD_RESULT_FILE%"
+
+start /wait powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+    "& { $env:PYTHONUTF8='1'; $env:PYTHONIOENCODING='utf-8'; & '%PROJECT_ROOT%\.venv\Scripts\python.exe' -X utf8 '%PROJECT_ROOT%\workspace\synapse_cli.py' onboard; Set-Content -Path '%WIZARD_RESULT_FILE%' -Value $LASTEXITCODE }"
+
+set /p WIZARD_EXIT=<"%WIZARD_RESULT_FILE%"
+set "WIZARD_EXIT=%WIZARD_EXIT: =%"
+
+if "%WIZARD_EXIT%" NEQ "0" (
+    echo.
+    echo [X] Wizard exited with an error ^(code: %WIZARD_EXIT%^). Fix the issue and run this script again.
+    echo.
+    pause
+    exit /b 1
+)
+echo    [OK] Wizard completed successfully.
+
+REM ============================================================
+REM Step 5: Start all services
+REM ============================================================
+echo.
+echo Step 5: Starting services...
 echo.
 
 call "%PROJECT_ROOT%\synapse_start.bat"
 
-REM Pull the required embedding model synchronously so it is ready before first use
+REM ============================================================
+REM Step 6: Pull the embedding model (only if Ollama is installed)
+REM ============================================================
 echo.
-echo Pulling required embedding model (nomic-embed-text)...
-echo This downloads ~900 MB on first run. Please wait...
-ollama pull nomic-embed-text
-echo [OK] nomic-embed-text ready
+if defined OLLAMA_EXE (
+    echo Step 6: Pulling embedding model ^(nomic-embed-text, ~900 MB^)...
+    echo This may take several minutes on first run. Please wait...
+    echo.
+    "%OLLAMA_EXE%" pull nomic-embed-text
+    echo    [OK] nomic-embed-text ready.
+) else (
+    echo Step 6: Ollama model pull skipped ^(Ollama not installed — optional^).
+)
 
+REM ============================================================
+REM Done
+REM ============================================================
 echo.
 echo ========================================
 echo [OK] Onboarding complete!
@@ -203,3 +208,4 @@ echo.
 echo Next time, just run synapse_start.bat
 echo.
 pause
+exit /b 0

@@ -34,6 +34,7 @@ from pathlib import Path
 from typing import Any
 
 from sci_fi_dashboard.multiuser.compaction import estimate_tokens
+from sci_fi_dashboard.multiuser.conversation_cache import ConversationCache
 from sci_fi_dashboard.multiuser.memory_manager import load_bootstrap_files
 from sci_fi_dashboard.multiuser.session_key import parse_session_key
 from sci_fi_dashboard.multiuser.session_store import SessionStore
@@ -142,6 +143,7 @@ async def assemble_context(
     data_root: Path,
     config: Any,
     context_window_tokens: int,
+    conversation_cache: ConversationCache | None = None,
 ) -> dict:
     """Assemble the full context for a session.
 
@@ -153,6 +155,9 @@ async def assemble_context(
                                ``channels`` dict attribute).
         context_window_tokens: Total context window size for the active model.
                                The caller resolves this from their model registry.
+        conversation_cache:    Optional ``ConversationCache`` instance.  When
+                               provided, cache hits skip the disk read; misses
+                               populate the cache for subsequent calls.
 
     Returns:
         ``{"system_prompt": str, "messages": list[dict]}``
@@ -184,8 +189,22 @@ async def assemble_context(
                 with contextlib.suppress(TypeError, ValueError):
                     history_limit = int(raw_limit)
 
-    # 4. Load messages with optional history limit.
-    messages = await load_messages(t_path, limit=history_limit)
+    # 4. Load messages — try conversation cache first.
+    messages: list[dict] | None = None
+    if conversation_cache is not None:
+        messages = conversation_cache.get(session_key)
+
+    if messages is None:
+        # Cache miss — load from disk.
+        messages = await load_messages(t_path, limit=history_limit)
+        if conversation_cache is not None:
+            conversation_cache.put(session_key, messages)
+    else:
+        # Cache hit — still apply history limit if configured.
+        if history_limit is not None:
+            from sci_fi_dashboard.multiuser.transcript import limit_history_turns
+
+            messages = limit_history_turns(messages, history_limit)
 
     # 5. Workspace directory.
     workspace_dir = data_root / "workspace"

@@ -90,7 +90,7 @@ pytest tests/ -m integration
 pytest tests/ -m smoke
 ```
 
-> Tests that require live services (Ollama, Qdrant, WhatsApp bridge) are automatically
+> Tests that require live services (Ollama, WhatsApp bridge) are automatically
 > skipped when those services are not running. No extra mocking setup required.
 
 ---

@@ -6,9 +6,15 @@ Merge:              Detect tension, alignment, or contradiction.
 """
 
 import asyncio
+import contextlib
 import json
+import logging
 import re
 from dataclasses import dataclass, field
+
+from sci_fi_dashboard.pipeline_emitter import get_emitter as _get_emitter
+
+logger = logging.getLogger("dual_cognition")
 
 
 @dataclass
@@ -78,7 +84,7 @@ class DualCognitionEngine:
     def __init__(self, memory_engine, graph, toxic_scorer=None, emotional_trajectory=None):
         self.memory = memory_engine
         self.graph = graph
-        self.toxic_scorer = toxic_scorer
+        # toxic_scorer param kept for caller compatibility; unused in this module
         self.trajectory = emotional_trajectory
 
     def classify_complexity(self, message: str, history: list = None) -> str:
@@ -115,6 +121,7 @@ class DualCognitionEngine:
             deep_signals += 1
 
         emotional_markers = [
+            # English
             "help",
             "stuck",
             "frustrated",
@@ -125,15 +132,68 @@ class DualCognitionEngine:
             "angry",
             "depressed",
             "crying",
+            "lonely",
+            "hurt",
+            "worried",
+            "anxious",
+            "miss",
+            "confused",
+            "upset",
+            "sad",
+            # Banglish — emotional states
+            "miss korchi",
+            "miss kori",
+            "kharap",
+            "dukkho",
+            "kando",
+            "ekla",
+            "bhoy",
+            "bhoy pacchi",
+            "jhogra",
+            "problem",
+            "tension",
+            "chinta",
+            "kষti",
+            "kষto",
+            "tired",
+            "please",
+            "ki korbo",
+            "ki korbi",
+            "bujhte parchhi na",
+            "mone hocche",
+            "lagche",
+            "kষমa",
+            "sorry",
+            "hurt korlo",
+            "raga",
+            "rag",
+            "bhalobashi",
+            "darkar",
+            "dorkar",
+            "thik nei",
+            "thik nai",
+            "valo nei",
+            "bhalo nei",
+            "valo na",
         ]
         if any(m in msg_lower for m in emotional_markers):
             deep_signals += 1
 
         ambiguity_markers = [
+            # English
             "that thing",
             "what we",
             "you know",
             "remember when",
+            # Banglish
+            "mone ache",
+            "mone achhe",
+            "shei din",
+            "shei ghotona",
+            "oi kotha",
+            "tui jantis",
+            "tui janish",
+            "bujhte parbi",
         ]
         if any(m in msg_lower for m in ambiguity_markers):
             deep_signals += 1
@@ -153,14 +213,28 @@ class DualCognitionEngine:
         conversation_history: list = None,
         target: str = "the_creator",
         llm_fn=None,
+        pre_cached_memory: dict = None,
     ) -> CognitiveMerge:
         """Main entry: routes through fast/standard/deep paths based on complexity."""
 
         try:
             complexity = self.classify_complexity(user_message, conversation_history)
 
+            with contextlib.suppress(Exception):
+
+                _get_emitter().emit(
+                    "cognition.classify",
+                    {
+                        "complexity": complexity,
+                        "word_count": len(user_message.split()),
+                        "signals": [],
+                    },
+                )
+
             # FAST PATH: 0 LLM calls -- return minimal merge immediately
             if complexity == "fast":
+                with contextlib.suppress(Exception):
+                    _get_emitter().emit("cognition.fast_path", {"reason": "simple_message"})
                 return CognitiveMerge(
                     tension_level=0.0,
                     tension_type="none",
@@ -171,36 +245,89 @@ class DualCognitionEngine:
 
             # STANDARD PATH: analyze + recall + merge (2 LLM calls)
             if complexity == "standard":
+                with contextlib.suppress(Exception):
+                    _get_emitter().emit("cognition.analyze_start", {})
+                with contextlib.suppress(Exception):
+                    _get_emitter().emit(
+                        "cognition.recall_start", {"from_cache": pre_cached_memory is not None}
+                    )
                 present, memory = await asyncio.gather(
                     self._analyze_present(user_message, conversation_history, llm_fn),
-                    self._recall_memory(user_message, chat_id, target),
+                    self._recall_memory(user_message, chat_id, target, pre_cached_memory),
                 )
+                with contextlib.suppress(Exception):
+                    _get_emitter().emit(
+                        "cognition.analyze_done",
+                        {
+                            "sentiment": getattr(present, "sentiment", ""),
+                            "intent": getattr(present, "intent", ""),
+                            "emotional_state": getattr(present, "emotional_state", ""),
+                            "topics": getattr(present, "topics", []),
+                            "conversational_pattern": getattr(
+                                present, "conversational_pattern", ""
+                            ),
+                        },
+                    )
+                with contextlib.suppress(Exception):
+                    _get_emitter().emit(
+                        "cognition.recall_done",
+                        {
+                            "fact_count": len(getattr(memory, "relevant_facts", [])),
+                            "has_graph_context": bool(getattr(memory, "graph_connections", "")),
+                        },
+                    )
+                with contextlib.suppress(Exception):
+                    _get_emitter().emit("cognition.merge_start", {"use_cot": False})
                 merge = await self._merge_streams(present, memory, target, llm_fn, use_cot=False)
                 if self.trajectory:
                     self.trajectory.record(merge, present.topics)
                 return merge
 
-            # DEEP PATH: intent extraction + targeted recall + CoT merge (3-4 LLM calls)
-            # Step 1: Extract search intent
-            search_query = await self._extract_search_intent(
-                user_message, conversation_history, llm_fn
-            )
-            recall_query = search_query if search_query else user_message
-
-            # Step 2: Run analysis + targeted recall in parallel
+            # DEEP PATH: analysis + recall + CoT merge (2-3 LLM calls)
+            # L-01: Removed _extract_search_intent — result was never used downstream.
+            # Run both operations in parallel to save latency:
+            # - present analysis (LLM call)
+            # - memory recall using original message with pre-cached results (no LLM, fast)
+            with contextlib.suppress(Exception):
+                _get_emitter().emit("cognition.analyze_start", {})
+            with contextlib.suppress(Exception):
+                _get_emitter().emit(
+                    "cognition.recall_start", {"from_cache": pre_cached_memory is not None}
+                )
             present, memory = await asyncio.gather(
                 self._analyze_present(user_message, conversation_history, llm_fn),
-                self._recall_memory(recall_query, chat_id, target),
+                self._recall_memory(user_message, chat_id, target, pre_cached_memory),
             )
+            with contextlib.suppress(Exception):
+                _get_emitter().emit(
+                    "cognition.analyze_done",
+                    {
+                        "sentiment": getattr(present, "sentiment", ""),
+                        "intent": getattr(present, "intent", ""),
+                        "emotional_state": getattr(present, "emotional_state", ""),
+                        "topics": getattr(present, "topics", []),
+                        "conversational_pattern": getattr(present, "conversational_pattern", ""),
+                    },
+                )
+            with contextlib.suppress(Exception):
+                _get_emitter().emit(
+                    "cognition.recall_done",
+                    {
+                        "fact_count": len(getattr(memory, "relevant_facts", [])),
+                        "has_graph_context": bool(getattr(memory, "graph_connections", "")),
+                    },
+                )
 
             # Step 3: CoT merge
+            with contextlib.suppress(Exception):
+                _get_emitter().emit("cognition.merge_start", {"use_cot": True})
             merge = await self._merge_streams(present, memory, target, llm_fn, use_cot=True)
             if self.trajectory:
                 self.trajectory.record(merge, present.topics)
             return merge
 
         except Exception as e:
-            print(f"[WARN] Dual cognition failed: {e}")
+            logger.warning("Dual cognition failed: %s", e)
             return CognitiveMerge(
                 inner_monologue="I'm having trouble thinking through this right now.",
                 tension_level=0.0,
@@ -220,7 +347,11 @@ class DualCognitionEngine:
         # Inject last 3 messages as context for pattern detection
         recent_context = ""
         if history and len(history) > 0:
-            last_3 = history[-3:]
+            last_3 = [
+                m
+                for m in (history or [])[-3:]
+                if isinstance(m, dict) and "role" in m and "content" in m
+            ]
             recent_context = "\n".join(f"{m['role']}: {m['content'][:100]}" for m in last_3)
 
         prompt = f"""Analyze this message IN CONTEXT. Return JSON only.
@@ -254,7 +385,9 @@ JSON only:"""
                 text = text.split("[/THINKING]")[-1].strip()
 
             if "```" in text:
-                text = text.split("```")[1].replace("json", "").strip()
+                parts = text.split("```")
+                if len(parts) > 1:
+                    text = parts[1].replace("json", "").strip()
             start = text.find("{")
             end = text.rfind("}") + 1
             if start >= 0 and end > start:
@@ -266,26 +399,39 @@ JSON only:"""
                 present.topics = data.get("topics", [])
                 present.conversational_pattern = data.get("conversational_pattern", "single_turn")
         except Exception as e:
-            print(f"[WARN] Present stream failed: {e}")
+            logger.warning("Present stream analysis failed: %s", e)
 
         return present
 
-    async def _recall_memory(self, message: str, chat_id: str, target: str) -> MemoryStream:
-        """Stream 2: Query memory."""
+    async def _recall_memory(
+        self,
+        message: str,
+        chat_id: str,
+        target: str,
+        pre_cached_memory: dict = None,
+    ) -> MemoryStream:
+        """Stream 2: Query memory. Uses pre_cached_memory if available to avoid duplicate queries."""
         memory = MemoryStream()
 
         try:
-            results = self.memory.query(message, limit=5, with_graph=True)
+            results = (
+                pre_cached_memory
+                if pre_cached_memory
+                else self.memory.query(message, limit=5, with_graph=True)
+            )
             memory.relevant_facts = [r["content"] for r in results.get("results", [])]
             memory.graph_connections = results.get("graph_context", "")
+        except (KeyError, IndexError, ValueError) as e:
+            logger.debug("Memory recall returned no results: %s", e)
         except Exception as e:
-            print(f"[WARN] Memory recall failed: {e}")
+            logger.warning("Memory recall failed (database/connection error): %s", e)
 
         try:
             target_name = "primary_partner" if "the_partner" in target.lower() else "primary_user"
             memory.relationship_context = self.graph.get_entity_neighborhood(target_name)
-        except Exception:
-            pass
+        except Exception as e:
+            # L-05: Log instead of silently dropping graph errors
+            logger.debug("Graph neighborhood lookup failed: %s", e)
 
         return memory
 
@@ -362,7 +508,9 @@ JSON only:"""
 
             text = result.strip()
             if "```" in text:
-                text = text.split("```")[1].replace("json", "").strip()
+                parts = text.split("```")
+                if len(parts) > 1:
+                    text = parts[1].replace("json", "").strip()
             start = text.find("{")
             end = text.rfind("}") + 1
             if start >= 0 and end > start:
@@ -377,7 +525,7 @@ JSON only:"""
                 merge.inner_monologue = data.get("inner_monologue", "")
                 merge.memory_insights = memory.relevant_facts[:3]
         except Exception as e:
-            print(f"[WARN] Merge failed: {e}")
+            logger.warning("Merge failed: %s", e)
 
         return merge
 
@@ -388,7 +536,12 @@ JSON only:"""
         if not llm_fn:
             return ""
 
-        recent = "\n".join(f"{m['role']}: {m['content'][:80]}" for m in (history or [])[-3:])
+        safe_history = [
+            m
+            for m in (history or [])[-3:]
+            if isinstance(m, dict) and "role" in m and "content" in m
+        ]
+        recent = "\n".join(f"{m['role']}: {m['content'][:80]}" for m in safe_history)
         prompt = (
             "What specific topics/events is the user referring to?\n"
             f"Recent conversation:\n{recent}\n"
@@ -404,7 +557,9 @@ JSON only:"""
             )
             text = result.strip()
             if "```" in text:
-                text = text.split("```")[1].replace("json", "").strip()
+                parts = text.split("```")
+                if len(parts) > 1:
+                    text = parts[1].replace("json", "").strip()
             start = text.find("[")
             end = text.rfind("]") + 1
             if start >= 0 and end > start:
@@ -412,7 +567,7 @@ JSON only:"""
                 if isinstance(terms, list):
                     return " ".join(str(t) for t in terms[:3])
         except Exception as e:
-            print(f"[WARN] Search intent extraction failed: {e}")
+            logger.warning("Search intent extraction failed: %s", e)
 
         return ""
 

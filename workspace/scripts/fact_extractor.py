@@ -1,112 +1,159 @@
-import os as _os
-import sys as _sys
+"""
+Conversation-based KG extractor CLI — thin wrapper around conv_kg_extractor.
 
-_sys.path.insert(0, _os.path.abspath(_os.path.join(_os.path.dirname(__file__), "..")))
-import json
-import sqlite3
-import subprocess
+Replaces the old torch-based document extraction pipeline.  Now processes
+recent conversation messages (not documents) via the configured LLM router.
 
-import requests
-import sqlite_vec
-from synapse_config import SynapseConfig
+Usage
+-----
+    python scripts/fact_extractor.py                 # process new messages
+    python scripts/fact_extractor.py --force         # ignore min_messages threshold
+    python scripts/fact_extractor.py --limit 100     # cap at 100 messages
+    python scripts/fact_extractor.py --dry-run       # extract but don't write
+"""
 
-DB_PATH = str(SynapseConfig.load().db_dir / "memory.db")
-OLLAMA_URL = "http://127.0.0.1:11434/api/embeddings"
-EMBED_MODEL = "nomic-embed-text:latest"
+import argparse
+import asyncio
+import os
+import sys
 
+_sys_path = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if _sys_path not in sys.path:
+    sys.path.insert(0, _sys_path)
 
-def get_embedding(text):
-    response = requests.post(OLLAMA_URL, json={"model": EMBED_MODEL, "prompt": text})
-    return response.json()["embedding"]
+from sci_fi_dashboard.conv_kg_extractor import (  # noqa: E402
+    ConvKGExtractor,
+    _get_last_kg_timestamp,
+    fetch_messages_since,
+    run_batch_extraction,
+)
+from sci_fi_dashboard.llm_router import SynapseLLMRouter  # noqa: E402
+from sci_fi_dashboard.sqlite_graph import SQLiteGraph  # noqa: E402
+from synapse_config import SynapseConfig  # noqa: E402
 
-
-def extract_facts_with_gemini(content):
-    prompt = f"""
-    Extract key atomic facts, decisions, plans, and entities from the following text.
-    Return the result as a JSON array of objects.
-    Each object must have:
-    - entity: The main subject (e.g., 'primary_user', 'primary_partner', 'Friend Name', 'YourWorkplace')
-    - content: The fact itself (concise, atomic)
-    - category: (e.g., 'Work', 'Relationship', 'Plan', 'Preference')
-    - links: A list of triples [subject, relation, object] for a knowledge graph. (Optional)
-
-    Text:
-    {content}
-
-    Only return valid JSON.
-    """
-
-    # Use gemini-cli for one-shot extraction
-    # We use --output-format json if supported by the CLI version
-    try:
-        result = subprocess.run(["gemini", prompt], capture_output=True, text=True, check=True)
-        # Clean up possible markdown code blocks
-        raw_output = result.stdout.strip()
-        if raw_output.startswith("```json"):
-            raw_output = raw_output[7:-3].strip()
-        elif raw_output.startswith("```"):
-            raw_output = raw_output[3:-3].strip()
-
-        return json.loads(raw_output)
-    except Exception as e:
-        print(f"Error extracting facts: {e}")
-        return []
+# ---------------------------------------------------------------------------
+# Paths
+# ---------------------------------------------------------------------------
+_cfg = SynapseConfig.load()
+ENTITIES_JSON = os.path.join(os.path.dirname(__file__), "..", "sci_fi_dashboard", "entities.json")
+ENTITIES_JSON = os.path.normpath(ENTITIES_JSON)
 
 
-def process_memory():
-    conn = sqlite3.connect(DB_PATH)
-    conn.enable_load_extension(True)
-    sqlite_vec.load(conn)
-    cursor = conn.cursor()
+# ---------------------------------------------------------------------------
+# Main processing
+# ---------------------------------------------------------------------------
 
-    # Get unprocessed documents
-    # Increased limit to 50 for faster progress
-    cursor.execute("SELECT id, content FROM documents WHERE processed = 0 LIMIT 50")
-    rows = cursor.fetchall()
 
-    if not rows:
-        print("No new documents to process.")
-        return
+async def _run_extraction(
+    force: bool = False,
+    limit: int = 200,
+    dry_run: bool = False,
+) -> None:
+    """Run conversation-based KG extraction for all personas."""
+    cfg = SynapseConfig.load()
+    router = SynapseLLMRouter(cfg)
+    graph = SQLiteGraph()
 
-    for doc_id, content in rows:
-        print(f"Processing doc {doc_id}...")
-        facts = extract_facts_with_gemini(content)
+    personas = ["the_creator", "the_partner"]
 
-        for fact in facts:
-            entity = fact.get("entity")
-            fact_content = fact.get("content")
-            category = fact.get("category")
-            links = fact.get("links", [])
+    for persona_id in personas:
+        sbs_data_dir = str(cfg.sbs_dir / persona_id)
+        memory_db_path = str(cfg.db_dir / "memory.db")
 
-            # 1. Insert into atomic_facts
-            cursor.execute(
-                "INSERT INTO atomic_facts (entity, content, category, source_doc_id) VALUES (?, ?, ?, ?)",
-                (entity, fact_content, category, doc_id),
+        if dry_run:
+            # Dry-run: extract only, print results, skip writes
+            last_ts = _get_last_kg_timestamp(sbs_data_dir)
+            db_path = os.path.join(sbs_data_dir, "indices", "messages.db")
+
+            try:
+                msgs = await fetch_messages_since(db_path, last_ts, limit=limit)
+            except Exception as e:
+                print(f"[{persona_id}] Could not read messages: {e}")
+                continue
+
+            if not msgs:
+                print(f"[{persona_id}] No new messages since {last_ts}")
+                continue
+
+            print(f"[{persona_id}] {len(msgs)} message(s) since {last_ts}")
+            text = "\n".join(f"[{m['role']}]: {m['content']}" for m in msgs)
+
+            extractor = ConvKGExtractor(router)
+            result = await extractor.extract(text)
+            facts = result.get("facts", [])
+            triples = result.get("triples", [])
+
+            print(f"  [dry] {len(facts)} fact(s), {len(triples)} triple(s)")
+            for f in facts[:5]:
+                print(f"    fact: [{f['entity']}] {f['content']}")
+            for t in triples[:5]:
+                print(f"    triple: {t}")
+        else:
+            # Normal run: full batch extraction with writes
+            effective_min = 0 if force else cfg.kg_extraction.min_messages
+            result = await run_batch_extraction(
+                persona_id=persona_id,
+                sbs_data_dir=sbs_data_dir,
+                llm_router=router,
+                graph=graph,
+                memory_db_path=memory_db_path,
+                entities_json_path=ENTITIES_JSON,
+                min_messages=effective_min,
+                max_messages=limit if limit > 0 else 200,
+                force=force,
             )
-            fact_id = cursor.lastrowid
+            if result.get("skipped"):
+                print(
+                    f"[{persona_id}] Skipped"
+                    f" (pending: {result.get('pending', '?')},"
+                    f" reason: {result.get('reason', 'threshold')})"
+                )
+            elif result.get("error"):
+                print(f"[{persona_id}] Error: {result['error']}")
+            else:
+                print(
+                    f"[{persona_id}] Extracted"
+                    f" {result.get('extracted', 0)} triples,"
+                    f" {result.get('facts', 0)} facts"
+                )
 
-            # 2. Generate embedding and insert into atomic_facts_vec
-            embedding = get_embedding(fact_content)
-            cursor.execute(
-                "INSERT INTO atomic_facts_vec (fact_id, embedding) VALUES (?, ?)",
-                (fact_id, sqlite_vec.serialize_float32(embedding)),
-            )
+    graph.close()
 
-            # 3. Insert into entity_links
-            for link in links:
-                if len(link) == 3:
-                    cursor.execute(
-                        "INSERT INTO entity_links (subject, relation, object, source_fact_id) VALUES (?, ?, ?, ?)",
-                        (link[0], link[1], link[2], fact_id),
-                    )
 
-        # Mark as processed
-        cursor.execute("UPDATE documents SET processed = 1 WHERE id = ?", (doc_id,))
-        conn.commit()
+def process_documents(force: bool = False, limit: int = 200, dry_run: bool = False) -> None:
+    """Backward-compatible entry point (wraps the async extraction)."""
+    asyncio.run(_run_extraction(force=force, limit=limit, dry_run=dry_run))
 
-    conn.close()
-    print("[OK] Batch processing complete.")
+
+# ---------------------------------------------------------------------------
+# CLI entry point
+# ---------------------------------------------------------------------------
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Conversation-based KG extractor — uses configured LLM router"
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Ignore min_messages threshold (process all pending messages)",
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=200,
+        metavar="N",
+        help="Cap at N messages (default: 200)",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Extract but do not write to any DB or JSON",
+    )
+    args = parser.parse_args()
+    process_documents(force=args.force, limit=args.limit, dry_run=args.dry_run)
 
 
 if __name__ == "__main__":
-    process_memory()
+    main()

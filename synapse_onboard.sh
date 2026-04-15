@@ -47,50 +47,15 @@ all_good=true
 check_tool git       || all_good=false
 check_tool python3   || all_good=false
 check_tool docker    || all_good=false
-# Ollama is required for ingestion and semantic memory -- auto-install if missing
+# Ollama is OPTIONAL — enables local models (The Vault, privacy mode)
 if command -v ollama &> /dev/null; then
-    echo "   ✓ ollama is installed"
+    echo "   ✓ ollama is installed (optional — enables local models)"
 else
-    echo "   Ollama not found. Installing automatically..."
-    if [ "$(uname)" = "Darwin" ]; then
-        # macOS: the Linux install.sh won't work -- use Homebrew if available
-        if command -v brew &> /dev/null; then
-            brew install ollama
-            if ! command -v ollama &> /dev/null; then
-                echo ""
-                echo "❌ Ollama installation via Homebrew failed."
-                echo "   Install manually from https://ollama.com/download then run this script again."
-                echo ""
-                exit 1
-            fi
-            echo "   ✓ Ollama installed via Homebrew"
-        else
-            echo ""
-            echo "❌ Cannot auto-install Ollama on macOS without Homebrew."
-            echo "   Option 1 (recommended): Install Homebrew first:"
-            echo "      /bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\""
-            echo "      brew install ollama"
-            echo "   Option 2: Download the .dmg from https://ollama.com/download"
-            echo "   Then run this script again."
-            echo ""
-            exit 1
-        fi
-    else
-        # Linux: official one-liner installer
-        if curl -fsSL https://ollama.com/install.sh | sh; then
-            echo "   ✓ Ollama installed successfully"
-        else
-            echo ""
-            echo "❌ Ollama installation failed."
-            echo "   Please install manually from https://ollama.com then run this script again."
-            echo ""
-            exit 1
-        fi
-    fi
+    echo "   - ollama: not installed (OPTIONAL)"
+    echo "     Ollama enables local models (The Vault, privacy mode)."
+    echo "     Skip if you don't need local models."
+    echo "     Install later from https://ollama.com if needed."
 fi
-# TODO Phase 7: openclaw binary check removed — system runs without openclaw
-# check_tool openclaw  || all_good=false
-
 if [ "$all_good" = false ]; then
     echo ""
     echo "❌ Oops! Some tools are missing."
@@ -308,9 +273,6 @@ echo "🔧 Configuring Synapse workspace..."
 
 SYNAPSE_WORKSPACE="$SCRIPT_DIR/workspace"
 
-# TODO Phase 1: workspace path now read from SYNAPSE_HOME / SynapseConfig
-# openclaw config set agents.defaults.workspace "$SYNAPSE_WORKSPACE" 2>/dev/null || \
-#     openclaw config set agents.defaults.workspace "$SYNAPSE_WORKSPACE"
 echo "   ✓ Workspace: $SYNAPSE_WORKSPACE"
 
 # Create required directories for databases, logs, and persona data
@@ -330,35 +292,90 @@ else
 fi
 
 echo ""
-echo "🔑 Step 3: Configuring LLM access..."
+echo "🧠 Step 3: Configuring Synapse's memory engine..."
+echo ""
+echo "Synapse's memory system (Knowledge Graph) needs a Google Gemini API key."
+echo "This is FREE — no credit card, no billing, 1000 requests/day."
+echo ""
+echo "   Get your key at: https://aistudio.google.com/apikey"
+echo "   (Sign in with Google → Create API Key → Copy it)"
+echo ""
+echo "   NOTE: This is separate from your chat LLM."
+echo "   You can use any provider for chatting (Copilot, OpenAI, Claude, etc.)"
+echo "   but Synapse's memory always runs on Gemini free tier in the background."
 echo ""
 
-# TODO Phase 2: provider credentials moved to ~/.synapse/synapse.json
-# GATEWAY_TOKEN=$(openclaw config get gateway.auth.token 2>/dev/null | tr -d '[:space:]"')
-# if [ -n "$GATEWAY_TOKEN" ] && [ "$GATEWAY_TOKEN" != "null" ] && [ "$GATEWAY_TOKEN" != "undefined" ] && [ ${#GATEWAY_TOKEN} -ge 8 ]; then
-#     if grep -q "^OPENCLAW_GATEWAY_TOKEN=.\{8,\}" "$SCRIPT_DIR/.env" 2>/dev/null; then
-#         echo "   ✓ OpenClaw gateway token already configured in .env"
-#     else
-#         grep -v "^OPENCLAW_GATEWAY_TOKEN=" "$SCRIPT_DIR/.env" > "$SCRIPT_DIR/.env.tmp" 2>/dev/null \
-#             && mv "$SCRIPT_DIR/.env.tmp" "$SCRIPT_DIR/.env"
-#         printf "\nOPENCLAW_GATEWAY_TOKEN=%s\n" "$GATEWAY_TOKEN" >> "$SCRIPT_DIR/.env"
-#         echo "   ✓ OpenClaw gateway token written to .env automatically"
-#         echo "     Synapse will use the LLM you chose during 'openclaw onboard'"
-#     fi
-# else
-#     echo "   ℹ  OpenClaw gateway token not found (openclaw config get gateway.auth.token returned nothing)."
-# fi
-
-# Check if a direct Gemini key is present
+# Check if a direct Gemini key is already present
 if grep -qE "^GEMINI_API_KEY=.{20,}" "$SCRIPT_DIR/.env" 2>/dev/null; then
-    echo "   ✓ GEMINI_API_KEY found in .env — Synapse will call Gemini directly"
+    echo "   ✓ GEMINI_API_KEY already configured in .env"
 else
-    echo ""
-    echo "   ⚠  No LLM configured yet. Synapse will start but replies will fail."
-    echo "   Fix by adding to .env:"
-    echo "      GEMINI_API_KEY=<key>           (free at aistudio.google.com)"
-    echo ""
+    while true; do
+        read -p "   Paste your Gemini API key (or press Enter to skip): " gemini_key
+
+        if [ -z "$gemini_key" ]; then
+            echo ""
+            echo "   ⚠  Skipped. Synapse will chat but memory won't build."
+            echo "   Add later to .env:  GEMINI_API_KEY=<your_key>"
+            echo ""
+            break
+        fi
+
+        # Basic validation — Gemini keys are typically 39+ chars starting with "AI"
+        if [ ${#gemini_key} -lt 20 ]; then
+            echo "   That doesn't look right (too short). Try again."
+            continue
+        fi
+
+        # Write to .env
+        if grep -q "^GEMINI_API_KEY=" "$SCRIPT_DIR/.env" 2>/dev/null; then
+            sed -i.bak "s|^GEMINI_API_KEY=.*|GEMINI_API_KEY=$gemini_key|" "$SCRIPT_DIR/.env"
+            rm -f "$SCRIPT_DIR/.env.bak"
+        else
+            echo "GEMINI_API_KEY=$gemini_key" >> "$SCRIPT_DIR/.env"
+        fi
+
+        # Also write to synapse.json if it exists
+        SYNAPSE_HOME_DIR="${SYNAPSE_HOME:-$HOME/.synapse}"
+        SYNAPSE_JSON="$SYNAPSE_HOME_DIR/synapse.json"
+        if [ -f "$SYNAPSE_JSON" ]; then
+            python3 -c "
+import json, sys
+try:
+    with open('$SYNAPSE_JSON') as f:
+        cfg = json.load(f)
+    cfg.setdefault('providers', {}).setdefault('gemini', {})['api_key'] = '$gemini_key'
+    with open('$SYNAPSE_JSON', 'w') as f:
+        json.dump(cfg, f, indent=2)
+except Exception as e:
+    print(f'   Warning: Could not update synapse.json: {e}', file=sys.stderr)
+" 2>/dev/null
+        fi
+
+        echo "   ✓ Gemini key saved (powers Knowledge Graph + memory)"
+        echo ""
+        break
+    done
 fi
+
+echo ""
+echo "🗣️  Now configure your CHAT provider..."
+echo ""
+echo "   Which LLM do you want for chatting? (separate from memory)"
+echo "   You can configure this in synapse.json later, or set an env var now:"
+echo ""
+echo "   Provider          Env variable              Free?"
+echo "   ─────────────────────────────────────────────────────"
+echo "   Gemini (default)  GEMINI_API_KEY            Yes (already set above)"
+echo "   GitHub Copilot    (auto via VS Code login)  With Pro subscription"
+echo "   OpenAI            OPENAI_API_KEY            Paid"
+echo "   Anthropic         ANTHROPIC_API_KEY         Paid"
+echo "   Groq              GROQ_API_KEY              Free tier available"
+echo "   OpenRouter        OPENROUTER_API_KEY        Free models available"
+echo "   Ollama (local)    (no key needed)           Free (needs GPU)"
+echo ""
+echo "   For now, Gemini will handle both chat and memory."
+echo "   Edit ~/.synapse/synapse.json to change your chat provider later."
+echo ""
 
 # Create ~/.synapse/synapse.json from synapse.json.example if it doesn't exist
 SYNAPSE_HOME_DIR="${SYNAPSE_HOME:-$HOME/.synapse}"
@@ -391,39 +408,29 @@ echo ""
 # Ensure log directory exists before any nohup redirects
 mkdir -p ~/.synapse/logs
 
-echo "[1/4] Starting Docker services (Qdrant)..."
-if ! docker info > /dev/null 2>&1; then
-    echo "   ⚠ Docker daemon is not running. Skipping Qdrant."
-    echo "   Start Docker Desktop and re-run, or use synapse_start.sh later."
-elif docker start antigravity_qdrant 2>/dev/null; then
-    echo "   ✓ Qdrant started"
-else
-    echo "   Container not found. Creating Qdrant (may take a few minutes on first run)..."
-    if docker run -d --name antigravity_qdrant \
-        -p 6333:6333 -p 6334:6334 \
-        qdrant/qdrant; then
-        echo "   ✓ Qdrant created and started"
-    else
-        echo "   ⚠ Could not start Qdrant. Vector search will fall back to SQLite."
-    fi
-fi
+echo "[1/4] Vector store: LanceDB (embedded, no Docker needed)..."
+echo "   ✓ LanceDB initialized on first use via pip"
 
 echo ""
-echo "[2/4] Starting Ollama..."
-export OLLAMA_KEEP_ALIVE=0
-export OLLAMA_MAX_LOADED_MODELS=1
-export OLLAMA_NUM_PARALLEL=1
-if ! pgrep -f "ollama serve" > /dev/null; then
-    nohup ollama serve > ~/.synapse/logs/ollama.log 2>&1 &
-    echo "   ✓ Ollama started"
-    sleep 3
+echo "[2/4] Ollama (optional — local models)..."
+if command -v ollama &> /dev/null; then
+    export OLLAMA_KEEP_ALIVE=0
+    export OLLAMA_MAX_LOADED_MODELS=1
+    export OLLAMA_NUM_PARALLEL=1
+    if ! pgrep -f "ollama serve" > /dev/null; then
+        nohup ollama serve > ~/.synapse/logs/ollama.log 2>&1 &
+        echo "   ✓ Ollama started"
+        sleep 3
+    else
+        echo "   ✓ Ollama already running"
+    fi
+    echo "   Pulling required embedding model (nomic-embed-text)..."
+    echo "   (This downloads ~900 MB on first run — please wait)"
+    ollama pull nomic-embed-text
+    echo "   ✓ nomic-embed-text ready"
 else
-    echo "   ✓ Ollama already running"
+    echo "   ✓ Skipped (Ollama not installed — optional)"
 fi
-echo "   Pulling required embedding model (nomic-embed-text)..."
-echo "   (This downloads ~900 MB on first run — please wait)"
-ollama pull nomic-embed-text
-echo "   ✓ nomic-embed-text ready"
 
 echo ""
 echo "[3/4] Starting API Gateway..."
@@ -441,14 +448,6 @@ fi
 
 echo ""
 echo "[4/4] WhatsApp bridge..."
-# TODO Phase 7: openclaw gateway check removed
-# TODO Phase 4: WhatsApp bridge replaced by Baileys HTTP bridge
-# if ! pgrep -f "openclaw.*gateway" > /dev/null; then
-#     nohup openclaw gateway > ~/.synapse/logs/openclaw_gateway.log 2>&1 &
-#     echo "   ✓ OpenClaw Gateway started"
-# else
-#     echo "   ✓ OpenClaw Gateway already running"
-# fi
 echo "   (WhatsApp bridge deferred — Phase 4 will implement Baileys bridge)"
 
 echo ""
@@ -474,27 +473,6 @@ else
     echo "⚠ No response after 15s — check ~/.synapse/logs/gateway.log"
     services_ok=false
 fi
-
-# TODO Phase 7: openclaw gateway check removed
-# echo -n "   - OpenClaw Gateway: "
-# oc_up=false
-# for i in 1 2 3 4 5; do
-#     if curl -s http://127.0.0.1:18789/health > /dev/null 2>&1; then
-#         oc_up=true
-#         break
-#     fi
-#     if pgrep -f "openclaw.*gateway" > /dev/null; then
-#         oc_up=true
-#         break
-#     fi
-#     sleep 3
-# done
-# if $oc_up; then
-#     echo "✓ Running"
-# else
-#     echo "⚠ Not detected — check ~/.synapse/logs/openclaw_gateway.log"
-#     services_ok=false
-# fi
 
 echo ""
 if [ "$services_ok" = true ]; then

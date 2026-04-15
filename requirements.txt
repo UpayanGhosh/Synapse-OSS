@@ -6,6 +6,8 @@
 # For ML/NLP:    pip install -r requirements-ml.txt
 # For optional:  pip install -r requirements-optional.txt
 # For dev tools: pip install -r requirements-dev.txt
+#
+# System dependency: ffmpeg (required for TTS voice notes — install via apt/brew/winget)
 # ============================================================
 
 # --- Web Framework & Server ---
@@ -21,10 +23,19 @@ psutil>=5.9.0
 # --- Terminal UI ---
 rich>=13.0.0
 typer[all]>=0.24.0              # CLI framework (onboarding wizard + synapse entry point)
-questionary>=2.1.0              # Interactive prompts: text, password, select, checkbox, confirm
+questionary>=2.1.0              # Interactive prompts: text, password, select, checkbox, confirm (fallback)
+InquirerPy>=0.3.4               # Preferred terminal UI: better Windows compat + fuzzy search
 
 # --- Database & Vector Search ---
 sqlite-vec>=0.1.1
+lancedb>=0.6.0                   # Embedded vector DB - zero Docker overhead
+
+# --- Embeddings ---
+fastembed>=0.4.0                 # ONNX-based local embeddings (default provider)
+# sentence-transformers kept for Toxic-BERT (toxic_scorer_lazy.py) — NOT used for embeddings
+
+# --- LLM Routing ---
+litellm>=1.40.0                  # Unified LLM API (Gemini, Claude, Ollama, OpenRouter dispatch)
 
 # --- Configuration ---
 PyYAML>=6.0                      # personas.yaml + language_patterns.yaml parsing
@@ -32,3 +43,24 @@ PyYAML>=6.0                      # personas.yaml + language_patterns.yaml parsin
 # --- Background Workers ---
 schedule>=1.2.0                  # GentleWorker task scheduling
 filelock>=3.12.0                 # File locking for SBS audit and profile writes
+
+# --- MCP (Model Context Protocol) ---
+mcp>=1.0.0                       # Anthropic MCP SDK (Python)
+
+# --- Google APIs (for Gmail/Calendar MCP servers) ---
+google-auth>=2.23.0
+google-auth-oauthlib>=1.1.0
+google-api-python-client>=2.100.0
+
+# --- Scheduling ---
+croniter>=6.2.2                  # Cron expression parsing (cron/schedule.py)
+
+# --- Server-Sent Events ---
+sse-starlette>=2.0.0             # SSE endpoint for dashboard pipeline events
+
+# --- Image Generation ---
+fal-client>=0.13.0               # fal.ai FLUX provider (image_gen/providers/fal_img.py)
+
+# --- Text-to-Speech (TTS) ---
+edge-tts>=7.0.0                  # Microsoft Edge neural TTS (zero credentials, 400+ voices)
+elevenlabs>=1.0.0                # ElevenLabs premium TTS SDK (opt-in, requires API key)

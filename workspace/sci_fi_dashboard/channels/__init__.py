@@ -19,6 +19,7 @@ Example usage in FastAPI lifespan:
 """
 
 from .base import BaseChannel, ChannelMessage, MsgContext, ReplyPayload
+from .ids import CHANNEL_ALIASES, CHANNEL_ORDER, ChannelId, is_valid_channel_id, resolve_channel_id
 from .plugin import ChannelCapabilities, ChannelPlugin
 from .registry import ChannelRegistry
 from .security import (
@@ -28,6 +29,8 @@ from .security import (
     resolve_dm_access,
 )
 from .stub import StubChannel
+from .thread_bindings import ThreadBinding, ThreadBindingManager
+from .voice_channel import VoiceChannel
 from .whatsapp import WhatsAppChannel
 
 # Optional channel adapters — only importable if their SDK is installed
@@ -48,7 +51,10 @@ except ImportError:
 
 __all__ = [
     "BaseChannel",
+    "CHANNEL_ALIASES",
+    "CHANNEL_ORDER",
     "ChannelCapabilities",
+    "ChannelId",
     "ChannelMessage",
     "ChannelPlugin",
     "ChannelRegistry",
@@ -61,6 +67,11 @@ __all__ = [
     "SlackChannel",
     "StubChannel",
     "TelegramChannel",
+    "ThreadBinding",
+    "ThreadBindingManager",
+    "VoiceChannel",
     "WhatsAppChannel",
+    "is_valid_channel_id",
+    "resolve_channel_id",
     "resolve_dm_access",
 ]

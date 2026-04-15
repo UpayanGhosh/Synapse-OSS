@@ -107,8 +107,7 @@ class MsgContext:
             value = getattr(self, field_name)
             if not isinstance(value, str) or not value.strip():
                 raise ValueError(
-                    f"MsgContext.{field_name} must be a non-empty string, "
-                    f"got {value!r}"
+                    f"MsgContext.{field_name} must be a non-empty string, " f"got {value!r}"
                 )
 
     @staticmethod
@@ -157,6 +156,9 @@ class BaseChannel(ABC):
     they can be instantiated. The non-abstract lifecycle hooks (start / stop) have
     default no-op bodies that subclasses may override.
     """
+
+    # Safe default — subclasses should override to match their platform limit.
+    MAX_CHARS: int = 4000
 
     # Optional security configuration — set by subclass __init__ when provided.
     # Defaults to None (no access control), so existing channels work unchanged.
@@ -250,3 +252,97 @@ class BaseChannel(ABC):
         Default implementation is a no-op — safe for adapters that don't need it.
         """
         ...  # default no-op; subclasses may override
+
+    # ------------------------------------------------------------------
+    # Optional capabilities (non-abstract — not all channels support these)
+    # ------------------------------------------------------------------
+
+    async def send_media(  # noqa: B027
+        self,
+        chat_id: str,
+        media_url: str,
+        media_type: str = "image",
+        caption: str = "",
+    ) -> bool:
+        """
+        Send a media message (image/video/audio/document) to the given chat.
+
+        Default returns False — override in channels that support media.
+        """
+        return False
+
+    async def send_reaction(  # noqa: B027
+        self,
+        chat_id: str,
+        message_id: str,
+        emoji: str,
+    ) -> bool:
+        """
+        Send an emoji reaction to a specific message.
+
+        Default returns False — override in channels that support reactions.
+        """
+        return False
+
+    async def send_payload(self, chat_id: str, payload: ReplyPayload) -> bool:
+        """Route a ReplyPayload to send_media() or send() based on media_url presence.
+
+        Default covers the common case; channels may override for richer behaviour.
+        """
+        if payload.media_url:
+            return await self.send_media(
+                chat_id,
+                media_url=payload.media_url,
+                caption=payload.text,
+            )
+        return await self.send(chat_id, payload.text)
+
+    # ------------------------------------------------------------------
+    # Message splitting
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def split_message(cls, text: str, max_chars: int = 0) -> list[str]:
+        """Split *text* into chunks that each fit within *max_chars*.
+
+        Strategy (in priority order):
+        1. paragraph boundary (``\\n\\n``)
+        2. line boundary (``\\n``)
+        3. word boundary (`` ``)
+        4. hard cut
+
+        If *max_chars* <= 0, ``cls.MAX_CHARS`` is used.
+        A message that already fits is returned as ``[text]``.
+        """
+        limit = max_chars if max_chars > 0 else cls.MAX_CHARS
+        if not text or len(text) <= limit:
+            return [text]
+
+        chunks: list[str] = []
+        remaining = text
+
+        while remaining:
+            if len(remaining) <= limit:
+                chunks.append(remaining)
+                break
+
+            # Try split points in priority order
+            cut = -1
+            for sep in ("\n\n", "\n", " "):
+                idx = remaining.rfind(sep, 0, limit)
+                if idx > 0:
+                    cut = idx
+                    break
+
+            if cut <= 0:
+                # Hard cut — no natural boundary found
+                cut = limit
+
+            chunk = remaining[:cut].rstrip()
+            if chunk:
+                chunks.append(chunk)
+
+            # Skip past the separator(s) we split on
+            remaining = remaining[cut:].lstrip("\n").lstrip(" ") if cut < len(remaining) else ""
+
+        return chunks if chunks else [text]

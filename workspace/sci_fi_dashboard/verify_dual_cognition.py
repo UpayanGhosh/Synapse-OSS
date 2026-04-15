@@ -26,11 +26,11 @@ class MockMemory:
             "results": [
                 {"content": "primary_user likes spicy food.", "source": "past_chat"},
                 {
-                    "content": "primary_user is working on an AI project called OpenClaw.",
+                    "content": "primary_user is working on an AI project called Synapse.",
                     "source": "knowledge_base",
                 },
             ],
-            "graph_context": "primary_user -> building -> OpenClaw",
+            "graph_context": "primary_user -> building -> Synapse",
         }
 
 

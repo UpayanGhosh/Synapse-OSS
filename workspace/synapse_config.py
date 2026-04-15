@@ -1,7 +1,7 @@
 """
 synapse_config.py — Single source of truth for all paths and credentials in Synapse-OSS.
 
-All Python files use ~/.synapse/ via SynapseConfig — zero ~/.openclaw/ references remain.
+All Python files use ~/.synapse/ via SynapseConfig — zero legacy path references remain.
 This module establishes the path contract that every downstream component depends on.
 
 Usage:
@@ -14,15 +14,66 @@ Usage:
 
 import contextlib
 import json
+import logging
 import os
 import stat
+import sys
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+_logger = logging.getLogger(__name__)
+
 # Module-level default only — never evaluated at import time except as a constant.
 _DEFAULT_SYNAPSE_HOME = Path.home() / ".synapse"
+
+
+@dataclass(frozen=True)
+class SBSConfig:
+    """Configuration for the Soul-Brain Sync subsystem.
+
+    All values have sensible defaults matching the original hardcoded behaviour.
+    Override via the ``"sbs"`` key in ``synapse.json``.
+
+    Attributes:
+        batch_threshold:      Number of unbatched messages before triggering a batch run.
+        batch_window_hours:   Hours of inactivity before a startup batch is triggered.
+        max_profile_versions: Maximum archived profile snapshots to retain.
+        vocabulary_decay:     Effective-weight threshold below which vocabulary entries
+                              are archived during the decay sweep.
+        prompt_max_chars:     Character budget for the compiled persona prompt segment.
+        exemplar_pairs:       Maximum number of few-shot exemplar pairs to select.
+    """
+
+    batch_threshold: int = 50
+    batch_window_hours: int = 6
+    max_profile_versions: int = 30
+    vocabulary_decay: float = 0.5
+    prompt_max_chars: int = 6000
+    exemplar_pairs: int = 14
+
+
+@dataclass(frozen=True)
+class KGExtractionConfig:
+    """Configuration for background KG extraction from conversation messages.
+
+    Override via the ``"kg_extraction"`` key in ``synapse.json``.
+
+    Attributes:
+        enabled:                  Master switch for background extraction.
+        min_messages:             Minimum new messages before a batch runs.
+        extract_interval_seconds: Target cadence in seconds (informational;
+                                  actual cadence is governed by gentle_worker_loop).
+        kg_role:                  LLM role used for KG extraction calls.
+                                  Defaults to ``"kg"``; falls back to ``"casual"``
+                                  at runtime if not present in model_mappings.
+    """
+
+    enabled: bool = True
+    min_messages: int = 15
+    extract_interval_seconds: int = 1200
+    kg_role: str = "kg"
 
 
 @dataclass(frozen=True)
@@ -47,6 +98,14 @@ class SynapseConfig:
     model_mappings: dict = field(default_factory=dict)
     gateway: dict = field(default_factory=dict)
     session: dict = field(default_factory=dict)
+    mcp: dict = field(default_factory=dict)
+    sbs: SBSConfig = field(default_factory=SBSConfig)
+    validated_schema: Any = field(default=None, repr=False)
+    embedding: dict = field(default_factory=dict)
+    vector_store: dict = field(default_factory=dict)
+    kg_extraction: KGExtractionConfig = field(default_factory=KGExtractionConfig)
+    image_gen: dict = field(default_factory=dict)
+    tts: dict = field(default_factory=dict)
 
     @classmethod
     def load(cls) -> "SynapseConfig":
@@ -73,17 +132,51 @@ class SynapseConfig:
         model_mappings: dict[str, Any] = {}
         gateway: dict[str, Any] = {}
         session: dict[str, Any] = {}
+        mcp: dict[str, Any] = {}
+        sbs_raw: dict[str, Any] = {}
+        embedding: dict[str, Any] = {}
+        vector_store: dict[str, Any] = {}
+        kg_extraction_raw: dict[str, Any] = {}
+        image_gen: dict[str, Any] = {}
+        tts_raw: dict[str, Any] = {}
 
         config_file = data_root / "synapse.json"
+        validated = None
         if config_file.exists():
             _verify_permissions(config_file)
-            with open(config_file, encoding="utf-8") as fh:
+            with open(config_file, encoding="utf-8-sig") as fh:
                 raw = json.load(fh)
+
+            # --- Phase 2 config pipeline (includes → env → migrate → validate) ---
+            raw = _apply_config_pipeline(raw, config_file)
+            validated = _try_validate(raw)
+
             providers = raw.get("providers", {})
             channels = raw.get("channels", {})
             model_mappings = raw.get("model_mappings", {})
             gateway = raw.get("gateway", {})
             session = raw.get("session", {})
+            mcp = raw.get("mcp", {})
+            sbs_raw = raw.get("sbs", {})
+            embedding = raw.get("embedding", {})
+            vector_store = raw.get("vector_store", {})
+            kg_extraction_raw = raw.get("kg_extraction", {})
+            image_gen = raw.get("image_gen", {})
+            tts_raw = raw.get("tts", {})
+
+        # Build SBSConfig from the "sbs" key (missing keys use dataclass defaults)
+        sbs_config = SBSConfig(
+            **{k: v for k, v in sbs_raw.items() if k in SBSConfig.__dataclass_fields__}
+        )
+
+        # Build KGExtractionConfig from the "kg_extraction" key
+        kg_config = KGExtractionConfig(
+            **{
+                k: v
+                for k, v in kg_extraction_raw.items()
+                if k in KGExtractionConfig.__dataclass_fields__
+            }
+        )
 
         return cls(
             data_root=data_root,
@@ -95,6 +188,14 @@ class SynapseConfig:
             model_mappings=model_mappings,
             gateway=gateway,
             session=session,
+            mcp=mcp,
+            sbs=sbs_config,
+            validated_schema=validated,
+            embedding=embedding,
+            vector_store=vector_store,
+            kg_extraction=kg_config,
+            image_gen=image_gen,
+            tts=tts_raw,
         )
 
 
@@ -130,14 +231,64 @@ def _verify_permissions(path: Path) -> None:
     """Warn if the given path is readable by group or other.
 
     This is a best-effort advisory — not a security enforcement.  On Windows,
-    stat mode bits behave differently; warnings may fire incorrectly there.
+    stat mode bits don't map to Unix semantics so we skip the check entirely.
     """
+    if sys.platform == "win32":
+        return
     mode = path.stat().st_mode
     if mode & (stat.S_IRGRP | stat.S_IROTH):
         warnings.warn(
             f"{path} is readable by group/other (mode {oct(mode)}). " f"Run: chmod 600 {path}",
             stacklevel=3,
         )
+
+
+def _apply_config_pipeline(raw: dict, config_file: Path) -> dict:
+    """Run the Phase 2 config pipeline: includes → env substitution → migration.
+
+    Each step is guarded so a failure in one step logs a warning but does not
+    prevent the remaining steps or the overall load from succeeding.
+    """
+    # Step 1: resolve $include directives
+    try:
+        from config.includes import resolve_includes
+
+        raw = resolve_includes(raw, config_file.parent)
+    except Exception:
+        _logger.debug("config.includes unavailable or failed — skipping", exc_info=True)
+
+    # Step 2: expand ${ENV_VAR} references
+    try:
+        from config.env_substitution import substitute_env_vars
+
+        raw = substitute_env_vars(raw)
+    except Exception:
+        _logger.debug("config.env_substitution unavailable or failed — skipping", exc_info=True)
+
+    # Step 3: apply legacy migrations
+    try:
+        from config.migration import migrate_legacy_config
+
+        raw = migrate_legacy_config(raw)
+    except Exception:
+        _logger.debug("config.migration unavailable or failed — skipping", exc_info=True)
+
+    return raw
+
+
+def _try_validate(raw: dict) -> Any:
+    """Attempt Pydantic validation of *raw*.  Returns the validated schema on
+    success or ``None`` on failure (with a warning)."""
+    try:
+        from config.schema import SynapseConfigSchema
+
+        return SynapseConfigSchema(**raw)
+    except Exception as exc:
+        _logger.warning(
+            "Pydantic validation of synapse.json failed — falling back to raw dicts: %s",
+            exc,
+        )
+        return None
 
 
 def write_config(data_root: Path, config: dict) -> None:

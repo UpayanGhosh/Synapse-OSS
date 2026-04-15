@@ -16,7 +16,6 @@ Provides:
 All network calls use httpx (sync). No asyncio. Designed to be tested independently.
 """
 
-import io
 import os
 import shutil
 import subprocess
@@ -25,7 +24,6 @@ import time
 from pathlib import Path
 
 import httpx
-import qrcode
 
 # ---------------------------------------------------------------------------
 # Conditional rich import — fall back to plain print if not installed
@@ -41,15 +39,126 @@ except ImportError:  # pragma: no cover
     Panel = None  # type: ignore[assignment,misc]
 
 # ---------------------------------------------------------------------------
+# Exceptions
+# ---------------------------------------------------------------------------
+
+
+class NodeJsMissingError(Exception):
+    """Raised when Node.js 18+ is unavailable and auto-install could not resolve it.
+
+    Auto-install via winget is attempted first. This exception is only raised when:
+    - winget is not available and no node found, OR
+    - winget installed/upgraded but PATH refresh still can't resolve node (restart needed), OR
+    - version after upgrade is still < 18.
+
+    The exception message always includes the next action for the user.
+    """
+
+
+# ---------------------------------------------------------------------------
+# Node.js auto-installer
+# ---------------------------------------------------------------------------
+
+_NODE_KNOWN_PATHS_WIN = [
+    r"C:\Program Files\nodejs\node.exe",
+    r"C:\Program Files (x86)\nodejs\node.exe",
+]
+
+
+def _try_auto_install_nodejs(_print) -> bool:  # noqa: ANN001
+    """Attempt to auto-install Node.js LTS via winget (Windows only).
+
+    Prints progress messages via ``_print``. Returns True if winget exited 0,
+    False otherwise. Does NOT update PATH — caller handles that.
+    """
+    if sys.platform != "win32":
+        return False
+
+    winget = shutil.which("winget")
+    if not winget:
+        return False
+
+    _print("[cyan]Node.js not found — attempting auto-install via winget...[/cyan]")
+    try:
+        result = subprocess.run(
+            [
+                "winget",
+                "install",
+                "OpenJS.NodeJS.LTS",
+                "--silent",
+                "--accept-package-agreements",
+                "--accept-source-agreements",
+            ],
+            timeout=300,  # 5 minutes max for download + install
+        )
+        return result.returncode == 0
+    except (subprocess.TimeoutExpired, OSError):
+        return False
+
+
+def _try_auto_upgrade_nodejs(_print) -> bool:  # noqa: ANN001
+    """Attempt to upgrade Node.js to LTS via winget (Windows only).
+
+    Returns True if winget exited 0, False otherwise.
+    """
+    if sys.platform != "win32":
+        return False
+
+    winget = shutil.which("winget")
+    if not winget:
+        return False
+
+    _print("[cyan]Upgrading Node.js to LTS via winget...[/cyan]")
+    try:
+        result = subprocess.run(
+            [
+                "winget",
+                "upgrade",
+                "OpenJS.NodeJS.LTS",
+                "--silent",
+                "--accept-package-agreements",
+                "--accept-source-agreements",
+            ],
+            timeout=300,
+        )
+        return result.returncode == 0
+    except (subprocess.TimeoutExpired, OSError):
+        return False
+
+
+def _refresh_node_path() -> str | None:
+    """Re-check for node on PATH and well-known install locations after auto-install.
+
+    If found in a known location that isn't on PATH yet, injects the directory
+    into os.environ["PATH"] so subsequent subprocess calls work without restart.
+
+    Returns the resolved node path, or None if still not found.
+    """
+    # Re-check PATH first (install may have already been in PATH)
+    node = shutil.which("node")
+    if node:
+        return node
+
+    # Check known Windows install locations
+    for candidate in _NODE_KNOWN_PATHS_WIN:
+        if os.path.isfile(candidate):
+            node_dir = os.path.dirname(candidate)
+            os.environ["PATH"] = node_dir + os.pathsep + os.environ.get("PATH", "")
+            return candidate
+
+    return None
+
+
+# ---------------------------------------------------------------------------
 # Module-level constants
 # ---------------------------------------------------------------------------
 
 CHANNEL_LIST: list[str] = ["whatsapp", "telegram", "discord", "slack"]
 
 BRIDGE_PORT: int = 5010
-BRIDGE_STARTUP_WAIT: float = 5.0  # seconds to wait after Popen before polling
+BRIDGE_STARTUP_WAIT: float = 8.0  # seconds to wait after Popen before polling
 QR_POLL_INTERVAL: float = 2.0
-QR_TIMEOUT: float = 30.0
+QR_TIMEOUT: float = 60.0  # Baileys can take 30-60s to connect to WA servers on first run
 SCAN_TIMEOUT: float = 120.0
 SCAN_POLL_INTERVAL: float = 3.0
 QR_REFRESH_INTERVAL: float = 30.0  # re-render QR if string changes during polling
@@ -259,7 +368,7 @@ def run_whatsapp_qr_flow(
       3. If not running: spawn via subprocess.Popen(['node', 'index.js']).
       4. Wait BRIDGE_STARTUP_WAIT seconds for bridge to initialise.
       5. Poll GET /qr until QR string available (QR_TIMEOUT deadline).
-      6. Render QR as ASCII art via qrcode.QRCode.print_ascii().
+      6. Bridge prints QR directly to terminal via qrcode-terminal (Node.js).
       7. Poll GET /health until connectionState == 'connected' (SCAN_TIMEOUT deadline).
       8. Return True on success, False on timeout / logged_out.
       9. ALWAYS: terminate bridge in finally block (only if wizard started it).
@@ -282,32 +391,88 @@ def run_whatsapp_qr_flow(
         else:
             print(msg)
 
-    # --- Step 1: Validate Node.js 18+ ---
+    # --- Step 1: Validate Node.js 18+ (auto-install if missing) ---
     node_path = shutil.which("node")
     if not node_path:
-        _print(
-            "[red]Node.js is not installed or not on PATH.[/red]\n"
-            "The Baileys WhatsApp bridge requires Node.js 18+.\n"
-            "Install from: https://nodejs.org/en/download/"
-        )
-        return False
+        installed = _try_auto_install_nodejs(_print)
+        if not installed:
+            raise NodeJsMissingError(
+                "Node.js is not installed and auto-install failed (winget not available).\n"
+                "Install Node.js 18+ manually from: https://nodejs.org/en/download/\n"
+                "Then re-run: .\\synapse_onboard.bat"
+            )
+        # winget succeeded — refresh PATH before continuing
+        node_path = _refresh_node_path()
+        if not node_path:
+            raise NodeJsMissingError(
+                "Node.js was installed but requires a terminal restart to take effect.\n"
+                "Please close this window and re-run: .\\synapse_onboard.bat"
+            )
+        _print("[green]Node.js installed successfully.[/green]")
 
-    result = subprocess.run(["node", "--version"], capture_output=True, text=True, timeout=5)
+    result = subprocess.run([node_path, "--version"], capture_output=True, text=True, timeout=5)
     version_str = result.stdout.strip().lstrip("v")  # e.g. "22.14.0"
     try:
         major = int(version_str.split(".")[0])
-    except (ValueError, IndexError):
-        _print(f"Could not parse Node.js version: {version_str!r}")
-        return False
+    except (ValueError, IndexError) as exc:
+        raise NodeJsMissingError(f"Could not parse Node.js version: {version_str!r}") from exc
 
     if major < 18:
-        _print(
-            f"Node.js {version_str} found but Node.js 18+ is required.\n"
-            "Upgrade from: https://nodejs.org/en/download/"
-        )
-        return False
+        _print(f"[yellow]Node.js {version_str} found — upgrading to LTS (18+ required)...[/yellow]")
+        upgraded = _try_auto_upgrade_nodejs(_print)
+        if not upgraded:
+            raise NodeJsMissingError(
+                f"Node.js {version_str} is too old (18+ required) and auto-upgrade failed.\n"
+                "Upgrade manually from: https://nodejs.org/en/download/\n"
+                "Then re-run: .\\synapse_onboard.bat"
+            )
+        # Re-resolve node path after upgrade
+        node_path = _refresh_node_path() or node_path
+        result = subprocess.run([node_path, "--version"], capture_output=True, text=True, timeout=5)
+        version_str = result.stdout.strip().lstrip("v")
+        try:
+            major = int(version_str.split(".")[0])
+        except (ValueError, IndexError):
+            major = 0
+        if major < 18:
+            raise NodeJsMissingError(
+                "Node.js upgrade completed but version is still below 18. "
+                "Please restart your terminal and re-run: .\\synapse_onboard.bat"
+            )
+        _print(f"[green]Node.js upgraded to {version_str}.[/green]")
 
-    # --- Step 2: Check if bridge is already running ---
+    # --- Step 2: Install bridge dependencies if node_modules is missing ---
+    node_modules = bridge_dir / "node_modules"
+    if not node_modules.exists():
+        _print("[cyan]Installing Baileys bridge dependencies (npm install)...[/cyan]")
+        npm = shutil.which("npm")
+        if not npm:
+            # npm ships with Node.js — fall back to sibling of resolved node
+            npm = str(Path(node_path).parent / "npm")
+        npm_result = subprocess.run(
+            [npm, "install", "--prefer-offline"],
+            cwd=str(bridge_dir),
+            timeout=300,
+        )
+        if npm_result.returncode != 0:
+            raise NodeJsMissingError(
+                "npm install failed in baileys-bridge/.\n"
+                "Check your internet connection and re-run: .\\synapse_onboard.bat"
+            )
+        _print("[green]Bridge dependencies installed.[/green]")
+
+    # --- Step 3: Clear stale auth_state so Baileys generates a fresh QR ---
+    # During onboarding we always want a new QR scan. If auth_state/ exists from a
+    # previous attempt, Baileys will try to restore the old session instead of emitting
+    # a QR event — the terminal stays blank. Wipe it unconditionally before pairing.
+    import shutil as _shutil  # noqa: PLC0415
+
+    auth_state_dir = bridge_dir / "auth_state"
+    if auth_state_dir.exists():
+        _shutil.rmtree(auth_state_dir, ignore_errors=True)
+        _print("[dim]Cleared previous auth state — generating fresh QR...[/dim]")
+
+    # --- Step 4: Check if bridge is already running ---
     proc = None
     bridge_was_started_by_wizard = False
 
@@ -316,8 +481,11 @@ def run_whatsapp_qr_flow(
         if existing.status_code == 200:
             _print(f"[green]Reusing existing bridge on port {BRIDGE_PORT}.[/green]")
     except httpx.RequestError:
-        # Bridge not running — start it
-        _print(f"Starting Baileys bridge on port {BRIDGE_PORT}...")
+        # Bridge not running — start it.
+        # stdout=None: bridge output (including the QR rendered by qrcode-terminal) flows
+        # directly to this terminal so the user sees it immediately without any delay.
+        # stderr=PIPE: captured for crash diagnostics only.
+        _print(f"[dim]Starting Baileys bridge on port {BRIDGE_PORT}...[/dim]")
         proc = subprocess.Popen(
             ["node", "index.js"],
             cwd=str(bridge_dir),
@@ -326,84 +494,101 @@ def run_whatsapp_qr_flow(
                 "BRIDGE_PORT": str(BRIDGE_PORT),
                 "PYTHON_WEBHOOK_URL": "http://127.0.0.1:8000/channels/whatsapp/webhook",
             },
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stdout=None,  # inherit — QR prints itself to terminal via qrcode-terminal
+            stderr=subprocess.PIPE,
         )
         bridge_was_started_by_wizard = True
-        time.sleep(BRIDGE_STARTUP_WAIT)
+
+        # Poll /health until bridge responds (up to BRIDGE_STARTUP_WAIT seconds)
+        startup_deadline = time.monotonic() + BRIDGE_STARTUP_WAIT
+        bridge_ready = False
+        while time.monotonic() < startup_deadline:
+            if proc.poll() is not None:
+                break  # process exited — crash handled below
+            try:
+                httpx.get(f"http://127.0.0.1:{BRIDGE_PORT}/health", timeout=1.0)
+                bridge_ready = True
+                break
+            except httpx.RequestError:
+                time.sleep(0.5)
+
+        if not bridge_ready and proc.poll() is not None:
+            stderr_out = proc.stderr.read().decode(errors="replace").strip()
+            _print(
+                "[red]Baileys bridge crashed on startup.[/red]\n"
+                + (stderr_out if stderr_out else "(no output captured)")
+            )
+            return False
+            # Bridge is slow to start but still running — continue to QR wait
 
     try:
-        # --- Step 5: Poll GET /qr until available ---
+        # --- Step 5: Wait for QR to appear (bridge prints it directly to terminal) ---
+        # Poll /health until connectionState becomes 'awaiting_qr' or 'connected'.
+        _print("[dim]Waiting for WhatsApp QR code — it will appear above when ready...[/dim]")
         qr_deadline = time.monotonic() + QR_TIMEOUT
-        qr_string: str | None = None
+        got_qr = False
+
         while time.monotonic() < qr_deadline:
+            # Detect bridge crash mid-wait
+            if proc is not None and proc.poll() is not None:
+                stderr_out = proc.stderr.read().decode(errors="replace").strip()
+                _print(
+                    "[red]Baileys bridge crashed while connecting.[/red]\n"
+                    + (stderr_out if stderr_out else "(no output captured)")
+                )
+                return False
+
             try:
-                qr_resp = httpx.get(f"http://127.0.0.1:{BRIDGE_PORT}/qr", timeout=5.0)
-                if qr_resp.status_code == 200:
-                    candidate = qr_resp.json().get("qr")
-                    if candidate:
-                        qr_string = candidate
+                health_resp = httpx.get(f"http://127.0.0.1:{BRIDGE_PORT}/health", timeout=5.0)
+                if health_resp.status_code == 200:
+                    state = health_resp.json().get("connectionState", "")
+                    if state == "awaiting_qr":
+                        got_qr = True
                         break
+                    if state == "connected":
+                        # Already authenticated (saved session)
+                        _print("[green]WhatsApp session restored — already connected.[/green]")
+                        return True
             except httpx.RequestError:
                 pass
             time.sleep(QR_POLL_INTERVAL)
 
-        if qr_string is None:
-            _print(
-                "[red]Timed out waiting for WhatsApp QR code "
-                f"({QR_TIMEOUT:.0f}s). Is the bridge running?[/red]"
-            )
+        if not got_qr:
+            if proc is not None and proc.poll() is not None:
+                stderr_out = proc.stderr.read().decode(errors="replace").strip()
+                _print(
+                    "[red]Baileys bridge crashed.[/red]\n"
+                    + (stderr_out if stderr_out else "(no output captured)")
+                )
+            else:
+                _print(
+                    "[red]Timed out waiting for WhatsApp QR code "
+                    f"({QR_TIMEOUT:.0f}s).\n"
+                    "This usually means the bridge couldn't reach WhatsApp servers.\n"
+                    "Check your internet connection and try again.[/red]"
+                )
             return False
 
-        # --- Step 6: Render QR as ASCII art ---
-        # Windows: reconfigure stdout to UTF-8 to prevent garbled box-drawing chars
-        if sys.platform == "win32":
-            sys.stdout.reconfigure(encoding="utf-8")  # type: ignore[attr-defined]
-
-        qr_obj = qrcode.QRCode(error_correction=qrcode.constants.ERROR_CORRECT_L)
-        qr_obj.add_data(qr_string)
-        qr_obj.make(fit=True)
-        f = io.StringIO()
-        qr_obj.print_ascii(out=f, invert=True)
-        f.seek(0)
-        ascii_art = f.read()
-
-        if console is not None and _RICH_AVAILABLE:
-            console.print(
-                Panel(
-                    ascii_art,
-                    title="SCAN WITH WHATSAPP",
-                    subtitle="WhatsApp → Linked Devices → Link a Device",
-                )
-            )
-        else:
-            print("\n" + ascii_art)
-            print("SCAN WITH WHATSAPP → Linked Devices → Link a Device")
-
+        # QR is now visible in the terminal (printed by qrcode-terminal in index.js)
         _print(
-            f"Waiting for scan ({SCAN_TIMEOUT:.0f} second timeout)...\n"
-            "Keep this window open until WhatsApp shows 'Linked device'."
+            "\n[bold cyan]Scan the QR code above with WhatsApp:[/bold cyan]\n"
+            "  WhatsApp → ⋮ Menu → Linked Devices → Link a Device\n"
+            f"[dim]Waiting up to {SCAN_TIMEOUT:.0f}s for scan...[/dim]"
         )
 
-        # --- Step 7: Poll GET /health until connectionState == 'connected' ---
+        # --- Step 6: Poll /health until connectionState == 'connected' ---
         scan_deadline = time.monotonic() + SCAN_TIMEOUT
-        last_qr_string = qr_string
-        last_qr_refresh = time.monotonic()
-
         while time.monotonic() < scan_deadline:
             try:
                 health_resp = httpx.get(f"http://127.0.0.1:{BRIDGE_PORT}/health", timeout=5.0)
                 if health_resp.status_code == 200:
-                    health_data = health_resp.json()
-                    state = health_data.get("connectionState", "")
-
+                    state = health_resp.json().get("connectionState", "")
                     if state == "connected":
                         _print(
                             "[green]WhatsApp paired successfully![/green] "
                             "Your session is saved in baileys-bridge/auth_state/"
                         )
                         return True
-
                     if state == "logged_out":
                         _print(
                             "[red]WhatsApp reported 'logged_out' — "
@@ -412,34 +597,11 @@ def run_whatsapp_qr_flow(
                         return False
             except httpx.RequestError:
                 pass
-
-            # QR refresh: re-render if bridge rotated the QR string
-            now = time.monotonic()
-            if now - last_qr_refresh >= QR_REFRESH_INTERVAL:
-                try:
-                    refresh_resp = httpx.get(f"http://127.0.0.1:{BRIDGE_PORT}/qr", timeout=5.0)
-                    if refresh_resp.status_code == 200:
-                        new_qr = refresh_resp.json().get("qr")
-                        if new_qr and new_qr != last_qr_string:
-                            last_qr_string = new_qr
-                            qr_obj2 = qrcode.QRCode(
-                                error_correction=qrcode.constants.ERROR_CORRECT_L
-                            )
-                            qr_obj2.add_data(new_qr)
-                            qr_obj2.make(fit=True)
-                            f2 = io.StringIO()
-                            qr_obj2.print_ascii(out=f2, invert=True)
-                            f2.seek(0)
-                            _print("\n[Refreshed QR]\n" + f2.read())
-                except httpx.RequestError:
-                    pass
-                last_qr_refresh = now
-
             time.sleep(SCAN_POLL_INTERVAL)
 
         _print(
             f"[red]Timed out waiting for WhatsApp scan ({SCAN_TIMEOUT:.0f}s).[/red]\n"
-            "You can run the wizard again, or scan the QR from the Synapse dashboard."
+            "Run the wizard again to get a fresh QR code."
         )
         return False
 
@@ -809,27 +971,7 @@ def setup_whatsapp(
         policy = _prompt_dm_policy("WhatsApp", True, "SYNAPSE_WHATSAPP_DM_POLICY", _print)
         return {"enabled": True, "bridge_port": BRIDGE_PORT, "dm_policy": policy}
 
-    if prompter is not None:
-        choice = prompter.select("WhatsApp:", choices=["Configure (scan QR now)", "Skip"])  # type: ignore[attr-defined]
-        if choice != "Configure (scan QR now)":
-            return None
-    else:
-        # Interactive: skip gate via questionary
-        try:
-            import questionary  # type: ignore[import]
-        except ImportError:
-            _print(
-                "[yellow]questionary not installed — "
-                "cannot run interactive WhatsApp setup.[/yellow]"
-            )
-            return None
-
-        choice = questionary.select(
-            "WhatsApp:", choices=["Configure (scan QR now)", "Skip"]
-        ).ask()
-        if choice != "Configure (scan QR now)":
-            return None
-
+    # WhatsApp is mandatory — no skip gate. Raises NodeJsMissingError if Node.js absent.
     _print("Starting WhatsApp QR pairing flow...")
     success = run_whatsapp_qr_flow(bridge_dir, console=console)
 

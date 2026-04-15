@@ -212,8 +212,7 @@ def _configure_advanced(existing_gateway: dict, prompter: object | None) -> dict
 
     if auth_mode == "disabled":
         _print(
-            "[yellow]Warning: gateway auth is disabled. "
-            "Anyone on the network can control it.[/]"
+            "[yellow]Warning: gateway auth is disabled. " "Anyone on the network can control it.[/]"
         )
         token: str | None = None
     else:

@@ -116,18 +116,13 @@ class LaunchdService(GatewayService):
 
     @property
     def _plist_path(self) -> Path:
-        return (
-            Path.home() / "Library" / "LaunchAgents" / f"{_LAUNCHD_LABEL}.plist"
-        )
+        return Path.home() / "Library" / "LaunchAgents" / f"{_LAUNCHD_LABEL}.plist"
 
     def _build_plist(self, opts: InstallOpts) -> str:
         args = [opts.exec_path] + opts.args
-        program_args = "".join(
-            f"        <string>{_xml_escape(a)}</string>\n" for a in args
-        )
+        program_args = "".join(f"        <string>{_xml_escape(a)}</string>\n" for a in args)
         env_vars = "".join(
-            f"        <key>{_xml_escape(k)}</key>\n"
-            f"        <string>{_xml_escape(v)}</string>\n"
+            f"        <key>{_xml_escape(k)}</key>\n" f"        <string>{_xml_escape(v)}</string>\n"
             for k, v in opts.env.items()
         )
         return _LAUNCHD_PLIST_TEMPLATE.format(
@@ -226,19 +221,11 @@ class SystemdUserService(GatewayService):
 
     @property
     def _unit_path(self) -> Path:
-        return (
-            Path.home()
-            / ".config"
-            / "systemd"
-            / "user"
-            / _SYSTEMD_UNIT_NAME
-        )
+        return Path.home() / ".config" / "systemd" / "user" / _SYSTEMD_UNIT_NAME
 
     def _build_unit(self, opts: InstallOpts) -> str:
         args_str = " ".join(opts.args)
-        env_lines = "\n".join(
-            f"Environment={k}={v}" for k, v in opts.env.items()
-        )
+        env_lines = "\n".join(f'Environment="{k}={v}"' for k, v in opts.env.items())
         return _SYSTEMD_UNIT_TEMPLATE.format(
             exec_path=opts.exec_path,
             args=args_str,
@@ -323,7 +310,7 @@ class SystemdUserService(GatewayService):
             return []
         for line in self._unit_path.read_text(encoding="utf-8").splitlines():
             if line.startswith("ExecStart="):
-                return line[len("ExecStart="):].split()
+                return line[len("ExecStart=") :].split()
         return []
 
 
@@ -353,11 +340,7 @@ class WindowsTaskService(GatewayService):
     def _build_bat_content(self, opts: InstallOpts) -> str:
         args_str = " ".join(opts.args)
         env_lines = "\n".join(f"SET {k}={v}" for k, v in opts.env.items())
-        return (
-            "@echo off\n"
-            f"{env_lines}\n"
-            f'START "" "{opts.exec_path}" {args_str}\n'
-        )
+        return "@echo off\n" f"{env_lines}\n" f'START "" "{opts.exec_path}" {args_str}\n'
 
     def _schtasks_command(self, opts: InstallOpts) -> list[str]:
         args_str = " ".join(opts.args)
@@ -374,31 +357,35 @@ class WindowsTaskService(GatewayService):
             "/F",  # Force overwrite if exists
         ]
 
+    @staticmethod
+    def _is_admin() -> bool:
+        try:
+            import ctypes
+
+            return bool(ctypes.windll.shell32.IsUserAnAdmin())
+        except Exception:
+            return False
+
     def install(self, opts: InstallOpts) -> None:
         opts.log_dir.mkdir(parents=True, exist_ok=True)
-        try:
-            result = subprocess.run(
-                self._schtasks_command(opts),
-                capture_output=True,
-                text=True,
-                timeout=10,
-                check=False,
-            )
-            if result.returncode == 0:
-                print(
-                    f"Synapse Gateway registered as Windows scheduled task '{_WINDOWS_TASK_NAME}'."
+        if self._is_admin():
+            try:
+                result = subprocess.run(
+                    self._schtasks_command(opts),
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                    check=False,
                 )
-                return
-            else:
-                print(
-                    f"schtasks returned error (code {result.returncode}): {result.stderr.strip()}"
-                )
-        except subprocess.TimeoutExpired:
-            print("schtasks timed out — falling back to Startup folder shortcut.")
-        except FileNotFoundError:
-            print("schtasks not found — falling back to Startup folder shortcut.")
+                if result.returncode == 0:
+                    print(
+                        f"Synapse Gateway registered as Windows scheduled task '{_WINDOWS_TASK_NAME}'."
+                    )
+                    return
+            except (subprocess.TimeoutExpired, FileNotFoundError):
+                pass  # fall through to Startup folder
 
-        # Fallback: write .bat to Startup folder
+        # Non-admin or schtasks failed: write .bat to Startup folder
         bat_path = self._startup_bat_path
         bat_path.parent.mkdir(parents=True, exist_ok=True)
         bat_path.write_text(self._build_bat_content(opts), encoding="utf-8")

@@ -7,6 +7,10 @@ import sqlite3
 import sqlite_vec
 from synapse_config import SynapseConfig
 
+# Single source of truth for embedding dimensions in this migration script.
+# Keep in sync with sci_fi_dashboard/db.py::EMBEDDING_DIMENSIONS.
+EMBEDDING_DIMENSIONS = 768
+
 DB_PATH = str(SynapseConfig.load().db_dir / "memory.db")
 
 
@@ -37,10 +41,10 @@ def update_schema():
 
     print("Creating 'atomic_facts_vec' virtual table...")
     # document_id in vec_items maps to atomic_facts.id here
-    cursor.execute("""
+    cursor.execute(f"""
         CREATE VIRTUAL TABLE IF NOT EXISTS atomic_facts_vec USING vec0(
             fact_id INTEGER PRIMARY KEY,
-            embedding FLOAT[768]
+            embedding FLOAT[{EMBEDDING_DIMENSIONS}]
         )
     """)
 

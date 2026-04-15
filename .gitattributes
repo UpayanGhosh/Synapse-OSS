@@ -1,0 +1,15 @@
+# Force CRLF for Windows scripts — cmd.exe requires CRLF line endings
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Unix scripts use LF
+*.sh text eol=lf
+
+# Python and everything else — normalize to LF
+*.py text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.txt text eol=lf
+*.toml text eol=lf

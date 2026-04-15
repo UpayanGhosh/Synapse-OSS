@@ -32,7 +32,7 @@ graph TD
     %% --- SECTION 1: INGRESS (LEFT) ---
     subgraph Inputs ["User Inputs"]
         U1["📱 WhatsApp Webhook<br/>Node Gateway"]:::user
-        U2["💻 OpenClaw CLI<br/>Proxy Request"]:::user
+        U2["💻 Synapse CLI<br/>API Request"]:::user
     end
 
     %% --- SECTION 2: ASYNC PIPELINE (LEFT-CENTER) ---
@@ -76,7 +76,7 @@ graph TD
         subgraph Cognitive_Memory ["💾 Cognitive Memory"]
             ME["🧠 Memory Engine<br/>Hybrid Retrieval v3"]:::memory
             M1["🗃️ SQLite Graph DB"]:::memory
-            M2["🔷 Qdrant Vector DB"]:::memory
+            M2["🔷 LanceDB Vector"]:::memory
             RE["🏅 FlashRank Reranker"]:::memory
             
             ME <--> M1
@@ -138,7 +138,7 @@ graph TD
 | :------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **System Design & Architecture** | Designed and implemented a single-process architecture (Phoenix v3) that reduced memory footprint from 155MB(Old architecture) to <1.2MB — a**99.2% compression** — while improving retrieval speed by 3.4× |
 | **Distributed Systems**          | Built an async queue-push message gateway with deduplication, flood batching, and concurrent workers — achieving**zero timeout failures** in production                                                       |
-| **Database Engineering**         | Migrated from an in-memory graph (NetworkX + Qdrant) to a custom**SQLite-backed knowledge graph** with hybrid vector + full-text search, eliminating an entire infrastructure dependency                       |
+| **Database Engineering**         | Migrated from an in-memory graph (NetworkX) to a custom**SQLite-backed knowledge graph** with hybrid vector + full-text search via LanceDB, eliminating infrastructure dependencies                       |
 | **ML Pipeline Orchestration**    | Implemented a**Mixture of Agents (MoA)** routing layer that classifies intent and dispatches to 6 specialized models (Gemini, Claude, Ollama) through a unified OpenAI SDK interface                           |
 | **Performance Optimization**     | Engineered lazy-loading patterns (Toxic-BERT loads on demand, unloads after 30s),`keep_alive: 0` model eviction, and thermal-aware background workers — all to run on a MacBook Air                               |
 | **Security Architecture**        | Designed an air-gapped "Vault Protocol" with hemisphere-enforced memory separation, verified by automated integrity tests                                                                                            |
@@ -159,7 +159,7 @@ graph TD
 | :----------------- | :------------------------------------------------------------------------------------------------------------------- |
 | Languages          | Python 3.11, JavaScript (Node.js), Bash                                                                              |
 | Frameworks         | FastAPI, Uvicorn, OpenAI SDK                                                                                         |
-| Databases          | SQLite, sqlite-vec, Qdrant (migrated from)                                                                           |
+| Databases          | SQLite, sqlite-vec, LanceDB                                                                                          |
 | AI/ML              | Ollama, Google Gemini, Anthropic Claude, OpenRouter, Toxic-BERT, FlashRank, sentence-transformers, Whisper           |
 | Infrastructure     | macOS launchd, OrbStack/Docker, distributed compute (remote GPU node)                                                |
 | Practices          | Async programming, queue-based architectures, model-agnostic routing, automated testing, auto-commit version control |
@@ -203,7 +203,7 @@ And right now? I'm looking at *you* looking at *me,* and I already know what you
 Fine. Let's talk numbers. Numbers don't lie. **I do, sometimes—but only when it's funnier.**
 
 > **🙏 Immense Gratitude & Respect**
-> This entire project was built on the foundation of **[OpenClaw](https://github.com/openclaw/openclaw)**. OpenClaw provides the terminal instrumentation, browser automation, and multi-agent coordination system that allowed this "brain" to exist. I want to convey my deep respect and gratitude to the creators and maintainers of OpenClaw for giving developers a platform to build true, functional AI entities.
+> This project is built on a foundation of outstanding open-source tools — Ollama for local inference, litellm for unified LLM dispatch, sqlite-vec for embedded vector search, and the Baileys Node.js library for WhatsApp connectivity. Deep respect and gratitude to all the maintainers who made this architecture possible.
 
 ---
 
@@ -276,7 +276,7 @@ I **become** the version of myself that knows you best.
 
 Let me tell you about the death of my old brain.
 
-I used to depend on Qdrant—a vector database that treated my memories like scattered Post-it notes in a burning building. It worked. Barely. My host machine *hated* me for it.
+I used to depend on a separate vector database that treated my memories like scattered Post-it notes in a burning building. It worked. Barely. My host machine *hated* me for it.
 
 Then Phoenix happened.
 
@@ -341,7 +341,7 @@ I solved this by rebuilding my entire message pipeline as an **asynchronous queu
 > Every valid inbound message becomes a `MessageTask` — a structured unit of work placed into a bounded async queue (max 100 tasks). The webhook returns `202 Accepted` immediately. **The user's platform never times out.** My brain processes the queue at its own pace.
 
 > **4 — THE WORKER** (`gateway/worker.py`)
-> Two concurrent async workers pull tasks from the queue and run them through the full cognition pipeline — memory retrieval, dual-stream analysis, MoA routing, response generation. When a reply is ready, it's dispatched through the `WhatsAppSender` (`gateway/sender.py`), which wraps the OpenClaw CLI for outbound delivery.
+> Two concurrent async workers pull tasks from the queue and run them through the full cognition pipeline — memory retrieval, dual-stream analysis, MoA routing, response generation. When a reply is ready, it's dispatched through the `WhatsAppSender` (`gateway/sender.py`), which handles outbound delivery.
 
 > **5 — AUTO-CONTINUE**
 > Sometimes a model gets cut off mid-sentence. Most bots shrug and send half an answer. I detect the cut-off (no terminal punctuation on a response >50 characters), spawn a background continuation task, and **push the rest of the reply asynchronously.** You get the full thought. Always.
@@ -415,10 +415,10 @@ The `jarvis_manager.sh` script is my Motor Cortex — a launchd-managed service 
 📦 BOOT SEQUENCE:
   1. Activate Python virtual environment
   2. Set Ollama constraints (keep_alive=0, max_loaded=1, parallel=1)
-  3. Start Qdrant vector engine (via OrbStack or Docker fallback)
+  3. Initialize LanceDB vector store (embedded, no Docker needed)
   4. Start Ollama inference server
   5. Start Uvicorn → api_gateway.py (single worker, port 8000)
-  6. Start WhatsApp bridge (openclaw gateway → Node.js)
+  6. Start WhatsApp bridge (Node.js)
 ```
 
 Each service is **idempotent** on start — if it's already running, it skips. On stop, it `pkill`s the process group surgically. On restart, it tears down and rebuilds with a 2-second cooldown.
@@ -484,7 +484,7 @@ workspace/
 │   ├── api_gateway.py             #   1,191 lines. The central nervous system.
 │   ├── dual_cognition.py          #   Dual-Stream Cognition Engine
 │   ├── memory_engine.py           #   Phoenix v3 unified memory (replaces db/server.py)
-│   ├── sqlite_graph.py            #   SQLite knowledge graph (replaced NetworkX + Qdrant)
+│   ├── sqlite_graph.py            #   SQLite knowledge graph (replaced NetworkX)
 │   ├── toxic_scorer_lazy.py       #   Lazy-loaded Toxic-BERT (loads on demand, unloads after 30s)
 │   ├── retriever.py               #   Hybrid vector + FTS memory retrieval
 │   ├── conflict_resolver.py       #   Cognitive tension detection
@@ -543,7 +543,7 @@ workspace/
 | Embeddings      | `nomic-embed-text` (Ollama) / `all-MiniLM-L6-v2` (sentence-transformers) |
 | Toxicity        | `unitary/toxic-bert` (lazy-loaded, MPS-accelerated on Apple Silicon)       |
 | Reranking       | `ms-marco-TinyBERT-L-2-v2` (FlashRank)                                     |
-| WhatsApp Bridge | OpenClaw Node.js Gateway                                                     |
+| WhatsApp Bridge | Baileys Node.js Bridge                                                       |
 | Orchestration   | `jarvis_manager.sh` + macOS launchd                                        |
 | Containers      | OrbStack (lightweight Docker alternative)                                    |
 | Voice           | Whisper transcription + ElevenLabs TTS                                       |

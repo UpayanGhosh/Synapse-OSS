@@ -59,13 +59,16 @@ class LazyToxicScorer:
         self._cleanup_timer.start()
 
     def score(self, text: str) -> float:
+        # C-08 fix: capture local refs inside lock to prevent race with _unload()
         with self._lock:
             self._load()
             self._last_used = time.time()
+            model = self._model
+            tokenizer = self._tokenizer
 
         try:
             device = "mps" if torch.backends.mps.is_available() else "cpu"
-            inputs = self._tokenizer(
+            inputs = tokenizer(
                 text,
                 return_tensors="pt",
                 truncation=True,
@@ -73,7 +76,7 @@ class LazyToxicScorer:
             ).to(device)
 
             with torch.no_grad():
-                logits = self._model(**inputs).logits
+                logits = model(**inputs).logits
 
             # Model outputs 6 toxicity scores (one per class)
             # Get the mean across all toxicity classes for overall toxicity

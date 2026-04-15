@@ -5,7 +5,7 @@ import sqlite3
 import struct
 
 from sci_fi_dashboard.db import get_db_connection
-from sci_fi_dashboard.retriever import get_embedding
+from sci_fi_dashboard.embedding import get_provider
 
 try:
     from synapse_config import SynapseConfig  # noqa: PLC0415
@@ -106,124 +106,42 @@ def ingest_atomic():
 
         print(f"[PUZZLE] New Memories Found: {len(new_items)}")
 
-        # 3. Embed & Insert New Items
+        # 3. Batch Embed & Insert New Items
         if new_items:
-            print("[MEM] Embedding new memories (M1 Optimized)...")
-            inserts = []
-            for filename, content, chash in new_items:
-                # Embed using retriever (uses db.py connection internally if needed, but we just want embedding)
-                # Correction: retriever uses its own connection or passed one?
-                # retriever functions are standalone.
-                # We interpret 'get_embedding' calls.
-                vec = get_embedding(content)
-                if vec:
-                    # We insert into shadow table.
-                    # Note: vec_items is separate. We need to handle that too?
-                    # "Atomic Maintenance" implies we sync EVERYTHING.
-                    # If we swap documents, we must ensure vec_items points to correct IDs.
-                    # If we just INSERT into shadow, IDs might drift if we don't preserve them?
-                    # We used `CREATE TABLE ... AS SELECT`, so IDs are preserved.
-                    # New items get new IDs.
-                    inserts.append((filename, content, chash, "safe"))  # Default to safe for files?
-                    # We need to insert into vec_items too.
-                    # But vec_items is virtual table.
-                    # Complication: sqlite-vec links by rowid or explicit id?
-                    # vec_items(document_id, embedding).
-                    pass
+            print("[MEM] Embedding new memories (batch)...")
+            provider = get_provider()
+            if provider is None:
+                print("[WARN] No embedding provider available — skipping vector ingestion.")
+            else:
+                texts = [content for _, content, _ in new_items]
+                vectors = provider.embed_documents(texts)
 
-            # Simplify: Instead of full table swap which risks vec_items desync if ID changes,
-            # We treat "Shadow" as a "Staging Area" for *new* items only, then merge?
-            # User asked for "Shadow Tables... swap".
-            # If I swap `documents`, I must update `vec_items` to match.
-            # `vec_items` uses `document_id`.
-            # If I copy `documents` -> `documents_shadow`, IDs match.
-            # Insert new -> new IDs.
-            # I must insert corresponding vectors into `vec_items`.
-            # THIS IS KEY: `vec_items` is not shadowed here!
-            # If I swap `documents`, `vec_items` still points to old IDs?
-            # No, if I `ALTER TABLE documents RENAME`, the table object changes name.
-            # `vec_items` column `document_id` is just an integer.
-            # As long as `documents_shadow` has same IDs for old rows, we are fine.
-            # New rows get new IDs. We insert their vectors into `vec_items` with those new IDs.
+                cursor = conn.cursor()
+                count = 0
+                for (filename, content, chash), vec in zip(new_items, vectors, strict=False):
+                    if not vec:
+                        continue
 
-            cursor = conn.cursor()
-            for filename, content, chash, tag in inserts:
-                # Insert into Shadow
-                cursor.execute(
-                    "INSERT INTO documents_shadow (filename, content, hemisphere_tag, content_hash) VALUES (?, ?, ?, ?)",
-                    (filename, content, tag, chash),
-                )
+                    # Insert Doc
+                    cursor.execute(
+                        "INSERT INTO documents (filename, content, hemisphere_tag, content_hash)"
+                        " VALUES (?, ?, 'safe', ?)",
+                        (filename, content, chash),
+                    )
+                    doc_id = cursor.lastrowid
 
-                # Retrieve embedding again (inefficient loop but safe)
-                vec = get_embedding(content)
-                # Serialize? sqlite-vec handles raw list in newer versions or requires serialization?
-                # retriever.py has _serialize_f32. I should use it.
-                # But I can't import private function easily.
-                # db.py loads extension.
-                # If I use `sqlite_vec` python package, I can just pass list?
-                # Let's check `retriever.py` usage. It uses `_serialize_f32`.
-                # I should just replicate `_serialize_f32` in `ingest.py`.
+                    # Insert Vec
+                    vec_blob = struct.pack(f"{len(vec)}f", *vec)
+                    cursor.execute(
+                        "INSERT INTO vec_items(document_id, embedding) VALUES (?, ?)",
+                        (doc_id, vec_blob),
+                    )
+                    count += 1
+                    if count % 100 == 0:
+                        print(f"   ... Committed {count} memories")
 
-                # Insert into vec_items
-                # Wait, I shouldn't insert into vec_items UNTIL SWAP?
-                # If I insert into vec_items now, and swap fails, I have orphan vectors.
-                # "Atomic" means ALL OR NOTHING.
-                # So I should Shadow `vec_items` too?
-                # `vec_items` is Virtual Table. Can't easy Rename/Swap usually.
-                # Better approach: Transaction rollback handles this!
-                # If I use a TRANSACTION, I don't need Shadow Tables for *safety*, I need them for... what?
-                # "Process new data into shadow tables... Swap."
-                # Maybe user implies:
-                # 1. Ingest into `staging`.
-                # 2. Verify `staging`.
-                # 3. `INSERT INTO documents SELECT * FROM staging`.
-                # 4. `INSERT INTO vec_items ... from staging_vectors`.
-                # This keeps the "Main" DB locked/clean until ready.
-
-                pass
-
-            # Update: Using explicit transaction on main table with hash-check is safer/easier than swapping virtual tables.
-            # But I must follow "Shadow Table" instruction if possible.
-            # Compromise: Use Shadow for `documents` (text), and Transaction for the final Merge/Swap.
-            # Actually, `vec_items` (virtual) is the tricky part.
-            # Let's use the Transaction method (Atomic) + Content Hash (Optimization) which satisfies the core goals.
-            # I will stick to "Process into Shadow" as a "New Items Batch".
-            # `documents_new_batch` table.
-
-            # Loop new items -> Insert into `documents` and `vec_items` DIRECTLY inside a transaction.
-            # If any failure, ROLLBACK.
-            # This is "Atomic Maintenance".
-            # The "Swap" might be unnecessary complexity for `vec_items`.
-            # I'll implement: Transactional Bulk Insert with Hash Check.
-            # It satisfies "Atomic" (ACID) and "Mac-Native Optimization" (Hash).
-
-            cursor = conn.cursor()
-            count = 0
-            for filename, content, chash in new_items:
-                vec = get_embedding(content)
-                if not vec:
-                    continue
-
-                # Insert Doc
-                cursor.execute(
-                    "INSERT INTO documents (filename, content, hemisphere_tag, content_hash) VALUES (?, ?, 'safe', ?)",
-                    (filename, content, chash),
-                )
-                doc_id = cursor.lastrowid
-
-                # Insert Vec
-                # We need struct.pack
-                vec_blob = struct.pack(f"{len(vec)}f", *vec)
-                cursor.execute(
-                    "INSERT INTO vec_items(document_id, embedding) VALUES (?, ?)",
-                    (doc_id, vec_blob),
-                )
-                count += 1
-                if count % 100 == 0:
-                    print(f"   ... Committed {count} memories")
-
-            conn.commit()
-            print(f"[OK] Successfully ingested {count} new memories.")
+                conn.commit()
+                print(f"[OK] Successfully ingested {count} new memories.")
 
         else:
             print("[OK] No new memories to ingest.")

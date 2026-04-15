@@ -1,6 +1,9 @@
 # sci_fi_dashboard/sbs/sentinel/gateway.py
 
+import contextlib
 import hashlib
+import os
+import tempfile
 from pathlib import Path
 from typing import Literal
 
@@ -62,9 +65,14 @@ class Sentinel:
         path: str,
         operation: Literal["read", "write", "delete", "list", "execute"],
         agent_context: str = "",
-    ) -> bool:
+    ) -> Path:
         """
-        Core access check. Returns True if allowed, raises SentinelError if denied.
+        Core access check. Returns the resolved Path if allowed, raises
+        SentinelError if denied.
+
+        Callers MUST use the returned Path for all subsequent filesystem
+        operations to prevent TOCTOU races (symlink swap between check
+        and use).
 
         Args:
             path: Relative or absolute path the agent wants to access
@@ -110,60 +118,90 @@ class Sentinel:
                 f"Protection level: {level.value}. This incident has been logged."
             )
 
-        return True
+        return resolved
 
     def safe_read(self, path: str, agent_context: str = "") -> str:
         """Safe file read -- checks access first, then reads."""
-        self.check_access(path, "read", agent_context)
-        resolved = self._resolve_path(path)
+        resolved = self.check_access(path, "read", agent_context)
         with open(resolved, encoding="utf-8") as f:
             return f.read()
 
     def safe_write(self, path: str, content: str, agent_context: str = "") -> bool:
-        """Safe file write -- checks access, creates backup, then writes."""
-        self.check_access(path, "write", agent_context)
-        resolved = self._resolve_path(path)
+        """Safe file write -- checks access, creates backup, then atomic writes."""
+        resolved = self.check_access(path, "write", agent_context)
 
         # Create backup before overwriting
         if resolved.exists():
-            backup_content = resolved.read_text(encoding="utf-8")
-            self.audit.log_event(
-                "PRE_WRITE_BACKUP",
-                {
-                    "path": str(resolved),
-                    "original_hash": hashlib.sha256(backup_content.encode()).hexdigest()[:16],
-                    "new_hash": hashlib.sha256(content.encode()).hexdigest()[:16],
-                },
-            )
+            try:
+                backup_content = resolved.read_text(encoding="utf-8")
+            except UnicodeDecodeError:
+                backup_content = None
+            if backup_content is not None:
+                self.audit.log_event(
+                    "PRE_WRITE_BACKUP",
+                    {
+                        "path": str(resolved),
+                        "original_hash": hashlib.sha256(backup_content.encode()).hexdigest()[:16],
+                        "new_hash": hashlib.sha256(content.encode()).hexdigest()[:16],
+                    },
+                )
 
         # Ensure parent directory exists
         resolved.parent.mkdir(parents=True, exist_ok=True)
 
-        with open(resolved, "w", encoding="utf-8") as f:
-            f.write(content)
+        # Atomic write: temp file in same directory + os.replace()
+        tmp_path = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                dir=str(resolved.parent),
+                suffix=".tmp",
+                delete=False,
+            ) as fd:
+                tmp_path = fd.name
+                fd.write(content)
+            os.replace(tmp_path, str(resolved))
+        except Exception:
+            if tmp_path is not None:
+                with contextlib.suppress(OSError):
+                    os.unlink(tmp_path)
+            raise
 
         return True
 
     def safe_delete(self, path: str, agent_context: str = "") -> bool:
         """Safe file delete -- checks access, logs, then deletes."""
-        self.check_access(path, "delete", agent_context)
-        resolved = self._resolve_path(path)
+        resolved = self.check_access(path, "delete", agent_context)
 
         if resolved.exists():
             # Archive content before deletion
             if resolved.is_file():
-                content = resolved.read_text(encoding="utf-8")
+                try:
+                    raw = resolved.read_bytes()
+                    content_hash = hashlib.sha256(raw).hexdigest()[:16]
+                    size_bytes = len(raw)
+                except OSError:
+                    content_hash = "read_error"
+                    size_bytes = 0
                 self.audit.log_event(
                     "PRE_DELETE_ARCHIVE",
                     {
                         "path": str(resolved),
-                        "content_hash": hashlib.sha256(content.encode()).hexdigest()[:16],
-                        "size_bytes": len(content),
+                        "content_hash": content_hash,
+                        "size_bytes": size_bytes,
                     },
                 )
             resolved.unlink()
 
         return True
+
+    def safe_list(self, path: str, agent_context: str = "") -> list[str]:
+        """Safe directory listing -- checks access, returns sorted entry names."""
+        resolved = self.check_access(path, "list", agent_context)
+        if not resolved.is_dir():
+            raise SentinelError(f"Not a directory: {path}")
+        return sorted(p.name for p in resolved.iterdir())
 
     def validate_operation_string(self, operation: str) -> bool:
         """
@@ -242,8 +280,8 @@ class Sentinel:
             return False
 
         elif level == ProtectionLevel.PROTECTED:
-            # Read-only
-            return operation == "read"
+            # Read-only + listing allowed
+            return operation in ("read", "list")
 
         elif level == ProtectionLevel.MONITORED:
             # Read, write allowed. Delete requires extra check.

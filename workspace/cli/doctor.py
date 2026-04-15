@@ -1,7 +1,7 @@
 """
 doctor.py — Synapse-OSS system health check command.
 
-Runs 13 targeted checks covering config, directories, providers, gateway,
+Runs 12 targeted checks covering config, directories, providers, gateway,
 legacy state, and the ML stack.  Exits 0 when all checks pass, exits with the
 count of failures when any check fails.
 
@@ -12,13 +12,12 @@ Checks (in order):
   4.  Required bootstrap files present (SOUL.md, AGENTS.md, USER.md, IDENTITY.md)
   5.  Gateway token is set (non-empty)
   6.  At least one LLM provider key is configured
-  7.  Ollama reachable (GET http://localhost:11434/ with 2s timeout)
+  7.  Ollama reachable (only if configured — Ollama is optional)
   8.  API gateway reachable (GET http://localhost:8000/health with 2s timeout)
   9.  workspace-state.json exists and has bootstrapSeededAt set
  10.  No legacy state dirs present (.synapse_old, .clawdbot, .moldbot)
  11.  sqlite-vec importable (required for vector memory)
- 12.  sentence-transformers importable (required for ingest/embedding)
- 13.  torch importable (required by sentence-transformers)
+ 12.  Embedding provider available (fastembed or gemini)
 
 Exports:
   doctor_command()    Entry point for the synapse doctor CLI subcommand
@@ -168,12 +167,26 @@ def _check_provider_configured(data_root: Path) -> CheckResult:
 
 
 def _check_ollama_reachable() -> CheckResult:
-    """Check 7: Ollama reachable at http://localhost:11434/ (2s timeout)."""
+    """Check 7: Ollama reachable (only if configured as a provider).
+
+    Skipped entirely if the user has not set up Ollama — Ollama is optional.
+    """
     label = "Ollama reachable"
+    # Only check if user has explicitly configured Ollama as a provider
+    try:
+        from synapse_config import SynapseConfig  # noqa: PLC0415
+
+        cfg = SynapseConfig.load()
+        if "ollama" not in cfg.providers:
+            return CheckResult(True, label, "skipped (not configured — Ollama is optional)")
+    except Exception:
+        return CheckResult(True, label, "skipped (config unreadable)")
+
     try:
         import httpx  # noqa: PLC0415
 
-        r = httpx.get("http://localhost:11434/", timeout=2.0)
+        api_base = cfg.providers.get("ollama", {}).get("api_base", "http://localhost:11434")
+        r = httpx.get(f"{api_base}/", timeout=2.0)
         if r.status_code < 500:
             return CheckResult(True, label, f"HTTP {r.status_code}")
         return CheckResult(False, label, f"HTTP {r.status_code}")
@@ -240,26 +253,23 @@ def _check_sqlite_vec() -> CheckResult:
         return CheckResult(False, label, "Run: pip install sqlite-vec")
 
 
-def _check_sentence_transformers() -> CheckResult:
-    """Check 12: sentence-transformers importable (required for ingest/embedding)."""
-    label = "sentence-transformers importable"
+def _check_embedding_provider() -> CheckResult:
+    """Check 12: embedding provider available (required for ingest/semantic search)."""
+    label = "Embedding provider available"
     try:
-        import sentence_transformers  # noqa: F401, PLC0415
+        from sci_fi_dashboard.embedding import get_provider  # noqa: PLC0415
 
-        return CheckResult(True, label)
-    except ImportError:
-        return CheckResult(False, label, "Run: pip install sentence-transformers")
-
-
-def _check_torch() -> CheckResult:
-    """Check 13: torch importable (required by sentence-transformers)."""
-    label = "torch importable"
-    try:
-        import torch  # noqa: F401, PLC0415
-
-        return CheckResult(True, label)
-    except ImportError:
-        return CheckResult(False, label, "Run: pip install torch")
+        provider = get_provider()
+        if provider is None:
+            return CheckResult(
+                False,
+                label,
+                "No provider available -- install fastembed: pip install fastembed",
+            )
+        info = provider.info()
+        return CheckResult(True, label, f"{info.name} ({info.model}, {info.dimensions}d)")
+    except Exception as exc:  # noqa: BLE001
+        return CheckResult(False, label, str(exc))
 
 
 # ---------------------------------------------------------------------------
@@ -294,7 +304,7 @@ def _print_result(result: CheckResult) -> None:
 
 
 def doctor_command(fix: bool = False, non_interactive: bool = False) -> int:
-    """Run all 13 system health checks and print results.
+    """Run all 12 system health checks and print results.
 
     Args:
         fix:             If True, attempt to auto-fix certain issues (e.g., generate
@@ -312,7 +322,7 @@ def doctor_command(fix: bool = False, non_interactive: bool = False) -> int:
 
     # Build check list — each is a zero-arg callable returning CheckResult.
     # Checks 1-7 work entirely offline; checks 8-9 require live services.
-    # Checks 11-13 verify the ML stack needed for memory/ingest features.
+    # Checks 11-12 verify the ML stack needed for memory/ingest features.
     checks: list[Callable[[], CheckResult]] = [
         lambda: _check_config_valid(data_root),
         lambda: _check_data_root_exists(data_root),
@@ -325,8 +335,7 @@ def doctor_command(fix: bool = False, non_interactive: bool = False) -> int:
         lambda: _check_workspace_state(data_root),
         lambda: _check_no_legacy_dirs(),
         _check_sqlite_vec,
-        _check_sentence_transformers,
-        _check_torch,
+        _check_embedding_provider,
     ]
 
     # Run all checks and collect results

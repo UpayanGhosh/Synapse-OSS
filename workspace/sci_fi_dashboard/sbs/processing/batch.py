@@ -26,9 +26,17 @@ class BatchProcessor:
     6. Temporal Decay Sweep -- demote stale patterns
     """
 
-    def __init__(self, db_path: Path, profile_manager: ProfileManager):
+    def __init__(
+        self,
+        db_path: Path,
+        profile_manager: ProfileManager,
+        vocabulary_decay: float = 0.5,
+        exemplar_pairs: int = 14,
+    ):
         self.db_path = db_path
         self.profile_mgr = profile_manager
+        self.vocabulary_decay = vocabulary_decay
+        self.exemplar_pairs = exemplar_pairs
         self.exemplar_selector = ExemplarSelector(db_path)
 
     def run(self, full_rebuild: bool = False):
@@ -147,6 +155,19 @@ class BatchProcessor:
                         "variants": [word],
                         "last_seen": data["last_seen"],
                     }
+
+        # Cap vocabulary registry to prevent unbounded growth
+        _MAX_VOCAB = 10000  # noqa: N806
+        if len(word_registry) > _MAX_VOCAB:
+            # Evict entries with the lowest effective_weight
+            sorted_words = sorted(
+                word_registry.items(),
+                key=lambda kv: kv[1].get("effective_weight", 0),
+            )
+            evict_count = len(word_registry) - _MAX_VOCAB
+            for word, _ in sorted_words[:evict_count]:
+                del word_registry[word]
+            vocab["archived_count"] = vocab.get("archived_count", 0) + evict_count
 
         vocab["registry"] = word_registry
         vocab["top_banglish"] = dict(
@@ -377,7 +398,7 @@ class BatchProcessor:
 
     def _reselect_exemplars(self):
         """Delegate to ExemplarSelector for principled few-shot selection."""
-        exemplars = self.exemplar_selector.select(max_exemplars=14)
+        exemplars = self.exemplar_selector.select(max_exemplars=self.exemplar_pairs)
         self.profile_mgr.save_layer(
             "exemplars",
             {
@@ -392,7 +413,7 @@ class BatchProcessor:
         vocab = self.profile_mgr.load_layer("vocabulary")
         registry = vocab.get("registry", {})
 
-        decay_threshold = 0.5
+        decay_threshold = self.vocabulary_decay
         archived = []
         active = {}
 
@@ -413,12 +434,29 @@ class BatchProcessor:
     # --- Helper queries ---
 
     def _fetch_all_user_messages(self) -> list[dict]:
+        """Fetch all messages in paginated batches to avoid OOM."""
+        _PAGE_SIZE = 1000  # noqa: N806
+        results: list[dict] = []
+        last_ts = ""
+        last_id = ""
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
-            return [
-                dict(r)
-                for r in conn.execute("SELECT * FROM messages ORDER BY timestamp ASC").fetchall()
-            ]
+            while True:
+                rows = conn.execute(
+                    "SELECT * FROM messages "
+                    "WHERE (timestamp, msg_id) > (?, ?) "
+                    "ORDER BY timestamp ASC, msg_id ASC "
+                    "LIMIT ?",
+                    (last_ts, last_id, _PAGE_SIZE),
+                ).fetchall()
+                if not rows:
+                    break
+                for r in rows:
+                    d = dict(r)
+                    results.append(d)
+                    last_ts = d["timestamp"]
+                    last_id = d["msg_id"]
+        return results
 
     def _fetch_messages_since(self, since: str) -> list[dict]:
         with sqlite3.connect(self.db_path) as conn:

@@ -19,6 +19,42 @@ app = typer.Typer(
     no_args_is_help=True,
 )
 
+# ---------------------------------------------------------------------------
+# WhatsApp subcommand group
+# ---------------------------------------------------------------------------
+wa_app = typer.Typer(name="whatsapp", help="WhatsApp channel management", no_args_is_help=True)
+app.add_typer(wa_app)
+
+
+@wa_app.command("status")
+def whatsapp_status(
+    port: int = typer.Option(8000, "--port", help="Gateway port"),
+) -> None:
+    """Show WhatsApp connection state, uptime, and auth age."""
+    from cli.whatsapp_commands import status_command  # noqa: PLC0415
+
+    status_command(port=port)
+
+
+@wa_app.command("relink")
+def whatsapp_relink(
+    port: int = typer.Option(8000, "--port", help="Gateway port"),
+) -> None:
+    """Force a fresh QR scan — wipes saved credentials and restarts socket."""
+    from cli.whatsapp_commands import relink_command  # noqa: PLC0415
+
+    relink_command(port=port)
+
+
+@wa_app.command("logout")
+def whatsapp_logout(
+    port: int = typer.Option(8000, "--port", help="Gateway port"),
+) -> None:
+    """Deregister linked device and wipe WhatsApp session."""
+    from cli.whatsapp_commands import logout_command  # noqa: PLC0415
+
+    logout_command(port=port)
+
 
 @app.command()
 def onboard(
@@ -59,6 +95,57 @@ def onboard(
         accept_risk=accept_risk,
         reset=reset,
     )
+
+
+@app.command()
+def setup(
+    non_interactive: bool = typer.Option(
+        False,
+        "--non-interactive",
+        envvar="SYNAPSE_NON_INTERACTIVE",
+        help="Read all inputs from env vars; no prompts (CI/Docker use).",
+    ),
+    flow: str = typer.Option(
+        "quickstart",
+        "--flow",
+        envvar="SYNAPSE_FLOW",
+        help="Wizard flow: 'quickstart' (default) or 'advanced'.",
+    ),
+    accept_risk: bool = typer.Option(
+        False,
+        "--accept-risk",
+        envvar="SYNAPSE_ACCEPT_RISK",
+        help="Required with --non-interactive.",
+    ),
+    verify: bool = typer.Option(
+        False,
+        "--verify",
+        help="Verify existing config — test each provider and channel.",
+    ),
+    reset: str | None = typer.Option(
+        None,
+        "--reset",
+        envvar="SYNAPSE_RESET",
+        help=(
+            "Back up existing data before wizard starts. "
+            "Values: config | config+creds+sessions | full"
+        ),
+    ),
+) -> None:
+    """Setup Synapse — configure providers, channels, and persona profile."""
+    if verify:
+        from cli.verify_steps import run_verify  # noqa: PLC0415
+
+        raise typer.Exit(run_verify(non_interactive=non_interactive))
+    else:
+        from cli.onboard import run_wizard  # noqa: PLC0415
+
+        run_wizard(
+            non_interactive=non_interactive,
+            flow=flow,
+            accept_risk=accept_risk,
+            reset=reset,
+        )
 
 
 @app.command()

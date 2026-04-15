@@ -1,0 +1,1977 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Synapse — Real-Time Pipeline Dashboard</title>
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@300;400;500;600;700&family=Fira+Sans:wght@300;400;500;600&display=swap" rel="stylesheet" />
+
+  <!-- Tailwind CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            mono: ['Fira Code', 'monospace'],
+            sans: ['Fira Sans', 'sans-serif'],
+          },
+          colors: {
+            bg:        '#020617',
+            surface:   '#0F172A',
+            surface2:  '#1E293B',
+            cyan:      '#06B6D4',
+            green:     '#22C55E',
+            amber:     '#F59E0B',
+            red:       '#EF4444',
+            purple:    '#A855F7',
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    /* ─── Reset / Base ─────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      background: #020617;
+      color: #E2E8F0;
+      font-family: 'Fira Sans', sans-serif;
+      font-size: 13px;
+      height: 100%;
+      overflow: hidden;
+    }
+
+    /* Grid background */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(6,182,212,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(6,182,212,0.03) 1px, transparent 1px);
+      background-size: 32px 32px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    body > * { position: relative; z-index: 1; }
+
+    /* Scrollbars */
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-track { background: #0F172A; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 2px; }
+
+    /* ─── Glassmorphism panel ───────────────────────────────────────── */
+    .glass {
+      background: rgba(15, 23, 42, 0.85);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(30, 41, 59, 0.8);
+    }
+
+    .glass-bright {
+      background: rgba(15, 23, 42, 0.95);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(6, 182, 212, 0.15);
+    }
+
+    /* ─── Keyframe Animations ───────────────────────────────────────── */
+    @keyframes pulse-glow {
+      0%, 100% { filter: drop-shadow(0 0 4px #06B6D4); }
+      50%       { filter: drop-shadow(0 0 14px #06B6D4) drop-shadow(0 0 28px #06B6D490); }
+    }
+
+    @keyframes pulse-glow-box {
+      0%, 100% { box-shadow: 0 0 5px currentColor; }
+      50%       { box-shadow: 0 0 20px currentColor, 0 0 40px currentColor; }
+    }
+
+    @keyframes shimmer {
+      0%   { background-position: -200% center; }
+      100% { background-position:  200% center; }
+    }
+
+    @keyframes particle-flow {
+      0%   { stroke-dashoffset: 120; }
+      100% { stroke-dashoffset: 0; }
+    }
+
+    @keyframes typewriter-cursor {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0; }
+    }
+
+    @keyframes tension-fill {
+      from { width: 0%; }
+      to   { width: var(--tension-pct, 0%); }
+    }
+
+    @keyframes node-done-flash {
+      0%   { filter: brightness(1); }
+      50%  { filter: brightness(2.2) drop-shadow(0 0 10px #22C55E); }
+      100% { filter: brightness(1); }
+    }
+
+    @keyframes live-blink {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.3; }
+    }
+
+    @keyframes scan-line {
+      0%   { transform: translateY(-100%); opacity: 0.6; }
+      100% { transform: translateY(100vh); opacity: 0; }
+    }
+
+    @keyframes spin-slow {
+      from { transform: rotate(0deg); }
+      to   { transform: rotate(360deg); }
+    }
+
+    @keyframes fade-in-up {
+      from { opacity: 0; transform: translateY(6px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes data-flow {
+      0%   { stroke-dashoffset: 200; opacity: 0; }
+      10%  { opacity: 1; }
+      90%  { opacity: 1; }
+      100% { stroke-dashoffset: 0; opacity: 0; }
+    }
+
+    /* ─── SVG Node States ───────────────────────────────────────────── */
+    .pipeline-node .node-body {
+      transition: stroke 0.3s ease, fill 0.3s ease;
+    }
+
+    .node-idle    .node-body { stroke: #334155; fill: #0F172A; }
+    .node-active  .node-body { stroke: #06B6D4; fill: #0C4A6E; animation: pulse-glow 1.5s infinite; }
+    .node-processing .node-body { stroke: #F59E0B; fill: #451A03; }
+    .node-done    .node-body { animation: node-done-flash 0.6s ease; stroke: #22C55E; fill: #052e16; }
+    .node-error   .node-body { stroke: #EF4444; fill: #450A0A; }
+    .node-fast    .node-body { stroke: #FBBF24; fill: #422006; }
+
+    .node-idle    .node-dot { fill: #475569; }
+    .node-active  .node-dot { fill: #06B6D4; filter: drop-shadow(0 0 4px #06B6D4); }
+    .node-processing .node-dot { fill: #F59E0B; filter: drop-shadow(0 0 4px #F59E0B); }
+    .node-done    .node-dot { fill: #22C55E; }
+    .node-error   .node-dot { fill: #EF4444; filter: drop-shadow(0 0 4px #EF4444); }
+    .node-fast    .node-dot { fill: #FBBF24; }
+
+    .node-idle    .node-label { fill: #64748B; }
+    .node-active  .node-label { fill: #67E8F9; }
+    .node-processing .node-label { fill: #FCD34D; }
+    .node-done    .node-label { fill: #4ADE80; }
+    .node-error   .node-label { fill: #FCA5A5; }
+    .node-fast    .node-label { fill: #FDE68A; }
+
+    /* Edge animation */
+    .edge-path {
+      fill: none;
+      stroke: #1E293B;
+      stroke-width: 1.5;
+      stroke-dasharray: 6 4;
+      transition: stroke 0.3s ease;
+    }
+
+    .edge-active {
+      stroke: #06B6D4;
+      stroke-dasharray: 8 4;
+      animation: particle-flow 1.2s linear infinite;
+    }
+
+    /* Particle overlays */
+    .edge-particle {
+      fill: none;
+      stroke-width: 2.5;
+      stroke-dasharray: 12 200;
+      animation: data-flow 1.4s linear infinite;
+    }
+
+    /* ─── SBS Layer Tiles ───────────────────────────────────────────── */
+    .sbs-tile {
+      transition: all 0.3s ease;
+      border: 1px solid #1E293B;
+      background: #0F172A;
+      border-radius: 6px;
+      padding: 4px 6px;
+      font-family: 'Fira Code', monospace;
+      font-size: 10px;
+      color: #475569;
+      text-align: center;
+      cursor: default;
+      user-select: none;
+    }
+
+    .sbs-tile.active {
+      border-color: #A855F7;
+      background: #2E1065;
+      color: #D8B4FE;
+      box-shadow: 0 0 10px #A855F740, inset 0 0 8px #A855F710;
+    }
+
+    .sbs-tile.done {
+      border-color: #22C55E;
+      background: #052e16;
+      color: #4ADE80;
+    }
+
+    .sbs-tile.stale {
+      border-color: #1E293B;
+      background: #0F172A;
+      color: #334155;
+    }
+
+    /* ─── Complexity Badges ─────────────────────────────────────────── */
+    .badge {
+      font-family: 'Fira Code', monospace;
+      font-size: 10px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 4px;
+      border: 1px solid transparent;
+      opacity: 0.4;
+      transition: all 0.3s ease;
+      letter-spacing: 0.05em;
+    }
+
+    .badge.active {
+      opacity: 1;
+    }
+
+    .badge-fast     { border-color: #FBBF24; color: #FDE68A; background: #42200640; }
+    .badge-standard { border-color: #06B6D4; color: #67E8F9; background: #0C4A6E40; }
+    .badge-deep     { border-color: #A855F7; color: #D8B4FE; background: #2E106540; box-shadow: 0 0 8px #A855F740; }
+
+    .badge-fast.active     { background: #422006; box-shadow: 0 0 8px #FBBF2460; }
+    .badge-standard.active { background: #0C4A6E; box-shadow: 0 0 8px #06B6D460; }
+    .badge-deep.active     { background: #2E1065; box-shadow: 0 0 12px #A855F780; }
+
+    /* ─── Tension Bar ───────────────────────────────────────────────── */
+    .tension-track {
+      background: #1E293B;
+      border-radius: 4px;
+      height: 8px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .tension-fill {
+      height: 100%;
+      border-radius: 4px;
+      transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1), background 0.3s ease;
+      background: linear-gradient(90deg, #06B6D4, #A855F7);
+      width: var(--tension-pct, 0%);
+      position: relative;
+    }
+
+    .tension-fill::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.25) 50%, transparent 100%);
+      background-size: 200% 100%;
+      animation: shimmer 2s linear infinite;
+    }
+
+    /* ─── Inner Monologue ───────────────────────────────────────────── */
+    .monologue-text {
+      font-family: 'Fira Code', monospace;
+      font-size: 11px;
+      color: #94A3B8;
+      line-height: 1.6;
+      min-height: 2.5em;
+    }
+
+    .monologue-text::after {
+      content: '█';
+      animation: typewriter-cursor 1s step-end infinite;
+      color: #06B6D4;
+      font-size: 10px;
+    }
+
+    /* ─── Memory Result Items ───────────────────────────────────────── */
+    .memory-result {
+      animation: fade-in-up 0.3s ease;
+    }
+
+    .score-bar {
+      height: 3px;
+      border-radius: 2px;
+      background: linear-gradient(90deg, #06B6D4, #A855F7);
+      transition: width 0.4s ease;
+    }
+
+    /* ─── Token Budget Bar ──────────────────────────────────────────── */
+    .token-track {
+      background: #1E293B;
+      border-radius: 3px;
+      height: 5px;
+      overflow: hidden;
+    }
+
+    .token-fill {
+      height: 100%;
+      border-radius: 3px;
+      background: linear-gradient(90deg, #A855F7, #06B6D4);
+      transition: width 0.4s ease;
+    }
+
+    /* ─── Timeline ──────────────────────────────────────────────────── */
+    .timeline-segment {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 2px;
+    }
+
+    .timeline-bar {
+      height: 20px;
+      border-radius: 3px;
+      min-width: 4px;
+      transition: width 0.5s ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .timeline-bar::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent);
+      background-size: 200% 100%;
+      animation: shimmer 2s linear infinite;
+    }
+
+    /* ─── Header Live Indicator ─────────────────────────────────────── */
+    .live-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #22C55E;
+      box-shadow: 0 0 6px #22C55E;
+      animation: live-blink 2s ease-in-out infinite;
+    }
+
+    .idle-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #475569;
+    }
+
+    /* ─── Scan line effect ──────────────────────────────────────────── */
+    .scan-line {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, #06B6D430, #06B6D460, #06B6D430, transparent);
+      animation: scan-line 8s linear infinite;
+      pointer-events: none;
+      z-index: 100;
+    }
+
+    /* ─── Current message ───────────────────────────────────────────── */
+    .current-msg {
+      font-family: 'Fira Code', monospace;
+      font-size: 11px;
+      color: #67E8F9;
+      border-left: 2px solid #06B6D4;
+      padding-left: 8px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .last-response {
+      font-family: 'Fira Sans', sans-serif;
+      font-size: 11px;
+      color: #94A3B8;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* ─── Panel section headers ─────────────────────────────────────── */
+    .section-label {
+      font-family: 'Fira Code', monospace;
+      font-size: 9px;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: #475569;
+    }
+
+    /* ─── Status indicator ──────────────────────────────────────────── */
+    #panel-status-indicator {
+      font-family: 'Fira Code', monospace;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+    }
+
+    /* ─── Divider ───────────────────────────────────────────────────── */
+    .h-divider {
+      height: 1px;
+      background: linear-gradient(90deg, transparent, #1E293B 20%, #1E293B 80%, transparent);
+    }
+
+    .v-divider {
+      width: 1px;
+      background: linear-gradient(180deg, transparent, #1E293B 20%, #1E293B 80%, transparent);
+    }
+
+    /* ─── Processing shimmer on node ───────────────────────────────── */
+    .node-processing .node-body {
+      animation: node-processing-shimmer 1s linear infinite;
+    }
+
+    @keyframes node-processing-shimmer {
+      0%   { fill: #451A03; }
+      50%  { fill: #78350F; }
+      100% { fill: #451A03; }
+    }
+
+    /* ─── CoT Thought ───────────────────────────────────────────────── */
+    .cot-thought {
+      font-family: 'Fira Code', monospace;
+      font-size: 10px;
+      color: #7C3AED;
+      line-height: 1.6;
+      border-left: 2px solid #7C3AED40;
+      padding-left: 8px;
+    }
+
+    /* ─── Contradiction badges ──────────────────────────────────────── */
+    .contradiction-item {
+      font-family: 'Fira Code', monospace;
+      font-size: 10px;
+      color: #FCA5A5;
+      padding: 3px 6px;
+      background: #450A0A40;
+      border: 1px solid #EF444430;
+      border-radius: 4px;
+      animation: fade-in-up 0.3s ease;
+    }
+
+    /* ─── Tier badge ────────────────────────────────────────────────── */
+    .tier-badge {
+      font-family: 'Fira Code', monospace;
+      font-size: 10px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 12px;
+      letter-spacing: 0.08em;
+    }
+
+    .tier-fast    { background: #42200640; border: 1px solid #FBBF24; color: #FDE68A; }
+    .tier-reranked { background: #2E106540; border: 1px solid #A855F7; color: #D8B4FE; }
+    .tier-standard { background: #0C4A6E40; border: 1px solid #06B6D4; color: #67E8F9; }
+
+    /* scrollable panels */
+    .panel-scroll {
+      overflow-y: auto;
+      scrollbar-width: thin;
+      scrollbar-color: #334155 #0F172A;
+    }
+
+    /* ─── Queue depth indicator ─────────────────────────────────────── */
+    .queue-pip {
+      width: 6px;
+      height: 14px;
+      border-radius: 2px;
+      background: #1E293B;
+      transition: background 0.3s ease;
+    }
+
+    .queue-pip.filled { background: #06B6D4; box-shadow: 0 0 4px #06B6D460; }
+
+    /* Run ID style */
+    .run-id {
+      font-family: 'Fira Code', monospace;
+      font-size: 10px;
+      color: #475569;
+      letter-spacing: 0.05em;
+    }
+
+    /* Synapse wordmark */
+    .wordmark {
+      font-family: 'Fira Code', monospace;
+      font-weight: 700;
+      font-size: 16px;
+      letter-spacing: 0.15em;
+      background: linear-gradient(135deg, #06B6D4, #A855F7);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+  </style>
+</head>
+<body class="flex flex-col h-screen overflow-hidden">
+
+  <!-- Scan line overlay -->
+  <div class="scan-line"></div>
+
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <!-- HEADER                                                              -->
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <header class="glass-bright flex items-center justify-between px-5 py-2.5 shrink-0" style="border-bottom: 1px solid #1E293B;">
+    <!-- Left: Logo + Status -->
+    <div class="flex items-center gap-4">
+      <div class="flex items-center gap-2">
+        <!-- Logo icon -->
+        <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+          <circle cx="11" cy="11" r="10" stroke="#06B6D4" stroke-width="1.5" stroke-dasharray="3 2" />
+          <circle cx="11" cy="11" r="5" fill="#06B6D420" stroke="#A855F7" stroke-width="1"/>
+          <circle cx="11" cy="11" r="2" fill="#06B6D4"/>
+        </svg>
+        <span class="wordmark">SYNAPSE</span>
+      </div>
+
+      <div class="v-divider self-stretch mx-1" style="height: 20px;"></div>
+
+      <!-- Live indicator -->
+      <div class="flex items-center gap-2">
+        <div id="panel-status-indicator" class="flex items-center gap-1.5 text-slate-400">
+          <span class="idle-dot" id="status-dot"></span>
+          <span id="status-text">IDLE</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Center: Current message -->
+    <div class="flex-1 mx-6 max-w-sm">
+      <div id="panel-current-message" class="current-msg opacity-50">— awaiting input —</div>
+    </div>
+
+    <!-- Right: Run ID + Queue -->
+    <div class="flex items-center gap-5">
+      <!-- Queue depth -->
+      <div class="flex items-center gap-1.5">
+        <span class="section-label">QUEUE</span>
+        <div class="flex gap-1 items-end">
+          <div class="queue-pip" id="q0"></div>
+          <div class="queue-pip" id="q1"></div>
+          <div class="queue-pip" id="q2"></div>
+          <div class="queue-pip" id="q3"></div>
+          <div class="queue-pip" id="q4"></div>
+        </div>
+        <span class="font-mono text-xs text-slate-400" id="panel-queue-size">0</span>
+      </div>
+
+      <div class="v-divider self-stretch" style="height: 20px;"></div>
+
+      <!-- Run ID -->
+      <div class="flex flex-col items-end gap-0.5">
+        <span class="section-label">RUN ID</span>
+        <span class="run-id" id="panel-run-id">—</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <!-- MAIN CONTENT AREA                                                   -->
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <div class="flex flex-1 overflow-hidden">
+
+    <!-- ─── LEFT COLUMN: Pipeline SVG + SBS Panel ──────────────────────── -->
+    <div class="flex flex-col" style="width: 56%; border-right: 1px solid #1E293B;">
+
+      <!-- Pipeline SVG -->
+      <div class="glass flex-1 overflow-hidden" style="padding: 12px 16px;">
+        <div class="flex items-center justify-between mb-2">
+          <span class="section-label">PIPELINE FLOW</span>
+          <div class="flex items-center gap-1.5">
+            <span class="section-label">PARTICLES</span>
+            <div class="w-1.5 h-1.5 rounded-full bg-cyan-500" style="animation: live-blink 3s ease-in-out infinite;"></div>
+          </div>
+        </div>
+
+        <!-- SVG Pipeline Diagram -->
+        <svg id="pipeline-svg" width="100%" height="320" viewBox="0 0 780 320" preserveAspectRatio="xMidYMid meet" style="overflow: visible;">
+          <defs>
+            <!-- Glow filter -->
+            <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+              <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+              <feMerge>
+                <feMergeNode in="coloredBlur"/>
+                <feMergeNode in="SourceGraphic"/>
+              </feMerge>
+            </filter>
+
+            <!-- Cyan glow -->
+            <filter id="glow-cyan" x="-80%" y="-80%" width="260%" height="260%">
+              <feGaussianBlur stdDeviation="5" result="blur"/>
+              <feColorMatrix in="blur" type="matrix"
+                values="0 0 0 0 0.024
+                        0 0 0 0 0.714
+                        0 0 0 0 0.831
+                        0 0 0 0 0.7 0" result="colored"/>
+              <feMerge>
+                <feMergeNode in="colored"/>
+                <feMergeNode in="SourceGraphic"/>
+              </feMerge>
+            </filter>
+
+            <!-- Green glow -->
+            <filter id="glow-green" x="-80%" y="-80%" width="260%" height="260%">
+              <feGaussianBlur stdDeviation="4" result="blur"/>
+              <feMerge>
+                <feMergeNode in="blur"/>
+                <feMergeNode in="SourceGraphic"/>
+              </feMerge>
+            </filter>
+
+            <!-- Amber glow -->
+            <filter id="glow-amber" x="-80%" y="-80%" width="260%" height="260%">
+              <feGaussianBlur stdDeviation="4" result="blur"/>
+              <feMerge>
+                <feMergeNode in="blur"/>
+                <feMergeNode in="SourceGraphic"/>
+              </feMerge>
+            </filter>
+
+            <!-- Purple glow -->
+            <filter id="glow-purple" x="-80%" y="-80%" width="260%" height="260%">
+              <feGaussianBlur stdDeviation="5" result="blur"/>
+              <feMerge>
+                <feMergeNode in="blur"/>
+                <feMergeNode in="SourceGraphic"/>
+              </feMerge>
+            </filter>
+
+            <!-- Particle gradient -->
+            <linearGradient id="particle-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" style="stop-color:#06B6D4;stop-opacity:0"/>
+              <stop offset="50%" style="stop-color:#06B6D4;stop-opacity:1"/>
+              <stop offset="100%" style="stop-color:#A855F7;stop-opacity:0"/>
+            </linearGradient>
+
+            <!-- Arrow marker -->
+            <marker id="arrow-cyan" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+              <path d="M0,0 L6,3 L0,6 Z" fill="#06B6D440"/>
+            </marker>
+            <marker id="arrow-idle" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+              <path d="M0,0 L6,3 L0,6 Z" fill="#1E293B"/>
+            </marker>
+          </defs>
+
+          <!-- ─── BACKGROUND GRID DOTS ─────────────────────────── -->
+          <g opacity="0.15">
+            <pattern id="dots" x="0" y="0" width="20" height="20" patternUnits="userSpaceOnUse">
+              <circle cx="10" cy="10" r="0.8" fill="#334155"/>
+            </pattern>
+            <rect width="780" height="320" fill="url(#dots)"/>
+          </g>
+
+          <!-- ─── EDGES (draw behind nodes) ─────────────────────── -->
+
+          <!-- FloodGate → Dedup -->
+          <g>
+            <path id="edge-floodgate-dedup" class="edge-path"
+              d="M 172,55 L 230,55" marker-end="url(#arrow-idle)"/>
+            <path class="edge-particle" stroke="#06B6D4" stroke-dasharray="12 300" stroke-dashoffset="300"
+              d="M 172,55 L 230,55" id="particle-fd"/>
+          </g>
+
+          <!-- Dedup → Queue -->
+          <g>
+            <path id="edge-dedup-queue" class="edge-path"
+              d="M 322,55 L 380,55" marker-end="url(#arrow-idle)"/>
+            <path class="edge-particle" stroke="#06B6D4" stroke-dasharray="12 300" stroke-dashoffset="300"
+              d="M 322,55 L 380,55" id="particle-dq"/>
+          </g>
+
+          <!-- Queue → Memory (down-left) -->
+          <g>
+            <path id="edge-queue-memory" class="edge-path"
+              d="M 422,78 Q 422,155 300,170" marker-end="url(#arrow-idle)"/>
+            <path class="edge-particle" stroke="#06B6D4" stroke-dasharray="12 300" stroke-dashoffset="300"
+              d="M 422,78 Q 422,155 300,170" id="particle-qm"/>
+          </g>
+
+          <!-- Queue → Toxicity (down-right) -->
+          <g>
+            <path id="edge-queue-toxicity" class="edge-path"
+              d="M 462,78 Q 462,120 540,130" marker-end="url(#arrow-idle)"/>
+            <path class="edge-particle" stroke="#F59E0B" stroke-dasharray="12 300" stroke-dashoffset="300"
+              d="M 462,78 Q 462,120 540,130" id="particle-qt"/>
+          </g>
+
+          <!-- Memory → DualCognition -->
+          <g>
+            <path id="edge-memory-dualcog" class="edge-path"
+              d="M 346,185 Q 400,200 420,215" marker-end="url(#arrow-idle)"/>
+            <path class="edge-particle" stroke="#A855F7" stroke-dasharray="12 300" stroke-dashoffset="300"
+              d="M 346,185 Q 400,200 420,215" id="particle-md"/>
+          </g>
+
+          <!-- Toxicity → DualCognition -->
+          <g>
+            <path id="edge-toxicity-dualcog" class="edge-path"
+              d="M 568,158 Q 560,185 518,215" marker-end="url(#arrow-idle)"/>
+            <path class="edge-particle" stroke="#EF4444" stroke-dasharray="12 300" stroke-dashoffset="300"
+              d="M 568,158 Q 560,185 518,215" id="particle-td"/>
+          </g>
+
+          <!-- DualCognition → SBS (right branch) -->
+          <g>
+            <path id="edge-dualcog-sbs" class="edge-path"
+              d="M 560,230 Q 620,220 640,195" marker-end="url(#arrow-idle)"/>
+            <path class="edge-particle" stroke="#A855F7" stroke-dasharray="12 300" stroke-dashoffset="300"
+              d="M 560,230 Q 620,220 640,195" id="particle-ds"/>
+          </g>
+
+          <!-- DualCognition → TrafficCop (down) -->
+          <g>
+            <path id="edge-dualcog-trafficcop" class="edge-path"
+              d="M 469,252 L 390,270" marker-end="url(#arrow-idle)"/>
+            <path class="edge-particle" stroke="#06B6D4" stroke-dasharray="12 300" stroke-dashoffset="300"
+              d="M 469,252 L 390,270" id="particle-dt"/>
+          </g>
+
+          <!-- SBS → TrafficCop -->
+          <g>
+            <path id="edge-sbs-trafficcop" class="edge-path"
+              d="M 612,205 Q 530,245 450,270" marker-end="url(#arrow-idle)"/>
+            <path class="edge-particle" stroke="#A855F7" stroke-dasharray="12 300" stroke-dashoffset="300"
+              d="M 612,205 Q 530,245 450,270" id="particle-st"/>
+          </g>
+
+          <!-- TrafficCop → LLM Router -->
+          <g>
+            <path id="edge-trafficcop-llm" class="edge-path"
+              d="M 438,291 Q 450,305 500,305 Q 550,305 560,290" marker-end="url(#arrow-idle)"/>
+            <path class="edge-particle" stroke="#06B6D4" stroke-dasharray="12 300" stroke-dashoffset="300"
+              d="M 438,291 Q 450,305 500,305 Q 550,305 560,290" id="particle-tl"/>
+          </g>
+
+          <!-- LLM Router → Response -->
+          <g>
+            <path id="edge-llm-response" class="edge-path"
+              d="M 655,270 L 700,240" marker-end="url(#arrow-idle)"/>
+            <path class="edge-particle" stroke="#22C55E" stroke-dasharray="12 300" stroke-dashoffset="300"
+              d="M 655,270 L 700,240" id="particle-lr"/>
+          </g>
+
+          <!-- ─── NODES ──────────────────────────────────────────── -->
+
+          <!-- FloodGate — node-floodgate -->
+          <g id="node-floodgate" class="pipeline-node node-idle" transform="translate(60, 30)">
+            <rect class="node-body" x="0" y="0" width="112" height="52" rx="8" stroke-width="1.5"/>
+            <!-- Icon: wave/gate -->
+            <path d="M 10,26 Q 18,16 26,26 Q 34,36 42,26" stroke="#94A3B8" stroke-width="1.5" fill="none" class="node-icon"/>
+            <!-- Dot -->
+            <circle class="node-dot" cx="102" cy="10" r="4"/>
+            <!-- Label -->
+            <text class="node-label" x="56" y="35" text-anchor="middle" font-family="Fira Code" font-size="10" font-weight="600">FloodGate</text>
+            <text class="node-label" x="56" y="46" text-anchor="middle" font-family="Fira Code" font-size="8" opacity="0.6">debounce 3s</text>
+          </g>
+
+          <!-- Dedup — node-dedup -->
+          <g id="node-dedup" class="pipeline-node node-idle" transform="translate(230, 30)">
+            <rect class="node-body" x="0" y="0" width="92" height="52" rx="8" stroke-width="1.5"/>
+            <!-- Icon: two overlapping squares -->
+            <rect x="8" y="12" width="14" height="14" rx="2" stroke="#94A3B8" stroke-width="1.2" fill="none" class="node-icon"/>
+            <rect x="14" y="18" width="14" height="14" rx="2" stroke="#94A3B8" stroke-width="1.2" fill="none" class="node-icon"/>
+            <!-- Dot -->
+            <circle class="node-dot" cx="82" cy="10" r="4"/>
+            <text class="node-label" x="46" y="35" text-anchor="middle" font-family="Fira Code" font-size="10" font-weight="600">Dedup</text>
+            <text class="node-label" x="46" y="46" text-anchor="middle" font-family="Fira Code" font-size="8" opacity="0.6">5-min TTL</text>
+          </g>
+
+          <!-- Queue — node-queue -->
+          <g id="node-queue" class="pipeline-node node-idle" transform="translate(380, 30)">
+            <rect class="node-body" x="0" y="0" width="84" height="52" rx="8" stroke-width="1.5"/>
+            <!-- Icon: stack of lines -->
+            <line x1="8" y1="18" x2="24" y2="18" stroke="#94A3B8" stroke-width="1.5" class="node-icon"/>
+            <line x1="8" y1="24" x2="24" y2="24" stroke="#94A3B8" stroke-width="1.5" class="node-icon"/>
+            <line x1="8" y1="30" x2="20" y2="30" stroke="#94A3B8" stroke-width="1.5" class="node-icon"/>
+            <!-- Dot -->
+            <circle class="node-dot" cx="74" cy="10" r="4"/>
+            <text class="node-label" x="42" y="35" text-anchor="middle" font-family="Fira Code" font-size="10" font-weight="600">TaskQueue</text>
+            <text class="node-label" x="42" y="46" text-anchor="middle" font-family="Fira Code" font-size="8" opacity="0.6">FIFO/100</text>
+          </g>
+
+          <!-- Memory Engine — node-memory -->
+          <g id="node-memory" class="pipeline-node node-idle" transform="translate(196, 148)">
+            <rect class="node-body" x="0" y="0" width="150" height="52" rx="8" stroke-width="1.5"/>
+            <!-- Icon: cylinder -->
+            <ellipse cx="16" cy="18" rx="8" ry="4" stroke="#94A3B8" stroke-width="1.2" fill="none" class="node-icon"/>
+            <line x1="8" y1="18" x2="8" y2="30" stroke="#94A3B8" stroke-width="1.2" class="node-icon"/>
+            <line x1="24" y1="18" x2="24" y2="30" stroke="#94A3B8" stroke-width="1.2" class="node-icon"/>
+            <path d="M 8,30 Q 16,34 24,30" stroke="#94A3B8" stroke-width="1.2" fill="none" class="node-icon"/>
+            <!-- Dot -->
+            <circle class="node-dot" cx="140" cy="10" r="4"/>
+            <text class="node-label" x="75" y="34" text-anchor="middle" font-family="Fira Code" font-size="10" font-weight="600">Memory Engine</text>
+            <text class="node-label" x="75" y="45" text-anchor="middle" font-family="Fira Code" font-size="8" opacity="0.6">hybrid RAG + rerank</text>
+          </g>
+
+          <!-- Toxicity Check — node-toxicity -->
+          <g id="node-toxicity" class="pipeline-node node-idle" transform="translate(510, 108)">
+            <rect class="node-body" x="0" y="0" width="116" height="44" rx="8" stroke-width="1.5"/>
+            <!-- Icon: shield -->
+            <path d="M 14,10 L 22,10 L 22,20 Q 22,26 18,28 Q 14,26 14,20 Z" stroke="#94A3B8" stroke-width="1.2" fill="none" class="node-icon"/>
+            <!-- Dot -->
+            <circle class="node-dot" cx="106" cy="10" r="4"/>
+            <text class="node-label" x="60" y="27" text-anchor="middle" font-family="Fira Code" font-size="10" font-weight="600">Toxicity</text>
+            <text class="node-label" x="60" y="38" text-anchor="middle" font-family="Fira Code" font-size="8" opacity="0.6">lazy BERT</text>
+          </g>
+
+          <!-- Dual Cognition Engine — node-dualcognition -->
+          <g id="node-dualcognition" class="pipeline-node node-idle" transform="translate(415, 208)">
+            <rect class="node-body" x="0" y="0" width="145" height="52" rx="8" stroke-width="1.5"/>
+            <!-- Icon: brain halves -->
+            <path d="M 18,12 Q 12,12 10,18 Q 8,24 14,28 Q 18,30 18,26 L 18,12" stroke="#94A3B8" stroke-width="1.2" fill="none" class="node-icon"/>
+            <path d="M 24,12 Q 30,12 32,18 Q 34,24 28,28 Q 24,30 24,26 L 24,12" stroke="#94A3B8" stroke-width="1.2" fill="none" class="node-icon"/>
+            <line x1="18" y1="12" x2="24" y2="12" stroke="#94A3B8" stroke-width="1.2" class="node-icon"/>
+            <!-- Dot -->
+            <circle class="node-dot" cx="135" cy="10" r="4"/>
+            <text class="node-label" x="72" y="35" text-anchor="middle" font-family="Fira Code" font-size="10" font-weight="600">Dual Cognition</text>
+            <text class="node-label" x="72" y="46" text-anchor="middle" font-family="Fira Code" font-size="8" opacity="0.6">inner monologue</text>
+          </g>
+
+          <!-- SBS Engine — node-sbs -->
+          <g id="node-sbs" class="pipeline-node node-idle" transform="translate(586, 162)">
+            <rect class="node-body" x="0" y="0" width="110" height="52" rx="8" stroke-width="1.5"/>
+            <!-- Icon: person + layers -->
+            <circle cx="16" cy="14" r="5" stroke="#94A3B8" stroke-width="1.2" fill="none" class="node-icon"/>
+            <path d="M 8,28 Q 8,20 16,20 Q 24,20 24,28" stroke="#94A3B8" stroke-width="1.2" fill="none" class="node-icon"/>
+            <!-- Dot -->
+            <circle class="node-dot" cx="100" cy="10" r="4"/>
+            <text class="node-label" x="55" y="35" text-anchor="middle" font-family="Fira Code" font-size="10" font-weight="600">SBS Engine</text>
+            <text class="node-label" x="55" y="46" text-anchor="middle" font-family="Fira Code" font-size="8" opacity="0.6">persona layers</text>
+          </g>
+
+          <!-- Traffic Cop — node-trafficcop -->
+          <g id="node-trafficcop" class="pipeline-node node-idle" transform="translate(326, 258)">
+            <rect class="node-body" x="0" y="0" width="112" height="48" rx="8" stroke-width="1.5"/>
+            <!-- Icon: traffic light -->
+            <rect x="10" y="8" width="8" height="22" rx="2" stroke="#94A3B8" stroke-width="1.2" fill="none" class="node-icon"/>
+            <circle cx="14" cy="13" r="2" fill="#94A3B8" class="node-icon"/>
+            <circle cx="14" cy="19" r="2" fill="#94A3B8" class="node-icon" opacity="0.4"/>
+            <circle cx="14" cy="25" r="2" fill="#94A3B8" class="node-icon" opacity="0.2"/>
+            <!-- Dot -->
+            <circle class="node-dot" cx="102" cy="10" r="4"/>
+            <text class="node-label" x="56" y="32" text-anchor="middle" font-family="Fira Code" font-size="10" font-weight="600">Traffic Cop</text>
+            <text class="node-label" x="56" y="43" text-anchor="middle" font-family="Fira Code" font-size="8" opacity="0.6">CASUAL/CODE/etc</text>
+          </g>
+
+          <!-- LLM Router — node-llm -->
+          <g id="node-llm" class="pipeline-node node-idle" transform="translate(536, 256)">
+            <rect class="node-body" x="0" y="0" width="120" height="52" rx="8" stroke-width="1.5"/>
+            <!-- Icon: diamond / router symbol -->
+            <path d="M 18,14 L 26,22 L 18,30 L 10,22 Z" stroke="#94A3B8" stroke-width="1.2" fill="none" class="node-icon"/>
+            <line x1="26" y1="22" x2="32" y2="22" stroke="#94A3B8" stroke-width="1.2" class="node-icon"/>
+            <!-- Dot -->
+            <circle class="node-dot" cx="110" cy="10" r="4"/>
+            <text class="node-label" x="60" y="37" text-anchor="middle" font-family="Fira Code" font-size="10" font-weight="600">LLM Router</text>
+            <text class="node-label" x="60" y="48" text-anchor="middle" font-family="Fira Code" font-size="8" opacity="0.6">litellm MoA</text>
+          </g>
+
+          <!-- Response — node-response -->
+          <g id="node-response" class="pipeline-node node-idle" transform="translate(688, 200)">
+            <rect class="node-body" x="0" y="0" width="84" height="52" rx="8" stroke-width="1.5"/>
+            <!-- Icon: message bubble -->
+            <path d="M 8,10 L 28,10 L 28,24 L 20,24 L 16,30 L 16,24 L 8,24 Z" stroke="#94A3B8" stroke-width="1.2" fill="none" class="node-icon"/>
+            <!-- Dot -->
+            <circle class="node-dot" cx="74" cy="10" r="4"/>
+            <text class="node-label" x="42" y="37" text-anchor="middle" font-family="Fira Code" font-size="10" font-weight="600">Response</text>
+            <text class="node-label" x="42" y="48" text-anchor="middle" font-family="Fira Code" font-size="8" opacity="0.6">→ channel</text>
+          </g>
+
+          <!-- Last response preview -->
+          <foreignObject x="4" y="280" width="200" height="34">
+            <div xmlns="http://www.w3.org/1999/xhtml" style="font-family: 'Fira Code', monospace; font-size: 9px; color: #475569; line-height: 1.4;">
+              <span style="color: #334155;">LAST:</span>
+              <span id="panel-last-response" style="color: #64748B;">—</span>
+            </div>
+          </foreignObject>
+
+        </svg>
+      </div>
+
+      <!-- h-divider -->
+      <div class="h-divider"></div>
+
+      <!-- ─── SBS PERSONA ENGINE PANEL ──────────────────────────────── -->
+      <div class="glass p-3 shrink-0" style="height: 140px;">
+        <div class="flex items-center justify-between mb-2">
+          <div class="flex items-center gap-2">
+            <svg width="12" height="12" viewBox="0 0 12 12">
+              <circle cx="6" cy="4" r="2.5" stroke="#A855F7" stroke-width="1.2" fill="none"/>
+              <path d="M1,11 Q1,7 6,7 Q11,7 11,11" stroke="#A855F7" stroke-width="1.2" fill="none"/>
+            </svg>
+            <span class="section-label" style="color: #A855F7;">SBS PERSONA ENGINE</span>
+          </div>
+          <div class="flex items-center gap-3">
+            <span class="section-label">TOKEN BUDGET</span>
+            <div class="token-track" style="width: 80px;">
+              <div id="panel-sbs-token-bar" class="token-fill" style="width: 65%;"></div>
+            </div>
+            <span class="font-mono text-xs text-slate-400" id="panel-sbs-token-count">1200</span>
+          </div>
+        </div>
+
+        <!-- 8 layer tiles -->
+        <div id="panel-sbs-layers" class="grid grid-cols-8 gap-1.5 mb-2">
+          <div class="sbs-tile done" data-layer="core_identity">core<br/>identity</div>
+          <div class="sbs-tile done" data-layer="linguistic">linguistic</div>
+          <div class="sbs-tile active" data-layer="emotional_state">emotional<br/>state</div>
+          <div class="sbs-tile done" data-layer="domain">domain</div>
+          <div class="sbs-tile" data-layer="interaction">interaction</div>
+          <div class="sbs-tile" data-layer="vocabulary">vocabulary</div>
+          <div class="sbs-tile" data-layer="exemplars">exemplars</div>
+          <div class="sbs-tile" data-layer="meta">meta</div>
+        </div>
+
+        <!-- Persona caption -->
+        <div class="flex items-center gap-2">
+          <span class="section-label">ACTIVE PERSONA</span>
+          <span class="font-mono text-xs" style="color: #A855F7;">sbs_the_creator</span>
+          <span class="section-label mx-2">·</span>
+          <span class="section-label">IMPLICIT FEEDBACK</span>
+          <span class="font-mono text-xs text-slate-400">monitoring</span>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ─── RIGHT COLUMN: Dual Cognition + Memory ───────────────────── -->
+    <div class="flex flex-col flex-1 overflow-hidden">
+
+      <!-- ─── DUAL COGNITION PANEL ────────────────────────────────────── -->
+      <div class="glass flex-1 panel-scroll overflow-y-auto" style="padding: 14px 16px; border-bottom: 1px solid #1E293B;">
+
+        <!-- Panel header -->
+        <div class="flex items-center justify-between mb-3">
+          <div class="flex items-center gap-2">
+            <svg width="14" height="14" viewBox="0 0 14 14">
+              <path d="M7,1 Q3,1 2,4 Q1,7 4,9 Q7,11 7,8 L7,1" stroke="#A855F7" stroke-width="1.2" fill="none"/>
+              <path d="M7,1 Q11,1 12,4 Q13,7 10,9 Q7,11 7,8 L7,1" stroke="#A855F7" stroke-width="1.2" fill="none"/>
+            </svg>
+            <span class="section-label" style="color: #A855F7;">DUAL COGNITION ENGINE</span>
+          </div>
+          <!-- Complexity badges -->
+          <div class="flex items-center gap-1.5" id="panel-complexity-badge">
+            <span class="badge badge-fast">FAST</span>
+            <span class="badge badge-standard active">STANDARD</span>
+            <span class="badge badge-deep">&#9733; DEEP</span>
+          </div>
+        </div>
+
+        <!-- Tension meter -->
+        <div class="mb-3" id="panel-tension-color">
+          <div class="flex items-center justify-between mb-1">
+            <div class="flex items-center gap-2">
+              <span class="section-label">TENSION</span>
+              <span class="font-mono text-xs font-semibold" id="panel-tension-level" style="color: #A855F7;">0.00</span>
+              <span class="section-label">·</span>
+              <span class="font-mono text-xs text-slate-400" id="panel-tension-type">—</span>
+            </div>
+            <div class="flex items-center gap-3">
+              <span class="section-label">STRATEGY</span>
+              <span class="font-mono text-xs" style="color: #67E8F9;" id="panel-strategy">—</span>
+              <span class="section-label">TONE</span>
+              <span class="font-mono text-xs" style="color: #67E8F9;" id="panel-tone">—</span>
+            </div>
+          </div>
+          <div class="tension-track">
+            <div id="panel-tension-bar" class="tension-fill" style="--tension-pct: 0%; width: 0%;"></div>
+          </div>
+        </div>
+
+        <div class="h-divider mb-3"></div>
+
+        <!-- Inner Monologue -->
+        <div class="mb-3">
+          <div class="flex items-center gap-2 mb-1.5">
+            <span class="section-label">INNER MONOLOGUE</span>
+            <div class="flex-1 h-px" style="background: linear-gradient(90deg, #A855F720, transparent);"></div>
+          </div>
+          <div id="panel-inner-monologue" class="monologue-text">Awaiting cognitive cycle...</div>
+        </div>
+
+        <div class="h-divider mb-3"></div>
+
+        <!-- CoT Thought (deep path only) -->
+        <div class="mb-3">
+          <div class="flex items-center gap-2 mb-1.5">
+            <span class="section-label">COT THOUGHT</span>
+            <span class="badge badge-deep" style="font-size: 8px; padding: 1px 5px; opacity: 0.6;">deep only</span>
+            <div class="flex-1 h-px" style="background: linear-gradient(90deg, #7C3AED20, transparent);"></div>
+          </div>
+          <div id="panel-thought" class="cot-thought text-slate-600">— deep path not active —</div>
+        </div>
+
+        <div class="h-divider mb-3"></div>
+
+        <!-- Contradictions -->
+        <div>
+          <div class="flex items-center gap-2 mb-1.5">
+            <span class="section-label">CONTRADICTIONS DETECTED</span>
+            <div class="flex-1 h-px" style="background: linear-gradient(90deg, #EF444420, transparent);"></div>
+          </div>
+          <div id="panel-contradictions" class="flex flex-col gap-1">
+            <div class="font-mono text-xs text-slate-600">— none detected —</div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- ─── MEMORY RETRIEVAL PANEL ───────────────────────────────────── -->
+      <div class="glass flex-1 panel-scroll overflow-y-auto" style="padding: 14px 16px; max-height: 200px;">
+
+        <div class="flex items-center justify-between mb-2">
+          <div class="flex items-center gap-2">
+            <svg width="12" height="12" viewBox="0 0 12 12">
+              <ellipse cx="6" cy="4" rx="5" ry="2.5" stroke="#06B6D4" stroke-width="1.2" fill="none"/>
+              <line x1="1" y1="4" x2="1" y2="8" stroke="#06B6D4" stroke-width="1.2"/>
+              <line x1="11" y1="4" x2="11" y2="8" stroke="#06B6D4" stroke-width="1.2"/>
+              <path d="M 1,8 Q 6,10.5 11,8" stroke="#06B6D4" stroke-width="1.2" fill="none"/>
+            </svg>
+            <span class="section-label" style="color: #06B6D4;">MEMORY RETRIEVAL</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="section-label">TIER</span>
+            <span id="panel-memory-tier" class="tier-badge tier-standard">standard</span>
+          </div>
+        </div>
+
+        <!-- Memory results list -->
+        <div id="panel-memory-results" class="flex flex-col gap-2">
+          <!-- Placeholder items -->
+          <div class="memory-result flex flex-col gap-1 opacity-30">
+            <div class="flex items-center justify-between">
+              <span class="font-mono text-xs text-slate-400">Memory result will appear here...</span>
+              <span class="font-mono text-xs text-slate-600">0.00</span>
+            </div>
+            <div class="score-bar" style="width: 0%;"></div>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <!-- TIMELINE BAR                                                        -->
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <div class="glass-bright shrink-0" style="border-top: 1px solid #1E293B; padding: 8px 16px;">
+    <div class="flex items-center gap-3">
+      <span class="section-label whitespace-nowrap">TIMELINE</span>
+
+      <div id="panel-timeline" class="flex items-end gap-2 flex-1 overflow-x-auto" style="height: 36px;">
+
+        <!-- Placeholder timeline segments -->
+        <div class="timeline-segment" title="FloodGate">
+          <span style="font-family: 'Fira Code', monospace; font-size: 9px; color: #475569; white-space: nowrap;">FloodGate</span>
+          <div class="timeline-bar" style="width: 30px; background: #06B6D440; border: 1px solid #06B6D430;">
+            <span style="position: absolute; font-family: 'Fira Code', monospace; font-size: 8px; color: #06B6D4; white-space: nowrap; left: 4px; top: 2px;">—</span>
+          </div>
+        </div>
+
+        <div class="timeline-segment" title="Dedup">
+          <span style="font-family: 'Fira Code', monospace; font-size: 9px; color: #475569; white-space: nowrap;">Dedup</span>
+          <div class="timeline-bar" style="width: 20px; background: #06B6D420; border: 1px solid #06B6D420;">
+            <span style="position: absolute; font-family: 'Fira Code', monospace; font-size: 8px; color: #06B6D4; white-space: nowrap; left: 2px; top: 2px;">—</span>
+          </div>
+        </div>
+
+        <div class="timeline-segment" title="Queue">
+          <span style="font-family: 'Fira Code', monospace; font-size: 9px; color: #475569; white-space: nowrap;">Queue</span>
+          <div class="timeline-bar" style="width: 15px; background: #06B6D415; border: 1px solid #06B6D415;">
+            <span style="position: absolute; font-family: 'Fira Code', monospace; font-size: 8px; color: #06B6D4; white-space: nowrap; left: 2px; top: 2px;">—</span>
+          </div>
+        </div>
+
+        <div class="timeline-segment" title="Memory">
+          <span style="font-family: 'Fira Code', monospace; font-size: 9px; color: #475569; white-space: nowrap;">Memory</span>
+          <div class="timeline-bar" style="width: 60px; background: #06B6D440; border: 1px solid #06B6D430;">
+            <span style="position: absolute; font-family: 'Fira Code', monospace; font-size: 8px; color: #06B6D4; white-space: nowrap; left: 4px; top: 2px;">—</span>
+          </div>
+        </div>
+
+        <div class="timeline-segment" title="DualCognition">
+          <span style="font-family: 'Fira Code', monospace; font-size: 9px; color: #475569; white-space: nowrap;">DualCog</span>
+          <div class="timeline-bar" style="width: 80px; background: #A855F740; border: 1px solid #A855F730;">
+            <span style="position: absolute; font-family: 'Fira Code', monospace; font-size: 8px; color: #D8B4FE; white-space: nowrap; left: 4px; top: 2px;">—</span>
+          </div>
+        </div>
+
+        <div class="timeline-segment" title="SBS">
+          <span style="font-family: 'Fira Code', monospace; font-size: 9px; color: #475569; white-space: nowrap;">SBS</span>
+          <div class="timeline-bar" style="width: 40px; background: #A855F720; border: 1px solid #A855F720;">
+            <span style="position: absolute; font-family: 'Fira Code', monospace; font-size: 8px; color: #D8B4FE; white-space: nowrap; left: 4px; top: 2px;">—</span>
+          </div>
+        </div>
+
+        <div class="timeline-segment" title="TrafficCop">
+          <span style="font-family: 'Fira Code', monospace; font-size: 9px; color: #475569; white-space: nowrap;">TrafficCop</span>
+          <div class="timeline-bar" style="width: 25px; background: #F59E0B20; border: 1px solid #F59E0B20;">
+            <span style="position: absolute; font-family: 'Fira Code', monospace; font-size: 8px; color: #FCD34D; white-space: nowrap; left: 2px; top: 2px;">—</span>
+          </div>
+        </div>
+
+        <div class="timeline-segment" title="LLM">
+          <span style="font-family: 'Fira Code', monospace; font-size: 9px; color: #475569; white-space: nowrap;">LLM</span>
+          <div class="timeline-bar" style="width: 120px; background: #06B6D440; border: 1px solid #06B6D430;">
+            <span style="position: absolute; font-family: 'Fira Code', monospace; font-size: 8px; color: #67E8F9; white-space: nowrap; left: 4px; top: 2px;">—</span>
+          </div>
+        </div>
+
+        <!-- Total -->
+        <div class="ml-auto flex items-center gap-2 whitespace-nowrap">
+          <span class="section-label">TOTAL</span>
+          <span id="timeline-total" class="font-mono text-xs font-semibold" style="color: #22C55E;">—</span>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <!-- DATA PANELS (Sessions / Cron / Memory / Routing)                   -->
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <div style="max-width:960px;margin:16px auto 0;padding:0 8px;">
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+
+      <!-- ─── Sessions Panel ──────────────────────────────────────────── -->
+      <div id="panel-sessions" class="glass rounded-xl p-4">
+        <div class="flex items-center justify-between mb-3">
+          <span style="font-family:'Fira Code',monospace;font-size:11px;font-weight:600;color:#94A3B8;letter-spacing:.08em;">ACTIVE SESSIONS</span>
+          <button id="btn-refresh-sessions" title="Refresh sessions"
+            style="background:transparent;border:none;cursor:pointer;color:#475569;padding:2px 4px;border-radius:4px;line-height:1;"
+            onmouseover="this.style.color='#06B6D4'" onmouseout="this.style.color='#475569'">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="23 4 23 10 17 10"></polyline>
+              <polyline points="1 20 1 14 7 14"></polyline>
+              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+            </svg>
+          </button>
+        </div>
+        <div id="sessions-table-container" style="overflow-x:auto;">
+          <table style="width:100%;border-collapse:collapse;">
+            <thead>
+              <tr style="font-family:'Fira Code',monospace;font-size:9px;color:#475569;text-transform:uppercase;letter-spacing:.06em;">
+                <th style="text-align:left;padding:3px 6px 6px 0;font-weight:500;">Session Key</th>
+                <th style="text-align:left;padding:3px 6px 6px;font-weight:500;">Agent</th>
+                <th style="text-align:right;padding:3px 0 6px 6px;font-weight:500;">Msgs</th>
+                <th style="text-align:right;padding:3px 0 6px 6px;font-weight:500;">Updated</th>
+              </tr>
+            </thead>
+            <tbody id="sessions-tbody">
+              <tr id="sessions-empty-row">
+                <td colspan="4" style="text-align:center;padding:12px;font-family:'Fira Code',monospace;font-size:11px;color:#334155;">No active sessions</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ─── Cron Jobs Panel ──────────────────────────────────────────── -->
+      <div id="panel-cron" class="glass rounded-xl p-4">
+        <div class="flex items-center justify-between mb-3">
+          <span style="font-family:'Fira Code',monospace;font-size:11px;font-weight:600;color:#94A3B8;letter-spacing:.08em;">SCHEDULED JOBS</span>
+          <button id="btn-refresh-cron" title="Refresh cron jobs"
+            style="background:transparent;border:none;cursor:pointer;color:#475569;padding:2px 4px;border-radius:4px;line-height:1;"
+            onmouseover="this.style.color='#F59E0B'" onmouseout="this.style.color='#475569'">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="23 4 23 10 17 10"></polyline>
+              <polyline points="1 20 1 14 7 14"></polyline>
+              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+            </svg>
+          </button>
+        </div>
+        <div id="cron-table-container" style="overflow-x:auto;">
+          <table style="width:100%;border-collapse:collapse;">
+            <thead>
+              <tr style="font-family:'Fira Code',monospace;font-size:9px;color:#475569;text-transform:uppercase;letter-spacing:.06em;">
+                <th style="text-align:left;padding:3px 6px 6px 0;font-weight:500;"></th>
+                <th style="text-align:left;padding:3px 6px 6px;font-weight:500;">Name</th>
+                <th style="text-align:left;padding:3px 6px 6px;font-weight:500;">Schedule</th>
+                <th style="text-align:center;padding:3px 6px 6px;font-weight:500;">Status</th>
+                <th style="text-align:right;padding:3px 0 6px 6px;font-weight:500;">Next Run</th>
+              </tr>
+            </thead>
+            <tbody id="cron-tbody">
+              <tr id="cron-empty-row">
+                <td colspan="5" style="text-align:center;padding:12px;font-family:'Fira Code',monospace;font-size:11px;color:#334155;">No cron jobs configured</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ─── Memory Stats Panel ───────────────────────────────────────── -->
+      <div id="panel-memory" class="glass rounded-xl p-4">
+        <div class="flex items-center justify-between mb-3">
+          <span style="font-family:'Fira Code',monospace;font-size:11px;font-weight:600;color:#94A3B8;letter-spacing:.08em;">MEMORY</span>
+        </div>
+        <div class="grid grid-cols-3 gap-3">
+          <div style="text-align:center;padding:8px 4px;background:rgba(6,182,212,0.06);border-radius:8px;border:1px solid rgba(6,182,212,0.12);">
+            <div id="mem-stat-documents" style="font-family:'Fira Code',monospace;font-size:22px;font-weight:700;color:#67E8F9;line-height:1.1;">—</div>
+            <div style="font-family:'Fira Sans',sans-serif;font-size:10px;color:#475569;margin-top:4px;letter-spacing:.04em;">Documents</div>
+          </div>
+          <div style="text-align:center;padding:8px 4px;background:rgba(168,85,247,0.06);border-radius:8px;border:1px solid rgba(168,85,247,0.12);">
+            <div id="mem-stat-atomic-facts" style="font-family:'Fira Code',monospace;font-size:22px;font-weight:700;color:#D8B4FE;line-height:1.1;">—</div>
+            <div style="font-family:'Fira Sans',sans-serif;font-size:10px;color:#475569;margin-top:4px;letter-spacing:.04em;">Atomic Facts</div>
+          </div>
+          <div style="text-align:center;padding:8px 4px;background:rgba(34,197,94,0.06);border-radius:8px;border:1px solid rgba(34,197,94,0.12);">
+            <div id="mem-stat-entity-links" style="font-family:'Fira Code',monospace;font-size:22px;font-weight:700;color:#86EFAC;line-height:1.1;">—</div>
+            <div style="font-family:'Fira Sans',sans-serif;font-size:10px;color:#475569;margin-top:4px;letter-spacing:.04em;">Entity Links</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ─── Routing Decisions Panel ──────────────────────────────────── -->
+      <div id="panel-routing" class="glass rounded-xl p-4">
+        <div class="flex items-center justify-between mb-3">
+          <span style="font-family:'Fira Code',monospace;font-size:11px;font-weight:600;color:#94A3B8;letter-spacing:.08em;">RECENT ROUTING</span>
+          <span style="font-family:'Fira Code',monospace;font-size:9px;color:#334155;">SSE live</span>
+        </div>
+        <div id="routing-list" style="display:flex;flex-direction:column;gap:4px;min-height:48px;">
+          <div id="routing-empty" style="text-align:center;padding:12px;font-family:'Fira Code',monospace;font-size:11px;color:#334155;">
+            Waiting for pipeline events…
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <!-- CHAT INPUT                                                           -->
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <div id="chat-bar" style="position:fixed;bottom:0;left:0;right:0;z-index:50;
+    background:linear-gradient(to top, #020617 70%, transparent);
+    padding:12px 24px 16px;">
+    <div style="max-width:960px;margin:0 auto;display:flex;gap:10px;align-items:center;">
+      <input id="chat-input" type="text" autocomplete="off"
+        placeholder="Send a message to Synapse…"
+        style="flex:1;background:#0F172A;border:1px solid #1E3A5F;border-radius:10px;
+          padding:10px 16px;font-family:'Fira Code',monospace;font-size:13px;
+          color:#E2E8F0;outline:none;transition:border-color .2s;"
+        onfocus="this.style.borderColor='#06B6D4'"
+        onblur="this.style.borderColor='#1E3A5F'" />
+      <select id="chat-target"
+        style="background:#0F172A;border:1px solid #1E3A5F;border-radius:8px;
+          padding:10px 12px;font-family:'Fira Code',monospace;font-size:12px;
+          color:#94A3B8;cursor:pointer;outline:none;">
+        <option value="the_creator">the_creator</option>
+        <option value="the_partner">the_partner</option>
+      </select>
+      <button id="chat-send"
+        style="background:#06B6D4;color:#020617;font-family:'Fira Code',monospace;
+          font-size:13px;font-weight:700;padding:10px 22px;border:none;
+          border-radius:10px;cursor:pointer;transition:background .2s;white-space:nowrap;"
+        onmouseover="this.style.background='#22D3EE'"
+        onmouseout="this.style.background='#06B6D4'">
+        SEND ↵
+      </button>
+    </div>
+    <div id="chat-reply" style="max-width:960px;margin:6px auto 0;min-height:18px;
+      font-family:'Fira Code',monospace;font-size:12px;color:#64748B;
+      white-space:pre-wrap;word-break:break-word;"></div>
+  </div>
+  <!-- pad content so last timeline row isn't hidden behind chat bar -->
+  <div style="height:80px;"></div>
+
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <!-- JAVASCRIPT                                                           -->
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <script>
+    // ─── DOM shortcuts ───────────────────────────────────────────────────
+    const $ = id => document.getElementById(id);
+
+    // ─── Helper: update node state class ─────────────────────────────────
+    function setNodeState(nodeId, state) {
+      const node = $(nodeId);
+      if (!node) return;
+      // Use classList exclusively — node.className on SVG returns SVGAnimatedString, not a string
+      ['idle','active','processing','done','error','fast'].forEach(s => node.classList.remove(`node-${s}`));
+      node.classList.add(`node-${state}`);
+    }
+
+    // ─── Helper: update edge active state ────────────────────────────────
+    function setEdgeActive(edgeId, active) {
+      const edge = $(edgeId);
+      if (!edge) return;
+      if (active) {
+        edge.classList.add('edge-active');
+      } else {
+        edge.classList.remove('edge-active');
+      }
+    }
+
+    // ─── Helper: set live/idle header ────────────────────────────────────
+    function setLiveState(live) {
+      const dot = $('status-dot');
+      const text = $('status-text');
+      if (live) {
+        dot.className = 'live-dot';
+        text.textContent = 'LIVE';
+        text.style.color = '#22C55E';
+      } else {
+        dot.className = 'idle-dot';
+        text.textContent = 'IDLE';
+        text.style.color = '#475569';
+      }
+    }
+
+    // ─── Helper: queue pips ──────────────────────────────────────────────
+    function updateQueue(n) {
+      for (let i = 0; i < 5; i++) {
+        const pip = $(`q${i}`);
+        if (!pip) continue;
+        pip.className = 'queue-pip' + (i < n ? ' filled' : '');
+      }
+    }
+
+    // ─── Helper: set tension ─────────────────────────────────────────────
+    function setTension(value, type) {
+      const level = $('panel-tension-level');
+      const bar   = $('panel-tension-bar');
+      const ttype = $('panel-tension-type');
+      if (level) level.textContent = value.toFixed(2);
+      if (ttype) ttype.textContent = type || '—';
+      if (bar) {
+        const pct = Math.min(100, Math.round(value * 100)) + '%';
+        bar.style.setProperty('--tension-pct', pct);
+        bar.style.width = pct;
+        // Color gradient based on value
+        if (value < 0.3) {
+          bar.style.background = 'linear-gradient(90deg, #06B6D4, #22C55E)';
+        } else if (value < 0.6) {
+          bar.style.background = 'linear-gradient(90deg, #06B6D4, #A855F7)';
+        } else if (value < 0.8) {
+          bar.style.background = 'linear-gradient(90deg, #F59E0B, #EF4444)';
+        } else {
+          bar.style.background = 'linear-gradient(90deg, #EF4444, #FF0000)';
+        }
+      }
+    }
+
+    // ─── Helper: typewriter effect ───────────────────────────────────────
+    let typewriterTimer = null;
+    function typewrite(elementId, text, speed = 22) {
+      const el = $(elementId);
+      if (!el) return;
+      if (typewriterTimer) clearInterval(typewriterTimer);
+      el.textContent = '';
+      let i = 0;
+      typewriterTimer = setInterval(() => {
+        if (i < text.length) {
+          el.textContent += text[i++];
+        } else {
+          clearInterval(typewriterTimer);
+          typewriterTimer = null;
+        }
+      }, speed);
+    }
+
+    // ─── Helper: memory results ──────────────────────────────────────────
+    function updateMemoryResults(results) {
+      const container = $('panel-memory-results');
+      if (!container) return;
+      container.innerHTML = '';
+      results.forEach(r => {
+        const scorePct = Math.round((r.score || 0) * 100);
+        const item = document.createElement('div');
+        item.className = 'memory-result flex flex-col gap-1';
+        item.innerHTML = `
+          <div class="flex items-center justify-between">
+            <span class="font-mono text-xs text-slate-300" style="max-width: 85%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${r.text || ''}</span>
+            <span class="font-mono text-xs font-semibold" style="color: #06B6D4;">${(r.score || 0).toFixed(3)}</span>
+          </div>
+          <div style="display: flex; gap: 6px; align-items: center;">
+            <div style="flex:1; height:3px; background:#1E293B; border-radius:2px; overflow:hidden;">
+              <div class="score-bar" style="width: ${scorePct}%;"></div>
+            </div>
+            <span class="font-mono" style="font-size: 9px; color: #475569;">${r.source || ''}</span>
+          </div>
+        `;
+        container.appendChild(item);
+      });
+    }
+
+    // ─── Helper: SBS layers ──────────────────────────────────────────────
+    function updateSBSLayers(layerStates) {
+      // layerStates: { core_identity: 'done', linguistic: 'active', ... }
+      const tiles = document.querySelectorAll('.sbs-tile');
+      tiles.forEach(tile => {
+        const layer = tile.dataset.layer;
+        const state = layerStates[layer];
+        tile.className = 'sbs-tile' + (state ? ` ${state}` : '');
+      });
+    }
+
+    // ─── Helper: complexity badge ────────────────────────────────────────
+    function setComplexityBadge(level) {
+      // level: 'fast' | 'standard' | 'deep'
+      const container = $('panel-complexity-badge');
+      if (!container) return;
+      container.querySelectorAll('.badge').forEach(b => b.classList.remove('active'));
+      const active = container.querySelector(`.badge-${level}`);
+      if (active) active.classList.add('active');
+    }
+
+    // ─── Helper: memory tier ─────────────────────────────────────────────
+    function setMemoryTier(tier) {
+      const el = $('panel-memory-tier');
+      if (!el) return;
+      el.textContent = tier;
+      el.className = 'tier-badge';
+      if (tier === 'fast_gate') el.classList.add('tier-fast');
+      else if (tier === 'reranked') el.classList.add('tier-reranked');
+      else el.classList.add('tier-standard');
+    }
+
+    // ─── Helper: update timeline ─────────────────────────────────────────
+    function updateTimeline(segments) {
+      // segments: [{name, ms, color}]
+      // We update the labels inside existing bars for simplicity;
+      // a full rewrite would replace the container.
+      // For now, update the total.
+      const total = segments.reduce((s, seg) => s + (seg.ms || 0), 0);
+      const totalEl = $('timeline-total');
+      if (totalEl) {
+        totalEl.textContent = total >= 1000
+          ? `${(total / 1000).toFixed(2)}s`
+          : `${total}ms`;
+      }
+    }
+
+    // ─── SSE Connection (pipeline/events) ────────────────────────────────
+    let _sse = null;
+    let _sseConnected = false;
+    let _demoActive = false;
+    let _sseReconnectDelay = 1000;
+    let _tMemStart = 0, _tCogStart = 0, _tSbsStart = 0, _tTcStart = 0, _tLlmStart = 0;
+    let _timeline = [];
+
+    // Map SSE event types → handleEvent() format
+    function _dispatchSSE(type, d) {
+      stopDemo();  // real event received — kill demo loop
+      switch (type) {
+        case 'pipeline.start':
+          _timeline = []; _tMemStart = _tCogStart = _tSbsStart = _tTcStart = _tLlmStart = 0;
+          handleEvent({ type: 'pipeline_start', run_id: d.run_id, message: d.text || '' });
+          break;
+        case 'pipeline.done':
+          handleEvent({ type: 'pipeline_done', total_latency_ms: d.total_latency_ms,
+            timeline: _timeline });
+          break;
+        // Gateway
+        case 'floodgate.debounce':
+          handleEvent({ type: 'node_state', node_id: 'node-floodgate', state: 'active' }); break;
+        case 'floodgate.flush':
+          handleEvent({ type: 'node_state', node_id: 'node-floodgate', state: 'done' }); break;
+        case 'dedup.check':
+          handleEvent({ type: 'node_state', node_id: 'node-dedup', state: d.is_duplicate ? 'error' : 'done' }); break;
+        case 'queue.enqueued':
+          handleEvent({ type: 'node_state', node_id: 'node-queue', state: 'processing' });
+          handleEvent({ type: 'queue_update', depth: d.position || 1 }); break;
+        case 'queue.dequeued':
+          handleEvent({ type: 'node_state', node_id: 'node-queue', state: 'done' }); break;
+        // Memory
+        case 'memory.query_start':
+          _tMemStart = d.ts || Date.now();
+          handleEvent({ type: 'node_state', node_id: 'node-memory', state: 'active' }); break;
+        case 'memory.lancedb_search_start':
+          handleEvent({ type: 'node_state', node_id: 'node-memory', state: 'processing' }); break;
+        case 'memory.fast_gate_hit':
+          handleEvent({ type: 'memory_update', tier: 'fast_gate' }); break;
+        case 'memory.reranking_start':
+          handleEvent({ type: 'memory_update', tier: 'reranked' }); break;
+        case 'memory.scoring':
+          if (d.results) handleEvent({ type: 'memory_update', results: d.results }); break;
+        case 'memory.query_done':
+          handleEvent({ type: 'node_state', node_id: 'node-memory', state: 'done' });
+          handleEvent({ type: 'memory_update', tier: d.tier });
+          if (_tMemStart) _timeline.push({ label: 'Memory', ms: (d.ts||Date.now()) - _tMemStart, color: '#06B6D4' });
+          break;
+        // Toxicity
+        case 'toxicity.check':
+          handleEvent({ type: 'node_state', node_id: 'node-toxicity', state: d.passed ? 'done' : 'error' }); break;
+        // Dual Cognition
+        case 'cognition.classify':
+          _tCogStart = d.ts || Date.now();
+          handleEvent({ type: 'node_state', node_id: 'node-dualcognition', state: d.complexity === 'fast' ? 'fast' : 'active' });
+          handleEvent({ type: 'cognition_update', complexity: d.complexity }); break;
+        case 'cognition.fast_path':
+          handleEvent({ type: 'node_state', node_id: 'node-dualcognition', state: 'fast' }); break;
+        case 'cognition.analyze_start':
+          handleEvent({ type: 'node_state', node_id: 'node-dualcognition', state: 'processing' }); break;
+        case 'cognition.merge_start':
+          break;
+        case 'cognition.merge_done':
+          handleEvent({ type: 'node_state', node_id: 'node-dualcognition', state: 'done' });
+          handleEvent({ type: 'cognition_update',
+            tension: d.tension_level, tension_type: d.tension_type,
+            strategy: d.response_strategy, tone: d.suggested_tone,
+            inner_monologue: d.inner_monologue, cot_thought: d.thought,
+            complexity: d.complexity, contradictions: d.contradictions });
+          if (_tCogStart) _timeline.push({ label: 'DualCog', ms: (d.ts||Date.now()) - _tCogStart, color: '#A855F7' });
+          break;
+        // SBS
+        case 'sbs.read_start':
+          _tSbsStart = d.ts || Date.now();
+          handleEvent({ type: 'node_state', node_id: 'node-sbs', state: 'active' }); break;
+        case 'sbs.layer_read':
+          handleEvent({ type: 'node_state', node_id: 'node-sbs', state: 'processing' }); break;
+        case 'sbs.compile_done':
+          handleEvent({ type: 'node_state', node_id: 'node-sbs', state: 'done' });
+          handleEvent({ type: 'sbs_update', token_count: d.token_estimate, layers: 7 });
+          if (_tSbsStart) _timeline.push({ label: 'SBS', ms: (d.ts||Date.now()) - _tSbsStart, color: '#EC4899' });
+          break;
+        // Traffic Cop
+        case 'traffic_cop.start':
+          _tTcStart = d.ts || Date.now();
+          handleEvent({ type: 'node_state', node_id: 'node-trafficcop', state: 'active' }); break;
+        case 'traffic_cop.skip':
+          handleEvent({ type: 'node_state', node_id: 'node-trafficcop', state: 'fast' }); break;
+        case 'traffic_cop.done':
+          handleEvent({ type: 'node_state', node_id: 'node-trafficcop', state: 'done' });
+          if (_tTcStart) _timeline.push({ label: 'TrafficCop', ms: (d.ts||Date.now()) - _tTcStart, color: '#F59E0B' });
+          break;
+        // LLM
+        case 'llm.route':
+          handleEvent({ type: 'node_state', node_id: 'node-llm', state: 'active' }); break;
+        case 'llm.stream_start':
+          _tLlmStart = d.ts || Date.now();
+          handleEvent({ type: 'node_state', node_id: 'node-llm', state: 'processing' }); break;
+        case 'llm.stream_done':
+          handleEvent({ type: 'node_state', node_id: 'node-llm', state: 'done' });
+          if (_tLlmStart) _timeline.push({ label: 'LLM', ms: (d.ts||Date.now()) - _tLlmStart, color: '#22C55E' });
+          break;
+        default:
+          break;
+      }
+    }
+
+    function connectSSE() {
+      if (_sse) { try { _sse.close(); } catch(e) {} }
+      _sse = new EventSource('/pipeline/events');
+
+      _sse.addEventListener('connected', () => {
+        console.log('[dashboard] SSE connected');
+        _sseConnected = true;
+        _sseReconnectDelay = 1000;
+        setLiveState(true);
+      });
+
+      _sse.onerror = () => {
+        _sseConnected = false;
+        setLiveState(false);
+        _sse.close();
+        _sseReconnectDelay = Math.min(_sseReconnectDelay * 2, 30000);
+        setTimeout(connectSSE, _sseReconnectDelay);
+      };
+
+      // Register all pipeline event types
+      const sseEvents = [
+        'pipeline.start','pipeline.done',
+        'floodgate.debounce','floodgate.flush','dedup.check',
+        'queue.enqueued','queue.dequeued',
+        'memory.query_start','memory.embedding_start','memory.embedding_done',
+        'memory.lancedb_search_start','memory.lancedb_search_done',
+        'memory.scoring','memory.fast_gate_hit','memory.reranking_start','memory.query_done',
+        'toxicity.check',
+        'cognition.classify','cognition.fast_path','cognition.analyze_start',
+        'cognition.analyze_done','cognition.recall_start','cognition.recall_done',
+        'cognition.merge_start','cognition.merge_done',
+        'sbs.read_start','sbs.layer_read','sbs.compile_done',
+        'traffic_cop.start','traffic_cop.skip','traffic_cop.done',
+        'llm.route','llm.stream_start','llm.stream_done',
+      ];
+
+      sseEvents.forEach(evtType => {
+        _sse.addEventListener(evtType, evt => {
+          _sseConnected = true;
+          let d = {};
+          try { d = JSON.parse(evt.data); } catch(e) {}
+          _dispatchSSE(evtType, d);
+        });
+      });
+    }
+
+    // ─── Event handler ────────────────────────────────────────────────────
+    function handleEvent(msg) {
+      const type = msg.type || msg.event;
+
+      switch (type) {
+        // ── pipeline_start ───────────────────────────────────────────────
+        case 'pipeline_start': {
+          setLiveState(true);
+          const runId = $('panel-run-id');
+          if (runId) runId.textContent = (msg.run_id || '').slice(0, 8);
+          const curMsg = $('panel-current-message');
+          if (curMsg) {
+            curMsg.textContent = msg.message || '';
+            curMsg.style.opacity = '1';
+          }
+          // Reset all nodes
+          ['node-floodgate','node-dedup','node-queue','node-memory',
+           'node-toxicity','node-dualcognition','node-sbs',
+           'node-trafficcop','node-llm','node-response'].forEach(n => setNodeState(n, 'idle'));
+          break;
+        }
+
+        // ── node_state ───────────────────────────────────────────────────
+        case 'node_state': {
+          setNodeState(msg.node_id, msg.state);
+          // Activate corresponding edge
+          const edgeMap = {
+            'node-floodgate':    'edge-floodgate-dedup',
+            'node-dedup':        'edge-dedup-queue',
+            'node-queue':        ['edge-queue-memory', 'edge-queue-toxicity'],
+            'node-memory':       'edge-memory-dualcog',
+            'node-toxicity':     'edge-toxicity-dualcog',
+            'node-dualcognition':['edge-dualcog-sbs','edge-dualcog-trafficcop'],
+            'node-sbs':          'edge-sbs-trafficcop',
+            'node-trafficcop':   'edge-trafficcop-llm',
+            'node-llm':          'edge-llm-response',
+          };
+          const edges = edgeMap[msg.node_id];
+          if (edges) {
+            const arr = Array.isArray(edges) ? edges : [edges];
+            arr.forEach(e => setEdgeActive(e, msg.state === 'active' || msg.state === 'processing'));
+          }
+          break;
+        }
+
+        // ── queue_update ─────────────────────────────────────────────────
+        case 'queue_update': {
+          const n = msg.depth ?? 0;
+          const qEl = $('panel-queue-size');
+          if (qEl) qEl.textContent = n;
+          updateQueue(Math.min(n, 5));
+          break;
+        }
+
+        // ── cognition_update ─────────────────────────────────────────────
+        case 'cognition_update': {
+          if (msg.tension != null) setTension(msg.tension, msg.tension_type);
+          if (msg.strategy) {
+            const strat = $('panel-strategy');
+            if (strat) strat.textContent = msg.strategy;
+          }
+          if (msg.tone) {
+            const tone = $('panel-tone');
+            if (tone) tone.textContent = msg.tone;
+          }
+          if (msg.inner_monologue) {
+            typewrite('panel-inner-monologue', msg.inner_monologue);
+          }
+          if (msg.cot_thought) {
+            const cot = $('panel-thought');
+            if (cot) {
+              cot.textContent = msg.cot_thought;
+              cot.style.color = '#A855F7';
+            }
+          }
+          if (msg.complexity) setComplexityBadge(msg.complexity);
+          if (msg.contradictions?.length) {
+            const cont = $('panel-contradictions');
+            if (cont) {
+              cont.innerHTML = '';
+              msg.contradictions.forEach(c => {
+                const div = document.createElement('div');
+                div.className = 'contradiction-item';
+                div.textContent = c;
+                cont.appendChild(div);
+              });
+            }
+          }
+          break;
+        }
+
+        // ── memory_update ────────────────────────────────────────────────
+        case 'memory_update': {
+          if (msg.tier) setMemoryTier(msg.tier);
+          if (msg.results?.length) updateMemoryResults(msg.results);
+          break;
+        }
+
+        // ── sbs_update ───────────────────────────────────────────────────
+        case 'sbs_update': {
+          if (msg.layers) updateSBSLayers(msg.layers);
+          if (msg.token_count != null) {
+            const tc = $('panel-sbs-token-count');
+            if (tc) tc.textContent = msg.token_count;
+            const tb = $('panel-sbs-token-bar');
+            if (tb) {
+              const pct = Math.min(100, Math.round((msg.token_count / 1500) * 100));
+              tb.style.width = pct + '%';
+            }
+          }
+          break;
+        }
+
+        // ── timeline_update ──────────────────────────────────────────────
+        case 'timeline_update': {
+          if (msg.segments) updateTimeline(msg.segments);
+          break;
+        }
+
+        // ── pipeline_done ────────────────────────────────────────────────
+        case 'pipeline_done': {
+          setNodeState('node-response', 'done');
+          const lr = $('panel-last-response');
+          if (lr) lr.textContent = (msg.response || '').slice(0, 80) + (msg.response?.length > 80 ? '...' : '');
+          if (msg.timeline) updateTimeline(msg.timeline);
+          // Reset all nodes to idle after a 1.8s "done" flash
+          setTimeout(() => {
+            ['node-floodgate','node-dedup','node-queue','node-memory',
+             'node-toxicity','node-dualcognition','node-sbs',
+             'node-trafficcop','node-llm','node-response'].forEach(id => setNodeState(id, 'idle'));
+            document.querySelectorAll('.edge-path').forEach(e => e.classList.remove('edge-active'));
+            setLiveState(false);
+          }, 1800);
+          break;
+        }
+
+        // ── pipeline_error ───────────────────────────────────────────────
+        case 'pipeline_error': {
+          if (msg.node_id) setNodeState(msg.node_id, 'error');
+          setTimeout(() => setLiveState(false), 1500);
+          break;
+        }
+
+        // ── pong ─────────────────────────────────────────────────────────
+        case 'pong':
+        case 'heartbeat':
+          break;
+
+        default:
+          // Unknown event — ignore
+      }
+    }
+
+    // ─── Demo / Skeleton animation (no WebSocket) ─────────────────────────
+    // Plays a canned demo loop so the dashboard looks alive without data.
+    function stopDemo() { _demoActive = false; }
+
+    function runDemoLoop() {
+      if (_sseConnected) return;   // real SSE is live — don't start demo
+      _demoActive = true;
+      const NODES = [
+        'node-floodgate','node-dedup','node-queue','node-memory',
+        'node-toxicity','node-dualcognition','node-sbs',
+        'node-trafficcop','node-llm','node-response'
+      ];
+
+      const messages = [
+        "hey can you check my code real quick",
+        "what do you think about this approach?",
+        "explain this error to me",
+        "I need help debugging this",
+      ];
+
+      const monologues = [
+        "They seem stressed — code + deadline combo. I should be direct but not cold.",
+        "This is a pattern I've seen before. Third time asking the same thing... tension rising.",
+        "Curious energy. Not urgent. I'll explore this with some lightness.",
+        "Something feels off in the subtext. Checking for implicit feedback signals...",
+      ];
+
+      let step = 0;
+      const msgIdx = Math.floor(Math.random() * messages.length);
+
+      const sequence = [
+        () => {
+          // pipeline_start
+          handleEvent({
+            type: 'pipeline_start',
+            run_id: 'demo-' + Date.now().toString(36),
+            message: messages[msgIdx],
+          });
+          updateQueue(2);
+        },
+        () => { setNodeState('node-floodgate', 'active'); setEdgeActive('edge-floodgate-dedup', true); },
+        () => { setNodeState('node-floodgate', 'done'); setNodeState('node-dedup', 'active'); },
+        () => { setNodeState('node-dedup', 'done'); setNodeState('node-queue', 'active'); },
+        () => {
+          setNodeState('node-queue', 'processing');
+          setEdgeActive('edge-queue-memory', true);
+          setEdgeActive('edge-queue-toxicity', true);
+        },
+        () => {
+          setNodeState('node-queue', 'done');
+          setNodeState('node-memory', 'active');
+          setNodeState('node-toxicity', 'active');
+          // memory update
+          handleEvent({
+            type: 'memory_update',
+            tier: Math.random() > 0.5 ? 'fast_gate' : 'reranked',
+            results: [
+              { text: 'User prefers concise explanations with examples', score: 0.921, source: 'SQLite-vec' },
+              { text: 'Previous debugging session — async await confusion', score: 0.847, source: 'FTS' },
+              { text: 'Requested shorter responses twice last week', score: 0.783, source: 'Graph' },
+            ],
+          });
+        },
+        () => {
+          setNodeState('node-memory', 'done');
+          setNodeState('node-toxicity', 'done');
+          setNodeState('node-dualcognition', 'active');
+          setEdgeActive('edge-memory-dualcog', true);
+          setEdgeActive('edge-toxicity-dualcog', true);
+          const tension = Math.random() * 0.7;
+          const types = ['pattern_break', 'emotional_shift', 'implicit_correction', 'topic_jump', 'none'];
+          const ttype = types[Math.floor(Math.random() * types.length)];
+          handleEvent({
+            type: 'cognition_update',
+            tension,
+            tension_type: ttype,
+            strategy: ['be_direct', 'explore_with_care', 'challenge', 'neutral'][Math.floor(Math.random() * 4)],
+            tone: ['warm', 'firm', 'playful', 'analytical'][Math.floor(Math.random() * 4)],
+            complexity: ['fast', 'standard', 'deep'][Math.floor(Math.random() * 3)],
+            inner_monologue: monologues[msgIdx % monologues.length],
+          });
+          setNodeState('node-sbs', 'active');
+          setEdgeActive('edge-dualcog-sbs', true);
+          handleEvent({
+            type: 'sbs_update',
+            layers: {
+              core_identity: 'done',
+              linguistic: 'done',
+              emotional_state: 'active',
+              domain: 'done',
+              interaction: 'active',
+              vocabulary: '',
+              exemplars: '',
+              meta: '',
+            },
+            token_count: 900 + Math.floor(Math.random() * 400),
+          });
+        },
+        () => {
+          setNodeState('node-dualcognition', 'done');
+          setNodeState('node-sbs', 'done');
+          setNodeState('node-trafficcop', 'active');
+          setEdgeActive('edge-dualcog-trafficcop', true);
+          setEdgeActive('edge-sbs-trafficcop', true);
+        },
+        () => {
+          setNodeState('node-trafficcop', 'done');
+          setNodeState('node-llm', 'processing');
+          setEdgeActive('edge-trafficcop-llm', true);
+        },
+        () => {
+          setNodeState('node-llm', 'done');
+          setNodeState('node-response', 'active');
+          setEdgeActive('edge-llm-response', true);
+        },
+        () => {
+          handleEvent({
+            type: 'pipeline_done',
+            response: 'Yeah I see it — you\'re missing an await before the async call on line 47. Add that and the promise will resolve correctly.',
+            timeline: [
+              { name: 'FloodGate', ms: 3 },
+              { name: 'Dedup', ms: 1 },
+              { name: 'Queue', ms: 2 },
+              { name: 'Memory', ms: Math.floor(100 + Math.random() * 200) },
+              { name: 'DualCog', ms: Math.floor(300 + Math.random() * 400) },
+              { name: 'SBS', ms: Math.floor(80 + Math.random() * 120) },
+              { name: 'TrafficCop', ms: Math.floor(50 + Math.random() * 80) },
+              { name: 'LLM', ms: Math.floor(800 + Math.random() * 1200) },
+            ],
+          });
+          updateQueue(1);
+        },
+      ];
+
+      const DELAYS = [600, 400, 350, 350, 400, 700, 900, 600, 900, 500, 800];
+
+      function runStep() {
+        if (!_demoActive || _sseConnected) return;  // stop if real events arrived
+        if (step < sequence.length) {
+          sequence[step]();
+          const delay = DELAYS[step] ?? 500;
+          step++;
+          setTimeout(runStep, delay);
+        } else {
+          // Wait then restart
+          setTimeout(() => {
+            if (!_demoActive || _sseConnected) return;
+            step = 0;
+            runDemoLoop();
+          }, 4000);
+        }
+      }
+
+      runStep();
+    }
+
+    // ─── Init ─────────────────────────────────────────────────────────────
+    document.addEventListener('DOMContentLoaded', () => {
+      // Connect to SSE pipeline stream
+      connectSSE();
+
+      // After 3s if SSE hasn't fired any events, run demo loop
+      setTimeout(() => {
+        if (!_sseConnected) {
+          console.info('[dashboard] SSE not live — running demo loop');
+          runDemoLoop();
+        }
+      }, 3000);
+
+      // ─── Chat input wiring ──────────────────────────────────────────────
+      async function sendChat() {
+        const inp = $('chat-input');
+        const replyEl = $('chat-reply');
+        const btn = $('chat-send');
+        const target = ($('chat-target') || {}).value || 'the_creator';
+        const msg = (inp.value || '').trim();
+        if (!msg) return;
+
+        inp.value = '';
+        replyEl.textContent = '…';
+        btn.disabled = true;
+        btn.style.opacity = '0.5';
+
+        try {
+          const res = await fetch('/pipeline/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: msg, target }),
+          });
+          const data = await res.json();
+          replyEl.style.color = '#67E8F9';
+          replyEl.textContent = data.reply || data.error || '(no reply)';
+        } catch(e) {
+          replyEl.style.color = '#F87171';
+          replyEl.textContent = 'Error: ' + e.message;
+        } finally {
+          btn.disabled = false;
+          btn.style.opacity = '1';
+        }
+      }
+
+      const sendBtn = $('chat-send');
+      const chatInp = $('chat-input');
+      if (sendBtn) sendBtn.addEventListener('click', sendChat);
+      if (chatInp) chatInp.addEventListener('keydown', e => {
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
+      });
+    });
+  </script>
+
+
+</body>
+</html>

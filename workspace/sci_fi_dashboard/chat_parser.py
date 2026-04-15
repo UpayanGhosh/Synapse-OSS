@@ -85,12 +85,12 @@ TIMESTAMP_PATTERN = re.compile(r"^\[(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2})\]\s+(\w+):
 
 # Lines to skip entirely
 NOISE_PATTERNS = [
-    r"^[WARN]",  # Error lines
+    r"^\[WARN\]",  # Error lines
     r"^\[SYSTEM\]",  # System messages
     r"^<Media omitted>",  # Media markers
-    r"^OpenClaw:",  # OpenClaw system messages
+    r"^OpenClaw:",  # legacy system messages
     r"^Cloud Code Assist",  # API errors
-    r"^[OK] New session started",  # Session resets
+    r"^\[OK\] New session started",  # Session resets
     r"^You deleted this message",
     r"^Deleting message\.\.\.",
     r"^Pairing code:",
@@ -238,7 +238,7 @@ TECH_JARGON = {
     "docker",
     "kubernetes",
     "sqlite",
-    "qdrant",
+    "lancedb",
     "ollama",
     "gemini",
     "openai",

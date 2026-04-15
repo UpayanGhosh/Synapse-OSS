@@ -7,7 +7,7 @@ detection, and implements the complete non-interactive mode.
 
 Exports:
   - run_wizard()           Top-level entry point dispatching to interactive or non-interactive
-  - _check_for_openclaw() Named helper for ~/.openclaw/ detection (also imported by unit tests)
+  - _check_for_legacy_install() Named helper for legacy install detection (also imported by unit tests)
 """
 
 import asyncio
@@ -139,6 +139,18 @@ def _run_non_interactive(
         SYNAPSE_HOME             — override default ~/.synapse data root
         SYNAPSE_GATEWAY_TOKEN    — WebSocket control-plane auth token
 
+    Optional SBS persona env vars (all optional — absent means use defaults silently):
+        SYNAPSE_COMMUNICATION_STYLE  — preferred comm style
+                                       (casual_and_witty, formal_and_precise,
+                                        technical_depth, creative_and_playful)
+        SYNAPSE_ENERGY_LEVEL         — energy/mood baseline
+                                       (high_energy, calm_and_steady, adaptive)
+        SYNAPSE_INTERESTS            — comma-separated topic list
+                                       (technology, music, wellness, finance,
+                                        science, arts, sports, cooking)
+        SYNAPSE_PRIVACY_LEVEL        — privacy sensitivity
+                                       (open, selective, private)
+
     Exit codes:
         0 — config written successfully
         1 — required env var missing or validation failed
@@ -247,6 +259,73 @@ def _run_non_interactive(
     write_config(data_root, config)
     typer.echo(f"Config written to {data_root / 'synapse.json'}")
 
+    # --- SBS profile seeding from env vars (all optional) ---
+    communication_style = os.environ.get("SYNAPSE_COMMUNICATION_STYLE", "").strip()
+    energy_level = os.environ.get("SYNAPSE_ENERGY_LEVEL", "").strip()
+    interests_raw = os.environ.get("SYNAPSE_INTERESTS", "").strip()
+    privacy_level = os.environ.get("SYNAPSE_PRIVACY_LEVEL", "").strip()
+
+    if any([communication_style, energy_level, interests_raw, privacy_level]):
+        try:
+            from cli.sbs_profile_init import (  # noqa: PLC0415
+                ENERGY_CHOICES,
+                INTEREST_CHOICES,
+                PRIVACY_CHOICES,
+                STYLE_CHOICES,
+                initialize_sbs_from_wizard,
+            )
+
+            # Validate communication_style
+            if communication_style and communication_style not in STYLE_CHOICES:
+                typer.echo(
+                    f"WARNING: SYNAPSE_COMMUNICATION_STYLE='{communication_style}' is not valid. "
+                    f"Valid: {', '.join(STYLE_CHOICES)}. Using default 'casual_and_witty'.",
+                    err=True,
+                )
+                communication_style = "casual_and_witty"
+
+            # Validate energy_level
+            if energy_level and energy_level not in ENERGY_CHOICES:
+                typer.echo(
+                    f"WARNING: SYNAPSE_ENERGY_LEVEL='{energy_level}' is not valid. "
+                    f"Valid: {', '.join(ENERGY_CHOICES)}. Using default 'calm_and_steady'.",
+                    err=True,
+                )
+                energy_level = "calm_and_steady"
+
+            # Validate privacy_level
+            if privacy_level and privacy_level not in PRIVACY_CHOICES:
+                typer.echo(
+                    f"WARNING: SYNAPSE_PRIVACY_LEVEL='{privacy_level}' is not valid. "
+                    f"Valid: {', '.join(PRIVACY_CHOICES)}. Using default 'selective'.",
+                    err=True,
+                )
+                privacy_level = "selective"
+
+            # Parse and validate interests (comma-separated, filter unknowns)
+            parsed_interests = [i.strip().lower() for i in interests_raw.split(",") if i.strip()]
+            unknown_interests = [i for i in parsed_interests if i not in INTEREST_CHOICES]
+            if unknown_interests:
+                typer.echo(
+                    f"WARNING: Unknown interests ignored: {', '.join(unknown_interests)}. "
+                    f"Valid: {', '.join(INTEREST_CHOICES)}",
+                    err=True,
+                )
+                parsed_interests = [i for i in parsed_interests if i in INTEREST_CHOICES]
+
+            initialize_sbs_from_wizard(
+                {
+                    "communication_style": communication_style or "casual_and_witty",
+                    "energy_level": energy_level or "calm_and_steady",
+                    "interests": parsed_interests,
+                    "privacy_level": privacy_level or "selective",
+                },
+                data_root=data_root,
+            )
+            typer.echo("SBS profile initialized from environment variables.")
+        except Exception as exc:  # noqa: BLE001
+            typer.echo(f"WARNING: SBS profile initialization failed: {exc}", err=True)
+
     # --- Environment validation ---
     _validate_environment(config)
 
@@ -312,54 +391,179 @@ def _handle_reset(reset_scope: str, data_root: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Known models per provider (curated list — update when providers add models)
+# ---------------------------------------------------------------------------
+
+_KNOWN_MODELS: dict[str, list[dict[str, str]]] = {
+    "gemini": [
+        {"value": "gemini/gemini-2.5-flash", "label": "Gemini 2.5 Flash (fast, cheap)"},
+        {
+            "value": "gemini/gemini-2.5-flash-lite",
+            "label": "Gemini 2.5 Flash-Lite (fastest, free tier)",
+        },
+        {"value": "gemini/gemini-2.5-pro", "label": "Gemini 2.5 Pro (best quality)"},
+        {"value": "gemini/gemini-2.0-flash", "label": "Gemini 2.0 Flash"},
+    ],
+    "openai": [
+        {"value": "openai/gpt-4o", "label": "GPT-4o (flagship)"},
+        {"value": "openai/gpt-4o-mini", "label": "GPT-4o Mini (fast, cheap)"},
+        {"value": "openai/o3-mini", "label": "o3-mini (reasoning)"},
+        {"value": "openai/o4-mini", "label": "o4-mini (reasoning)"},
+    ],
+    "github_copilot": [
+        {"value": "github_copilot/gpt-4.1", "label": "GPT-4.1 (flagship)"},
+        {"value": "github_copilot/gpt-4.1-mini", "label": "GPT-4.1 Mini (fast)"},
+        {"value": "github_copilot/gpt-4.1-nano", "label": "GPT-4.1 Nano (fastest)"},
+        {"value": "github_copilot/gpt-4o", "label": "GPT-4o"},
+        {"value": "github_copilot/gpt-4o-mini", "label": "GPT-4o Mini"},
+        {"value": "github_copilot/o3-mini", "label": "o3-mini (reasoning)"},
+        {"value": "github_copilot/o4-mini", "label": "o4-mini (reasoning)"},
+        {"value": "github_copilot/claude-sonnet-4", "label": "Claude Sonnet 4"},
+        {"value": "github_copilot/gemini-2.0-flash", "label": "Gemini 2.0 Flash"},
+    ],
+    "anthropic": [
+        {"value": "anthropic/claude-sonnet-4-6", "label": "Claude Sonnet 4.6 (balanced)"},
+        {"value": "anthropic/claude-haiku-4-5", "label": "Claude Haiku 4.5 (fast, cheap)"},
+        {"value": "anthropic/claude-opus-4-6", "label": "Claude Opus 4.6 (best quality)"},
+    ],
+    "groq": [
+        {"value": "groq/llama-3.3-70b-versatile", "label": "Llama 3.3 70B Versatile"},
+        {"value": "groq/llama-3.1-8b-instant", "label": "Llama 3.1 8B Instant (fastest)"},
+    ],
+    "openrouter": [
+        {"value": "openrouter/auto", "label": "Auto (best available)"},
+        {"value": "openrouter/google/gemini-2.5-flash", "label": "Gemini 2.5 Flash"},
+        {"value": "openrouter/anthropic/claude-sonnet-4", "label": "Claude Sonnet 4"},
+    ],
+    "mistral": [
+        {"value": "mistral/mistral-large-latest", "label": "Mistral Large (flagship)"},
+        {"value": "mistral/mistral-small-latest", "label": "Mistral Small (fast)"},
+    ],
+    "xai": [
+        {"value": "xai/grok-3", "label": "Grok 3"},
+        {"value": "xai/grok-3-mini", "label": "Grok 3 Mini (fast)"},
+    ],
+}
+
+# Roles with descriptions and default preference order
+_ROLES: list[tuple[str, str, list[str]]] = [
+    (
+        "casual",
+        "Casual chat — fast, everyday",
+        ["gemini", "openai", "github_copilot", "groq", "anthropic"],
+    ),
+    ("code", "Code generation & debugging", ["anthropic", "openai", "github_copilot", "groq"]),
+    ("analysis", "Analysis & deep research", ["gemini", "openai", "github_copilot", "anthropic"]),
+    ("review", "Code review & critique", ["anthropic", "openai", "github_copilot", "gemini"]),
+    ("kg", "Knowledge Graph extraction (background, always Gemini free tier)", ["gemini"]),
+]
+
+
+def _auto_pick(providers: list[str], prefs: list[str], models_map: dict) -> str | None:
+    """Return the first available model for the first matching provider."""
+    for prov in prefs:
+        if prov in providers and prov in models_map:
+            return models_map[prov][0]["value"]
+    return None
+
+
 def _build_model_mappings(providers: list[str]) -> dict:
-    """Generate sensible model_mappings based on which providers were configured."""
+    """Generate sensible model_mappings automatically (QuickStart / non-interactive)."""
     mappings: dict = {}
-
-    # casual: gemini > openai > groq > anthropic
-    for cand, model in [
-        ("gemini", "gemini/gemini-2.0-flash"),
-        ("openai", "openai/gpt-4o-mini"),
-        ("groq", "groq/llama-3.3-70b-versatile"),
-        ("anthropic", "anthropic/claude-haiku-4-5"),
-    ]:
-        if cand in providers:
-            mappings["casual"] = {"model": model, "fallback": None}
-            break
-
-    # code: anthropic > openai > groq
-    for cand, model in [
-        ("anthropic", "anthropic/claude-sonnet-4-6"),
-        ("openai", "openai/gpt-4o"),
-        ("groq", "groq/llama-3.3-70b-versatile"),
-    ]:
-        if cand in providers:
-            mappings["code"] = {"model": model, "fallback": None}
-            break
+    for role, _desc, prefs in _ROLES:
+        if role == "kg":
+            continue  # handled below — always Gemini Flash-Lite
+        model = _auto_pick(providers, prefs, _KNOWN_MODELS)
+        if model:
+            mappings[role] = {"model": model, "fallback": None}
 
     # vault: always ollama (local-only by design)
     if "ollama" in providers:
         mappings["vault"] = {"model": "ollama_chat/llama3.3", "fallback": None}
 
+    # kg: always Gemini Flash-Lite (free tier, 1000 req/day)
+    # This is independent of the user's chat provider choice.
+    if "gemini" in providers:
+        mappings["kg"] = {
+            "model": "gemini/gemini-2.5-flash-lite",
+            "fallback": "gemini/gemini-2.5-flash",
+        }
+
+    return mappings
+
+
+def _build_model_mappings_interactive(providers: list[str], prompter: "object") -> dict:
+    """Let the user pick a model for each role from their configured providers."""
+    # Build choices from all configured providers
+    available: list = []
+    try:
+        import questionary  # noqa: PLC0415
+
+        for prov in providers:
+            models = _KNOWN_MODELS.get(prov)
+            if not models:
+                continue
+            available.append(questionary.Separator(f"--- {prov} ---"))
+            for m in models:
+                available.append(questionary.Choice(m["label"], value=m["value"]))
+    except ImportError:
+        # No questionary — flat list of values
+        for prov in providers:
+            for m in _KNOWN_MODELS.get(prov, []):
+                available.append(m["value"])
+
+    if not available:
+        _print("[yellow]No known models for selected providers. Using defaults.[/]")
+        return _build_model_mappings(providers)
+
+    _print("\n[bold cyan]--- Model Selection ---[/]")
+    _print("Choose a model for each role. You can use the same model for multiple roles.\n")
+
+    mappings: dict = {}
+    for role, desc, prefs in _ROLES:
+        if role == "kg":
+            continue  # handled below — always Gemini Flash-Lite
+        default = _auto_pick(providers, prefs, _KNOWN_MODELS)
+        selected = prompter.select(  # type: ignore[attr-defined]
+            f"{role} ({desc}):",
+            choices=available,
+            default=default,
+        )
+        mappings[role] = {"model": selected, "fallback": None}
+
+    # vault: always ollama (local-only by design)
+    if "ollama" in providers:
+        mappings["vault"] = {"model": "ollama_chat/llama3.3", "fallback": None}
+
+    # kg: always Gemini Flash-Lite (free tier, 1000 req/day)
+    # Not user-configurable — memory engine runs on Gemini regardless of chat provider.
+    if "gemini" in providers:
+        mappings["kg"] = {
+            "model": "gemini/gemini-2.5-flash-lite",
+            "fallback": "gemini/gemini-2.5-flash",
+        }
+        _print("[dim]   KG role auto-set to Gemini 2.5 Flash-Lite (free tier)[/]")
+
     return mappings
 
 
 # ---------------------------------------------------------------------------
-# OpenClaw migration detection
+# Legacy install migration detection
 # ---------------------------------------------------------------------------
 
 
-def _check_for_openclaw(openclaw_root: Path | None = None) -> Path | None:
-    """Check whether an existing ~/.openclaw/ directory is present.
+def _check_for_legacy_install(legacy_root: Path | None = None) -> Path | None:
+    """Check whether an existing legacy install directory is present.
 
     Args:
-        openclaw_root: Override the default ~/.openclaw path. Used by tests
-                       to inject a fake directory without touching the real home.
+        legacy_root: Override the default ~/.openclaw path. Used by tests
+                     to inject a fake directory without touching the real home.
 
     Returns:
         The Path if it exists and is a directory, otherwise None.
     """
-    root = openclaw_root if openclaw_root is not None else Path.home() / ".openclaw"
+    root = legacy_root if legacy_root is not None else Path.home() / ".openclaw"
     return root if root.exists() and root.is_dir() else None
 
 
@@ -368,10 +572,10 @@ def _check_for_openclaw(openclaw_root: Path | None = None) -> Path | None:
 # ---------------------------------------------------------------------------
 
 
-def _run_migration(openclaw_root: Path, dest_root: Path) -> None:
-    """Import and run the migrate_openclaw migration script.
+def _run_migration(legacy_root: Path, dest_root: Path) -> None:
+    """Import and run the migrate_legacy migration script.
 
-    Calls mod.migrate(source_root=openclaw_root, dest_root=dest_root) using the
+    Calls mod.migrate(source_root=legacy_root, dest_root=dest_root) using the
     actual keyword argument names from migrate_openclaw.py's function signature.
 
     Falls back to a user-readable error with manual instructions on any failure.
@@ -380,18 +584,16 @@ def _run_migration(openclaw_root: Path, dest_root: Path) -> None:
         import importlib.util  # noqa: PLC0415
 
         spec = importlib.util.spec_from_file_location(
-            "migrate_openclaw",
+            "migrate_legacy",
             Path(__file__).resolve().parent.parent / "scripts" / "migrate_openclaw.py",
         )
         mod = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
         spec.loader.exec_module(mod)  # type: ignore[union-attr]
-        mod.migrate(source_root=openclaw_root, dest_root=dest_root)
+        mod.migrate(source_root=legacy_root, dest_root=dest_root)
         _print("[green]Migration complete.[/]")
     except Exception as exc:  # noqa: BLE001
         _print(f"[red]Migration failed: {exc}[/]")
-        _print(
-            "You can run migration manually: python workspace/scripts/migrate_openclaw.py"
-        )
+        _print("You can run migration manually: python workspace/scripts/migrate_legacy.py")
 
 
 # ---------------------------------------------------------------------------
@@ -489,16 +691,15 @@ def _run_advanced_flow(
         import questionary  # noqa: PLC0415
 
         channel_choices = [
-            questionary.Choice("WhatsApp (QR code scan required)", value="whatsapp"),
             questionary.Choice("Telegram (bot token)", value="telegram"),
             questionary.Choice("Discord (bot token + MESSAGE_CONTENT intent)", value="discord"),
             questionary.Choice("Slack (xoxb- + xapp- tokens)", value="slack"),
         ]
     except ImportError:
-        channel_choices = ["whatsapp", "telegram", "discord", "slack"]
+        channel_choices = ["telegram", "discord", "slack"]
 
     selected_channels = prompter.multiselect(  # type: ignore[attr-defined]
-        "Select messaging channels to configure (optional — can be added later):",
+        "Select additional channels to configure (optional — can be added later):",
         choices=channel_choices,
     )
 
@@ -516,6 +717,15 @@ def _collect_provider_keys(
     selected_providers: list,
 ) -> None:
     """Collect API keys/tokens for each selected provider (Steps 5/ONB-03)."""
+    if any(p in selected_providers for p in ("anthropic", "openai")):
+        prompter.note(  # type: ignore[attr-defined]
+            "API keys \u2260 Subscriptions\n\n"
+            "Claude Pro/Max and ChatGPT Plus subscriptions do NOT include API access.\n"
+            "You need a separate API key from the provider's developer console:\n\n"
+            "  \u2022 Anthropic \u2192 console.anthropic.com\n"
+            "  \u2022 OpenAI    \u2192 platform.openai.com/api-keys\n"
+            "  \u2022 Gemini    \u2192 aistudio.google.com (free tier available)",
+        )
     for provider in selected_providers:
         _print(f"\n[bold cyan]--- {provider} ---[/]")
 
@@ -570,9 +780,7 @@ def _collect_provider_keys(
                             for m in ollama_models:
                                 _print(f"  {m.name}")
                     else:
-                        _print(
-                            "  [yellow]No models found — pull one with: ollama pull llama3.3[/]"
-                        )
+                        _print("  [yellow]No models found — pull one with: ollama pull llama3.3[/]")
                 except Exception:  # noqa: BLE001
                     _print("  [yellow]Could not discover Ollama models (non-fatal).[/]")
             else:
@@ -635,9 +843,7 @@ def _collect_provider_keys(
                 continue  # empty input — re-prompt
 
             if _RICH_AVAILABLE and console is not None:
-                with console.status(
-                    f"[yellow]Validating {provider} key...[/]", spinner="dots"
-                ):
+                with console.status(f"[yellow]Validating {provider} key...[/]", spinner="dots"):
                     result = validate_provider(provider, key.strip())
             else:
                 result = validate_provider(provider, key.strip())
@@ -654,14 +860,119 @@ def _collect_provider_keys(
                 config["providers"][provider] = {"api_key": key.strip()}
                 break
             elif result.error in ("timeout", "network_error") and attempt < MAX_KEY_ATTEMPTS - 1:
-                _print(
-                    f"  [yellow]  {result.error} — retrying in {NETWORK_RETRY_DELAY}s...[/]"
-                )
+                _print(f"  [yellow]  {result.error} — retrying in {NETWORK_RETRY_DELAY}s...[/]")
                 time.sleep(NETWORK_RETRY_DELAY)
             else:
-                _print(
-                    f"  [red]x[/] {provider}: {result.error} — {result.detail or 'check key'}"
+                _print(f"  [red]x[/] {provider}: {result.error} — {result.detail or 'check key'}")
+
+
+# ---------------------------------------------------------------------------
+# SBS persona-seeding step (inserted between config write and daemon install)
+# ---------------------------------------------------------------------------
+
+
+def _run_sbs_questions(prompter: "object", data_root: Path) -> None:
+    """Collect persona-seeding answers and write to SBS profile layers.
+
+    Called at the end of _run_interactive_impl(), after config is written
+    but before the daemon install step. Failure here must never crash the wizard.
+
+    Asks 4 targeted questions:
+      1. Communication style preference
+      2. Energy / mood level
+      3. Topic interests (multi-select)
+      4. Privacy sensitivity
+
+    Then offers an optional WhatsApp history import.
+    """
+    import subprocess  # noqa: PLC0415
+
+    from cli.sbs_profile_init import (  # noqa: PLC0415
+        ENERGY_DISPLAY_MAP,
+        PRIVACY_DISPLAY_MAP,
+        STYLE_DISPLAY_MAP,
+        initialize_sbs_from_wizard,
+    )
+
+    _print("\n[bold cyan]--- Persona Profile ---[/]")
+
+    # --- Q1: Communication style ---
+    style_display = prompter.select(  # type: ignore[attr-defined]
+        "How should Synapse communicate with you by default?",
+        choices=list(STYLE_DISPLAY_MAP.keys()),
+        default="Casual and witty",
+    )
+
+    # --- Q2: Energy / mood level ---
+    energy_display = prompter.select(  # type: ignore[attr-defined]
+        "How would you describe your typical energy level?",
+        choices=list(ENERGY_DISPLAY_MAP.keys()),
+        default="Calm and steady",
+    )
+
+    # --- Q3: Interests (multi-select) ---
+    interest_displays = prompter.multiselect(  # type: ignore[attr-defined]
+        "What topics are you most interested in? (select all that apply)",
+        choices=[
+            "Technology",
+            "Music",
+            "Wellness",
+            "Finance",
+            "Science",
+            "Arts",
+            "Sports",
+            "Cooking",
+        ],
+    )
+
+    # --- Q4: Privacy sensitivity ---
+    privacy_display = prompter.select(  # type: ignore[attr-defined]
+        "How sensitive are you about personal data in conversations?",
+        choices=list(PRIVACY_DISPLAY_MAP.keys()),
+        default="Selective - use judgment",
+    )
+
+    # --- Map display values to internal values ---
+    answers = {
+        "communication_style": STYLE_DISPLAY_MAP.get(style_display, "casual_and_witty"),
+        "energy_level": ENERGY_DISPLAY_MAP.get(energy_display, "calm_and_steady"),
+        "interests": [topic.lower() for topic in (interest_displays or [])],
+        "privacy_level": PRIVACY_DISPLAY_MAP.get(privacy_display, "selective"),
+    }
+
+    # --- Write profile layers ---
+    try:
+        initialize_sbs_from_wizard(answers, data_root)
+        _print("[green]Persona profile seeded.[/]")
+    except Exception:  # noqa: BLE001
+        import logging  # noqa: PLC0415
+
+        logging.getLogger(__name__).warning(
+            "SBS profile init failed — wizard continues", exc_info=True
+        )
+        _print("[yellow]Persona profile setup skipped (non-fatal).[/]")
+
+    # --- Optional: WhatsApp history import ---
+    if prompter.confirm(  # type: ignore[attr-defined]
+        "Would you like to import existing WhatsApp chat history?", default=False
+    ):
+        wa_file = prompter.text(  # type: ignore[attr-defined]
+            "Path to WhatsApp export (.txt file)", default=""
+        )
+        if wa_file:
+            from pathlib import Path as _Path  # noqa: PLC0415
+
+            wa_path = _Path(wa_file)
+            if wa_path.exists():
+                subprocess.run(
+                    [sys.executable, "scripts/import_whatsapp.py", wa_file, "--hemisphere", "safe"],
+                    check=False,
                 )
+                _print("[green]WhatsApp history import started.[/]")
+            else:
+                _print(f"[yellow]File not found: {wa_file} — import skipped.[/]")
+        else:
+            _print("[dim]No file provided — WhatsApp import skipped.[/]")
 
 
 # ---------------------------------------------------------------------------
@@ -692,10 +1003,17 @@ def _run_interactive(  # noqa: C901 — linear wizard, complexity is intentional
       11. Daemon install + health poll
       12. Show summary panel
     """
-    from cli.wizard_prompter import QuestionaryPrompter, WizardCancelledError  # noqa: PLC0415
+    from cli.wizard_prompter import WizardCancelledError  # noqa: PLC0415
 
     if prompter is None:
-        prompter = QuestionaryPrompter()
+        try:
+            from cli.inquirerpy_prompter import InquirerPyPrompter  # noqa: PLC0415
+
+            prompter = InquirerPyPrompter()
+        except ImportError:
+            from cli.wizard_prompter import QuestionaryPrompter  # noqa: PLC0415
+
+            prompter = QuestionaryPrompter()
 
     try:
         _run_interactive_impl(prompter=prompter, flow=flow, reset=reset)
@@ -735,9 +1053,9 @@ def _run_interactive_impl(
     workspace_dir = data_root / "workspace"
 
     # --- Step 3: Migration detection (ONB-08) ---
-    detected = _check_for_openclaw()
+    detected = _check_for_legacy_install()
     if detected:
-        _print("[yellow]Found existing ~/.openclaw/ data.[/]")
+        _print("[yellow]Found existing legacy install data.[/]")
         do_migrate = prompter.confirm(  # type: ignore[attr-defined]
             "Migrate data to ~/.synapse/ now?", default=True
         )
@@ -767,8 +1085,38 @@ def _run_interactive_impl(
     if not bridge_dir.exists():
         bridge_dir = _this_file.parent.parent / "baileys-bridge"
 
+    # --- Step 7a: WhatsApp (mandatory) ---
+    from cli.channel_steps import NodeJsMissingError  # noqa: PLC0415
+
+    _print("\n[bold cyan]--- WhatsApp (required) ---[/]")
+    _MAX_WA_RETRIES = 3  # noqa: N806
+    _wa_paired = False
+    for _attempt in range(1, _MAX_WA_RETRIES + 1):
+        try:
+            wa_cfg = setup_whatsapp(bridge_dir, non_interactive=False)
+        except NodeJsMissingError as exc:
+            _print(f"\n[red bold]{exc}[/]")
+            raise typer.Exit(1) from None
+
+        if wa_cfg is not None:
+            config["channels"]["whatsapp"] = wa_cfg
+            _wa_paired = True
+            break
+
+        if _attempt < _MAX_WA_RETRIES:
+            _retry = prompter.confirm(  # type: ignore[attr-defined]
+                f"WhatsApp pairing failed (attempt {_attempt}/{_MAX_WA_RETRIES}). Retry?",
+                default=True,
+            )
+            if not _retry:
+                break
+
+    if not _wa_paired:
+        _print("[red bold]WhatsApp is required for Synapse to work. Cannot continue.[/]")
+        raise typer.Exit(1)
+
+    # --- Step 7b: Optional channels ---
     channel_config_map = {
-        "whatsapp": lambda: setup_whatsapp(bridge_dir, non_interactive=False),
         "telegram": lambda: setup_telegram(non_interactive=False),
         "discord": lambda: setup_discord(non_interactive=False),
         "slack": lambda: setup_slack(non_interactive=False),
@@ -806,11 +1154,21 @@ def _run_interactive_impl(
     config["gateway"] = gw_cfg
 
     # --- Step 9: Generate model_mappings ---
-    config["model_mappings"] = _build_model_mappings(list(config["providers"].keys()))
+    if flow == "advanced":
+        config["model_mappings"] = _build_model_mappings_interactive(
+            list(config["providers"].keys()), prompter
+        )
+    else:
+        config["model_mappings"] = _build_model_mappings(list(config["providers"].keys()))
 
     # --- Step 10: Write config (ONB-07) ---
     write_config(data_root, config)
     cfg_file = data_root / "synapse.json"
+
+    # --- Step 10b: Persona profile seeding ---
+    # SBS questions run after synapse.json is written so SynapseConfig.load()
+    # inside initialize_sbs_from_wizard() resolves the correct profile path.
+    _run_sbs_questions(prompter=prompter, data_root=data_root)
 
     # --- Step 11: Daemon install ---
     _wizard_daemon_install(prompter=prompter, config=config, data_root=data_root, flow=flow)
@@ -891,7 +1249,9 @@ def _validate_environment(config: dict) -> None:
     except Exception as exc:  # noqa: BLE001
         _print(f"  [yellow]![/] python-magic: import error ({exc})")
         if sys.platform == "win32":
-            issues.append("  Fix: pip install python-magic-bin  (Windows requires the -bin variant)")
+            issues.append(
+                "  Fix: pip install python-magic-bin  (Windows requires the -bin variant)"
+            )
         else:
             issues.append(
                 "  Fix: pip install python-magic"
