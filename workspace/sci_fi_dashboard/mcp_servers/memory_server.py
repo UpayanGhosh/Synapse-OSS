@@ -2,14 +2,15 @@
 MCP Server: Synapse Memory Query
 Run standalone: python -m sci_fi_dashboard.mcp_servers.memory_server
 """
+
 import asyncio
 import json
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
-from mcp.types import Tool, TextContent, ResourceTemplate
+from mcp.types import ResourceTemplate, TextContent, Tool
 
-from .base import setup_logging, logger, check_mcp_auth
+from .base import check_mcp_auth, logger, setup_logging
 
 _engine = None
 
@@ -18,6 +19,7 @@ def _get_engine():
     global _engine
     if _engine is None:
         from memory_engine import MemoryEngine
+
         _engine = MemoryEngine()
     return _engine
 

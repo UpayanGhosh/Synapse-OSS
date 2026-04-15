@@ -21,12 +21,10 @@ import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
-
-
 # ---------------------------------------------------------------------------
 # Helpers for creating temporary skill directories
 # ---------------------------------------------------------------------------
+
 
 def _make_skill(tmp_path: Path, name: str, version: str = "1.0.0") -> Path:
     """Create a minimal valid skill directory under tmp_path."""
@@ -110,8 +108,9 @@ class TestSkillRegistry:
 
     def test_reload_removes_deleted_skill(self, tmp_path):
         """After reload(), a skill whose directory was deleted is removed from the registry."""
-        from sci_fi_dashboard.skills.registry import SkillRegistry
         import shutil
+
+        from sci_fi_dashboard.skills.registry import SkillRegistry
 
         _make_skill(tmp_path, "alpha")
         _make_skill(tmp_path, "beta")
@@ -179,8 +178,8 @@ class TestSkillRegistry:
 class TestSkillWatcher:
     def test_watcher_triggers_reload_on_file_create(self, tmp_path):
         """SkillWatcher.start() then creating a SKILL.md triggers registry.reload() within 3s."""
-        from sci_fi_dashboard.skills.watcher import SkillWatcher
         from sci_fi_dashboard.skills.registry import SkillRegistry
+        from sci_fi_dashboard.skills.watcher import SkillWatcher
 
         mock_registry = MagicMock(spec=SkillRegistry)
         watcher = SkillWatcher(tmp_path, mock_registry, debounce_seconds=0.1)
@@ -237,12 +236,11 @@ class TestSkillWatcher:
 class TestSkillsEndpoint:
     def test_skills_endpoint_returns_loaded_skills(self, tmp_path):
         """GET /skills returns 200 with 2 skills when registry has 2 manifests."""
-        from fastapi.testclient import TestClient
         from fastapi import FastAPI
-        from sci_fi_dashboard.routes import skills as skills_route
-        from sci_fi_dashboard.skills.schema import SkillManifest
-        from sci_fi_dashboard.skills.registry import SkillRegistry
+        from fastapi.testclient import TestClient
         from sci_fi_dashboard import _deps as deps
+        from sci_fi_dashboard.routes import skills as skills_route
+        from sci_fi_dashboard.skills.registry import SkillRegistry
 
         app = FastAPI()
         app.include_router(skills_route.router)
@@ -269,10 +267,10 @@ class TestSkillsEndpoint:
 
     def test_skills_endpoint_registry_not_initialized(self):
         """GET /skills returns 200 with count 0 when registry is None."""
-        from fastapi.testclient import TestClient
         from fastapi import FastAPI
-        from sci_fi_dashboard.routes import skills as skills_route
+        from fastapi.testclient import TestClient
         from sci_fi_dashboard import _deps as deps
+        from sci_fi_dashboard.routes import skills as skills_route
 
         app = FastAPI()
         app.include_router(skills_route.router)

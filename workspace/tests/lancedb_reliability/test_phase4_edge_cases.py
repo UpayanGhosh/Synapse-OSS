@@ -20,11 +20,9 @@ Tests cover:
 
 from __future__ import annotations
 
-import tempfile
+import contextlib
 import time
-from pathlib import Path
 
-import numpy as np
 import pytest
 
 from .conftest import LanceDBDataGenerator
@@ -34,14 +32,14 @@ lancedb = pytest.importorskip("lancedb", reason="lancedb not installed")
 
 def _make_store(db_path, dims=768, table_name="memories"):
     from sci_fi_dashboard.vector_store.lancedb_store import LanceDBVectorStore
-    return LanceDBVectorStore(
-        db_path=db_path, embedding_dimensions=dims, table_name=table_name
-    )
+
+    return LanceDBVectorStore(db_path=db_path, embedding_dimensions=dims, table_name=table_name)
 
 
 # ---------------------------------------------------------------------------
 # Phase 4a — Degenerate / empty inputs
 # ---------------------------------------------------------------------------
+
 
 class TestDegenerateInputs:
 
@@ -55,12 +53,17 @@ class TestDegenerateInputs:
         """A single record can be stored and retrieved."""
         store = _make_store(tmp_path)
         vec = [0.5] * 768
-        norm = sum(v ** 2 for v in vec) ** 0.5
+        norm = sum(v**2 for v in vec) ** 0.5
         vec = [v / norm for v in vec]
-        store.upsert_facts([{
-            "id": 1, "vector": vec,
-            "metadata": {"text": "only one", "hemisphere_tag": "safe"},
-        }])
+        store.upsert_facts(
+            [
+                {
+                    "id": 1,
+                    "vector": vec,
+                    "metadata": {"text": "only one", "hemisphere_tag": "safe"},
+                }
+            ]
+        )
         results = store.search(vec, limit=1)
         assert len(results) == 1
         assert results[0]["id"] == 1
@@ -76,10 +79,15 @@ class TestDegenerateInputs:
         store = _make_store(tmp_path)
         gen = LanceDBDataGenerator(seed=300)
         vec = gen.vectors_random(1, dims=768)[0].tolist()
-        store.upsert_facts([{
-            "id": 1, "vector": vec,
-            "metadata": {"text": "x", "hemisphere_tag": "safe"},
-        }])
+        store.upsert_facts(
+            [
+                {
+                    "id": 1,
+                    "vector": vec,
+                    "metadata": {"text": "x", "hemisphere_tag": "safe"},
+                }
+            ]
+        )
         results = store.search(vec, limit=1)
         assert results[0]["metadata"]["text"] == "x"
 
@@ -89,10 +97,15 @@ class TestDegenerateInputs:
         gen = LanceDBDataGenerator(seed=301)
         vec = gen.vectors_random(1, dims=768)[0].tolist()
         long_text = "a" * 10_000
-        store.upsert_facts([{
-            "id": 1, "vector": vec,
-            "metadata": {"text": long_text, "hemisphere_tag": "safe"},
-        }])
+        store.upsert_facts(
+            [
+                {
+                    "id": 1,
+                    "vector": vec,
+                    "metadata": {"text": long_text, "hemisphere_tag": "safe"},
+                }
+            ]
+        )
         results = store.search(vec, limit=1)
         assert len(results[0]["metadata"]["text"]) == 10_000
 
@@ -101,48 +114,63 @@ class TestDegenerateInputs:
 # Phase 4b — Unicode and special characters
 # ---------------------------------------------------------------------------
 
+
 class TestUnicodeAndSpecialChars:
 
-    @pytest.mark.parametrize("text", [
-        "আমি বাংলায় কথা বলছি",             # Bengali
-        "私はPythonが好きです",                # Japanese
-        "这是一个测试句子",                    # Chinese
-        "مرحبا بك في البرنامج",              # Arabic
-        "Hello 🤖 World 🌍",                  # Emoji
-        "null\x00byte",                      # Null byte in string
-        "SELECT * FROM users; DROP TABLE",   # SQL injection attempt
-        '{"key": "value", "nested": true}',  # JSON string
-        "line1\nline2\ttabbed",               # Newline + tab
-        "café résumé naïve",                  # Latin diacritics
-    ])
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "আমি বাংলায় কথা বলছি",  # Bengali
+            "私はPythonが好きです",  # Japanese
+            "这是一个测试句子",  # Chinese
+            "مرحبا بك في البرنامج",  # Arabic
+            "Hello 🤖 World 🌍",  # Emoji
+            "null\x00byte",  # Null byte in string
+            "SELECT * FROM users; DROP TABLE",  # SQL injection attempt
+            '{"key": "value", "nested": true}',  # JSON string
+            "line1\nline2\ttabbed",  # Newline + tab
+            "café résumé naïve",  # Latin diacritics
+        ],
+    )
     def test_unicode_text_round_trip(self, tmp_path, text):
         """Unicode / special-char text survives store and retrieve."""
         store = _make_store(tmp_path)
         gen = LanceDBDataGenerator(seed=310)
         vec = gen.vectors_random(1, dims=768)[0].tolist()
-        store.upsert_facts([{
-            "id": 1, "vector": vec,
-            "metadata": {"text": text, "hemisphere_tag": "safe"},
-        }])
+        store.upsert_facts(
+            [
+                {
+                    "id": 1,
+                    "vector": vec,
+                    "metadata": {"text": text, "hemisphere_tag": "safe"},
+                }
+            ]
+        )
         results = store.search(vec, limit=1)
         assert len(results) == 1
-        assert results[0]["metadata"]["text"] == text, \
-            f"Text not preserved. Expected: {repr(text)}, got: {repr(results[0]['metadata']['text'])}"
+        assert (
+            results[0]["metadata"]["text"] == text
+        ), f"Text not preserved. Expected: {repr(text)}, got: {repr(results[0]['metadata']['text'])}"
 
     def test_unicode_in_entity_and_category(self, tmp_path):
         """Unicode values in entity and category metadata fields are preserved."""
         store = _make_store(tmp_path)
         gen = LanceDBDataGenerator(seed=311)
         vec = gen.vectors_random(1, dims=768)[0].tolist()
-        store.upsert_facts([{
-            "id": 1, "vector": vec,
-            "metadata": {
-                "text": "test",
-                "hemisphere_tag": "safe",
-                "entity": "ব্যবহারকারী",  # Bengali for 'user'
-                "category": "思い出",        # Japanese for 'memory'
-            },
-        }])
+        store.upsert_facts(
+            [
+                {
+                    "id": 1,
+                    "vector": vec,
+                    "metadata": {
+                        "text": "test",
+                        "hemisphere_tag": "safe",
+                        "entity": "ব্যবহারকারী",  # Bengali for 'user'
+                        "category": "思い出",  # Japanese for 'memory'
+                    },
+                }
+            ]
+        )
         results = store.search(vec, limit=1)
         assert results[0]["metadata"]["entity"] == "ব্যবহারকারী"
         assert results[0]["metadata"]["category"] == "思い出"
@@ -152,6 +180,7 @@ class TestUnicodeAndSpecialChars:
 # Phase 4c — Extreme metadata values
 # ---------------------------------------------------------------------------
 
+
 class TestExtremeMetadataValues:
 
     def test_max_importance_value(self, tmp_path):
@@ -159,10 +188,15 @@ class TestExtremeMetadataValues:
         store = _make_store(tmp_path)
         gen = LanceDBDataGenerator(seed=320)
         vec = gen.vectors_random(1, dims=768)[0].tolist()
-        store.upsert_facts([{
-            "id": 1, "vector": vec,
-            "metadata": {"text": "max", "hemisphere_tag": "safe", "importance": 9999},
-        }])
+        store.upsert_facts(
+            [
+                {
+                    "id": 1,
+                    "vector": vec,
+                    "metadata": {"text": "max", "hemisphere_tag": "safe", "importance": 9999},
+                }
+            ]
+        )
         results = store.search(vec, limit=1)
         assert results[0]["metadata"]["importance"] == 9999
 
@@ -171,10 +205,15 @@ class TestExtremeMetadataValues:
         store = _make_store(tmp_path)
         gen = LanceDBDataGenerator(seed=321)
         vec = gen.vectors_random(1, dims=768)[0].tolist()
-        store.upsert_facts([{
-            "id": 1, "vector": vec,
-            "metadata": {"text": "epoch", "hemisphere_tag": "safe", "unix_timestamp": 0},
-        }])
+        store.upsert_facts(
+            [
+                {
+                    "id": 1,
+                    "vector": vec,
+                    "metadata": {"text": "epoch", "hemisphere_tag": "safe", "unix_timestamp": 0},
+                }
+            ]
+        )
         results = store.search(vec, limit=1)
         assert results[0]["metadata"]["unix_timestamp"] == 0
 
@@ -183,10 +222,15 @@ class TestExtremeMetadataValues:
         store = _make_store(tmp_path)
         gen = LanceDBDataGenerator(seed=322)
         vec = gen.vectors_random(1, dims=768)[0].tolist()
-        store.upsert_facts([{
-            "id": 1, "vector": vec,
-            "metadata": {"text": "neg", "hemisphere_tag": "safe", "source_id": -1},
-        }])
+        store.upsert_facts(
+            [
+                {
+                    "id": 1,
+                    "vector": vec,
+                    "metadata": {"text": "neg", "hemisphere_tag": "safe", "source_id": -1},
+                }
+            ]
+        )
         results = store.search(vec, limit=1)
         assert results[0]["metadata"]["source_id"] == -1
 
@@ -208,10 +252,15 @@ class TestExtremeMetadataValues:
         gen = LanceDBDataGenerator(seed=324)
         vec = gen.vectors_random(1, dims=768)[0].tolist()
         large_id = 10_000_000
-        store.upsert_facts([{
-            "id": large_id, "vector": vec,
-            "metadata": {"text": "large id", "hemisphere_tag": "safe"},
-        }])
+        store.upsert_facts(
+            [
+                {
+                    "id": large_id,
+                    "vector": vec,
+                    "metadata": {"text": "large id", "hemisphere_tag": "safe"},
+                }
+            ]
+        )
         results = store.search(vec, limit=1)
         assert results[0]["id"] == large_id
 
@@ -221,11 +270,15 @@ class TestExtremeMetadataValues:
         gen = LanceDBDataGenerator(seed=325)
         vec = gen.vectors_random(1, dims=768)[0].tolist()
         for text_val in ["None", "null", "undefined", "NaN"]:
-            store.upsert_facts([{
-                "id": hash(text_val) % 100_000,
-                "vector": vec,
-                "metadata": {"text": text_val, "hemisphere_tag": "safe"},
-            }])
+            store.upsert_facts(
+                [
+                    {
+                        "id": hash(text_val) % 100_000,
+                        "vector": vec,
+                        "metadata": {"text": text_val, "hemisphere_tag": "safe"},
+                    }
+                ]
+            )
         # No assertion on content, just verify no exception raised
         assert store.table.count_rows() == 4
 
@@ -233,6 +286,7 @@ class TestExtremeMetadataValues:
 # ---------------------------------------------------------------------------
 # Phase 4d — Vector edge cases
 # ---------------------------------------------------------------------------
+
 
 class TestVectorEdgeCases:
 
@@ -242,10 +296,15 @@ class TestVectorEdgeCases:
         zero_vec = [0.0] * 768
         # Should not raise — store must handle degenerate input gracefully
         try:
-            store.upsert_facts([{
-                "id": 1, "vector": zero_vec,
-                "metadata": {"text": "zero", "hemisphere_tag": "safe"},
-            }])
+            store.upsert_facts(
+                [
+                    {
+                        "id": 1,
+                        "vector": zero_vec,
+                        "metadata": {"text": "zero", "hemisphere_tag": "safe"},
+                    }
+                ]
+            )
         except Exception as e:
             pytest.fail(f"upsert_facts raised on zero vector: {e}")
 
@@ -257,7 +316,7 @@ class TestVectorEdgeCases:
         try:
             results = store.search([0.0] * 768, limit=5)
             assert isinstance(results, list)
-        except Exception as e:
+        except Exception:
             # LanceDB may raise for zero-norm queries; that's acceptable
             # as long as it doesn't corrupt the store
             pass
@@ -269,14 +328,19 @@ class TestVectorEdgeCases:
     def test_all_same_value_vector(self, tmp_path):
         """A vector with all identical values is stored and retrieved."""
         store = _make_store(tmp_path)
-        gen = LanceDBDataGenerator(seed=331)
+        LanceDBDataGenerator(seed=331)
         # Normalise a constant vector
-        val = 1.0 / (768 ** 0.5)
+        val = 1.0 / (768**0.5)
         const_vec = [val] * 768
-        store.upsert_facts([{
-            "id": 1, "vector": const_vec,
-            "metadata": {"text": "constant", "hemisphere_tag": "safe"},
-        }])
+        store.upsert_facts(
+            [
+                {
+                    "id": 1,
+                    "vector": const_vec,
+                    "metadata": {"text": "constant", "hemisphere_tag": "safe"},
+                }
+            ]
+        )
         results = store.search(const_vec, limit=1)
         assert len(results) == 1
         assert results[0]["score"] > 0.98
@@ -285,12 +349,17 @@ class TestVectorEdgeCases:
         """Store with 4-dim vectors stores and retrieves correctly."""
         store = _make_store(tmp_path / "dim4", dims=4)
         vec = [0.5, 0.5, 0.5, 0.5]
-        norm = sum(v ** 2 for v in vec) ** 0.5
+        norm = sum(v**2 for v in vec) ** 0.5
         vec = [v / norm for v in vec]
-        store.upsert_facts([{
-            "id": 1, "vector": vec,
-            "metadata": {"text": "4-dim", "hemisphere_tag": "safe"},
-        }])
+        store.upsert_facts(
+            [
+                {
+                    "id": 1,
+                    "vector": vec,
+                    "metadata": {"text": "4-dim", "hemisphere_tag": "safe"},
+                }
+            ]
+        )
         results = store.search(vec, limit=1)
         assert results[0]["score"] > 0.98
 
@@ -310,11 +379,13 @@ class TestVectorEdgeCases:
 # Phase 4e — Store persistence
 # ---------------------------------------------------------------------------
 
+
 class TestStorePersistence:
 
     def test_data_survives_store_close_and_reopen(self, tmp_path):
         """Data written to store A is readable after reopening as store B."""
         from sci_fi_dashboard.vector_store.lancedb_store import LanceDBVectorStore
+
         db_path = tmp_path / "persistent_db"
         gen = LanceDBDataGenerator(seed=340)
 
@@ -335,16 +406,22 @@ class TestStorePersistence:
     def test_data_survives_process_restart_simulation(self, tmp_path):
         """Re-opening with the same db_path yields correct data (no corruption)."""
         from sci_fi_dashboard.vector_store.lancedb_store import LanceDBVectorStore
+
         db_path = tmp_path / "restart_db"
         gen = LanceDBDataGenerator(seed=341)
         known_vec = gen.vectors_random(1, dims=768)[0].tolist()
 
         # Write first batch
         s1 = LanceDBVectorStore(db_path=db_path, embedding_dimensions=768)
-        s1.upsert_facts([{
-            "id": 42, "vector": known_vec,
-            "metadata": {"text": "persistent fact", "hemisphere_tag": "safe"},
-        }])
+        s1.upsert_facts(
+            [
+                {
+                    "id": 42,
+                    "vector": known_vec,
+                    "metadata": {"text": "persistent fact", "hemisphere_tag": "safe"},
+                }
+            ]
+        )
         s1.close()
 
         # "Restart" — new instance
@@ -359,16 +436,22 @@ class TestStorePersistence:
 # Phase 4f — Multiple tables isolation
 # ---------------------------------------------------------------------------
 
+
 class TestMultipleTablesIsolation:
 
     def test_two_tables_in_same_db_are_isolated(self, tmp_path):
         """Two LanceDBVectorStore instances with different table_names are independent."""
         from sci_fi_dashboard.vector_store.lancedb_store import LanceDBVectorStore
+
         gen = LanceDBDataGenerator(seed=350)
         db_path = tmp_path / "shared_db"
 
-        store_a = LanceDBVectorStore(db_path=db_path, table_name="table_a", embedding_dimensions=768)
-        store_b = LanceDBVectorStore(db_path=db_path, table_name="table_b", embedding_dimensions=768)
+        store_a = LanceDBVectorStore(
+            db_path=db_path, table_name="table_a", embedding_dimensions=768
+        )
+        store_b = LanceDBVectorStore(
+            db_path=db_path, table_name="table_b", embedding_dimensions=768
+        )
 
         facts_a = gen.facts(100, id_offset=0)
         facts_b = gen.facts(200, id_offset=0)  # same IDs, different table
@@ -384,6 +467,7 @@ class TestMultipleTablesIsolation:
 # ---------------------------------------------------------------------------
 # Phase 4g — Query filter edge cases
 # ---------------------------------------------------------------------------
+
 
 class TestQueryFilterEdgeCases:
 
@@ -403,8 +487,11 @@ class TestQueryFilterEdgeCases:
         gen = LanceDBDataGenerator(seed=361)
         # All inserted with hemisphere_tag=safe
         facts = [
-            {"id": i, "vector": gen.vectors_random(1, dims=768)[0].tolist(),
-             "metadata": {"text": f"item {i}", "hemisphere_tag": "safe"}}
+            {
+                "id": i,
+                "vector": gen.vectors_random(1, dims=768)[0].tolist(),
+                "metadata": {"text": f"item {i}", "hemisphere_tag": "safe"},
+            }
             for i in range(50)
         ]
         store.upsert_facts(facts)
@@ -420,10 +507,15 @@ class TestQueryFilterEdgeCases:
         anchor_list = anchor_vec.tolist()
 
         # Store the anchor and 100 random others
-        store.upsert_facts([{
-            "id": 0, "vector": anchor_list,
-            "metadata": {"text": "anchor", "hemisphere_tag": "safe"},
-        }])
+        store.upsert_facts(
+            [
+                {
+                    "id": 0,
+                    "vector": anchor_list,
+                    "metadata": {"text": "anchor", "hemisphere_tag": "safe"},
+                }
+            ]
+        )
         store.upsert_facts(gen.facts(100, id_offset=1))
 
         results = store.search(anchor_list, limit=50, score_threshold=0.99)
@@ -443,6 +535,7 @@ class TestQueryFilterEdgeCases:
 # ---------------------------------------------------------------------------
 # Phase 4h — Large single batch
 # ---------------------------------------------------------------------------
+
 
 class TestLargeSingleBatch:
 
@@ -478,6 +571,7 @@ class TestLargeSingleBatch:
 # Phase 4i — Error recovery
 # ---------------------------------------------------------------------------
 
+
 class TestErrorRecovery:
 
     def test_store_functional_after_failed_upsert(self, tmp_path):
@@ -487,10 +581,8 @@ class TestErrorRecovery:
 
         # Intentionally broken fact (wrong vector length for 768-dim schema)
         broken_fact = [{"id": 1, "vector": [0.1, 0.2], "metadata": {"text": "broken"}}]
-        try:
+        with contextlib.suppress(Exception):
             store.upsert_facts(broken_fact)
-        except Exception:
-            pass  # Expected to fail
 
         # Store must still work for valid data
         valid_facts = gen.facts(10)

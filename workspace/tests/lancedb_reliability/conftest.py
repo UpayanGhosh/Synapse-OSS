@@ -23,12 +23,9 @@ Fixtures:
 from __future__ import annotations
 
 import random
-import string
 import threading
-import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterator
 
 import numpy as np
 import pytest
@@ -38,6 +35,7 @@ import pytest
 # ---------------------------------------------------------------------------
 
 _DATASET_CACHE = Path.home() / ".cache" / "synapse_test_data"
+
 
 class RealDatasetLoader:
     """Downloads and caches a real text dataset for testing.
@@ -88,9 +86,7 @@ class RealDatasetLoader:
             print("\n[dataset] Downloading AG News from HuggingFace (120k articles)...")
             ds = load_dataset("ag_news", split="train", trust_remote_code=False)
             # Combine title + description for richer text
-            texts = [
-                f"{row['text']}" for row in ds
-            ]
+            texts = [f"{row['text']}" for row in ds]
             labels = [int(row["label"]) for row in ds]
 
             # Cache to disk
@@ -113,6 +109,7 @@ class RealDatasetLoader:
         """Try sklearn 20 Newsgroups — no extra install needed."""
         try:
             from sklearn.datasets import fetch_20newsgroups
+
             data = fetch_20newsgroups(subset="all", remove=("headers", "footers", "quotes"))
             texts = data.data
             labels = data.target.tolist()
@@ -131,7 +128,7 @@ class RealDatasetLoader:
 
     PERSONA_CACHE = _DATASET_CACHE / "persona_chat.npz"
 
-    def load_chat(self, n_facts: int | None = None) -> "ChatDataset | None":
+    def load_chat(self, n_facts: int | None = None) -> ChatDataset | None:
         """Load PersonaChat for memory/chat simulation tests.
 
         Returns a ChatDataset with:
@@ -146,21 +143,23 @@ class RealDatasetLoader:
         """
         return self._load_persona_chat(n_facts)
 
-    def _load_persona_chat(self, n_facts: int | None) -> "ChatDataset | None":
+    def _load_persona_chat(self, n_facts: int | None) -> ChatDataset | None:
         """Download / load from cache PersonaChat (AlekseyKorshuk/persona-chat)."""
         # Try disk cache first
         if self.PERSONA_CACHE.exists():
             try:
                 data = np.load(str(self.PERSONA_CACHE), allow_pickle=True)
-                facts       = data["facts"].tolist()
+                facts = data["facts"].tolist()
                 persona_ids = data["persona_ids"].tolist()
-                queries     = data["queries"].tolist()
-                query_pids  = data["query_pids"].tolist()
-                n_personas  = int(data["n_personas"])
+                queries = data["queries"].tolist()
+                query_pids = data["query_pids"].tolist()
+                n_personas = int(data["n_personas"])
                 label_names = [f"persona_{i}" for i in range(n_personas)]
                 if n_facts:
                     facts, persona_ids = facts[:n_facts], persona_ids[:n_facts]
-                print(f"[dataset] PersonaChat loaded from cache ({len(facts)} facts, {len(queries)} queries)")
+                print(
+                    f"[dataset] PersonaChat loaded from cache ({len(facts)} facts, {len(queries)} queries)"
+                )
                 return ChatDataset(facts, persona_ids, queries, query_pids, label_names)
             except Exception:
                 pass  # corrupt cache — re-download
@@ -231,6 +230,7 @@ class ChatDataset:
     query_pids  — persona_id the query came from (so we know which facts are 'correct').
     label_names — ["persona_0", "persona_1", ...]
     """
+
     def __init__(
         self,
         facts: list[str],
@@ -262,30 +262,114 @@ _dataset_loader = RealDatasetLoader()
 # ---------------------------------------------------------------------------
 
 _ADJ = [
-    "bright", "dark", "happy", "tired", "fast", "slow", "warm", "cold",
-    "clear", "fuzzy", "sharp", "quiet", "loud", "calm", "busy", "free",
-    "deep", "light", "heavy", "smooth", "rough", "soft", "hard", "old",
-    "new", "long", "short", "wide", "narrow", "strong",
+    "bright",
+    "dark",
+    "happy",
+    "tired",
+    "fast",
+    "slow",
+    "warm",
+    "cold",
+    "clear",
+    "fuzzy",
+    "sharp",
+    "quiet",
+    "loud",
+    "calm",
+    "busy",
+    "free",
+    "deep",
+    "light",
+    "heavy",
+    "smooth",
+    "rough",
+    "soft",
+    "hard",
+    "old",
+    "new",
+    "long",
+    "short",
+    "wide",
+    "narrow",
+    "strong",
 ]
 _NOUNS = [
-    "morning", "project", "memory", "code", "feeling", "idea", "plan",
-    "meeting", "note", "problem", "solution", "moment", "day", "night",
-    "coffee", "task", "goal", "habit", "thought", "routine", "session",
-    "focus", "question", "answer", "detail", "change", "step", "result",
-    "pattern", "system",
+    "morning",
+    "project",
+    "memory",
+    "code",
+    "feeling",
+    "idea",
+    "plan",
+    "meeting",
+    "note",
+    "problem",
+    "solution",
+    "moment",
+    "day",
+    "night",
+    "coffee",
+    "task",
+    "goal",
+    "habit",
+    "thought",
+    "routine",
+    "session",
+    "focus",
+    "question",
+    "answer",
+    "detail",
+    "change",
+    "step",
+    "result",
+    "pattern",
+    "system",
 ]
 _VERBS = [
-    "enjoy", "remember", "build", "explore", "fix", "learn", "create",
-    "share", "review", "improve", "start", "finish", "track", "handle",
-    "check", "update", "debug", "deploy", "test", "run",
+    "enjoy",
+    "remember",
+    "build",
+    "explore",
+    "fix",
+    "learn",
+    "create",
+    "share",
+    "review",
+    "improve",
+    "start",
+    "finish",
+    "track",
+    "handle",
+    "check",
+    "update",
+    "debug",
+    "deploy",
+    "test",
+    "run",
 ]
 _PLACES = [
-    "office", "home", "terminal", "notebook", "dashboard", "workspace",
-    "garden", "library", "studio", "lab",
+    "office",
+    "home",
+    "terminal",
+    "notebook",
+    "dashboard",
+    "workspace",
+    "garden",
+    "library",
+    "studio",
+    "lab",
 ]
 _TIMES = [
-    "morning", "afternoon", "evening", "weekend", "sprint", "deadline",
-    "session", "standup", "review", "release",
+    "morning",
+    "afternoon",
+    "evening",
+    "weekend",
+    "sprint",
+    "deadline",
+    "session",
+    "standup",
+    "review",
+    "release",
 ]
 _TEMPLATES = [
     "I {verb} the {adj} {noun} during {time}",
@@ -303,16 +387,37 @@ _TEMPLATES = [
 ]
 
 # Categories and entities for metadata variety
-_CATEGORIES = ["memory", "fact", "preference", "event", "skill", "routine",
-               "observation", "goal", "task", "reflection"]
-_ENTITIES = ["user", "friend", "colleague", "project", "tool", "location",
-             "habit", "emotion", "idea", "system"]
+_CATEGORIES = [
+    "memory",
+    "fact",
+    "preference",
+    "event",
+    "skill",
+    "routine",
+    "observation",
+    "goal",
+    "task",
+    "reflection",
+]
+_ENTITIES = [
+    "user",
+    "friend",
+    "colleague",
+    "project",
+    "tool",
+    "location",
+    "habit",
+    "emotion",
+    "idea",
+    "system",
+]
 _HEMISPHERES = ["safe", "safe", "safe", "safe", "spicy"]  # 80% safe
 
 
 # ---------------------------------------------------------------------------
 # Data Generator
 # ---------------------------------------------------------------------------
+
 
 class LanceDBDataGenerator:
     """Generates test records programmatically — no LLM required.
@@ -400,6 +505,7 @@ class LanceDBDataGenerator:
         """
         try:
             from sci_fi_dashboard.embedding.factory import get_provider
+
             provider = get_provider()
         except Exception as e:
             pytest.skip(f"Embedding provider unavailable: {e}")
@@ -409,7 +515,7 @@ class LanceDBDataGenerator:
 
         # Truncate to avoid GPU OOM — AG News articles can be 10k+ chars (~3500 tokens).
         # 2000 chars ≈ 500 tokens, keeps BiasSoftmax arena well under 200 MB per batch.
-        _MAX_CHARS = 2000
+        _MAX_CHARS = 2000  # noqa: N806
         all_vecs = []
         for i in range(0, len(texts), batch_size):
             batch = [t[:_MAX_CHARS] for t in texts[i : i + batch_size]]
@@ -441,25 +547,28 @@ class LanceDBDataGenerator:
 
         facts = []
         for i in range(n):
-            facts.append({
-                "id": id_offset + i,
-                "vector": vectors[i].tolist(),
-                "metadata": {
-                    "text": texts[i],
-                    "hemisphere_tag": rng.choice(_HEMISPHERES),
-                    "unix_timestamp": 1_700_000_000 + i * 60,
-                    "importance": rng.randint(1, 10),
-                    "source_id": rng.randint(1, 1000),
-                    "entity": rng.choice(_ENTITIES),
-                    "category": rng.choice(_CATEGORIES),
-                },
-            })
+            facts.append(
+                {
+                    "id": id_offset + i,
+                    "vector": vectors[i].tolist(),
+                    "metadata": {
+                        "text": texts[i],
+                        "hemisphere_tag": rng.choice(_HEMISPHERES),
+                        "unix_timestamp": 1_700_000_000 + i * 60,
+                        "importance": rng.randint(1, 10),
+                        "source_id": rng.randint(1, 1000),
+                        "entity": rng.choice(_ENTITIES),
+                        "category": rng.choice(_CATEGORIES),
+                    },
+                }
+            )
         return facts
 
 
 # ---------------------------------------------------------------------------
 # Latency Tracker (thread-safe)
 # ---------------------------------------------------------------------------
+
 
 class LatencyTracker:
     """Thread-safe wall-clock latency recorder with percentile computation."""
@@ -498,10 +607,14 @@ class LatencyTracker:
 # Memory helper
 # ---------------------------------------------------------------------------
 
+
 def get_memory_mb() -> float:
     """Current process RSS in MB. Falls back to 0 if psutil unavailable."""
     try:
-        import psutil, os
+        import os
+
+        import psutil
+
         return psutil.Process(os.getpid()).memory_info().rss / (1024 * 1024)
     except Exception:
         return 0.0
@@ -510,6 +623,7 @@ def get_memory_mb() -> float:
 # ---------------------------------------------------------------------------
 # Report dataclass
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class LanceDBReport:
@@ -532,6 +646,7 @@ class LanceDBReport:
 #  the parent tests/conftest.py — do NOT re-register them here)
 # ---------------------------------------------------------------------------
 
+
 def pytest_configure(config):
     config.addinivalue_line("markers", "fastembed: requires fastembed package")
 
@@ -539,6 +654,7 @@ def pytest_configure(config):
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture(scope="session")
 def generator() -> LanceDBDataGenerator:
@@ -560,8 +676,9 @@ def real_dataset() -> tuple[list[str], list[int], list[str]] | None:
 @pytest.fixture
 def tmp_store(tmp_path):
     """Empty LanceDBVectorStore in a fresh temp dir."""
-    lancedb = pytest.importorskip("lancedb")
+    pytest.importorskip("lancedb")
     from sci_fi_dashboard.vector_store.lancedb_store import LanceDBVectorStore
+
     store = LanceDBVectorStore(db_path=tmp_path / "db", embedding_dimensions=768)
     yield store
     store.close()
@@ -597,9 +714,10 @@ def _embed_or_random(
 
     try:
         from sci_fi_dashboard.embedding.factory import get_provider
+
         provider = get_provider()
         if provider is not None:
-            _MAX_CHARS = 2000
+            _MAX_CHARS = 2000  # noqa: N806
             all_vecs = []
             for i in range(0, n, batch_size):
                 batch = [t[:_MAX_CHARS] for t in texts[i : i + batch_size]]
@@ -619,6 +737,7 @@ def store_1k(tmp_path_factory, generator, real_dataset):
     """1k store. Real AG News / 20NG texts + FastEmbed (GPU) or numpy fallback."""
     pytest.importorskip("lancedb")
     from sci_fi_dashboard.vector_store.lancedb_store import LanceDBVectorStore
+
     db_path = tmp_path_factory.mktemp("store_1k")
     store = LanceDBVectorStore(db_path=db_path, embedding_dimensions=768)
     rt = real_dataset[0] if real_dataset else None
@@ -634,6 +753,7 @@ def store_10k(tmp_path_factory, generator, real_dataset):
     """10k store. Real AG News / 20NG texts + FastEmbed (GPU) or numpy fallback."""
     pytest.importorskip("lancedb")
     from sci_fi_dashboard.vector_store.lancedb_store import LanceDBVectorStore
+
     db_path = tmp_path_factory.mktemp("store_10k")
     store = LanceDBVectorStore(db_path=db_path, embedding_dimensions=768)
     rt = real_dataset[0] if real_dataset else None
@@ -649,6 +769,7 @@ def store_100k(tmp_path_factory, generator, real_dataset):
     """100k store. Real AG News texts (120k available) + FastEmbed GPU. --run-slow."""
     pytest.importorskip("lancedb")
     from sci_fi_dashboard.vector_store.lancedb_store import LanceDBVectorStore
+
     db_path = tmp_path_factory.mktemp("store_100k")
     store = LanceDBVectorStore(db_path=db_path, embedding_dimensions=768)
     rt = real_dataset[0] if real_dataset else None
@@ -665,13 +786,11 @@ def fastembed_store_10k(tmp_path_factory, generator, real_dataset):
     """10k store. Real texts + FastEmbed required (no numpy fallback — semantic tests)."""
     pytest.importorskip("lancedb")
     from sci_fi_dashboard.vector_store.lancedb_store import LanceDBVectorStore
+
     db_path = tmp_path_factory.mktemp("fastembed_10k")
     store = LanceDBVectorStore(db_path=db_path, embedding_dimensions=768)
     # Use real dataset texts if available, else synthetic
-    if real_dataset:
-        texts = real_dataset[0][:10_000]
-    else:
-        texts = generator.texts(10_000)
+    texts = real_dataset[0][:10000] if real_dataset else generator.texts(10000)
     vectors = generator.vectors_fastembed(texts, batch_size=256)
     facts = generator.facts(10_000, vectors=vectors, texts=texts)
     store.upsert_facts(facts)
@@ -680,7 +799,7 @@ def fastembed_store_10k(tmp_path_factory, generator, real_dataset):
 
 
 @pytest.fixture(scope="session")
-def persona_dataset() -> "ChatDataset | None":
+def persona_dataset() -> ChatDataset | None:
     """PersonaChat dataset for chat/memory simulation tests.
 
     Returns a ChatDataset or None if download fails.
@@ -725,18 +844,20 @@ def persona_store(tmp_path_factory, generator, persona_dataset):
     store = LanceDBVectorStore(db_path=db_path, embedding_dimensions=768)
 
     facts = []
-    for i, (text, pid, vec) in enumerate(zip(facts_texts, persona_ids, vectors)):
-        facts.append({
-            "id": i,
-            "vector": vec.tolist(),
-            "metadata": {
-                "text": text,
-                "hemisphere_tag": "safe",
-                "category": label_names[pid] if pid < len(label_names) else "unknown",
-                "importance": 7,
-                "source_id": pid,
-            },
-        })
+    for i, (text, pid, vec) in enumerate(zip(facts_texts, persona_ids, vectors, strict=False)):
+        facts.append(
+            {
+                "id": i,
+                "vector": vec.tolist(),
+                "metadata": {
+                    "text": text,
+                    "hemisphere_tag": "safe",
+                    "category": label_names[pid] if pid < len(label_names) else "unknown",
+                    "importance": 7,
+                    "source_id": pid,
+                },
+            }
+        )
 
     # Upsert in batches
     for i in range(0, len(facts), 1_000):
@@ -766,12 +887,13 @@ def categorised_store(tmp_path_factory, generator, real_dataset):
     n_per_cat = 2_000
     selected_texts, selected_labels = [], []
     from collections import Counter
+
     counts: Counter = Counter()
-    for t, l in zip(texts, labels):
-        if counts[l] < n_per_cat:
+    for t, label in zip(texts, labels, strict=False):
+        if counts[label] < n_per_cat:
             selected_texts.append(t)
-            selected_labels.append(l)
-            counts[l] += 1
+            selected_labels.append(label)
+            counts[label] += 1
         if len(selected_texts) >= n_per_cat * len(label_names):
             break
 
@@ -780,17 +902,21 @@ def categorised_store(tmp_path_factory, generator, real_dataset):
     db_path = tmp_path_factory.mktemp("categorised")
     store = LanceDBVectorStore(db_path=db_path, embedding_dimensions=768)
     facts = []
-    for i, (text, label, vec) in enumerate(zip(selected_texts, selected_labels, vectors)):
-        facts.append({
-            "id": i,
-            "vector": vec.tolist(),
-            "metadata": {
-                "text": text,
-                "hemisphere_tag": "safe",
-                "category": label_names[label],
-                "importance": label + 1,
-            },
-        })
+    for i, (text, label, vec) in enumerate(
+        zip(selected_texts, selected_labels, vectors, strict=False)
+    ):
+        facts.append(
+            {
+                "id": i,
+                "vector": vec.tolist(),
+                "metadata": {
+                    "text": text,
+                    "hemisphere_tag": "safe",
+                    "category": label_names[label],
+                    "importance": label + 1,
+                },
+            }
+        )
     store.upsert_facts(facts)
     yield store, selected_texts, selected_labels, label_names
     store.close()

@@ -10,12 +10,14 @@ Security:
     different sender or session is rejected.
   - PendingConsent has a 5-minute TTL; expired consents are discarded without execution.
 """
+
 from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Any, Awaitable, Callable
+from typing import Any
 
 from sci_fi_dashboard.sbs.sentinel.manifest import ZONE_2_DESCRIPTIONS
 from sci_fi_dashboard.snapshot_engine import SnapshotEngine
@@ -235,9 +237,7 @@ async def detect_modification_intent(
 _AFFIRMATIVE = frozenset(
     {"yes", "y", "yeah", "yep", "sure", "ok", "okay", "go ahead", "proceed", "do it"}
 )
-_NEGATIVE = frozenset(
-    {"no", "n", "nah", "nope", "cancel", "stop", "don't", "dont", "nevermind"}
-)
+_NEGATIVE = frozenset({"no", "n", "nah", "nope", "cancel", "stop", "don't", "dont", "nevermind"})
 
 
 def is_affirmative(text: str) -> bool:

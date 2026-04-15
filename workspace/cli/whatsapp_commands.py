@@ -126,7 +126,7 @@ def relink_command(port: int = 8000) -> None:
 def logout_command(port: int = 8000) -> None:
     """POST /channels/whatsapp/logout — deregister device and wipe session."""
     if _RICH:
-        console = Console()
+        Console()
         confirmed = typer.confirm(
             "This will disconnect WhatsApp and wipe the saved session. Continue?",
             default=False,

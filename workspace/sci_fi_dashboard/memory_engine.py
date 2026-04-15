@@ -60,9 +60,11 @@ def with_retry(retries: int = 3, delay: float = 0.5):
 WORKSPACE_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.append(WORKSPACE_ROOT)
 
-from sci_fi_dashboard.vector_store import LanceDBVectorStore
-from sci_fi_dashboard.embedding import get_provider
-from sci_fi_dashboard.pipeline_emitter import get_emitter as _get_emitter
+import contextlib  # noqa: E402
+
+from sci_fi_dashboard.embedding import get_provider  # noqa: E402
+from sci_fi_dashboard.pipeline_emitter import get_emitter as _get_emitter  # noqa: E402
+from sci_fi_dashboard.vector_store import LanceDBVectorStore  # noqa: E402
 
 # Configuration
 RERANK_MODEL_NAME = "ms-marco-TinyBERT-L-2-v2"
@@ -104,7 +106,9 @@ class MemoryEngine:
         if self._embed_provider is not None:
             print(f"[OK] MemoryEngine initialized (embedding: {self._embed_provider.info().name})")
         else:
-            print("[WARN] MemoryEngine: No embedding provider available -- semantic search disabled")
+            print(
+                "[WARN] MemoryEngine: No embedding provider available -- semantic search disabled"
+            )
         print("[OK] MemoryEngine initialized (shared graph, no duplication)")
 
     @lru_cache(maxsize=500)  # noqa: B019
@@ -144,13 +148,23 @@ class MemoryEngine:
         seed_entities: list[str] | None = None,
     ) -> dict:
         start = time.time()
-        try: _get_emitter().emit("memory.query_start", {"text": text[:80]})
-        except Exception: pass
+        with contextlib.suppress(Exception):
+            _get_emitter().emit("memory.query_start", {"text": text[:80]})
         _query_start = time.time()
 
         # First-person pronouns → include seed_entities in graph lookup even if
         # no entity name appears literally in the query text ("my condition" etc.)
-        _FIRST_PERSON = {"i", "my", "me", "mine", "myself", "i've", "i'm", "i'd", "i'll"}
+        _FIRST_PERSON = {  # noqa: N806
+            "i",
+            "my",
+            "me",
+            "mine",
+            "myself",
+            "i've",
+            "i'm",
+            "i'd",
+            "i'll",
+        }  # noqa: N806
         _is_self_referential = bool(_FIRST_PERSON & set(text.lower().split()))
 
         try:
@@ -187,11 +201,14 @@ class MemoryEngine:
                 routing = "Default (Hybrid)"
 
             # LanceDB search with hemisphere filtering
-            try: _get_emitter().emit("memory.embedding_start", {})
-            except Exception: pass
+            with contextlib.suppress(Exception):
+                _get_emitter().emit("memory.embedding_start", {})
             query_vec_tuple = self.get_embedding(text)
-            try: _get_emitter().emit("memory.embedding_done", {"dims": len(query_vec_tuple) if hasattr(query_vec_tuple, "__len__") else 768})
-            except Exception: pass
+            with contextlib.suppress(Exception):
+                _get_emitter().emit(
+                    "memory.embedding_done",
+                    {"dims": len(query_vec_tuple) if hasattr(query_vec_tuple, "__len__") else 768},
+                )
             if query_vec_tuple is None:
                 return {
                     "results": [],
@@ -209,17 +226,23 @@ class MemoryEngine:
             else:
                 hemisphere_filter = "hemisphere_tag = 'safe'"
 
-            try: _get_emitter().emit("memory.lancedb_search_start", {"hemisphere": hemisphere, "limit": limit * 3})
-            except Exception: pass
+            with contextlib.suppress(Exception):
+
+                _get_emitter().emit(
+                    "memory.lancedb_search_start", {"hemisphere": hemisphere, "limit": limit * 3}
+                )
             _search_start = time.time()
             q_results = self.vector_store.search(
                 query_vec, limit=limit * 3, query_filter=hemisphere_filter
             )
-            try: _get_emitter().emit("memory.lancedb_search_done", {
-                "num_candidates": len(q_results),
-                "latency_ms": round((time.time() - _search_start) * 1000),
-            })
-            except Exception: pass
+            with contextlib.suppress(Exception):
+                _get_emitter().emit(
+                    "memory.lancedb_search_done",
+                    {
+                        "num_candidates": len(q_results),
+                        "latency_ms": round((time.time() - _search_start) * 1000),
+                    },
+                )
 
             # Apply 3-factor scoring: relevance + temporal + importance
             for r in q_results:
@@ -232,10 +255,21 @@ class MemoryEngine:
             q_results.sort(key=lambda x: x["combined_score"], reverse=True)
             try:
                 _top_scored = q_results[:5]
-                _get_emitter().emit("memory.scoring", {
-                    "results": [{"text": r.get("metadata", {}).get("text", "")[:60], "score": round(r.get("combined_score", 0), 3), "semantic": round(r.get("score", 0), 3)} for r in _top_scored]
-                })
-            except Exception: pass
+                _get_emitter().emit(
+                    "memory.scoring",
+                    {
+                        "results": [
+                            {
+                                "text": r.get("metadata", {}).get("text", "")[:60],
+                                "score": round(r.get("combined_score", 0), 3),
+                                "semantic": round(r.get("score", 0), 3),
+                            }
+                            for r in _top_scored
+                        ]
+                    },
+                )
+            except Exception:  # noqa: BLE001
+                pass
 
             # Smart gate -- fast path
             high_conf = [
@@ -249,8 +283,16 @@ class MemoryEngine:
             ]
 
             if len(high_conf) >= limit:
-                try: _get_emitter().emit("memory.fast_gate_hit", {"threshold": 0.80, "top_score": round(high_conf[0].get("combined_score", 0), 3) if high_conf else 0})
-                except Exception: pass
+                with contextlib.suppress(Exception):
+                    _get_emitter().emit(
+                        "memory.fast_gate_hit",
+                        {
+                            "threshold": 0.80,
+                            "top_score": (
+                                round(high_conf[0].get("combined_score", 0), 3) if high_conf else 0
+                            ),
+                        },
+                    )
                 return {
                     "results": [
                         {
@@ -267,8 +309,8 @@ class MemoryEngine:
                 }
 
             # Reranker fallback (gracefully degrades to scored results if reranker fails)
-            try: _get_emitter().emit("memory.reranking_start", {})
-            except Exception: pass
+            with contextlib.suppress(Exception):
+                _get_emitter().emit("memory.reranking_start", {})
             try:
                 ranker = self._get_ranker()
                 candidates = [
@@ -282,7 +324,11 @@ class MemoryEngine:
                 ranked = ranker.rerank(RerankRequest(query=text, passages=candidates))
                 return {
                     "results": [
-                        {"content": x["text"], "score": float(x["score"]), "source": "lancedb_reranked"}
+                        {
+                            "content": x["text"],
+                            "score": float(x["score"]),
+                            "source": "lancedb_reranked",
+                        }
                         for x in ranked[:limit]
                     ],
                     "tier": "reranked",
@@ -295,7 +341,11 @@ class MemoryEngine:
                 print(f"[WARN] Reranker failed ({rerank_err}) — falling back to scored results")
                 return {
                     "results": [
-                        {"content": r["metadata"]["text"], "score": r["combined_score"], "source": "lancedb_scored"}
+                        {
+                            "content": r["metadata"]["text"],
+                            "score": r["combined_score"],
+                            "source": "lancedb_scored",
+                        }
                         for r in q_results[:limit]
                     ],
                     "tier": "scored_fallback",
@@ -354,22 +404,24 @@ class MemoryEngine:
 
                 # Also upsert to LanceDB for ANN search
                 try:
-                    self.vector_store.upsert_facts([{
-                        "id": doc_id,
-                        "vector": list(embedding),
-                        "metadata": {
-                            "text": content,
-                            "hemisphere_tag": hemisphere,
-                            "unix_timestamp": int(time.time()),
-                            "importance": importance,
-                        },
-                    }])
+                    self.vector_store.upsert_facts(
+                        [
+                            {
+                                "id": doc_id,
+                                "vector": list(embedding),
+                                "metadata": {
+                                    "text": content,
+                                    "hemisphere_tag": hemisphere,
+                                    "unix_timestamp": int(time.time()),
+                                    "importance": importance,
+                                },
+                            }
+                        ]
+                    )
                 except Exception as lancedb_err:
                     print(f"[WARN] LanceDB upsert failed: {lancedb_err}")
 
-                cursor.execute(
-                    "UPDATE documents SET processed = 1 WHERE id = ?", (doc_id,)
-                )
+                cursor.execute("UPDATE documents SET processed = 1 WHERE id = ?", (doc_id,))
             else:
                 print(f"[WARN] Embedding failed for doc {doc_id}; queued for later processing")
 

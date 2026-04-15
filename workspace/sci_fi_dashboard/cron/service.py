@@ -5,13 +5,16 @@ Cron Scheduler — CRUD API and async timer loop.
 timer that fires due jobs, handles catch-up after restart, and exposes
 a simple add / update / remove / list / run API.
 """
+
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import time
 import uuid
-from typing import Any, Callable, Coroutine, Optional
+from collections.abc import Callable, Coroutine
+from typing import Any
 
 from .alerting import check_and_send_failure_alert
 from .delivery import deliver_output
@@ -43,8 +46,8 @@ class CronService:
         self,
         agent_id: str,
         data_root: str,
-        execute_fn: Optional[Callable[..., Coroutine[Any, Any, str]]] = None,
-        channel_registry: Optional[Any] = None,
+        execute_fn: Callable[..., Coroutine[Any, Any, str]] | None = None,
+        channel_registry: Any | None = None,
     ):
         self._agent_id = agent_id
         self._data_root = data_root
@@ -54,7 +57,7 @@ class CronService:
         self._store = CronStore(agent_id, data_root)
         self._run_log = RunLog(data_root)
         self._jobs: list[CronJob] = []
-        self._timer_task: Optional[asyncio.Task] = None
+        self._timer_task: asyncio.Task | None = None
         self._running = False
 
     # ------------------------------------------------------------------
@@ -74,10 +77,8 @@ class CronService:
         self._running = False
         if self._timer_task and not self._timer_task.done():
             self._timer_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._timer_task
-            except asyncio.CancelledError:
-                pass
         self._store.save(self._jobs)
         logger.info("Cron service stopped for agent %s", self._agent_id)
 
@@ -220,11 +221,9 @@ class CronService:
                         *(self._execute_job(j) for j in due),
                         return_exceptions=True,
                     )
-                    for job, result in zip(due, results):
+                    for job, result in zip(due, results, strict=False):
                         if isinstance(result, BaseException):
-                            logger.error(
-                                "Unhandled error executing job %s: %s", job.id, result
-                            )
+                            logger.error("Unhandled error executing job %s: %s", job.id, result)
 
             except asyncio.CancelledError:
                 break
@@ -232,7 +231,7 @@ class CronService:
                 logger.exception("Unexpected error in cron timer loop")
                 await asyncio.sleep(5)
 
-    def _seconds_until_next(self) -> Optional[float]:
+    def _seconds_until_next(self) -> float | None:
         """Return seconds until the earliest due job, or None if no jobs scheduled."""
         now_ms = int(time.time() * 1000)
         candidates = [
@@ -258,11 +257,15 @@ class CronService:
 
         try:
             from sci_fi_dashboard.pipeline_emitter import get_emitter as _get_emitter
-            _get_emitter().emit("cron.job_start", {
-                "job_id": job.id,
-                "job_name": job.name,
-                "session_target": str(job.session_target),
-            })
+
+            _get_emitter().emit(
+                "cron.job_start",
+                {
+                    "job_id": job.id,
+                    "job_name": job.name,
+                    "session_target": str(job.session_target),
+                },
+            )
         except Exception:
             pass  # emitter is optional — never block cron
 
@@ -277,21 +280,23 @@ class CronService:
             job.state.consecutive_errors = 0
 
             # Delivery
-            delivery_result = await deliver_output(
-                output, job.delivery, self._channel_registry
-            )
+            delivery_result = await deliver_output(output, job.delivery, self._channel_registry)
             job.state.last_delivery_status = delivery_result.get("status")
             result["delivery"] = delivery_result
             result["output"] = output
 
             try:
                 from sci_fi_dashboard.pipeline_emitter import get_emitter as _get_emitter
-                _get_emitter().emit("cron.job_done", {
-                    "job_id": job.id,
-                    "job_name": job.name,
-                    "status": result.get("status", "unknown"),
-                    "duration_ms": job.state.last_duration_ms,
-                })
+
+                _get_emitter().emit(
+                    "cron.job_done",
+                    {
+                        "job_id": job.id,
+                        "job_name": job.name,
+                        "status": result.get("status", "unknown"),
+                        "duration_ms": job.state.last_duration_ms,
+                    },
+                )
             except Exception:
                 pass  # emitter is optional — never block cron
 
@@ -308,11 +313,15 @@ class CronService:
 
             try:
                 from sci_fi_dashboard.pipeline_emitter import get_emitter as _get_emitter
-                _get_emitter().emit("cron.job_error", {
-                    "job_id": job.id,
-                    "job_name": job.name,
-                    "error": str(exc)[:200],
-                })
+
+                _get_emitter().emit(
+                    "cron.job_error",
+                    {
+                        "job_id": job.id,
+                        "job_name": job.name,
+                        "error": str(exc)[:200],
+                    },
+                )
             except Exception:
                 pass  # emitter is optional — never block cron
 
@@ -350,22 +359,16 @@ class CronService:
         if payload.kind == PayloadKind.AGENT_TURN:
             session_key = f"cron-{job.id}-{uuid.uuid4().hex[:8]}"
             if job.session_target == SessionTarget.ISOLATED:
-                return await run_isolated_agent(
-                    payload, session_key, self._execute_fn
-                )
+                return await run_isolated_agent(payload, session_key, self._execute_fn)
             # MAIN or CURRENT — use execute_fn directly
             if self._execute_fn:
-                return await self._execute_fn(
-                    payload.message or "", session_key
-                )
+                return await self._execute_fn(payload.message or "", session_key)
             return ""
 
         if payload.kind == PayloadKind.SYSTEM_EVENT:
             # System events are just passed through execute_fn if available
             if self._execute_fn:
-                return await self._execute_fn(
-                    payload.message or "", f"cron-sys-{job.id}"
-                )
+                return await self._execute_fn(payload.message or "", f"cron-sys-{job.id}")
             return payload.message or ""
 
         return ""
@@ -409,7 +412,7 @@ class CronService:
     # Helpers
     # ------------------------------------------------------------------
 
-    def _find_job(self, job_id: str) -> Optional[CronJob]:
+    def _find_job(self, job_id: str) -> CronJob | None:
         for j in self._jobs:
             if j.id == job_id:
                 return j
@@ -466,7 +469,7 @@ class CronService:
         )
 
     @staticmethod
-    def _build_failure_alert(raw: Optional[dict[str, Any]]) -> Optional[CronFailureAlert]:
+    def _build_failure_alert(raw: dict[str, Any] | None) -> CronFailureAlert | None:
         if raw is None:
             return None
         return CronFailureAlert(

@@ -5,6 +5,7 @@ and thread safety that the initial dev tests missed.
 
 All tests are mock-based — zero real fastembed / gemini calls.
 """
+
 from __future__ import annotations
 
 import os
@@ -12,7 +13,6 @@ import sys
 import types
 import unittest
 from unittest.mock import MagicMock, patch
-
 
 # ---------------------------------------------------------------------------
 # Shared helpers
@@ -132,6 +132,7 @@ class TestFastEmbedOutputIsListOfFloat(unittest.TestCase):
             self.assertIsInstance(val, float)
         # Verify it is JSON-serialisable (no TypeError)
         import json
+
         json.dumps(result)  # would raise if numpy floats slipped through
 
 
@@ -163,8 +164,7 @@ class TestFastEmbedPrefixNotDuplicated(unittest.TestCase):
             self.assertEqual(len(texts_passed), 1)
             text = texts_passed[0]
             # Prefix appears exactly once
-            self.assertEqual(text.count("search_query: "), 1,
-                             f"Prefix duplicated: {text!r}")
+            self.assertEqual(text.count("search_query: "), 1, f"Prefix duplicated: {text!r}")
             # Must start with the prefix
             self.assertTrue(text.startswith("search_query: "))
 
@@ -175,6 +175,7 @@ class TestFastEmbedThreadCountMinCpu(unittest.TestCase):
     def test_fastembed_thread_count_defaults_to_min4_cpu(self):
         with patch("os.cpu_count", return_value=2):
             from sci_fi_dashboard.embedding.fastembed_provider import FastEmbedProvider
+
             p = FastEmbedProvider.__new__(FastEmbedProvider)
             p._model_name = FastEmbedProvider.DEFAULT_MODEL
             p._cache_dir = None
@@ -191,6 +192,7 @@ class TestFastEmbedThreadCountCapsAt4(unittest.TestCase):
     def test_fastembed_thread_count_caps_at_4(self):
         with patch("os.cpu_count", return_value=16):
             from sci_fi_dashboard.embedding.fastembed_provider import FastEmbedProvider
+
             p = FastEmbedProvider.__new__(FastEmbedProvider)
             p._model_name = FastEmbedProvider.DEFAULT_MODEL
             p._cache_dir = None
@@ -209,10 +211,10 @@ class TestGeminiRaisesWithoutApiKey(unittest.TestCase):
     """GeminiAPIProvider() must raise ValueError when no API key is available."""
 
     def test_gemini_raises_without_env_var_and_no_kwarg(self):
-        env_without_gemini = {k: v for k, v in os.environ.items()
-                              if k != "GEMINI_API_KEY"}
+        env_without_gemini = {k: v for k, v in os.environ.items() if k != "GEMINI_API_KEY"}
         with patch.dict(os.environ, env_without_gemini, clear=True):
             from sci_fi_dashboard.embedding.gemini_provider import GeminiAPIProvider
+
             with self.assertRaises(ValueError):
                 GeminiAPIProvider()
 
@@ -221,10 +223,10 @@ class TestGeminiAcceptsApiKeyKwarg(unittest.TestCase):
     """GeminiAPIProvider(api_key='fake') must not raise on init (client is lazy)."""
 
     def test_gemini_accepts_api_key_kwarg(self):
-        env_without_gemini = {k: v for k, v in os.environ.items()
-                              if k != "GEMINI_API_KEY"}
+        env_without_gemini = {k: v for k, v in os.environ.items() if k != "GEMINI_API_KEY"}
         with patch.dict(os.environ, env_without_gemini, clear=True):
             from sci_fi_dashboard.embedding.gemini_provider import GeminiAPIProvider
+
             try:
                 provider = GeminiAPIProvider(api_key="fake-key-abc123")
             except Exception as exc:
@@ -260,8 +262,9 @@ class TestGeminiTaskTypeQuery(unittest.TestCase):
 
         _, kwargs = mock_client.models.embed_content.call_args
         config = kwargs.get("config", {})
-        self.assertEqual(config.get("task_type"), "RETRIEVAL_QUERY",
-                         f"Expected RETRIEVAL_QUERY, got: {config!r}")
+        self.assertEqual(
+            config.get("task_type"), "RETRIEVAL_QUERY", f"Expected RETRIEVAL_QUERY, got: {config!r}"
+        )
 
 
 class TestGeminiTaskTypeDocument(unittest.TestCase):
@@ -291,8 +294,11 @@ class TestGeminiTaskTypeDocument(unittest.TestCase):
 
         _, kwargs = mock_client.models.embed_content.call_args
         config = kwargs.get("config", {})
-        self.assertEqual(config.get("task_type"), "RETRIEVAL_DOCUMENT",
-                         f"Expected RETRIEVAL_DOCUMENT, got: {config!r}")
+        self.assertEqual(
+            config.get("task_type"),
+            "RETRIEVAL_DOCUMENT",
+            f"Expected RETRIEVAL_DOCUMENT, got: {config!r}",
+        )
 
 
 class TestGeminiOutputDimensionality(unittest.TestCase):
@@ -322,8 +328,11 @@ class TestGeminiOutputDimensionality(unittest.TestCase):
 
         _, kwargs = mock_client.models.embed_content.call_args
         config = kwargs.get("config", {})
-        self.assertEqual(config.get("output_dimensionality"), 768,
-                         f"Expected output_dimensionality=768, got: {config!r}")
+        self.assertEqual(
+            config.get("output_dimensionality"),
+            768,
+            f"Expected output_dimensionality=768, got: {config!r}",
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -336,10 +345,12 @@ class _FactoryTestBase(unittest.TestCase):
 
     def setUp(self):
         from sci_fi_dashboard.embedding import factory
+
         factory._provider = None
 
     def tearDown(self):
         from sci_fi_dashboard.embedding import factory
+
         factory._provider = None
 
 
@@ -349,14 +360,15 @@ class TestGetProviderReturnsSingleton(_FactoryTestBase):
     def test_get_provider_returns_singleton(self):
         fake_provider = MagicMock()
 
-        with patch("sci_fi_dashboard.embedding.factory.create_provider",
-                   return_value=fake_provider):
+        with patch(
+            "sci_fi_dashboard.embedding.factory.create_provider", return_value=fake_provider
+        ):
             from sci_fi_dashboard.embedding.factory import get_provider
+
             first = get_provider()
             second = get_provider()
 
-        self.assertIs(first, second,
-                      "get_provider() must return the singleton on subsequent calls")
+        self.assertIs(first, second, "get_provider() must return the singleton on subsequent calls")
 
 
 class TestResetProviderClearsSingleton(_FactoryTestBase):
@@ -371,8 +383,7 @@ class TestResetProviderClearsSingleton(_FactoryTestBase):
             create_calls["n"] += 1
             return provider_a if create_calls["n"] == 1 else provider_b
 
-        with patch("sci_fi_dashboard.embedding.factory.create_provider",
-                   side_effect=side_effect):
+        with patch("sci_fi_dashboard.embedding.factory.create_provider", side_effect=side_effect):
             from sci_fi_dashboard.embedding.factory import get_provider, reset_provider
 
             instance_a = get_provider()
@@ -381,8 +392,9 @@ class TestResetProviderClearsSingleton(_FactoryTestBase):
 
         self.assertIs(instance_a, provider_a)
         self.assertIs(instance_b, provider_b)
-        self.assertIsNot(instance_a, instance_b,
-                         "After reset, get_provider() must create a fresh instance")
+        self.assertIsNot(
+            instance_a, instance_b, "After reset, get_provider() must create a fresh instance"
+        )
 
 
 class TestFactoryUnknownProviderRaisesValueError(_FactoryTestBase):
@@ -390,6 +402,7 @@ class TestFactoryUnknownProviderRaisesValueError(_FactoryTestBase):
 
     def test_factory_unknown_provider_name_raises_value_error(self):
         from sci_fi_dashboard.embedding.factory import create_provider
+
         with self.assertRaises(ValueError):
             create_provider({"embedding": {"provider": "nonexistent_provider"}})
 
@@ -398,9 +411,12 @@ class TestFactoryReturnsNoneWhenNoProviderAvailable(_FactoryTestBase):
     """get_provider() must return None (not raise) when all providers fail."""
 
     def test_factory_returns_none_gracefully_when_no_provider(self):
-        with patch("sci_fi_dashboard.embedding.factory.create_provider",
-                   side_effect=RuntimeError("No embedding provider available")):
+        with patch(
+            "sci_fi_dashboard.embedding.factory.create_provider",
+            side_effect=RuntimeError("No embedding provider available"),
+        ):
             from sci_fi_dashboard.embedding.factory import get_provider
+
             result = get_provider()
 
         self.assertIsNone(result)
@@ -412,12 +428,14 @@ class TestFactoryPassesModelToProvider(_FactoryTestBase):
     def test_factory_passes_model_to_provider(self):
         mock_provider = MagicMock()
 
-        with patch("sci_fi_dashboard.embedding.factory._create_explicit",
-                   return_value=mock_provider) as mock_explicit:
+        with patch(
+            "sci_fi_dashboard.embedding.factory._create_explicit", return_value=mock_provider
+        ) as mock_explicit:
             from sci_fi_dashboard.embedding.factory import create_provider
-            result = create_provider({
-                "embedding": {"provider": "fastembed", "model": "custom/model"}
-            })
+
+            result = create_provider(
+                {"embedding": {"provider": "fastembed", "model": "custom/model"}}
+            )
 
         mock_explicit.assert_called_once_with(
             "fastembed", model="custom/model", cache_dir=None, threads=None
@@ -510,8 +528,8 @@ class TestGeminiInfoMetadata(unittest.TestCase):
     """GeminiAPIProvider.info() must return correct ProviderInfo."""
 
     def test_gemini_info_metadata(self):
-        from sci_fi_dashboard.embedding.gemini_provider import GeminiAPIProvider
         from sci_fi_dashboard.embedding.base import ProviderInfo
+        from sci_fi_dashboard.embedding.gemini_provider import GeminiAPIProvider
 
         provider = GeminiAPIProvider.__new__(GeminiAPIProvider)
         provider._model_name = GeminiAPIProvider.DEFAULT_MODEL
@@ -523,8 +541,9 @@ class TestGeminiInfoMetadata(unittest.TestCase):
         self.assertIsInstance(info, ProviderInfo)
         self.assertEqual(info.name, "gemini")
         self.assertEqual(info.dimensions, 768)
-        self.assertTrue(info.requires_network,
-                        "Gemini is a cloud API — requires_network must be True")
+        self.assertTrue(
+            info.requires_network, "Gemini is a cloud API — requires_network must be True"
+        )
         self.assertFalse(info.requires_gpu)
 
 

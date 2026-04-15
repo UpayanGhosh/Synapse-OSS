@@ -3,17 +3,15 @@ Unit tests for SnapshotEngine — create/list/restore/prune lifecycle.
 
 Tests follow the TDD behavior spec in 02-01-PLAN.md.
 """
+
 from __future__ import annotations
 
 import re
-import shutil
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-
 from sci_fi_dashboard.snapshot_engine import SnapshotEngine, SnapshotMeta
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -94,9 +92,8 @@ def test_snapshot_atomicity(tmp_path: Path) -> None:
     _make_zone2(tmp_path)
     engine = _engine(tmp_path)
 
-    with patch("shutil.copytree", side_effect=OSError("disk full")):
-        with pytest.raises(OSError):
-            engine.create(description="crash test", change_type="create_skill")
+    with patch("shutil.copytree", side_effect=OSError("disk full")), pytest.raises(OSError):
+        engine.create(description="crash test", change_type="create_skill")
 
     snapshots_dir = tmp_path / "snapshots"
     if snapshots_dir.exists():

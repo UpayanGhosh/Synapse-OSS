@@ -105,14 +105,11 @@ def _ext_from_mime(mime: str) -> str:
         # Documents
         "application/pdf": ".pdf",
         "application/msword": ".doc",
-        "application/vnd.openxmlformats-officedocument"
-        ".wordprocessingml.document": ".docx",
+        "application/vnd.openxmlformats-officedocument" ".wordprocessingml.document": ".docx",
         "application/vnd.ms-excel": ".xls",
-        "application/vnd.openxmlformats-officedocument"
-        ".spreadsheetml.sheet": ".xlsx",
+        "application/vnd.openxmlformats-officedocument" ".spreadsheetml.sheet": ".xlsx",
         "application/vnd.ms-powerpoint": ".ppt",
-        "application/vnd.openxmlformats-officedocument"
-        ".presentationml.presentation": ".pptx",
+        "application/vnd.openxmlformats-officedocument" ".presentationml.presentation": ".pptx",
         "text/csv": ".csv",
         "application/rtf": ".rtf",
         "application/epub+zip": ".epub",
@@ -210,9 +207,7 @@ def save_media_buffer(
     """
     # --- size enforcement ---
     if max_bytes is not None and len(buffer) > max_bytes:
-        raise ValueError(
-            f"Buffer size {len(buffer)} exceeds limit of {max_bytes} bytes"
-        )
+        raise ValueError(f"Buffer size {len(buffer)} exceeds limit of {max_bytes} bytes")
 
     # --- resolve paths ---
     root = data_root or (Path.home() / ".synapse")
@@ -222,10 +217,8 @@ def save_media_buffer(
     # Path traversal guard — subdir must not escape media_base
     try:
         media_dir.relative_to(media_base.resolve())
-    except ValueError:
-        raise ValueError(
-            f"subdir {subdir!r} escapes media root {media_base}"
-        )
+    except ValueError as exc:
+        raise ValueError(f"subdir {subdir!r} escapes media root {media_base}") from exc
 
     media_dir.mkdir(parents=True, exist_ok=True)
 

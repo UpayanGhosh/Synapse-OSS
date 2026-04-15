@@ -18,12 +18,10 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from sci_fi_dashboard.llm_router import (
-    ToolCall,
     _attempt_json_repair,
     normalize_tool_calls,
     normalize_tool_schemas,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers

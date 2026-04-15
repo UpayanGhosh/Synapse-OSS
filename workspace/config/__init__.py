@@ -4,6 +4,7 @@ config — Pydantic-validated configuration system for Synapse-OSS.
 Provides layered resolution, merge-patch, env var substitution,
 secret redaction, config includes, legacy migration, and group policy.
 """
+
 from __future__ import annotations
 
 from config.env_substitution import substitute_env_vars

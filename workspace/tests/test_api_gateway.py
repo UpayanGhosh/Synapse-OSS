@@ -23,17 +23,15 @@ Covers:
   - _load_personas_config
 """
 
-import json
 import os
 import sqlite3
 import sys
-import time
-import uuid
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock, AsyncMock, PropertyMock
 
 # We need to do extensive mocking before importing api_gateway due to its heavy
 # module-level initialization. Instead, we test the functions we can import
@@ -53,6 +51,7 @@ class TestExtractCliSendRoute:
         # We import via a targeted approach since api_gateway imports are heavy
         try:
             from sci_fi_dashboard.api_gateway import _extract_cli_send_route
+
             return _extract_cli_send_route
         except Exception:
             pytest.skip("Cannot import api_gateway (missing dependencies)")
@@ -96,6 +95,7 @@ class TestNormalizePhone:
     def _import_fn(self):
         try:
             from sci_fi_dashboard.api_gateway import normalize_phone
+
             return normalize_phone
         except Exception:
             pytest.skip("Cannot import api_gateway")
@@ -127,6 +127,7 @@ class TestStrategyToRole:
     def _import_const(self):
         try:
             from sci_fi_dashboard.api_gateway import STRATEGY_TO_ROLE
+
             return STRATEGY_TO_ROLE
         except Exception:
             pytest.skip("Cannot import api_gateway")
@@ -162,6 +163,7 @@ class TestPortOpen:
     def _import_fn(self):
         try:
             from sci_fi_dashboard.api_gateway import _port_open
+
             return _port_open
         except Exception:
             pytest.skip("Cannot import api_gateway")
@@ -182,6 +184,7 @@ class TestIsOwnerSender:
     def _import_fn(self):
         try:
             from sci_fi_dashboard.api_gateway import _is_owner_sender
+
             return _is_owner_sender
         except Exception:
             pytest.skip("Cannot import api_gateway")
@@ -217,6 +220,7 @@ class TestResolveTarget:
     def _import_fn(self):
         try:
             from sci_fi_dashboard.api_gateway import _resolve_target
+
             return _resolve_target
         except Exception:
             pytest.skip("Cannot import api_gateway")
@@ -235,6 +239,7 @@ class TestLoadPersonasConfig:
     def _import_fn(self):
         try:
             from sci_fi_dashboard.api_gateway import _load_personas_config
+
             return _load_personas_config
         except Exception:
             pytest.skip("Cannot import api_gateway")
@@ -263,12 +268,13 @@ class TestChatRequest:
     def _import_model(self):
         try:
             from sci_fi_dashboard.api_gateway import ChatRequest
+
             return ChatRequest
         except Exception:
             pytest.skip("Cannot import api_gateway")
 
     def test_minimal_request(self):
-        ChatRequest = self._import_model()
+        ChatRequest = self._import_model()  # noqa: N806
         req = ChatRequest(message="Hello")
         assert req.message == "Hello"
         assert req.history == []
@@ -276,7 +282,7 @@ class TestChatRequest:
         assert req.session_type is None
 
     def test_full_request(self):
-        ChatRequest = self._import_model()
+        ChatRequest = self._import_model()  # noqa: N806
         req = ChatRequest(
             message="Test",
             history=[{"role": "user", "content": "prev"}],
@@ -293,18 +299,19 @@ class TestMemoryItem:
     def _import_model(self):
         try:
             from sci_fi_dashboard.api_gateway import MemoryItem
+
             return MemoryItem
         except Exception:
             pytest.skip("Cannot import api_gateway")
 
     def test_minimal(self):
-        MemoryItem = self._import_model()
+        MemoryItem = self._import_model()  # noqa: N806
         item = MemoryItem(content="Remember this")
         assert item.content == "Remember this"
         assert item.category == "general"
 
     def test_custom_category(self):
-        MemoryItem = self._import_model()
+        MemoryItem = self._import_model()  # noqa: N806
         item = MemoryItem(content="Test", category="relationship")
         assert item.category == "relationship"
 
@@ -315,12 +322,13 @@ class TestQueryItem:
     def _import_model(self):
         try:
             from sci_fi_dashboard.api_gateway import QueryItem
+
             return QueryItem
         except Exception:
             pytest.skip("Cannot import api_gateway")
 
     def test_basic(self):
-        QueryItem = self._import_model()
+        QueryItem = self._import_model()  # noqa: N806
         item = QueryItem(text="search query")
         assert item.text == "search query"
 
@@ -336,27 +344,31 @@ class TestBridgeDbHelpers:
     def _import_all(self):
         try:
             from sci_fi_dashboard.api_gateway import (
+                BRIDGE_DB_PATH,
+                ensure_bridge_db,
+                get_inbound_message,
+                insert_inbound_message,
+                update_inbound_message,
+            )
+
+            return (
                 ensure_bridge_db,
                 insert_inbound_message,
                 get_inbound_message,
                 update_inbound_message,
                 BRIDGE_DB_PATH,
             )
-            return ensure_bridge_db, insert_inbound_message, get_inbound_message, update_inbound_message, BRIDGE_DB_PATH
         except Exception:
             pytest.skip("Cannot import api_gateway")
 
     def test_ensure_bridge_db_creates_table(self, tmp_path):
         fns = self._import_all()
         ensure_bridge_db, _, _, _, _ = fns
-        from pathlib import Path
         test_db = tmp_path / "bridge.db"
         with patch("sci_fi_dashboard.api_gateway.BRIDGE_DB_PATH", test_db):
             ensure_bridge_db()
             conn = sqlite3.connect(str(test_db))
-            tables = conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='table'"
-            ).fetchall()
+            tables = conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
             conn.close()
             table_names = [t[0] for t in tables]
             assert "inbound_messages" in table_names
@@ -364,7 +376,6 @@ class TestBridgeDbHelpers:
     def test_insert_and_get(self, tmp_path):
         fns = self._import_all()
         ensure_bridge_db, insert_inbound_message, get_inbound_message, _, _ = fns
-        from pathlib import Path
         test_db = tmp_path / "bridge.db"
         with patch("sci_fi_dashboard.api_gateway.BRIDGE_DB_PATH", test_db):
             ensure_bridge_db()
@@ -385,7 +396,6 @@ class TestBridgeDbHelpers:
     def test_get_nonexistent(self, tmp_path):
         fns = self._import_all()
         ensure_bridge_db, _, get_inbound_message, _, _ = fns
-        from pathlib import Path
         test_db = tmp_path / "bridge.db"
         with patch("sci_fi_dashboard.api_gateway.BRIDGE_DB_PATH", test_db):
             ensure_bridge_db()
@@ -393,8 +403,9 @@ class TestBridgeDbHelpers:
 
     def test_update_message(self, tmp_path):
         fns = self._import_all()
-        ensure_bridge_db, insert_inbound_message, get_inbound_message, update_inbound_message, _ = fns
-        from pathlib import Path
+        ensure_bridge_db, insert_inbound_message, get_inbound_message, update_inbound_message, _ = (
+            fns
+        )
         test_db = tmp_path / "bridge.db"
         with patch("sci_fi_dashboard.api_gateway.BRIDGE_DB_PATH", test_db):
             ensure_bridge_db()
@@ -424,13 +435,16 @@ class TestRouteTrafficCop:
     def _import_fn(self):
         try:
             from sci_fi_dashboard.api_gateway import route_traffic_cop
+
             return route_traffic_cop
         except Exception:
             pytest.skip("Cannot import api_gateway")
 
     async def test_returns_string(self):
         fn = self._import_fn()
-        with patch("sci_fi_dashboard.api_gateway.call_gemini_flash", new_callable=AsyncMock) as mock_flash:
+        with patch(
+            "sci_fi_dashboard.api_gateway.call_gemini_flash", new_callable=AsyncMock
+        ) as mock_flash:
             mock_flash.return_value = "CASUAL"
             result = await fn("Hello, how are you?")
             assert isinstance(result, str)
@@ -438,21 +452,27 @@ class TestRouteTrafficCop:
 
     async def test_coding_classification(self):
         fn = self._import_fn()
-        with patch("sci_fi_dashboard.api_gateway.call_gemini_flash", new_callable=AsyncMock) as mock_flash:
+        with patch(
+            "sci_fi_dashboard.api_gateway.call_gemini_flash", new_callable=AsyncMock
+        ) as mock_flash:
             mock_flash.return_value = "CODING"
             result = await fn("Fix this python bug")
             assert result == "CODING"
 
     async def test_fallback_on_error(self):
         fn = self._import_fn()
-        with patch("sci_fi_dashboard.api_gateway.call_gemini_flash", new_callable=AsyncMock) as mock_flash:
+        with patch(
+            "sci_fi_dashboard.api_gateway.call_gemini_flash", new_callable=AsyncMock
+        ) as mock_flash:
             mock_flash.side_effect = Exception("LLM down")
             result = await fn("test message")
             assert result == "CASUAL"
 
     async def test_cleans_punctuation(self):
         fn = self._import_fn()
-        with patch("sci_fi_dashboard.api_gateway.call_gemini_flash", new_callable=AsyncMock) as mock_flash:
+        with patch(
+            "sci_fi_dashboard.api_gateway.call_gemini_flash", new_callable=AsyncMock
+        ) as mock_flash:
             mock_flash.return_value = "ANALYSIS."
             result = await fn("Summarize this data")
             assert result == "ANALYSIS"
@@ -468,8 +488,9 @@ class TestFastAPIEndpoints:
 
     def _get_client(self):
         try:
-            from sci_fi_dashboard.api_gateway import app
             from fastapi.testclient import TestClient
+            from sci_fi_dashboard.api_gateway import app
+
             return TestClient(app, raise_server_exceptions=False)
         except Exception:
             pytest.skip("Cannot import api_gateway app")
@@ -586,7 +607,7 @@ class TestPersonaChat:
     async def test_persona_chat_happy_path(self):
         """persona_chat should return a dict with reply key."""
         try:
-            from sci_fi_dashboard.api_gateway import persona_chat, ChatRequest
+            from sci_fi_dashboard.api_gateway import ChatRequest, persona_chat
         except Exception:
             pytest.skip("Cannot import api_gateway")
 
@@ -611,29 +632,36 @@ class TestPersonaChat:
                 mock_toxic.score.return_value = 0.1
                 with patch("sci_fi_dashboard.api_gateway.dual_cognition") as mock_dc:
                     from sci_fi_dashboard.dual_cognition import CognitiveMerge
+
                     mock_dc.think = AsyncMock(return_value=CognitiveMerge())
                     mock_dc.build_cognitive_context.return_value = ""
                     with patch("sci_fi_dashboard.api_gateway.synapse_llm_router") as mock_router:
                         mock_router.call_with_tools = AsyncMock(return_value=mock_result)
                         mock_router.call_with_metadata = AsyncMock(return_value=mock_result)
-                        with patch("sci_fi_dashboard.api_gateway.call_gemini_flash", new_callable=AsyncMock) as mock_flash:
+                        with patch(
+                            "sci_fi_dashboard.api_gateway.call_gemini_flash", new_callable=AsyncMock
+                        ) as mock_flash:
                             mock_flash.return_value = "CASUAL"
-                            with patch("sci_fi_dashboard.api_gateway.get_sbs_for_target") as mock_sbs:
+                            with patch(
+                                "sci_fi_dashboard.api_gateway.get_sbs_for_target"
+                            ) as mock_sbs:
                                 mock_orch = MagicMock()
                                 mock_orch.on_message.return_value = {"msg_id": "test_001"}
                                 mock_orch.get_system_prompt.return_value = "You are Synapse."
                                 mock_sbs.return_value = mock_orch
-                                with patch("sci_fi_dashboard.api_gateway._proactive_engine", None):
-                                    with patch("sci_fi_dashboard.api_gateway.tool_registry", None):
-                                        result = await persona_chat(request, "the_creator")
-                                        assert isinstance(result, dict)
-                                        assert "reply" in result
-                                        assert "model" in result
+                                with (
+                                    patch("sci_fi_dashboard.api_gateway._proactive_engine", None),
+                                    patch("sci_fi_dashboard.api_gateway.tool_registry", None),
+                                ):
+                                    result = await persona_chat(request, "the_creator")
+                                    assert isinstance(result, dict)
+                                    assert "reply" in result
+                                    assert "model" in result
 
     async def test_persona_chat_spicy_mode(self):
         """Spicy mode should route to vault."""
         try:
-            from sci_fi_dashboard.api_gateway import persona_chat, ChatRequest
+            from sci_fi_dashboard.api_gateway import ChatRequest, persona_chat
         except Exception:
             pytest.skip("Cannot import api_gateway")
 
@@ -648,12 +676,16 @@ class TestPersonaChat:
 
         with patch("sci_fi_dashboard.api_gateway.memory_engine") as mock_mem:
             mock_mem.query.return_value = {
-                "results": [], "tier": "empty", "entities": [], "graph_context": "",
+                "results": [],
+                "tier": "empty",
+                "entities": [],
+                "graph_context": "",
             }
             with patch("sci_fi_dashboard.api_gateway.toxic_scorer") as mock_toxic:
                 mock_toxic.score.return_value = 0.0
                 with patch("sci_fi_dashboard.api_gateway.dual_cognition") as mock_dc:
                     from sci_fi_dashboard.dual_cognition import CognitiveMerge
+
                     mock_dc.think = AsyncMock(return_value=CognitiveMerge())
                     mock_dc.build_cognitive_context.return_value = ""
                     with patch("sci_fi_dashboard.api_gateway.synapse_llm_router") as mock_router:
@@ -670,7 +702,7 @@ class TestPersonaChat:
     async def test_persona_chat_memory_failure(self):
         """Memory engine failure should not crash persona_chat."""
         try:
-            from sci_fi_dashboard.api_gateway import persona_chat, ChatRequest
+            from sci_fi_dashboard.api_gateway import ChatRequest, persona_chat
         except Exception:
             pytest.skip("Cannot import api_gateway")
 
@@ -690,22 +722,29 @@ class TestPersonaChat:
                 mock_toxic.score.return_value = 0.0
                 with patch("sci_fi_dashboard.api_gateway.dual_cognition") as mock_dc:
                     from sci_fi_dashboard.dual_cognition import CognitiveMerge
+
                     mock_dc.think = AsyncMock(return_value=CognitiveMerge())
                     mock_dc.build_cognitive_context.return_value = ""
                     with patch("sci_fi_dashboard.api_gateway.synapse_llm_router") as mock_router:
                         mock_router.call_with_tools = AsyncMock(return_value=mock_result)
-                        with patch("sci_fi_dashboard.api_gateway.call_gemini_flash", new_callable=AsyncMock) as mock_flash:
+                        with patch(
+                            "sci_fi_dashboard.api_gateway.call_gemini_flash", new_callable=AsyncMock
+                        ) as mock_flash:
                             mock_flash.return_value = "CASUAL"
-                            with patch("sci_fi_dashboard.api_gateway.get_sbs_for_target") as mock_sbs:
+                            with patch(
+                                "sci_fi_dashboard.api_gateway.get_sbs_for_target"
+                            ) as mock_sbs:
                                 mock_orch = MagicMock()
                                 mock_orch.on_message.return_value = {"msg_id": "t"}
                                 mock_orch.get_system_prompt.return_value = "You are Synapse."
                                 mock_sbs.return_value = mock_orch
-                                with patch("sci_fi_dashboard.api_gateway._proactive_engine", None):
-                                    with patch("sci_fi_dashboard.api_gateway.tool_registry", None):
-                                        result = await persona_chat(request, "the_creator")
-                                        assert "reply" in result
-                                        assert result["memory_method"] == "failed"
+                                with (
+                                    patch("sci_fi_dashboard.api_gateway._proactive_engine", None),
+                                    patch("sci_fi_dashboard.api_gateway.tool_registry", None),
+                                ):
+                                    result = await persona_chat(request, "the_creator")
+                                    assert "reply" in result
+                                    assert result["memory_method"] == "failed"
 
 
 # ---------------------------------------------------------------------------

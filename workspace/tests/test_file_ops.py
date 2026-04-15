@@ -11,7 +11,6 @@ Covers:
 
 import os
 import sys
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -21,12 +20,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from sci_fi_dashboard.file_ops.edit import apply_edit
 from sci_fi_dashboard.file_ops.paging import (
     DEFAULT_PAGE_MAX_BYTES,
-    MAX_ADAPTIVE_PAGE_BYTES,
-    MAX_PAGES,
     read_file_paged,
 )
 from sci_fi_dashboard.file_ops.workspace_guard import WorkspaceGuard
-
 
 # ---------------------------------------------------------------------------
 # apply_edit
@@ -87,7 +83,7 @@ class TestApplyEdit:
 
         result = apply_edit(str(f), "original", "modified")
         assert result["ok"] is True
-        assert result["bytes_written"] == len("modified content".encode("utf-8"))
+        assert result["bytes_written"] == len(b"modified content")
 
     @pytest.mark.unit
     def test_multiline_replacement(self, tmp_path):

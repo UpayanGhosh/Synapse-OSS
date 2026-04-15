@@ -1,20 +1,21 @@
 """
 Tests for sci_fi_dashboard.mcp_servers.execution_server — code execution, auth gate, env scrubbing.
 """
+
 from __future__ import annotations
 
-import asyncio
 import json
 import os
 import sys
 import time
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from sci_fi_dashboard.mcp_servers.execution_server import (
+    _SECRET_PATTERNS,
     ProcessSession,
     _err,
     _ok,
@@ -22,10 +23,7 @@ from sci_fi_dashboard.mcp_servers.execution_server import (
     _validate_auth,
     _validate_command,
     _validate_workdir,
-    _ALLOWED_COMMANDS,
-    _SECRET_PATTERNS,
 )
-
 
 # ---------------------------------------------------------------------------
 # Auth validation
@@ -109,10 +107,12 @@ class TestValidateWorkdir:
 
     def test_workspace_root_allowed(self):
         from sci_fi_dashboard.mcp_servers.execution_server import _WORKSPACE_ROOT
+
         assert _validate_workdir(str(_WORKSPACE_ROOT)) is None
 
     def test_subdir_of_workspace_allowed(self):
         from sci_fi_dashboard.mcp_servers.execution_server import _WORKSPACE_ROOT
+
         subdir = str(_WORKSPACE_ROOT / "tests")
         assert _validate_workdir(subdir) is None
 
@@ -130,23 +130,31 @@ class TestValidateWorkdir:
 
 class TestScrubEnv:
     def test_removes_api_keys(self):
-        with patch.dict(os.environ, {
-            "GEMINI_API_KEY": "secret",
-            "OPENAI_API_KEY": "secret2",
-            "PATH": "/usr/bin",
-            "HOME": "/home/user",
-        }, clear=False):
+        with patch.dict(
+            os.environ,
+            {
+                "GEMINI_API_KEY": "secret",
+                "OPENAI_API_KEY": "secret2",
+                "PATH": "/usr/bin",
+                "HOME": "/home/user",
+            },
+            clear=False,
+        ):
             env = _scrubbed_env()
             assert "GEMINI_API_KEY" not in env
             assert "OPENAI_API_KEY" not in env
             assert "PATH" in env
 
     def test_removes_token_vars(self):
-        with patch.dict(os.environ, {
-            "SYNAPSE_EXEC_TOKEN": "tok",
-            "WHATSAPP_BRIDGE_TOKEN": "tok2",
-            "GITHUB_TOKEN": "ghp_abc",
-        }, clear=False):
+        with patch.dict(
+            os.environ,
+            {
+                "SYNAPSE_EXEC_TOKEN": "tok",
+                "WHATSAPP_BRIDGE_TOKEN": "tok2",
+                "GITHUB_TOKEN": "ghp_abc",
+            },
+            clear=False,
+        ):
             env = _scrubbed_env()
             assert "SYNAPSE_EXEC_TOKEN" not in env
             assert "WHATSAPP_BRIDGE_TOKEN" not in env
@@ -229,9 +237,7 @@ class TestExecAuthGate:
         from sci_fi_dashboard.mcp_servers.execution_server import call_tool
 
         with patch("sci_fi_dashboard.mcp_servers.execution_server._EXEC_TOKEN", "secret"):
-            result = await call_tool(
-                "exec", {"auth_token": "wrong", "command": "echo hi"}
-            )
+            result = await call_tool("exec", {"auth_token": "wrong", "command": "echo hi"})
 
         data = json.loads(result[0].text)
         assert "error" in data
@@ -267,9 +273,9 @@ class TestExecSessionCap:
     @pytest.mark.asyncio
     async def test_session_cap_enforced(self):
         from sci_fi_dashboard.mcp_servers.execution_server import (
+            _MAX_SESSIONS,
             _handle_exec,
             _sessions,
-            _MAX_SESSIONS,
         )
 
         # Fill up sessions
@@ -279,13 +285,13 @@ class TestExecSessionCap:
             for i in range(_MAX_SESSIONS):
                 _sessions[f"s{i}"] = MagicMock()
 
-            with patch(
-                "sci_fi_dashboard.mcp_servers.execution_server._EXEC_TOKEN", "tok"
-            ):
-                result = await _handle_exec({
-                    "auth_token": "tok",
-                    "command": "echo hi",
-                })
+            with patch("sci_fi_dashboard.mcp_servers.execution_server._EXEC_TOKEN", "tok"):
+                result = await _handle_exec(
+                    {
+                        "auth_token": "tok",
+                        "command": "echo hi",
+                    }
+                )
 
             data = json.loads(result[0].text)
             assert "error" in data
@@ -306,9 +312,7 @@ class TestProcessAuthGate:
         from sci_fi_dashboard.mcp_servers.execution_server import call_tool
 
         with patch("sci_fi_dashboard.mcp_servers.execution_server._EXEC_TOKEN", "tok"):
-            result = await call_tool(
-                "process", {"action": "list"}
-            )
+            result = await call_tool("process", {"action": "list"})
 
         data = json.loads(result[0].text)
         assert "error" in data
@@ -323,17 +327,15 @@ class TestProcessAuthGate:
         old = dict(_sessions)
         try:
             _sessions.clear()
-            _sessions["s1"] = ProcessSession(
-                id="s1", command="echo test", pid=1234
-            )
+            _sessions["s1"] = ProcessSession(id="s1", command="echo test", pid=1234)
 
-            with patch(
-                "sci_fi_dashboard.mcp_servers.execution_server._EXEC_TOKEN", "tok"
-            ):
-                result = await _handle_process({
-                    "auth_token": "tok",
-                    "action": "list",
-                })
+            with patch("sci_fi_dashboard.mcp_servers.execution_server._EXEC_TOKEN", "tok"):
+                result = await _handle_process(
+                    {
+                        "auth_token": "tok",
+                        "action": "list",
+                    }
+                )
 
             data = json.loads(result[0].text)
             assert isinstance(data, list)
@@ -365,14 +367,14 @@ class TestProcessPoll:
             sess.pending_stderr = ["warn\n"]
             _sessions["s1"] = sess
 
-            with patch(
-                "sci_fi_dashboard.mcp_servers.execution_server._EXEC_TOKEN", "tok"
-            ):
-                result = await _handle_process({
-                    "auth_token": "tok",
-                    "action": "poll",
-                    "sessionId": "s1",
-                })
+            with patch("sci_fi_dashboard.mcp_servers.execution_server._EXEC_TOKEN", "tok"):
+                result = await _handle_process(
+                    {
+                        "auth_token": "tok",
+                        "action": "poll",
+                        "sessionId": "s1",
+                    }
+                )
 
             data = json.loads(result[0].text)
             assert data["stdout"] == "hello\n"
@@ -395,14 +397,14 @@ class TestProcessPoll:
         try:
             _sessions.clear()
 
-            with patch(
-                "sci_fi_dashboard.mcp_servers.execution_server._EXEC_TOKEN", "tok"
-            ):
-                result = await _handle_process({
-                    "auth_token": "tok",
-                    "action": "poll",
-                    "sessionId": "missing",
-                })
+            with patch("sci_fi_dashboard.mcp_servers.execution_server._EXEC_TOKEN", "tok"):
+                result = await _handle_process(
+                    {
+                        "auth_token": "tok",
+                        "action": "poll",
+                        "sessionId": "missing",
+                    }
+                )
 
             data = json.loads(result[0].text)
             assert "error" in data
@@ -434,15 +436,15 @@ class TestProcessLog:
             sess.exit_code = 0
             _sessions["s1"] = sess
 
-            with patch(
-                "sci_fi_dashboard.mcp_servers.execution_server._EXEC_TOKEN", "tok"
-            ):
-                result = await _handle_process({
-                    "auth_token": "tok",
-                    "action": "log",
-                    "sessionId": "s1",
-                    "lines": 3,
-                })
+            with patch("sci_fi_dashboard.mcp_servers.execution_server._EXEC_TOKEN", "tok"):
+                result = await _handle_process(
+                    {
+                        "auth_token": "tok",
+                        "action": "log",
+                        "sessionId": "s1",
+                        "lines": 3,
+                    }
+                )
 
             data = json.loads(result[0].text)
             assert data["status"] == "exited"
@@ -476,14 +478,14 @@ class TestProcessKill:
             sess.exit_code = 0
             _sessions["s1"] = sess
 
-            with patch(
-                "sci_fi_dashboard.mcp_servers.execution_server._EXEC_TOKEN", "tok"
-            ):
-                result = await _handle_process({
-                    "auth_token": "tok",
-                    "action": "kill",
-                    "sessionId": "s1",
-                })
+            with patch("sci_fi_dashboard.mcp_servers.execution_server._EXEC_TOKEN", "tok"):
+                result = await _handle_process(
+                    {
+                        "auth_token": "tok",
+                        "action": "kill",
+                        "sessionId": "s1",
+                    }
+                )
 
             data = json.loads(result[0].text)
             assert data["status"] == "already_exited"
@@ -512,15 +514,15 @@ class TestProcessWrite:
             sess._proc = None  # No process
             _sessions["s1"] = sess
 
-            with patch(
-                "sci_fi_dashboard.mcp_servers.execution_server._EXEC_TOKEN", "tok"
-            ):
-                result = await _handle_process({
-                    "auth_token": "tok",
-                    "action": "write",
-                    "sessionId": "s1",
-                    "data": "hello",
-                })
+            with patch("sci_fi_dashboard.mcp_servers.execution_server._EXEC_TOKEN", "tok"):
+                result = await _handle_process(
+                    {
+                        "auth_token": "tok",
+                        "action": "write",
+                        "sessionId": "s1",
+                        "data": "hello",
+                    }
+                )
 
             data = json.loads(result[0].text)
             assert "error" in data
@@ -548,14 +550,14 @@ class TestProcessUnknownAction:
             _sessions.clear()
             _sessions["s1"] = ProcessSession(id="s1", command="echo")
 
-            with patch(
-                "sci_fi_dashboard.mcp_servers.execution_server._EXEC_TOKEN", "tok"
-            ):
-                result = await _handle_process({
-                    "auth_token": "tok",
-                    "action": "badaction",
-                    "sessionId": "s1",
-                })
+            with patch("sci_fi_dashboard.mcp_servers.execution_server._EXEC_TOKEN", "tok"):
+                result = await _handle_process(
+                    {
+                        "auth_token": "tok",
+                        "action": "badaction",
+                        "sessionId": "s1",
+                    }
+                )
 
             data = json.loads(result[0].text)
             assert "error" in data

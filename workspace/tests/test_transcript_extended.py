@@ -17,13 +17,13 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 try:
+    from sci_fi_dashboard.multiuser.session_store import SessionEntry
     from sci_fi_dashboard.multiuser.transcript import (
         RepairReport,
         repair_all_transcripts,
         repair_orphaned_tool_pairs,
         transcript_path,
     )
-    from sci_fi_dashboard.multiuser.session_store import SessionEntry
 
     AVAILABLE = True
 except ImportError:
@@ -43,9 +43,7 @@ class TestRepairReport:
         assert r.total_messages_after == 0
 
     def test_repairs_made_property(self):
-        r = RepairReport(
-            orphaned_tool_results_removed=2, orphaned_tool_calls_removed=1
-        )
+        r = RepairReport(orphaned_tool_results_removed=2, orphaned_tool_calls_removed=1)
         assert r.repairs_made == 3
 
 
@@ -115,7 +113,7 @@ class TestRepairAllTranscripts:
             {"role": "tool", "tool_call_id": "orphan1", "content": "result"},
             {"role": "user", "content": "hi"},
         ]
-        jsonl.write_text("\n".join(json.dumps(l) for l in lines) + "\n")
+        jsonl.write_text("\n".join(json.dumps(item) for item in lines) + "\n")
 
         count = repair_all_transcripts(tmp_path)
         assert count == 1
@@ -137,7 +135,7 @@ class TestRepairAllTranscripts:
             {"role": "user", "content": "hi"},
             {"role": "assistant", "content": "hello"},
         ]
-        jsonl.write_text("\n".join(json.dumps(l) for l in lines) + "\n")
+        jsonl.write_text("\n".join(json.dumps(item) for item in lines) + "\n")
 
         count = repair_all_transcripts(tmp_path)
         assert count == 0

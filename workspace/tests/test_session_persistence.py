@@ -6,14 +6,11 @@ SESS-06 (sessions API), SESS-07 (this test file itself).
 
 All disk operations use `tmp_path` to avoid touching real ~/.synapse/ data.
 """
+
 from __future__ import annotations
 
-import asyncio
-import json
 import sys
-import time
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -25,6 +22,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 # ---------------------------------------------------------------------------
 
 try:
+    from sci_fi_dashboard.multiuser.compaction import estimate_tokens
+    from sci_fi_dashboard.multiuser.conversation_cache import ConversationCache
     from sci_fi_dashboard.multiuser.session_key import build_session_key
     from sci_fi_dashboard.multiuser.session_store import SessionStore
     from sci_fi_dashboard.multiuser.transcript import (
@@ -32,8 +31,6 @@ try:
         load_messages,
         transcript_path,
     )
-    from sci_fi_dashboard.multiuser.compaction import estimate_tokens
-    from sci_fi_dashboard.multiuser.conversation_cache import ConversationCache
 
     _AVAILABLE = True
 except ImportError:
@@ -242,16 +239,11 @@ def test_compaction_trigger_threshold():
     Each message of 100 chars = 100//4 = 25 tokens.
     800 messages * 25 = 20,000 tokens > 19,200 threshold.
     """
-    big_messages = [
-        {"role": "user", "content": "x" * 100}
-        for _ in range(800)
-    ]
+    big_messages = [{"role": "user", "content": "x" * 100} for _ in range(800)]
     tokens = estimate_tokens(big_messages)
     ctx_window = 32_000
     threshold = int(ctx_window * 0.6)
-    assert tokens > threshold, (
-        f"Expected > {threshold} tokens, got {tokens}"
-    )
+    assert tokens > threshold, f"Expected > {threshold} tokens, got {tokens}"
 
 
 @_skip
@@ -271,7 +263,7 @@ def test_compaction_below_threshold():
 def test_estimate_tokens_heuristic():
     """estimate_tokens returns chars//4 per message."""
     messages = [
-        {"role": "user", "content": "abcd"},        # 4 chars -> 1 token
+        {"role": "user", "content": "abcd"},  # 4 chars -> 1 token
         {"role": "assistant", "content": "abcdef"},  # 6 chars -> 1 token
     ]
     # 4//4 + 6//4 = 1 + 1 = 2
@@ -395,9 +387,10 @@ async def test_session_store_delete_then_update_rotates_session_id(tmp_path):
 _APP_AVAILABLE = False
 try:
     import os as _os
+
     _os.environ.setdefault("SYNAPSE_GATEWAY_TOKEN", "test-token")
-    from fastapi.testclient import TestClient
     from sci_fi_dashboard.api_gateway import app  # noqa: F401
+
     _APP_AVAILABLE = True
 except Exception:
     pass
@@ -407,9 +400,11 @@ except Exception:
 def api_client():
     """Create a test client for the FastAPI app."""
     import os
+
     os.environ.setdefault("SYNAPSE_GATEWAY_TOKEN", "test-token")
     from fastapi.testclient import TestClient
     from sci_fi_dashboard.api_gateway import app
+
     return TestClient(app, headers={"Authorization": "Bearer test-token"})
 
 
@@ -435,24 +430,26 @@ class TestSessionResetCommand:
 
     @pytest.mark.asyncio
     async def test_new_returns_confirmation(self, tmp_path):
-        from sci_fi_dashboard.multiuser.session_store import SessionStore
         import sci_fi_dashboard.pipeline_helpers as ph
+        from sci_fi_dashboard.multiuser.session_store import SessionStore
 
         store = SessionStore("the_creator", data_root=tmp_path)
         session_key = "agent:the_creator:whatsapp:dm:+1234567890"
         await store.update(session_key, {})
 
         reply = await ph._handle_new_command(
-            session_key=session_key, agent_id="the_creator",
-            data_root=tmp_path, session_store=store,
+            session_key=session_key,
+            agent_id="the_creator",
+            data_root=tmp_path,
+            session_store=store,
         )
         assert any(w in reply.lower() for w in ("archive", "reset", "fresh", "remember"))
 
     @pytest.mark.asyncio
     async def test_new_archives_transcript(self, tmp_path):
-        from sci_fi_dashboard.multiuser.session_store import SessionStore
-        from sci_fi_dashboard.multiuser.transcript import transcript_path, append_message
         import sci_fi_dashboard.pipeline_helpers as ph
+        from sci_fi_dashboard.multiuser.session_store import SessionStore
+        from sci_fi_dashboard.multiuser.transcript import append_message, transcript_path
 
         store = SessionStore("the_creator", data_root=tmp_path)
         session_key = "agent:the_creator:whatsapp:dm:+1234567890"
@@ -463,8 +460,10 @@ class TestSessionResetCommand:
         await append_message(t_path, {"role": "assistant", "content": "hi"})
 
         await ph._handle_new_command(
-            session_key=session_key, agent_id="the_creator",
-            data_root=tmp_path, session_store=store,
+            session_key=session_key,
+            agent_id="the_creator",
+            data_root=tmp_path,
+            session_store=store,
         )
 
         assert not t_path.exists()
@@ -473,16 +472,18 @@ class TestSessionResetCommand:
 
     @pytest.mark.asyncio
     async def test_new_rotates_session_id(self, tmp_path):
-        from sci_fi_dashboard.multiuser.session_store import SessionStore
         import sci_fi_dashboard.pipeline_helpers as ph
+        from sci_fi_dashboard.multiuser.session_store import SessionStore
 
         store = SessionStore("the_creator", data_root=tmp_path)
         session_key = "agent:the_creator:whatsapp:dm:+1234567890"
         old_entry = await store.update(session_key, {})
 
         await ph._handle_new_command(
-            session_key=session_key, agent_id="the_creator",
-            data_root=tmp_path, session_store=store,
+            session_key=session_key,
+            agent_id="the_creator",
+            data_root=tmp_path,
+            session_store=store,
         )
 
         new_entry = await store.get(session_key)
@@ -491,9 +492,9 @@ class TestSessionResetCommand:
     @pytest.mark.asyncio
     async def test_background_ingestion_runs_full_loop(self, tmp_path, monkeypatch):
         """Background task calls both add_memory (vector) and extract (KG) per batch."""
-        from sci_fi_dashboard.multiuser.transcript import append_message
-        from sci_fi_dashboard import session_ingest
         import sci_fi_dashboard._deps as deps
+        from sci_fi_dashboard import session_ingest
+        from sci_fi_dashboard.multiuser.transcript import append_message
 
         # Write archived JSONL with 6 turns
         archived = tmp_path / "abc.jsonl.deleted.1234567890000"
@@ -545,16 +546,18 @@ class TestSessionResetCommand:
 
     @pytest.mark.asyncio
     async def test_history_empty_after_new(self, tmp_path):
-        from sci_fi_dashboard.multiuser.session_store import SessionStore
-        from sci_fi_dashboard.multiuser.transcript import transcript_path, load_messages
         import sci_fi_dashboard.pipeline_helpers as ph
+        from sci_fi_dashboard.multiuser.session_store import SessionStore
+        from sci_fi_dashboard.multiuser.transcript import load_messages, transcript_path
 
         store = SessionStore("the_creator", data_root=tmp_path)
         session_key = "agent:the_creator:whatsapp:dm:+1234567890"
 
         await ph._handle_new_command(
-            session_key=session_key, agent_id="the_creator",
-            data_root=tmp_path, session_store=store,
+            session_key=session_key,
+            agent_id="the_creator",
+            data_root=tmp_path,
+            session_store=store,
         )
 
         new_entry = await store.get(session_key)

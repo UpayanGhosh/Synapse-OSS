@@ -4,11 +4,12 @@ Cron Scheduler — failure alerting.
 Sends an alert when a job's consecutive error count meets the threshold,
 respecting a cooldown window to avoid spamming.
 """
+
 from __future__ import annotations
 
 import logging
 import time
-from typing import Any, Optional
+from typing import Any
 
 from .types import CronFailureAlert, CronJob, DeliveryMode
 
@@ -18,7 +19,7 @@ logger = logging.getLogger(__name__)
 async def check_and_send_failure_alert(
     job: CronJob,
     alert: CronFailureAlert,
-    channel_registry: Optional[Any] = None,
+    channel_registry: Any | None = None,
 ) -> bool:
     """Send a failure alert if conditions are met.
 
@@ -62,7 +63,7 @@ async def check_and_send_failure_alert(
 async def _send_alert(
     message: str,
     alert: CronFailureAlert,
-    channel_registry: Optional[Any],
+    channel_registry: Any | None,
 ) -> bool:
     """Dispatch the alert through the configured channel."""
     mode = DeliveryMode(alert.mode)

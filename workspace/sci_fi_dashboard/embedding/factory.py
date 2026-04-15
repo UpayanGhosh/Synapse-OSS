@@ -38,6 +38,7 @@ def create_provider(config: dict | None = None) -> EmbeddingProvider:
         logger.debug("[Embedding] fastembed not installed, trying Gemini API...")
 
     import os
+
     if os.environ.get("GEMINI_API_KEY"):
         try:
             from sci_fi_dashboard.embedding.gemini_provider import GeminiAPIProvider
@@ -47,14 +48,10 @@ def create_provider(config: dict | None = None) -> EmbeddingProvider:
         except Exception:
             pass
 
-    raise RuntimeError(
-        "No embedding provider available. Install fastembed: pip install fastembed"
-    )
+    raise RuntimeError("No embedding provider available. Install fastembed: pip install fastembed")
 
 
-def _create_explicit(
-    name: str, *, model=None, cache_dir=None, threads=None
-) -> EmbeddingProvider:
+def _create_explicit(name: str, *, model=None, cache_dir=None, threads=None) -> EmbeddingProvider:
     if name == "fastembed":
         from sci_fi_dashboard.embedding.fastembed_provider import FastEmbedProvider
 

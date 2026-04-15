@@ -1,11 +1,11 @@
 """Integration tests for GET /snapshots API endpoint."""
+
 from __future__ import annotations
 
 import sys
 from types import ModuleType
 from unittest.mock import patch
 
-import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -25,13 +25,12 @@ from sci_fi_dashboard.middleware import _require_gateway_auth  # noqa: E402
 from sci_fi_dashboard.routes.snapshots import router  # noqa: E402 (deps already stubbed)
 from sci_fi_dashboard.snapshot_engine import SnapshotEngine  # noqa: E402
 
-
 # ---------------------------------------------------------------------------
 # Helper
 # ---------------------------------------------------------------------------
 
 
-def _client(engine: "SnapshotEngine | None") -> TestClient:
+def _client(engine: SnapshotEngine | None) -> TestClient:
     """Build an isolated FastAPI app with auth bypassed and engine injected."""
     app = FastAPI()
     app.include_router(router)
@@ -105,7 +104,14 @@ class TestSnapshotsAPI:
 
         data = resp.json()
         assert len(data) == 1
-        for field in ("id", "timestamp", "description", "change_type", "zone2_paths", "pre_snapshot_id"):
+        for field in (
+            "id",
+            "timestamp",
+            "description",
+            "change_type",
+            "zone2_paths",
+            "pre_snapshot_id",
+        ):
             assert field in data[0], f"Missing field: {field}"
 
     def test_list_snapshots_engine_not_initialized_returns_503(self):

@@ -40,7 +40,7 @@ async def get_news_context(user_message: str, session_context: dict | None) -> N
         )
 
     lines = [f"Latest headlines from {feed_url}:\n"]
-    for i, (title, link) in enumerate(zip(headlines, links), 1):
+    for i, (title, link) in enumerate(zip(headlines, links, strict=False), 1):
         lines.append(f"{i}. {title}")
         if link:
             lines.append(f"   {link}")
@@ -51,9 +51,7 @@ async def get_news_context(user_message: str, session_context: dict | None) -> N
     )
 
 
-async def _fetch_headlines(
-    httpx_module, feed_url: str
-) -> tuple[list[str], list[str], str]:
+async def _fetch_headlines(httpx_module, feed_url: str) -> tuple[list[str], list[str], str]:
     """
     Attempt to fetch and parse an RSS feed. Returns (titles, links, feed_url) or empty lists.
     """
@@ -94,10 +92,7 @@ def _parse_rss(xml_text: str, feed_url: str) -> tuple[list[str], list[str], str]
 
         # Link — RSS uses <link> text; Atom uses <link href="...">
         link_el = item.find("link") or item.find("{http://www.w3.org/2005/Atom}link")
-        if link_el is not None:
-            link = link_el.get("href") or (link_el.text or "").strip()
-        else:
-            link = ""
+        link = link_el.get("href") or (link_el.text or "").strip() if link_el is not None else ""
 
         if title:
             titles.append(title)

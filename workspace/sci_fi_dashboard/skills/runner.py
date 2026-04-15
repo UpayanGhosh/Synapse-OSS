@@ -123,9 +123,7 @@ class SkillRunner:
                         execution_ms=elapsed_ms,
                     )
             except Exception as exc:
-                logger.warning(
-                    "[Skills] Entry point '%s' failed: %s", manifest.entry_point, exc
-                )
+                logger.warning("[Skills] Entry point '%s' failed: %s", manifest.entry_point, exc)
                 pre_result = None
 
         # ------------------------------------------------------------------

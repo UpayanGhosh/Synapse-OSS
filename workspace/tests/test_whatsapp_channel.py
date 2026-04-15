@@ -274,9 +274,7 @@ async def test_gateway_get_qr_returns_qr_string(monkeypatch):
     try:
         import sci_fi_dashboard.api_gateway as gw
     except Exception:
-        pytest.skip(
-            "api_gateway not importable in test environment (sqlite_vec/lancedb absent)"
-        )
+        pytest.skip("api_gateway not importable in test environment (sqlite_vec/lancedb absent)")
     from starlette.testclient import TestClient
 
     # Patch WhatsAppChannel.get_qr to return a fake QR string
@@ -311,9 +309,7 @@ async def test_gateway_get_qr_returns_503_when_bridge_down(monkeypatch):
     try:
         import sci_fi_dashboard.api_gateway as gw
     except Exception:
-        pytest.skip(
-            "api_gateway not importable in test environment (sqlite_vec/lancedb absent)"
-        )
+        pytest.skip("api_gateway not importable in test environment (sqlite_vec/lancedb absent)")
     from starlette.testclient import TestClient
 
     # Patch WhatsAppChannel.get_qr to return None (bridge down or already authenticated)
@@ -346,9 +342,7 @@ async def test_gateway_get_qr_returns_503_when_whatsapp_not_registered(monkeypat
     try:
         import sci_fi_dashboard.api_gateway as gw
     except Exception:
-        pytest.skip(
-            "api_gateway not importable in test environment (sqlite_vec/lancedb absent)"
-        )
+        pytest.skip("api_gateway not importable in test environment (sqlite_vec/lancedb absent)")
     from starlette.testclient import TestClient
 
     # Patch channel_registry.get to return None for 'whatsapp'

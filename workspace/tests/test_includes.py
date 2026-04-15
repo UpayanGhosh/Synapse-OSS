@@ -8,6 +8,7 @@ Covers:
   - Depth limit triggers RecursionError
   - Missing / invalid include files skipped gracefully
 """
+
 from __future__ import annotations
 
 import json
@@ -20,7 +21,6 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from config.includes import resolve_includes
-
 
 # ---------------------------------------------------------------------------
 # Helpers

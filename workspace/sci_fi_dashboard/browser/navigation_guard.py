@@ -63,7 +63,7 @@ async def assert_navigation_result_allowed(url: str) -> None:
 
 
 @contextlib.asynccontextmanager
-async def redirect_guard(page: "Page"):
+async def redirect_guard(page: Page):
     """Context manager that validates every redirect hop during a navigation.
 
     Usage::
@@ -77,7 +77,7 @@ async def redirect_guard(page: "Page"):
     """
     blocked_url: str | None = None
 
-    async def _on_response(response: "Response") -> None:
+    async def _on_response(response: Response) -> None:
         nonlocal blocked_url
         # Only inspect redirect responses (3xx)
         if 300 <= response.status < 400:

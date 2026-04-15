@@ -25,6 +25,7 @@ Polling resilience (Phase 5):
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import os
 import shutil
@@ -169,7 +170,10 @@ class WhatsAppChannel(BaseChannel):
                 self._status = "crashed"
                 logger.warning(
                     "[WA] Bridge exited (code %d), restarting in %.1fs (attempt %d/%d)",
-                    rc, backoff, attempts + 1, self.MAX_RESTARTS,
+                    rc,
+                    backoff,
+                    attempts + 1,
+                    self.MAX_RESTARTS,
                 )
 
                 attempts += 1
@@ -246,9 +250,7 @@ class WhatsAppChannel(BaseChannel):
                 async with httpx.AsyncClient(timeout=2.0) as client:
                     r = await client.get(f"http://127.0.0.1:{self._port}/health")
                     if r.status_code == 401:
-                        logger.warning(
-                            "[WA] Health check returned 401 — clearing stale auth cache"
-                        )
+                        logger.warning("[WA] Health check returned 401 — clearing stale auth cache")
                         self._clear_auth_cache()
                         bridge_health = {
                             "status": "degraded",
@@ -272,6 +274,7 @@ class WhatsAppChannel(BaseChannel):
         if _AUTH_STATE_DIR.exists():
             try:
                 import shutil as _shutil
+
                 _shutil.rmtree(_AUTH_STATE_DIR, ignore_errors=True)
                 logger.info("[WA] Cleared auth_state at %s", _AUTH_STATE_DIR)
             except OSError as exc:
@@ -326,9 +329,10 @@ class WhatsAppChannel(BaseChannel):
                     r = await client.get(f"http://127.0.0.1:{self._port}/health")
                     if r.status_code == 200:
                         health = r.json()
-                        if health.get("connection_state") == "connected" or health.get(
-                            "status"
-                        ) == "connected":
+                        if (
+                            health.get("connection_state") == "connected"
+                            or health.get("status") == "connected"
+                        ):
                             logger.info("[WA] QR login successful — bridge connected")
                             return True
             except httpx.RequestError:
@@ -386,9 +390,7 @@ class WhatsAppChannel(BaseChannel):
                 return r.status_code == 200
         except httpx.RequestError as exc:
             if is_safe_to_retry_send(exc):
-                logger.warning(
-                    "[WA] send() pre-connect failure (retryable): %s", exc
-                )
+                logger.warning("[WA] send() pre-connect failure (retryable): %s", exc)
             else:
                 logger.error("[WA] send() failed: %s", exc)
             return False
@@ -513,9 +515,7 @@ class WhatsAppChannel(BaseChannel):
     async def get_group_metadata(self, group_jid: str) -> dict | None:
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
-                r = await client.get(
-                    f"http://127.0.0.1:{self._port}/groups/{group_jid}"
-                )
+                r = await client.get(f"http://127.0.0.1:{self._port}/groups/{group_jid}")
                 if r.status_code == 200:
                     return r.json()
         except httpx.RequestError:
@@ -579,9 +579,7 @@ class WhatsAppChannel(BaseChannel):
     # Audio transcription
     # ------------------------------------------------------------------
 
-    async def _maybe_transcribe_audio(
-        self, cm: ChannelMessage, raw_payload: dict
-    ) -> None:
+    async def _maybe_transcribe_audio(self, cm: ChannelMessage, raw_payload: dict) -> None:
         """Transcribe audio/voice messages via Groq Whisper and update *cm* in-place.
 
         If the incoming message is an audio type with a ``mediaUrl``, the audio
@@ -659,10 +657,8 @@ class WhatsAppChannel(BaseChannel):
         finally:
             # Clean up temp file
             if tmp_path is not None:
-                try:
+                with contextlib.suppress(OSError):
                     tmp_path.unlink(missing_ok=True)
-                except OSError:
-                    pass
 
     # ------------------------------------------------------------------
     # Internal helpers

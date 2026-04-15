@@ -8,17 +8,16 @@ Covers:
 - CRON-04: timeout wrapping raises asyncio.TimeoutError
 - DASH-01: SSE events (cron.job_start / cron.job_done) emitted during cron execution
 """
+
 from __future__ import annotations
 
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from sci_fi_dashboard.cron.isolated_agent import run_isolated_agent
 from sci_fi_dashboard.cron.types import CronPayload, PayloadKind
 from sci_fi_dashboard.schemas import ChatRequest
-
 
 # ---------------------------------------------------------------------------
 # CRON-01: ChatRequest.session_key field
@@ -186,6 +185,7 @@ class TestTimeoutWrapping:
     @pytest.mark.asyncio
     async def test_execute_fn_timeout_raises(self):
         """asyncio.wait_for raises TimeoutError when execute_fn exceeds the deadline (CRON-04)."""
+
         async def slow_fn(message: str, session_key: str, **kwargs):
             await asyncio.sleep(5)
             return "late"
@@ -219,11 +219,13 @@ class TestCronSSEEmission:
         )
 
         # Add a test job
-        job = svc.add({
-            "schedule": {"kind": "every", "every_ms": 60_000, "anchor_ms": 0},
-            "payload": {"kind": "agentTurn", "message": "sse test"},
-            "name": "sse-test-job",
-        })
+        job = svc.add(
+            {
+                "schedule": {"kind": "every", "every_ms": 60_000, "anchor_ms": 0},
+                "payload": {"kind": "agentTurn", "message": "sse test"},
+                "name": "sse-test-job",
+            }
+        )
 
         emitted_events: list[str] = []
         mock_emitter = MagicMock()
@@ -252,11 +254,13 @@ class TestCronSSEEmission:
             channel_registry=None,
         )
 
-        job = svc.add({
-            "schedule": {"kind": "every", "every_ms": 60_000, "anchor_ms": 0},
-            "payload": {"kind": "agentTurn", "message": "error test"},
-            "name": "error-test-job",
-        })
+        job = svc.add(
+            {
+                "schedule": {"kind": "every", "every_ms": 60_000, "anchor_ms": 0},
+                "payload": {"kind": "agentTurn", "message": "error test"},
+                "name": "error-test-job",
+            }
+        )
 
         emitted_events: list[str] = []
         mock_emitter = MagicMock()

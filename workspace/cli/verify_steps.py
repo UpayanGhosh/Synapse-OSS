@@ -11,7 +11,6 @@ Entry point: ``run_verify(non_interactive=False) -> int``
 
 import asyncio
 import logging
-import sys
 
 logger = logging.getLogger(__name__)
 
@@ -161,9 +160,7 @@ def _validate_channels(channels: dict) -> list[tuple[str, bool, str]]:
 
                 info = validate_telegram_token(cfg.get("token", ""))
                 username = info.get("username", "") if isinstance(info, dict) else ""
-                results.append(
-                    ("telegram", True, f"@{username}" if username else "Connected")
-                )
+                results.append(("telegram", True, f"@{username}" if username else "Connected"))
             except ValueError as exc:
                 results.append(("telegram", False, str(exc)))
             except Exception as exc:  # noqa: BLE001
@@ -175,9 +172,7 @@ def _validate_channels(channels: dict) -> list[tuple[str, bool, str]]:
 
                 info = validate_discord_token(cfg.get("token", ""))
                 username = info.get("username", "") if isinstance(info, dict) else ""
-                results.append(
-                    ("discord", True, f"@{username}" if username else "Connected")
-                )
+                results.append(("discord", True, f"@{username}" if username else "Connected"))
             except ValueError as exc:
                 results.append(("discord", False, str(exc)))
             except Exception as exc:  # noqa: BLE001
@@ -187,9 +182,7 @@ def _validate_channels(channels: dict) -> list[tuple[str, bool, str]]:
             try:
                 from cli.channel_steps import validate_slack_tokens  # noqa: PLC0415
 
-                info = validate_slack_tokens(
-                    cfg.get("bot_token", ""), cfg.get("app_token", "")
-                )
+                info = validate_slack_tokens(cfg.get("bot_token", ""), cfg.get("app_token", ""))
                 team = info.get("team", "") if isinstance(info, dict) else ""
                 results.append(("slack", True, f"Team: {team}" if team else "Connected"))
             except ValueError as exc:
@@ -256,9 +249,9 @@ def _print_results_plain(
     print(f"{'Component':<30} {'Status':<8} Notes")
     print("-" * 50)
 
-    all_results = [
-        (f"provider: {n}", ok, msg) for n, ok, msg in provider_results
-    ] + [(f"channel: {n}", ok, msg) for n, ok, msg in channel_results]
+    all_results = [(f"provider: {n}", ok, msg) for n, ok, msg in provider_results] + [
+        (f"channel: {n}", ok, msg) for n, ok, msg in channel_results
+    ]
 
     for name, ok, msg in all_results:
         status = "PASS" if ok else "FAIL"
@@ -300,10 +293,7 @@ def run_verify(non_interactive: bool = False) -> int:
 
     config_file = config.data_root / "synapse.json"
     if not config_file.exists():
-        _print(
-            "[red]No synapse.json found at "
-            f"{config_file}.[/red]"
-        )
+        _print("[red]No synapse.json found at " f"{config_file}.[/red]")
         _print("[yellow]Run 'synapse setup' first.[/yellow]")
         return 1
 
@@ -356,7 +346,5 @@ def run_verify(non_interactive: bool = False) -> int:
             _print(f"  [red]✗[/red] {name}: {msg}")
         return 1
 
-    _print(
-        f"\n[green]All {len(all_results)} component(s) verified successfully.[/green]"
-    )
+    _print(f"\n[green]All {len(all_results)} component(s) verified successfully.[/green]")
     return 0

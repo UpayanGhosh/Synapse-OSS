@@ -6,7 +6,6 @@ built-in tool handlers, command shortcuts, HTTP invocation helpers, and
 tool catalog builder.
 """
 
-import asyncio
 import os
 import sys
 
@@ -15,10 +14,8 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from sci_fi_dashboard.tool_features import (
-    CommandResult,
     ToolInvokeRequest,
     ToolInvokeResponse,
-    UserToolDef,
     build_tool_catalog,
     clear_model_override,
     format_tool_footer,
@@ -30,7 +27,6 @@ from sci_fi_dashboard.tool_features import (
     parse_command_shortcut,
     set_model_override,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helper: reset global override store between tests
@@ -72,9 +68,7 @@ class TestToolFooter:
     @pytest.mark.unit
     def test_footer_empty_tools(self):
         """No tools used returns empty string."""
-        result = format_tool_footer(
-            tools_used=[], total_tool_time=0.0, round_count=0
-        )
+        result = format_tool_footer(tools_used=[], total_tool_time=0.0, round_count=0)
         assert result == ""
 
     @pytest.mark.unit
@@ -93,9 +87,7 @@ class TestToolFooter:
     @pytest.mark.unit
     def test_footer_is_ascii_safe(self):
         """Footer must be encodable to cp1252 (Windows console)."""
-        result = format_tool_footer(
-            tools_used=["tool_a"], total_tool_time=0.5, round_count=1
-        )
+        result = format_tool_footer(tools_used=["tool_a"], total_tool_time=0.5, round_count=1)
         # Should not raise
         result.encode("cp1252")
 
@@ -136,9 +128,7 @@ class TestSwitchModelTool:
     async def test_valid_role(self):
         """Valid role -> success, override stored."""
         tool = get_switch_model_tool(["casual", "code", "analysis"])
-        result = await tool.handler(
-            {"model_role": "code", "_chat_id": "chat_42"}
-        )
+        result = await tool.handler({"model_role": "code", "_chat_id": "chat_42"})
         assert result["is_error"] is False
         assert "code" in result["content"]
         assert get_model_override("chat_42") == "code"
@@ -148,9 +138,7 @@ class TestSwitchModelTool:
     async def test_invalid_role(self):
         """Invalid role -> error, no side-effects."""
         tool = get_switch_model_tool(["casual", "code"])
-        result = await tool.handler(
-            {"model_role": "nonexistent", "_chat_id": "chat_42"}
-        )
+        result = await tool.handler({"model_role": "nonexistent", "_chat_id": "chat_42"})
         assert result["is_error"] is True
         assert "nonexistent" in result["content"]
         assert get_model_override("chat_42") is None
@@ -173,9 +161,7 @@ class TestImportMemoryTool:
     async def test_valid_content(self):
         """Valid content -> success with _action payload."""
         tool = get_import_memory_tool()
-        result = await tool.handler(
-            {"content": "Python was created by Guido", "category": "fact"}
-        )
+        result = await tool.handler({"content": "Python was created by Guido", "category": "fact"})
         assert result["is_error"] is False
         assert result["_action"] == "ingest_memory"
         assert result["_payload"]["category"] == "fact"
@@ -227,9 +213,7 @@ class TestCommandShortcuts:
     @pytest.mark.unit
     def test_model_command_valid_role(self):
         """'/model code' -> switches model, is_command=True."""
-        result = parse_command_shortcut(
-            "/model code", "chat_1", ["casual", "code"]
-        )
+        result = parse_command_shortcut("/model code", "chat_1", ["casual", "code"])
         assert result.is_command is True
         assert result.action == "switch_model"
         assert "code" in result.response
@@ -238,9 +222,7 @@ class TestCommandShortcuts:
     @pytest.mark.unit
     def test_model_command_invalid_role(self):
         """'/model bogus' -> error, no override stored."""
-        result = parse_command_shortcut(
-            "/model bogus", "chat_1", ["casual", "code"]
-        )
+        result = parse_command_shortcut("/model bogus", "chat_1", ["casual", "code"])
         assert result.is_command is True
         assert "Unknown" in result.response
         assert result.action is None
@@ -249,9 +231,7 @@ class TestCommandShortcuts:
     @pytest.mark.unit
     def test_tools_command(self):
         """/tools -> is_command=True, action=list_tools."""
-        result = parse_command_shortcut(
-            "/tools", "chat_1", ["casual"]
-        )
+        result = parse_command_shortcut("/tools", "chat_1", ["casual"])
         assert result.is_command is True
         assert result.action == "list_tools"
         assert result.response is None
@@ -260,9 +240,7 @@ class TestCommandShortcuts:
     def test_forget_command(self):
         """/forget -> clears override."""
         set_model_override("chat_1", "code")
-        result = parse_command_shortcut(
-            "/forget", "chat_1", ["casual", "code"]
-        )
+        result = parse_command_shortcut("/forget", "chat_1", ["casual", "code"])
         assert result.is_command is True
         assert get_model_override("chat_1") is None
         assert "cleared" in result.response
@@ -270,9 +248,7 @@ class TestCommandShortcuts:
     @pytest.mark.unit
     def test_normal_text_not_command(self):
         """Regular messages are not commands."""
-        result = parse_command_shortcut(
-            "Hello, how are you?", "chat_1", ["casual"]
-        )
+        result = parse_command_shortcut("Hello, how are you?", "chat_1", ["casual"])
         assert result.is_command is False
         assert result.response is None
         assert result.action is None
@@ -295,9 +271,7 @@ class TestHandleToolInvoke:
         async def execute_fn(name, args):
             return {"content": "", "is_error": False}
 
-        resp = await handle_tool_invoke(
-            req, execute_fn, available_tools=["web_search"]
-        )
+        resp = await handle_tool_invoke(req, execute_fn, available_tools=["web_search"])
         assert resp.ok is False
         assert "not found" in resp.error
 
@@ -305,16 +279,12 @@ class TestHandleToolInvoke:
     @pytest.mark.asyncio
     async def test_dry_run(self):
         """dry_run=True -> no execution, response indicates dry run."""
-        req = ToolInvokeRequest(
-            tool="web_search", args={"q": "test"}, dry_run=True
-        )
+        req = ToolInvokeRequest(tool="web_search", args={"q": "test"}, dry_run=True)
 
         async def execute_fn(name, args):
             raise AssertionError("should not be called")
 
-        resp = await handle_tool_invoke(
-            req, execute_fn, available_tools=["web_search"]
-        )
+        resp = await handle_tool_invoke(req, execute_fn, available_tools=["web_search"])
         assert resp.ok is True
         assert resp.dry_run is True
         d = resp.to_dict()
@@ -330,9 +300,7 @@ class TestHandleToolInvoke:
         async def execute_fn(name, args):
             return {"content": "found 3 results", "is_error": False}
 
-        resp = await handle_tool_invoke(
-            req, execute_fn, available_tools=["web_search"]
-        )
+        resp = await handle_tool_invoke(req, execute_fn, available_tools=["web_search"])
         assert resp.ok is True
         assert resp.result["content"] == "found 3 results"
         assert resp.result["is_error"] is False
@@ -440,9 +408,7 @@ class TestToolInvokeResponseSerialization:
     @pytest.mark.unit
     def test_error_to_dict(self):
         """Error response includes error field, omits result."""
-        resp = ToolInvokeResponse(
-            ok=False, tool="hack_nasa", error="not found"
-        )
+        resp = ToolInvokeResponse(ok=False, tool="hack_nasa", error="not found")
         d = resp.to_dict()
         assert d["ok"] is False
         assert d["error"] == "not found"
@@ -468,9 +434,7 @@ class TestBuildToolCatalog:
                     "description": "Search the web",
                     "parameters": {
                         "type": "object",
-                        "properties": {
-                            "query": {"type": "string"}
-                        },
+                        "properties": {"query": {"type": "string"}},
                         "required": ["query"],
                     },
                 },

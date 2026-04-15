@@ -1,13 +1,14 @@
 """
 Tests for sci_fi_dashboard.mcp_servers.slack_server — Slack MCP integration.
 """
+
 from __future__ import annotations
 
 import json
 import os
 import sys
 import time
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -54,12 +55,14 @@ class TestListChannels:
         import sci_fi_dashboard.mcp_servers.slack_server as slack_srv
 
         mock_bot = AsyncMock()
-        mock_bot.conversations_list = AsyncMock(return_value={
-            "channels": [
-                {"id": "C001", "name": "general", "topic": {"value": "General chat"}},
-                {"id": "C002", "name": "dev", "topic": {"value": "Dev talk"}},
-            ]
-        })
+        mock_bot.conversations_list = AsyncMock(
+            return_value={
+                "channels": [
+                    {"id": "C001", "name": "general", "topic": {"value": "General chat"}},
+                    {"id": "C002", "name": "dev", "topic": {"value": "Dev talk"}},
+                ]
+            }
+        )
         mock_clients = {"bot": mock_bot, "user": None}
 
         with patch.object(slack_srv, "_get_slack_client", return_value=mock_clients):
@@ -82,18 +85,18 @@ class TestReadMessages:
         import sci_fi_dashboard.mcp_servers.slack_server as slack_srv
 
         mock_bot = AsyncMock()
-        mock_bot.conversations_history = AsyncMock(return_value={
-            "messages": [
-                {"user": "U001", "text": "Hello", "ts": "1700000001.000"},
-                {"user": "U002", "text": "Hi", "ts": "1700000002.000"},
-            ]
-        })
+        mock_bot.conversations_history = AsyncMock(
+            return_value={
+                "messages": [
+                    {"user": "U001", "text": "Hello", "ts": "1700000001.000"},
+                    {"user": "U002", "text": "Hi", "ts": "1700000002.000"},
+                ]
+            }
+        )
         mock_clients = {"bot": mock_bot, "user": None}
 
         with patch.object(slack_srv, "_get_slack_client", return_value=mock_clients):
-            result = await slack_srv.call_tool(
-                "read_messages", {"channel_id": "C001", "limit": 10}
-            )
+            result = await slack_srv.call_tool("read_messages", {"channel_id": "C001", "limit": 10})
 
         data = json.loads(_text(result))
         assert len(data) == 2
@@ -114,18 +117,20 @@ class TestGetMentions:
 
         mock_bot = AsyncMock()
         mock_bot.auth_test = AsyncMock(return_value={"user_id": "U_BOT"})
-        mock_bot.search_messages = AsyncMock(return_value={
-            "messages": {
-                "matches": [
-                    {
-                        "channel": {"name": "general"},
-                        "username": "alice",
-                        "text": "Hey <@U_BOT> help me",
-                        "ts": now_ts,
-                    },
-                ]
+        mock_bot.search_messages = AsyncMock(
+            return_value={
+                "messages": {
+                    "matches": [
+                        {
+                            "channel": {"name": "general"},
+                            "username": "alice",
+                            "text": "Hey <@U_BOT> help me",
+                            "ts": now_ts,
+                        },
+                    ]
+                }
             }
-        })
+        )
         mock_clients = {"bot": mock_bot, "user": None}
 
         with patch.object(slack_srv, "_get_slack_client", return_value=mock_clients):
@@ -143,18 +148,20 @@ class TestGetMentions:
 
         mock_bot = AsyncMock()
         mock_bot.auth_test = AsyncMock(return_value={"user_id": "U_BOT"})
-        mock_bot.search_messages = AsyncMock(return_value={
-            "messages": {
-                "matches": [
-                    {
-                        "channel": {"name": "general"},
-                        "username": "bob",
-                        "text": "Old mention",
-                        "ts": old_ts,
-                    },
-                ]
+        mock_bot.search_messages = AsyncMock(
+            return_value={
+                "messages": {
+                    "matches": [
+                        {
+                            "channel": {"name": "general"},
+                            "username": "bob",
+                            "text": "Old mention",
+                            "ts": old_ts,
+                        },
+                    ]
+                }
             }
-        })
+        )
         mock_clients = {"bot": mock_bot, "user": None}
 
         with patch.object(slack_srv, "_get_slack_client", return_value=mock_clients):
@@ -171,9 +178,7 @@ class TestGetMentions:
         mock_bot.auth_test = AsyncMock(return_value={"user_id": "U_BOT"})
 
         mock_user = AsyncMock()
-        mock_user.search_messages = AsyncMock(return_value={
-            "messages": {"matches": []}
-        })
+        mock_user.search_messages = AsyncMock(return_value={"messages": {"matches": []}})
 
         mock_clients = {"bot": mock_bot, "user": mock_user}
 
@@ -204,9 +209,7 @@ class TestSendMessage:
             )
 
         assert "Message sent" in _text(result)
-        mock_bot.chat_postMessage.assert_awaited_once_with(
-            channel="C001", text="Hello!"
-        )
+        mock_bot.chat_postMessage.assert_awaited_once_with(channel="C001", text="Hello!")
 
 
 # ---------------------------------------------------------------------------

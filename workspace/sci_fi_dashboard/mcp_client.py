@@ -2,7 +2,9 @@
 SynapseMCPClient — connects Synapse to all MCP servers (built-in + user-configured).
 Tool routing: serverName__toolName (e.g., synapse-gmail__search_emails)
 """
+
 import asyncio
+import contextlib
 import json
 import logging
 import sys
@@ -10,7 +12,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from mcp import ClientSession
-from mcp.client.stdio import stdio_client, StdioServerParameters
+from mcp.client.stdio import StdioServerParameters, stdio_client
 
 logger = logging.getLogger("synapse.mcp.client")
 
@@ -63,10 +65,8 @@ class SynapseMCPClient:
             logger.error(f"Failed to connect to MCP server '{name}': {e}")
             for handle in (session, ctx):
                 if handle is not None:
-                    try:
+                    with contextlib.suppress(Exception):
                         await handle.__aexit__(None, None, None)
-                    except Exception:
-                        pass
 
     async def connect_builtin_server(self, name: str, module_path: str) -> None:
         params = StdioServerParameters(command=sys.executable, args=["-m", module_path])
@@ -90,7 +90,7 @@ class SynapseMCPClient:
                 conn.session.call_tool(original_name, arguments), timeout=timeout
             )
             return "\n".join(c.text for c in result.content if hasattr(c, "text"))
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return json.dumps({"error": f"Tool call timed out after {timeout}s: {tool_name}"})
         except Exception as e:
             return json.dumps({"error": f"Tool call failed: {e}"})
@@ -99,11 +99,13 @@ class SynapseMCPClient:
         all_tools = []
         for name, conn in self._servers.items():
             for tool in conn.tools:
-                all_tools.append({
-                    "name": f"{name}__{tool['name']}",
-                    "description": f"[{name}] {tool['description']}",
-                    "inputSchema": tool["inputSchema"],
-                })
+                all_tools.append(
+                    {
+                        "name": f"{name}__{tool['name']}",
+                        "description": f"[{name}] {tool['description']}",
+                        "inputSchema": tool["inputSchema"],
+                    }
+                )
         return all_tools
 
     async def add_server(
@@ -122,15 +124,11 @@ class SynapseMCPClient:
         if not conn:
             return False
         if conn.session:
-            try:
+            with contextlib.suppress(Exception):
                 await conn.session.__aexit__(None, None, None)
-            except Exception:
-                pass
         if conn.ctx:
-            try:
+            with contextlib.suppress(Exception):
                 await conn.ctx.__aexit__(None, None, None)
-            except Exception:
-                pass
         to_remove = [k for k, (sn, _) in self._tool_map.items() if sn == name]
         for k in to_remove:
             del self._tool_map[k]
@@ -161,14 +159,10 @@ class SynapseMCPClient:
     async def disconnect_all(self) -> None:
         for conn in self._servers.values():
             if conn.session:
-                try:
+                with contextlib.suppress(Exception):
                     await conn.session.__aexit__(None, None, None)
-                except Exception:
-                    pass
             if conn.ctx:
-                try:
+                with contextlib.suppress(Exception):
                     await conn.ctx.__aexit__(None, None, None)
-                except Exception:
-                    pass
         self._servers.clear()
         self._tool_map.clear()

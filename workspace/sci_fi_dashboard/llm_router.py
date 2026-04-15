@@ -20,7 +20,6 @@ import random
 import re
 import sqlite3
 import sys
-import time
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -53,6 +52,7 @@ except ImportError:
     # that will never match a real exception, so the except clause is inert.
     class BudgetExceededError(Exception):  # type: ignore[no-redef]
         pass
+
 
 # gpt-5-mini and other restricted models reject custom temperature/top_p —
 # drop unsupported params silently instead of raising UnsupportedParamsError.
@@ -97,6 +97,7 @@ class LLMToolResult:
     total_tokens: int
     finish_reason: str | None = None
 
+
 # --- Tool schema normalization ---
 
 
@@ -122,20 +123,16 @@ def normalize_tool_schemas(tools: list[dict], provider: str) -> list[dict]:
         t = copy.deepcopy(tool)
         schema = t.get("function", {}).get("parameters", {})
         if "gemini" in provider:
-            _strip_keys_recursive(
-                schema, {"$schema", "$id", "examples", "default", "$defs"}
-            )
+            _strip_keys_recursive(schema, {"$schema", "$id", "examples", "default", "$defs"})
         if "xai" in provider or "grok" in provider:
             _strip_keys_recursive(
                 schema,
                 {"minLength", "maxLength", "minimum", "maximum", "multipleOf"},
             )
-        if "openai" in provider:
-            if (
-                schema.get("type") == "object"
-                and "additionalProperties" not in schema
-            ):
-                schema["additionalProperties"] = False
+        if "openai" in provider and (
+            schema.get("type") == "object" and "additionalProperties" not in schema
+        ):
+            schema["additionalProperties"] = False
         normalized.append(t)
     return normalized
 
@@ -308,9 +305,7 @@ _CLAUDE_MAX_PREFIX = "claude_max/"
 # Full Claude Code request signature required for OAuth tokens.
 # Anthropic fingerprints requests — Sonnet/Opus reject anything that doesn't
 # look exactly like the official Claude Code CLI. Haiku has looser checks.
-_CLAUDE_MAX_BETA_HEADERS = (
-    "claude-code-20250219,oauth-2025-04-20,interleaved-thinking-2025-05-14"
-)
+_CLAUDE_MAX_BETA_HEADERS = "claude-code-20250219,oauth-2025-04-20,interleaved-thinking-2025-05-14"
 _CLAUDE_MAX_USER_AGENT = "claude-cli/1.0.0 (external, cli)"
 
 
@@ -392,13 +387,9 @@ def build_router(model_mappings: dict, providers: dict) -> Router:
         primary_model: str = cfg["model"]
 
         if primary_model.startswith(_CLAUDE_MAX_PREFIX):
-            litellm_params = _claude_max_litellm_params(
-                primary_model[len(_CLAUDE_MAX_PREFIX):]
-            )
+            litellm_params = _claude_max_litellm_params(primary_model[len(_CLAUDE_MAX_PREFIX) :])
         elif primary_model.startswith(_GITHUB_COPILOT_PREFIX):
-            litellm_params = _copilot_litellm_params(
-                primary_model[len(_GITHUB_COPILOT_PREFIX):]
-            )
+            litellm_params = _copilot_litellm_params(primary_model[len(_GITHUB_COPILOT_PREFIX) :])
         elif primary_model.startswith(_OLLAMA_CHAT_PREFIX):
             litellm_params = {"model": primary_model, "timeout": 60, "stream": False}
             litellm_params["api_base"] = ollama_api_base
@@ -427,17 +418,19 @@ def build_router(model_mappings: dict, providers: dict) -> Router:
             fallback_role = f"{role}_fallback"
             if fallback_model.startswith(_CLAUDE_MAX_PREFIX):
                 fallback_params = _claude_max_litellm_params(
-                    fallback_model[len(_CLAUDE_MAX_PREFIX):]
+                    fallback_model[len(_CLAUDE_MAX_PREFIX) :]
                 )
             elif fallback_model.startswith(_GITHUB_COPILOT_PREFIX):
                 fallback_params = _copilot_litellm_params(
-                    fallback_model[len(_GITHUB_COPILOT_PREFIX):]
+                    fallback_model[len(_GITHUB_COPILOT_PREFIX) :]
                 )
             else:
                 fallback_params = {"model": fallback_model, "timeout": 60, "stream": False}
                 if fallback_model.startswith(_OLLAMA_CHAT_PREFIX):
                     fallback_params["api_base"] = ollama_api_base
-                    fb_opts = cfg.get("ollama_options", {"repeat_penalty": 1.15, "temperature": 0.7})
+                    fb_opts = cfg.get(
+                        "ollama_options", {"repeat_penalty": 1.15, "temperature": 0.7}
+                    )
                     fallback_params["extra_body"] = {"options": fb_opts}
             model_list.append({"model_name": fallback_role, "litellm_params": fallback_params})
             fallbacks.append({role: [fallback_role]})
@@ -564,11 +557,13 @@ class AuthProfileFailureReason(StrEnum):
 
 
 # Retryable failure reasons — rotation to the next key is worthwhile
-_RETRYABLE_REASONS = frozenset({
-    AuthProfileFailureReason.RATE_LIMIT,
-    AuthProfileFailureReason.OVERLOADED,
-    AuthProfileFailureReason.TIMEOUT,
-})
+_RETRYABLE_REASONS = frozenset(
+    {
+        AuthProfileFailureReason.RATE_LIMIT,
+        AuthProfileFailureReason.OVERLOADED,
+        AuthProfileFailureReason.TIMEOUT,
+    }
+)
 
 
 def classify_llm_error(error: Exception) -> AuthProfileFailureReason:
@@ -876,9 +871,7 @@ class SynapseLLMRouter:
                         pass
                 else:
                     async with self._copilot_refresh_lock:
-                        logger.warning(
-                            "Copilot token rejected — refreshing and retrying"
-                        )
+                        logger.warning("Copilot token rejected — refreshing and retrying")
                         _get_copilot_token()  # triggers Authenticator refresh
                         self._rebuild_router()
                 return await self._router.acompletion(
@@ -907,7 +900,9 @@ class SynapseLLMRouter:
         """
         mapping = self._config.model_mappings.get(role, {})
         if mapping.get("model", "").startswith(_CLAUDE_MAX_PREFIX):
-            result = await self.call_with_metadata(role, messages, temperature, max_tokens, **kwargs)
+            result = await self.call_with_metadata(
+                role, messages, temperature, max_tokens, **kwargs
+            )
             return result.text
         response = await self._do_call(role, messages, temperature, max_tokens, **kwargs)
         return response.choices[0].message.content or ""
@@ -958,15 +953,15 @@ class SynapseLLMRouter:
         # Build final prompt: system context + last user message
         system_block = "\n\n".join(system_parts)
         user_block = "\n".join(conversation_parts)
-        if system_block:
-            prompt = f"{system_block}\n\n---\n\n{user_block}"
-        else:
-            prompt = user_block
+        prompt = f"{system_block}\n\n---\n\n{user_block}" if system_block else user_block
 
         cmd = [
-            claude_bin, "-p",
-            "--output-format", "json",
-            "--model", model_suffix,
+            claude_bin,
+            "-p",
+            "--output-format",
+            "json",
+            "--model",
+            model_suffix,
         ]
 
         env = {k: v for k, v in __import__("os").environ.items() if k != "CLAUDECODE"}
@@ -1030,7 +1025,7 @@ class SynapseLLMRouter:
         mapping = self._config.model_mappings.get(role, {})
         model_str = mapping.get("model", "")
         if model_str.startswith(_CLAUDE_MAX_PREFIX):
-            model_suffix = model_str[len(_CLAUDE_MAX_PREFIX):]
+            model_suffix = model_str[len(_CLAUDE_MAX_PREFIX) :]
             try:
                 return await self._call_claude_cli(model_suffix, messages, max_tokens)
             except Exception as cli_exc:
@@ -1120,9 +1115,11 @@ class SynapseLLMRouter:
         # For claude_max roles, redirect to CLI subprocess (tools not supported via CLI,
         # but we get the text response which is what matters for persona chat)
         mapping = self._config.model_mappings.get(role, {})
-        model_str = mapping.get("model", "") if isinstance(mapping, dict) else getattr(mapping, "model", "")
+        model_str = (
+            mapping.get("model", "") if isinstance(mapping, dict) else getattr(mapping, "model", "")
+        )
         if model_str.startswith(_CLAUDE_MAX_PREFIX):
-            model_suffix = model_str[len(_CLAUDE_MAX_PREFIX):]
+            model_suffix = model_str[len(_CLAUDE_MAX_PREFIX) :]
             try:
                 llm_result = await self._call_claude_cli(model_suffix, messages, max_tokens)
                 return LLMToolResult(
@@ -1136,7 +1133,10 @@ class SynapseLLMRouter:
                 )
             except Exception as cli_exc:
                 import traceback
-                logger.warning("claude CLI failed in call_with_tools (%s)\n%s", cli_exc, traceback.format_exc())
+
+                logger.warning(
+                    "claude CLI failed in call_with_tools (%s)\n%s", cli_exc, traceback.format_exc()
+                )
 
         provider = self._resolve_provider(role)
         normalized_tools = normalize_tool_schemas(tools, provider)
@@ -1161,7 +1161,9 @@ class SynapseLLMRouter:
                         pass
                 else:
                     async with self._copilot_refresh_lock:
-                        logger.warning("Copilot token expired (401, tools) — refreshing and retrying")
+                        logger.warning(
+                            "Copilot token expired (401, tools) — refreshing and retrying"
+                        )
                         _get_copilot_token()
                         self._rebuild_router()
                 response = await self._router.acompletion(**kwargs)
@@ -1176,15 +1178,15 @@ class SynapseLLMRouter:
             logger.error("Timeout for role '%s' (tools): %s", role, exc)
             raise
         except (APIConnectionError, ServiceUnavailableError) as exc:
-            logger.error(
-                "Provider unavailable for role '%s' (tools): %s", role, exc
-            )
+            logger.error("Provider unavailable for role '%s' (tools): %s", role, exc)
             raise
         except BadRequestError as exc:
             logger.error("Bad request for role '%s' (tools): %s", role, exc)
             raise
         except BudgetExceededError as exc:
-            logger.warning("Budget exceeded for role '%s' (tools): %s — attempting fallback", role, exc)
+            logger.warning(
+                "Budget exceeded for role '%s' (tools): %s — attempting fallback", role, exc
+            )
             fallback_cfg = self._config.model_mappings.get(role, {}).get("fallback")
             if fallback_cfg:
                 fallback_role = f"{role}_fallback"
@@ -1200,9 +1202,7 @@ class SynapseLLMRouter:
                         pass
                 else:
                     async with self._copilot_refresh_lock:
-                        logger.warning(
-                            "Copilot token rejected (tools) — refreshing"
-                        )
+                        logger.warning("Copilot token rejected (tools) — refreshing")
                         _get_copilot_token()
                         self._rebuild_router()
                 response = await self._router.acompletion(**kwargs)
@@ -1210,11 +1210,14 @@ class SynapseLLMRouter:
                 raise
 
         message = response.choices[0].message
-        usage = getattr(response, "usage", None) or type(
-            "U",
-            (),
-            {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
-        )()
+        usage = (
+            getattr(response, "usage", None)
+            or type(
+                "U",
+                (),
+                {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+            )()
+        )
 
         # SESS-01: Write token usage (non-fatal)
         try:
@@ -1344,9 +1347,7 @@ class InferenceLoop:
 
         for attempt in range(self._max_attempts):
             try:
-                response = await self._router._do_call(
-                    role, current_messages, **kwargs
-                )
+                response = await self._router._do_call(role, current_messages, **kwargs)
                 # Build LLMResult from raw response
                 usage = getattr(response, "usage", None)
                 result = LLMResult(
@@ -1419,9 +1420,7 @@ class InferenceLoop:
                         base_delay = 2 ** (attempt + 1)  # 2, 4, 8
                         jitter = random.uniform(0, base_delay * 0.5)
                         delay = base_delay + jitter
-                        logger.info(
-                            "Rate limited — backing off %.1fs before retry", delay
-                        )
+                        logger.info("Rate limited — backing off %.1fs before retry", delay)
                         if self._auth_store is not None and active_profile is not None:
                             self._auth_store.report_failure(
                                 active_profile.id,
@@ -1443,9 +1442,7 @@ class InferenceLoop:
                         next_profile = self._auth_store.select_best(role)
                         if next_profile is not None:
                             active_profile = next_profile
-                            self._router._apply_profile_credentials(
-                                active_profile, role
-                            )
+                            self._router._apply_profile_credentials(active_profile, role)
                             logger.info(
                                 "Auth failed — rotated to profile %s",
                                 active_profile.id,
@@ -1475,6 +1472,4 @@ class InferenceLoop:
         # All attempts exhausted
         if last_error is not None:
             raise last_error
-        raise RuntimeError(
-            f"InferenceLoop exhausted {self._max_attempts} attempts for role={role}"
-        )
+        raise RuntimeError(f"InferenceLoop exhausted {self._max_attempts} attempts for role={role}")

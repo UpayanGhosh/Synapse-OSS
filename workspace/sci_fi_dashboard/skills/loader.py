@@ -148,7 +148,9 @@ class SkillLoader:
             try:
                 manifest = cls.load_skill(entry)
                 if not manifest.enabled:
-                    logger.debug("[Skills] Skipping disabled skill '%s' at %s", manifest.name, entry)
+                    logger.debug(
+                        "[Skills] Skipping disabled skill '%s' at %s", manifest.name, entry
+                    )
                     continue
                 manifests.append(manifest)
                 logger.debug("[Skills] Loaded skill '%s' from %s", manifest.name, entry)

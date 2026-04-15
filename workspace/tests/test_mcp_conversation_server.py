@@ -1,6 +1,7 @@
 """
 Tests for sci_fi_dashboard.mcp_servers.conversation_server — profile + system prompt.
 """
+
 from __future__ import annotations
 
 import json
@@ -125,10 +126,13 @@ class TestOrchestratorSingleton:
         mock_sbs_mod = MagicMock()
         mock_sbs_mod.SBSOrchestrator.return_value = mock_orch
 
-        with patch.dict("sys.modules", {
-            "synapse_config": mock_config_mod,
-            "sbs.orchestrator": mock_sbs_mod,
-        }):
+        with patch.dict(
+            "sys.modules",
+            {
+                "synapse_config": mock_config_mod,
+                "sbs.orchestrator": mock_sbs_mod,
+            },
+        ):
             conv_srv._orchestrator = None
             o1 = conv_srv._get_orchestrator()
             o2 = conv_srv._get_orchestrator()

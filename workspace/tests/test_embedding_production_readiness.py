@@ -230,7 +230,9 @@ class TestPeripheralScriptsProviderUsage(unittest.TestCase):
         """LLMRouter.embed() must return [] when the provider fails, never propagate exception."""
         # This test exercises the actual runtime behavior using the refactored provider.
         # We mock get_provider to raise an exception.
-        with patch("sci_fi_dashboard.embedding.get_provider", side_effect=RuntimeError("no provider")):
+        with patch(
+            "sci_fi_dashboard.embedding.get_provider", side_effect=RuntimeError("no provider")
+        ):
             try:
                 from skills.llm_router import LLMRouter  # noqa: PLC0415
 
@@ -297,12 +299,10 @@ class TestGracefulDegradation(unittest.TestCase):
 
     def test_factory_runtime_error_message_mentions_fastembed_install(self):
         """create_provider() RuntimeError must mention 'pip install fastembed' as the fix."""
-        with (
-            patch.dict(sys.modules, {"fastembed": None, "ollama": None}),
-        ):
+        with (patch.dict(sys.modules, {"fastembed": None, "ollama": None}),):
             reset_provider()
             try:
-                provider = create_provider({})
+                create_provider({})
                 # If it somehow returns a provider (e.g. auto-selected nothing), that is OK too
                 # The test is about the error message when it DOES raise.
             except RuntimeError as exc:
@@ -356,9 +356,7 @@ class TestGracefulDegradation(unittest.TestCase):
                 # After the embedding refactor, it must delegate to get_provider().
                 # Here we just verify the zero-vector behaviour is preserved.
                 # Build a minimal engine without actually connecting to DBs.
-                with patch(
-                    "sci_fi_dashboard.memory_engine.LanceDBVectorStore", MagicMock
-                ):
+                with patch("sci_fi_dashboard.memory_engine.LanceDBVectorStore", MagicMock):
                     engine = MemoryEngine()
                     # Clear LRU cache so our mock is used
                     engine.get_embedding.cache_clear()
@@ -380,7 +378,9 @@ class TestGracefulDegradation(unittest.TestCase):
         try:
             # Try to import the validation helper — it may be named differently.
             try:
-                from sci_fi_dashboard.embedding import validate_embedding_dimension  # noqa: F401, PLC0415
+                from sci_fi_dashboard.embedding import (
+                    validate_embedding_dimension,  # noqa: F401, PLC0415
+                )
 
                 validate_fn = validate_embedding_dimension
             except ImportError:
@@ -404,7 +404,9 @@ class TestGracefulDegradation(unittest.TestCase):
             else:
                 # If no dedicated validate function, the provider must raise on shape mismatch.
                 # Verify EmbeddingResult can be constructed and at least has a .dimension attribute.
-                result = EmbeddingResult(vector=[0.0] * 384, model="test", provider="test", dimensions=384)
+                result = EmbeddingResult(
+                    vector=[0.0] * 384, model="test", provider="test", dimensions=384
+                )
                 self.assertEqual(len(result.vector), 384)
         except Exception as exc:
             self.fail(f"Dimension mismatch validation test raised unexpected error: {exc}")
@@ -516,9 +518,8 @@ class TestGeminiSafetyGuards(unittest.TestCase):
             # Extract the 'content' or 'parts' argument from the API call
             call_kwargs = mock_client.embed_content.call_args
             if call_kwargs is not None:
-                content_arg = (
-                    call_kwargs.kwargs.get("content")
-                    or (call_kwargs.args[0] if call_kwargs.args else None)
+                content_arg = call_kwargs.kwargs.get("content") or (
+                    call_kwargs.args[0] if call_kwargs.args else None
                 )
                 if content_arg is not None:
                     self.assertNotIn(
@@ -532,15 +533,10 @@ class TestGeminiSafetyGuards(unittest.TestCase):
                     self.assertEqual(
                         content_arg,
                         "hello world",
-                        (
-                            f"GeminiAPIProvider must pass text verbatim, "
-                            f"got: {content_arg!r}"
-                        ),
+                        (f"GeminiAPIProvider must pass text verbatim, " f"got: {content_arg!r}"),
                     )
         except (ImportError, AttributeError):
-            self.skipTest(
-                "GeminiAPIProvider not available — will be tested after refactor"
-            )
+            self.skipTest("GeminiAPIProvider not available — will be tested after refactor")
 
 
 # ===========================================================================
@@ -618,9 +614,7 @@ class TestConfigurationCompleteness(unittest.TestCase):
                 "channels": {},
                 "model_mappings": {},
             }
-            (tmp_path / "synapse.json").write_text(
-                json.dumps(minimal_config), encoding="utf-8"
-            )
+            (tmp_path / "synapse.json").write_text(json.dumps(minimal_config), encoding="utf-8")
 
             import os  # noqa: PLC0415
 
@@ -707,9 +701,7 @@ class TestModuleImportIntegrity(unittest.TestCase):
         abstraction must never hard-import sentence_transformers.
         """
         if not self._EMBEDDING_DIR.exists():
-            self.skipTest(
-                "embedding directory not yet created — RED phase, skipping source scan"
-            )
+            self.skipTest("embedding directory not yet created — RED phase, skipping source scan")
         py_files = list(self._EMBEDDING_DIR.glob("**/*.py"))
         for py_file in py_files:
             source = _read_source(py_file)
@@ -729,9 +721,7 @@ class TestModuleImportIntegrity(unittest.TestCase):
         by using ONNX Runtime via fastembed, not PyTorch.
         """
         if not self._EMBEDDING_DIR.exists():
-            self.skipTest(
-                "embedding directory not yet created — RED phase, skipping source scan"
-            )
+            self.skipTest("embedding directory not yet created — RED phase, skipping source scan")
         py_files = list(self._EMBEDDING_DIR.glob("**/*.py"))
         for py_file in py_files:
             source = _read_source(py_file)
@@ -761,9 +751,7 @@ class TestModuleImportIntegrity(unittest.TestCase):
                 break
 
         if req_path is None:
-            self.skipTest(
-                "requirements.txt not found — cannot verify fastembed dependency"
-            )
+            self.skipTest("requirements.txt not found — cannot verify fastembed dependency")
 
         content = _read_source(req_path)
         lines_lower = [line.strip().lower() for line in content.splitlines()]
@@ -778,9 +766,7 @@ class TestModuleImportIntegrity(unittest.TestCase):
         )
 
         # Find the fastembed line and check version constraint
-        fastembed_line = next(
-            (line for line in lines_lower if "fastembed" in line), None
-        )
+        fastembed_line = next((line for line in lines_lower if "fastembed" in line), None)
         if fastembed_line:
             self.assertTrue(
                 ">=" in fastembed_line or "==" in fastembed_line,

@@ -1,5 +1,6 @@
 # sci_fi_dashboard/sbs/sentinel/gateway.py
 
+import contextlib
 import hashlib
 import os
 import tempfile
@@ -140,9 +141,7 @@ class Sentinel:
                     "PRE_WRITE_BACKUP",
                     {
                         "path": str(resolved),
-                        "original_hash": hashlib.sha256(
-                            backup_content.encode()
-                        ).hexdigest()[:16],
+                        "original_hash": hashlib.sha256(backup_content.encode()).hexdigest()[:16],
                         "new_hash": hashlib.sha256(content.encode()).hexdigest()[:16],
                     },
                 )
@@ -151,29 +150,22 @@ class Sentinel:
         resolved.parent.mkdir(parents=True, exist_ok=True)
 
         # Atomic write: temp file in same directory + os.replace()
-        fd = None
         tmp_path = None
         try:
-            fd = tempfile.NamedTemporaryFile(
+            with tempfile.NamedTemporaryFile(
                 mode="w",
                 encoding="utf-8",
                 dir=str(resolved.parent),
                 suffix=".tmp",
                 delete=False,
-            )
-            tmp_path = fd.name
-            fd.write(content)
-            fd.close()
-            fd = None
+            ) as fd:
+                tmp_path = fd.name
+                fd.write(content)
             os.replace(tmp_path, str(resolved))
         except Exception:
-            if fd is not None:
-                fd.close()
             if tmp_path is not None:
-                try:
+                with contextlib.suppress(OSError):
                     os.unlink(tmp_path)
-                except OSError:
-                    pass
             raise
 
         return True

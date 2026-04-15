@@ -1,4 +1,5 @@
 """LLM call wrappers and traffic cop routing."""
+
 import logging
 import os
 import re
@@ -49,9 +50,7 @@ async def call_ag_oracle(messages: list, temperature: float = 0.7, max_tokens: i
 async def call_ag_review(messages: list) -> str:
     """AG_REVIEW (The Philosopher): routes to 'review' role in model_mappings."""
     print("[THINK] Calling The Philosopher (review role)...")
-    return await deps.synapse_llm_router.call(
-        "review", messages, temperature=0.7, max_tokens=1500
-    )
+    return await deps.synapse_llm_router.call("review", messages, temperature=0.7, max_tokens=1500)
 
 
 async def translate_banglish(text: str) -> str:

@@ -7,6 +7,7 @@ Rules:
 - Nested dicts merge recursively.
 - Proto-pollution keys (__proto__, constructor, prototype) are silently rejected.
 """
+
 from __future__ import annotations
 
 from typing import Any

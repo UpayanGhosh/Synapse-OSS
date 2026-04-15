@@ -8,18 +8,16 @@ Covers:
   - Empty patch returns target unchanged
   - Non-dict patch replaces target
 """
+
 from __future__ import annotations
 
 import sys
 from pathlib import Path
 
-import pytest
-
 # Ensure workspace/ is on the import path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from config.merge_patch import BLOCKED_KEYS, merge_patch
-
 
 # ---------------------------------------------------------------------------
 # Null removes key
@@ -120,7 +118,7 @@ class TestProtoPollution:
 
     def test_blocked_keys_set_complete(self):
         """Verify all three expected blocked keys are in the set."""
-        assert BLOCKED_KEYS == {"__proto__", "constructor", "prototype"}
+        assert {"__proto__", "constructor", "prototype"} == BLOCKED_KEYS
 
     def test_nested_proto_pollution(self):
         """Proto-pollution keys nested inside valid dicts should also be rejected."""

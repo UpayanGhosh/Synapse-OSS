@@ -14,7 +14,7 @@ import os
 import sys
 import time
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -29,7 +29,6 @@ from sci_fi_dashboard.media.store import (
     clean_old_media,
     save_media_buffer,
 )
-
 
 # ---------------------------------------------------------------------------
 # SavedMedia dataclass
@@ -153,27 +152,37 @@ class TestSaveMediaBuffer:
 
     def test_file_content_matches(self, tmp_path):
         buf = b"exact content to verify"
-        result = save_media_buffer(buf, content_type="text/plain", subdir="verify", data_root=tmp_path)
+        result = save_media_buffer(
+            buf, content_type="text/plain", subdir="verify", data_root=tmp_path
+        )
         assert result.path.read_bytes() == buf
 
     def test_enforces_size_limit(self, tmp_path):
         buf = b"x" * 1000
         with pytest.raises(ValueError, match="exceeds limit"):
-            save_media_buffer(buf, content_type="image/jpeg", subdir="limit", max_bytes=500, data_root=tmp_path)
+            save_media_buffer(
+                buf, content_type="image/jpeg", subdir="limit", max_bytes=500, data_root=tmp_path
+            )
 
     def test_size_limit_exact_boundary(self, tmp_path):
         buf = b"x" * 500
-        result = save_media_buffer(buf, content_type="image/jpeg", subdir="exact", max_bytes=500, data_root=tmp_path)
+        result = save_media_buffer(
+            buf, content_type="image/jpeg", subdir="exact", max_bytes=500, data_root=tmp_path
+        )
         assert result.size == 500
 
     def test_no_size_limit_when_none(self, tmp_path):
         buf = b"x" * 10000
-        result = save_media_buffer(buf, content_type="image/jpeg", subdir="nolimit", max_bytes=None, data_root=tmp_path)
+        result = save_media_buffer(
+            buf, content_type="image/jpeg", subdir="nolimit", max_bytes=None, data_root=tmp_path
+        )
         assert result.size == 10000
 
     def test_path_traversal_blocked(self, tmp_path):
         with pytest.raises(ValueError, match="escapes media root"):
-            save_media_buffer(b"payload", content_type="image/jpeg", subdir="../../etc", data_root=tmp_path)
+            save_media_buffer(
+                b"payload", content_type="image/jpeg", subdir="../../etc", data_root=tmp_path
+            )
 
     def test_original_filename_used_as_prefix(self, tmp_path):
         result = save_media_buffer(
@@ -202,14 +211,18 @@ class TestSaveMediaBuffer:
         assert r1.id != r2.id
 
     def test_extension_derived_from_mime(self, tmp_path):
-        result = save_media_buffer(b"data", content_type="image/png", subdir="ext", data_root=tmp_path)
+        result = save_media_buffer(
+            b"data", content_type="image/png", subdir="ext", data_root=tmp_path
+        )
         assert result.path.suffix == ".png"
 
     def test_throttled_cleanup_runs(self, tmp_path):
         # Clear throttle state for our test subdir
         _last_cleanup_time.pop("throttle_test", None)
         with patch("sci_fi_dashboard.media.store.clean_old_media") as mock_clean:
-            save_media_buffer(b"data", content_type="image/jpeg", subdir="throttle_test", data_root=tmp_path)
+            save_media_buffer(
+                b"data", content_type="image/jpeg", subdir="throttle_test", data_root=tmp_path
+            )
             assert mock_clean.called
 
 

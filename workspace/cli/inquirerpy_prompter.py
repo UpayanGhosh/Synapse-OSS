@@ -43,9 +43,7 @@ def _convert_for_select(choices: list) -> list:
             # questionary.Choice — title can be str or list of FormattedText tuples
             title = c.title
             if isinstance(title, list):
-                title = "".join(
-                    part[1] if isinstance(part, tuple) else str(part) for part in title
-                )
+                title = "".join(part[1] if isinstance(part, tuple) else str(part) for part in title)
             result.append({"name": str(title), "value": c.value})
         elif hasattr(c, "line"):
             # questionary.Separator
@@ -69,9 +67,7 @@ def _convert_for_multiselect(choices: list) -> list:
         elif hasattr(c, "value") and hasattr(c, "title"):
             title = c.title
             if isinstance(title, list):
-                title = "".join(
-                    part[1] if isinstance(part, tuple) else str(part) for part in title
-                )
+                title = "".join(part[1] if isinstance(part, tuple) else str(part) for part in title)
             result.append({"name": str(title), "value": c.value})
         # Separators are intentionally skipped
     return result

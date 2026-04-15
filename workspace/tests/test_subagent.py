@@ -24,24 +24,24 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from sci_fi_dashboard.subagent.models import AgentStatus, SubAgent
-from sci_fi_dashboard.subagent.registry import AgentRegistry
-from sci_fi_dashboard.subagent.progress import ProgressReporter
 from sci_fi_dashboard.subagent.intent import detect_spawn_intent
-
+from sci_fi_dashboard.subagent.models import AgentStatus, SubAgent
+from sci_fi_dashboard.subagent.progress import ProgressReporter
+from sci_fi_dashboard.subagent.registry import AgentRegistry
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_agent(**kwargs) -> SubAgent:
     """Create a SubAgent with sensible defaults for tests that don't care about most fields."""
-    defaults = dict(
-        description="test task",
-        channel_id="whatsapp",
-        chat_id="chat_001",
-        parent_session_key="session_key",
-    )
+    defaults = {
+        "description": "test task",
+        "channel_id": "whatsapp",
+        "chat_id": "chat_001",
+        "parent_session_key": "session_key",
+    }
     defaults.update(kwargs)
     return SubAgent(**defaults)
 
@@ -298,6 +298,7 @@ class TestProgressReporter:
 
     def test_create_with_callback(self):
         """ProgressReporter accepts a callback without error."""
+
         async def dummy_callback(agent_id: str, msg: str) -> None:
             pass
 
@@ -353,9 +354,7 @@ class TestSpawnIntentDetection:
 
     def test_background_keyword_detected(self):
         """Messages containing 'in the background' trigger spawn intent."""
-        is_spawn, task_desc = detect_spawn_intent(
-            "compile a report on AI trends in the background"
-        )
+        is_spawn, task_desc = detect_spawn_intent("compile a report on AI trends in the background")
         assert is_spawn is True
         assert task_desc  # non-empty
 

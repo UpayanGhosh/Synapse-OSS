@@ -55,7 +55,7 @@ class TestToolLoopDetector:
     def test_warning_at_10_identical_calls(self):
         """10 identical calls trigger WARNING level."""
         d = ToolLoopDetector(window_size=50)
-        for i in range(WARNING_THRESHOLD - 1):
+        for _i in range(WARNING_THRESHOLD - 1):
             level = d.record("read_file", {"path": "/foo"})
             assert level == ToolLoopLevel.OK
 
@@ -67,7 +67,7 @@ class TestToolLoopDetector:
     def test_critical_at_20_identical_calls(self):
         """20 identical calls trigger CRITICAL level."""
         d = ToolLoopDetector(window_size=50)
-        for i in range(CRITICAL_THRESHOLD - 1):
+        for _i in range(CRITICAL_THRESHOLD - 1):
             level = d.record("read_file", {"path": "/foo"})
         # All before 20 should be OK or WARNING.
         assert level == ToolLoopLevel.WARNING

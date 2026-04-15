@@ -14,7 +14,6 @@ Coverage targets:
   - build_cognitive_context() — prompt injection string assembly
 """
 
-import asyncio
 import json
 import os
 import sys
@@ -25,17 +24,17 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from sci_fi_dashboard.dual_cognition import (
+    FAST_PHRASES,
     CognitiveMerge,
     DualCognitionEngine,
-    FAST_PHRASES,
     MemoryStream,
     PresentStream,
 )
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def mock_memory():
@@ -69,14 +68,16 @@ def engine(mock_memory, mock_graph):
 def llm_fn_analyze():
     """AsyncMock LLM function that returns a valid _analyze_present JSON."""
     fn = AsyncMock()
-    fn.return_value = json.dumps({
-        "sentiment": "positive",
-        "intent": "statement",
-        "claims": ["I finished the project"],
-        "emotional_state": "excited",
-        "topics": ["project", "work"],
-        "conversational_pattern": "continuation",
-    })
+    fn.return_value = json.dumps(
+        {
+            "sentiment": "positive",
+            "intent": "statement",
+            "claims": ["I finished the project"],
+            "emotional_state": "excited",
+            "topics": ["project", "work"],
+            "conversational_pattern": "continuation",
+        }
+    )
     return fn
 
 
@@ -84,15 +85,17 @@ def llm_fn_analyze():
 def llm_fn_merge():
     """AsyncMock LLM function returning valid merge JSON (used for merge calls)."""
     fn = AsyncMock()
-    fn.return_value = json.dumps({
-        "thought": "User seems happy about finishing the project.",
-        "tension_level": 0.1,
-        "tension_type": "none",
-        "contradictions": [],
-        "response_strategy": "celebrate",
-        "suggested_tone": "proud",
-        "inner_monologue": "They finished it — time to celebrate.",
-    })
+    fn.return_value = json.dumps(
+        {
+            "thought": "User seems happy about finishing the project.",
+            "tension_level": 0.1,
+            "tension_type": "none",
+            "contradictions": [],
+            "response_strategy": "celebrate",
+            "suggested_tone": "proud",
+            "inner_monologue": "They finished it — time to celebrate.",
+        }
+    )
     return fn
 
 
@@ -106,6 +109,7 @@ def _make_llm_fn(*responses):
 # ---------------------------------------------------------------------------
 # classify_complexity
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.unit
 class TestClassifyComplexity:
@@ -131,7 +135,9 @@ class TestClassifyComplexity:
         assert result in ("standard", "deep")
 
     def test_normal_message_returns_standard(self, engine):
-        assert engine.classify_complexity("How was your weekend trip to the mountains") == "standard"
+        assert (
+            engine.classify_complexity("How was your weekend trip to the mountains") == "standard"
+        )
 
     def test_long_message_plus_contradictions_returns_deep(self, engine):
         msg = "I told you before that I never liked this approach however " + " ".join(
@@ -163,6 +169,7 @@ class TestClassifyComplexity:
 # think (full pipeline)
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.unit
 class TestThink:
     async def test_fast_path_no_llm_calls(self, engine):
@@ -174,16 +181,27 @@ class TestThink:
         llm_fn.assert_not_called()
 
     async def test_standard_path_returns_cognitive_merge(self, engine):
-        analyze_resp = json.dumps({
-            "sentiment": "neutral", "intent": "statement", "claims": [],
-            "emotional_state": "calm", "topics": ["test"],
-            "conversational_pattern": "single_turn",
-        })
-        merge_resp = json.dumps({
-            "thought": "", "tension_level": 0.2, "tension_type": "none",
-            "contradictions": [], "response_strategy": "acknowledge",
-            "suggested_tone": "warm", "inner_monologue": "Standard reply.",
-        })
+        analyze_resp = json.dumps(
+            {
+                "sentiment": "neutral",
+                "intent": "statement",
+                "claims": [],
+                "emotional_state": "calm",
+                "topics": ["test"],
+                "conversational_pattern": "single_turn",
+            }
+        )
+        merge_resp = json.dumps(
+            {
+                "thought": "",
+                "tension_level": 0.2,
+                "tension_type": "none",
+                "contradictions": [],
+                "response_strategy": "acknowledge",
+                "suggested_tone": "warm",
+                "inner_monologue": "Standard reply.",
+            }
+        )
         llm_fn = _make_llm_fn(analyze_resp, merge_resp)
         merge = await engine.think(
             "Tell me about Python web frameworks",
@@ -196,17 +214,27 @@ class TestThink:
 
     async def test_deep_path_uses_search_intent(self, engine):
         intent_resp = json.dumps(["Python", "interview", "preparation"])
-        analyze_resp = json.dumps({
-            "sentiment": "negative", "intent": "venting", "claims": ["I'm failing"],
-            "emotional_state": "frustrated", "topics": ["interview"],
-            "conversational_pattern": "escalation",
-        })
-        merge_resp = json.dumps({
-            "thought": "They're stressed about interviews.",
-            "tension_level": 0.6, "tension_type": "growth",
-            "contradictions": [], "response_strategy": "support",
-            "suggested_tone": "concerned", "inner_monologue": "Need to help them.",
-        })
+        analyze_resp = json.dumps(
+            {
+                "sentiment": "negative",
+                "intent": "venting",
+                "claims": ["I'm failing"],
+                "emotional_state": "frustrated",
+                "topics": ["interview"],
+                "conversational_pattern": "escalation",
+            }
+        )
+        merge_resp = json.dumps(
+            {
+                "thought": "They're stressed about interviews.",
+                "tension_level": 0.6,
+                "tension_type": "growth",
+                "contradictions": [],
+                "response_strategy": "support",
+                "suggested_tone": "concerned",
+                "inner_monologue": "Need to help them.",
+            }
+        )
         llm_fn = _make_llm_fn(intent_resp, analyze_resp, merge_resp)
         # Build a message that triggers deep path (emotional + contradiction + long history)
         history = [{"role": "user", "content": f"msg {i}"} for i in range(8)]
@@ -231,7 +259,7 @@ class TestThink:
         assert "trouble" in merge.inner_monologue.lower()
 
     async def test_llm_timeout_returns_fallback(self, engine):
-        llm_fn = AsyncMock(side_effect=asyncio.TimeoutError())
+        llm_fn = AsyncMock(side_effect=TimeoutError())
         merge = await engine.think(
             "Explain quantum computing in detail",
             chat_id="c1",
@@ -244,6 +272,7 @@ class TestThink:
 # ---------------------------------------------------------------------------
 # _analyze_present
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.unit
 class TestAnalyzePresent:
@@ -266,20 +295,27 @@ class TestAnalyzePresent:
         assert result.sentiment == "neutral"
 
     async def test_markdown_fenced_json_parsed(self, engine):
-        fenced = '```json\n{"sentiment":"negative","intent":"venting","claims":[],' \
-                 '"emotional_state":"angry","topics":["work"],' \
-                 '"conversational_pattern":"escalation"}\n```'
+        fenced = (
+            '```json\n{"sentiment":"negative","intent":"venting","claims":[],'
+            '"emotional_state":"angry","topics":["work"],'
+            '"conversational_pattern":"escalation"}\n```'
+        )
         llm_fn = AsyncMock(return_value=fenced)
         result = await engine._analyze_present("I hate this", None, llm_fn)
         assert result.sentiment == "negative"
         assert result.emotional_state == "angry"
 
     async def test_thinking_block_stripped(self, engine):
-        response = '[THINKING]some reasoning[/THINKING]' + json.dumps({
-            "sentiment": "positive", "intent": "bragging", "claims": ["I got promoted"],
-            "emotional_state": "excited", "topics": ["career"],
-            "conversational_pattern": "single_turn",
-        })
+        response = "[THINKING]some reasoning[/THINKING]" + json.dumps(
+            {
+                "sentiment": "positive",
+                "intent": "bragging",
+                "claims": ["I got promoted"],
+                "emotional_state": "excited",
+                "topics": ["career"],
+                "conversational_pattern": "single_turn",
+            }
+        )
         llm_fn = AsyncMock(return_value=response)
         result = await engine._analyze_present("I got promoted!", None, llm_fn)
         assert result.sentiment == "positive"
@@ -293,11 +329,18 @@ class TestAnalyzePresent:
         assert result.sentiment == "neutral"
 
     async def test_history_context_injected(self, engine):
-        llm_fn = AsyncMock(return_value=json.dumps({
-            "sentiment": "neutral", "intent": "statement", "claims": [],
-            "emotional_state": "calm", "topics": [],
-            "conversational_pattern": "continuation",
-        }))
+        llm_fn = AsyncMock(
+            return_value=json.dumps(
+                {
+                    "sentiment": "neutral",
+                    "intent": "statement",
+                    "claims": [],
+                    "emotional_state": "calm",
+                    "topics": [],
+                    "conversational_pattern": "continuation",
+                }
+            )
+        )
         history = [
             {"role": "user", "content": "First message"},
             {"role": "assistant", "content": "Reply"},
@@ -312,6 +355,7 @@ class TestAnalyzePresent:
 # ---------------------------------------------------------------------------
 # _recall_memory
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.unit
 class TestRecallMemory:
@@ -346,6 +390,7 @@ class TestRecallMemory:
 # ---------------------------------------------------------------------------
 # _merge_streams
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.unit
 class TestMergeStreams:
@@ -405,6 +450,7 @@ class TestMergeStreams:
 # _extract_search_intent
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.unit
 class TestExtractSearchIntent:
     async def test_returns_search_terms(self, engine):
@@ -443,6 +489,7 @@ class TestExtractSearchIntent:
 # ---------------------------------------------------------------------------
 # build_cognitive_context
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.unit
 class TestBuildCognitiveContext:
@@ -492,6 +539,7 @@ class TestBuildCognitiveContext:
 # ---------------------------------------------------------------------------
 # Dataclass defaults
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.unit
 class TestDataclasses:

@@ -6,8 +6,8 @@ Run with:
     cd workspace && pytest tests/test_vector_store.py -v
 """
 
-import sys
 import os
+import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -105,22 +105,24 @@ class TestSearch:
 
     def test_search_hemisphere_filter_safe(self, tmp_path):
         store = _make_store(tmp_path)
-        store.upsert_facts([
-            _fact(1, hemisphere="safe", text="safe content"),
-            _fact(2, hemisphere="spicy", text="spicy content"),
-        ])
+        store.upsert_facts(
+            [
+                _fact(1, hemisphere="safe", text="safe content"),
+                _fact(2, hemisphere="spicy", text="spicy content"),
+            ]
+        )
         results = store.search(_vec(), query_filter="hemisphere_tag = 'safe'")
         assert all(r["metadata"]["hemisphere_tag"] == "safe" for r in results)
 
     def test_search_hemisphere_filter_spicy(self, tmp_path):
         store = _make_store(tmp_path)
-        store.upsert_facts([
-            _fact(1, hemisphere="safe"),
-            _fact(2, hemisphere="spicy"),
-        ])
-        results = store.search(
-            _vec(), query_filter="hemisphere_tag IN ('safe', 'spicy')"
+        store.upsert_facts(
+            [
+                _fact(1, hemisphere="safe"),
+                _fact(2, hemisphere="spicy"),
+            ]
         )
+        results = store.search(_vec(), query_filter="hemisphere_tag IN ('safe', 'spicy')")
         assert len(results) == 2
 
     def test_search_score_threshold(self, tmp_path):
@@ -146,11 +148,15 @@ class TestMissingMetadata:
     def test_missing_metadata_keys_default(self, tmp_path):
         """Facts with sparse metadata should use sensible defaults."""
         store = _make_store(tmp_path)
-        store.upsert_facts([{
-            "id": 1,
-            "vector": _vec(),
-            "metadata": {"text": "minimal"},  # no hemisphere_tag, importance, etc.
-        }])
+        store.upsert_facts(
+            [
+                {
+                    "id": 1,
+                    "vector": _vec(),
+                    "metadata": {"text": "minimal"},  # no hemisphere_tag, importance, etc.
+                }
+            ]
+        )
         results = store.search(_vec())
         assert len(results) == 1
         meta = results[0]["metadata"]

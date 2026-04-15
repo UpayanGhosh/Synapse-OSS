@@ -25,6 +25,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
+import httpx
+
 if TYPE_CHECKING:
     from .store import SavedMedia
 
@@ -47,8 +49,8 @@ _BLOCKED_NETS = [
     ipaddress.ip_network("172.16.0.0/12"),
     ipaddress.ip_network("192.168.0.0/16"),
     ipaddress.ip_network("169.254.0.0/16"),
-    ipaddress.ip_network("100.64.0.0/10"),   # CGNAT (RFC 6598)
-    ipaddress.ip_network("240.0.0.0/4"),     # Reserved (RFC 1112)
+    ipaddress.ip_network("100.64.0.0/10"),  # CGNAT (RFC 6598)
+    ipaddress.ip_network("240.0.0.0/4"),  # Reserved (RFC 1112)
     ipaddress.ip_network("::1/128"),
     ipaddress.ip_network("fc00::/7"),
     ipaddress.ip_network("fe80::/10"),
@@ -61,10 +63,12 @@ _BLOCKED_HOSTNAME_SUFFIXES = (
     ".localhost",
 )
 
-_BLOCKED_HOSTNAMES = frozenset({
-    "localhost",
-    "metadata.google.internal",
-})
+_BLOCKED_HOSTNAMES = frozenset(
+    {
+        "localhost",
+        "metadata.google.internal",
+    }
+)
 
 
 # ---------------------------------------------------------------------------
@@ -107,7 +111,8 @@ async def is_ssrf_blocked(url: str) -> bool:
         if parsed.scheme.lower() not in _ALLOWED_SCHEMES:
             logger.debug(
                 "is_ssrf_blocked: scheme %r not allowed — blocking %s",
-                parsed.scheme, url,
+                parsed.scheme,
+                url,
             )
             return True
 
@@ -137,7 +142,8 @@ async def is_ssrf_blocked(url: str) -> bool:
             if _is_ip_blocked(addr):
                 logger.debug(
                     "is_ssrf_blocked: %s resolved to %s — blocked",
-                    url, ip_str,
+                    url,
+                    ip_str,
                 )
                 return True
 
@@ -149,7 +155,7 @@ async def is_ssrf_blocked(url: str) -> bool:
         return True
 
 
-def safe_httpx_client(**kwargs) -> "httpx.AsyncClient":
+def safe_httpx_client(**kwargs) -> httpx.AsyncClient:
     """Return an ``httpx.AsyncClient`` with SSRF-safe redirect validation.
 
     Every redirect hop is checked against the SSRF blocklist by injecting an
@@ -158,7 +164,6 @@ def safe_httpx_client(**kwargs) -> "httpx.AsyncClient":
 
     Any extra *kwargs* are forwarded to ``httpx.AsyncClient``.
     """
-    import httpx  # noqa: F811
 
     async def _check_redirect(response: httpx.Response) -> None:
         """Validate each redirect hop's Location header against the SSRF guard."""
@@ -217,7 +222,6 @@ async def download_to_file(
         If *dest* is a symlink.
     """
     # Lazy import to avoid hard dependency on httpx at module level
-    import httpx  # noqa: F811
 
     from .mime import detect_mime
     from .store import SavedMedia
@@ -249,9 +253,7 @@ async def download_to_file(
                 async for chunk in resp.aiter_bytes(chunk_size=65_536):
                     total += len(chunk)
                     if total > max_bytes:
-                        raise ValueError(
-                            f"Download exceeds {max_bytes} byte limit"
-                        )
+                        raise ValueError(f"Download exceeds {max_bytes} byte limit")
                     fh.write(chunk)
         except Exception:
             with contextlib.suppress(OSError):

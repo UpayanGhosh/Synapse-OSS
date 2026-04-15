@@ -9,7 +9,6 @@ Covers:
 - require_mention=False group behavior
 """
 
-import asyncio
 import importlib.util
 import os
 import sys
@@ -22,17 +21,15 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 TEL_AVAILABLE = importlib.util.find_spec("sci_fi_dashboard.channels.telegram") is not None
 
-pytestmark = pytest.mark.skipif(
-    not TEL_AVAILABLE, reason="TelegramChannel not available"
-)
+pytestmark = pytest.mark.skipif(not TEL_AVAILABLE, reason="TelegramChannel not available")
 
 if TEL_AVAILABLE:
-    from sci_fi_dashboard.channels.telegram import TelegramChannel
     from sci_fi_dashboard.channels.security import (
         ChannelSecurityConfig,
         DmPolicy,
         PairingStore,
     )
+    from sci_fi_dashboard.channels.telegram import TelegramChannel
     from telegram.error import TelegramError
 
 
@@ -80,9 +77,7 @@ class TestTypingCircuitBreaker:
     async def test_circuit_breaker_activates_after_5_failures(self):
         ch = TelegramChannel(token="x")
         ch._app = MagicMock(bot=AsyncMock())
-        ch._app.bot.send_chat_action = AsyncMock(
-            side_effect=TelegramError("rate limited")
-        )
+        ch._app.bot.send_chat_action = AsyncMock(side_effect=TelegramError("rate limited"))
 
         # 5 failures should trigger suspension
         for _ in range(5):
@@ -169,9 +164,7 @@ class TestTelegramSendVoice:
     async def test_send_voice_error_returns_false(self, tmp_path):
         ch = TelegramChannel(token="x")
         ch._app = MagicMock(bot=AsyncMock())
-        ch._app.bot.send_voice = AsyncMock(
-            side_effect=TelegramError("file too big")
-        )
+        ch._app.bot.send_voice = AsyncMock(side_effect=TelegramError("file too big"))
 
         voice_file = tmp_path / "test.ogg"
         voice_file.write_bytes(b"\x00" * 100)
@@ -202,9 +195,7 @@ class TestTelegramDmSecurity:
             pairing_store=store,
         )
 
-        mock_update = _make_mock_update(
-            text="blocked", chat_type="private", user_id=123
-        )
+        mock_update = _make_mock_update(text="blocked", chat_type="private", user_id=123)
         await ch._dispatch(mock_update)
 
         enqueue_fn.assert_not_awaited()
@@ -215,9 +206,7 @@ class TestTelegramDmSecurity:
         store = PairingStore("telegram", data_root=tmp_path)
         await store.load()
 
-        cfg = ChannelSecurityConfig(
-            dm_policy=DmPolicy.ALLOWLIST, allow_from=["99"]
-        )
+        cfg = ChannelSecurityConfig(dm_policy=DmPolicy.ALLOWLIST, allow_from=["99"])
         enqueue_fn = AsyncMock()
         ch = TelegramChannel(
             token="x",
@@ -226,9 +215,7 @@ class TestTelegramDmSecurity:
             pairing_store=store,
         )
 
-        mock_update = _make_mock_update(
-            text="allowed", chat_type="private", user_id=99
-        )
+        mock_update = _make_mock_update(text="allowed", chat_type="private", user_id=99)
         await ch._dispatch(mock_update)
 
         enqueue_fn.assert_awaited_once()
@@ -239,9 +226,7 @@ class TestTelegramDmSecurity:
         store = PairingStore("telegram", data_root=tmp_path)
         await store.load()
 
-        cfg = ChannelSecurityConfig(
-            dm_policy=DmPolicy.DISABLED  # would block all DMs
-        )
+        cfg = ChannelSecurityConfig(dm_policy=DmPolicy.DISABLED)  # would block all DMs
         enqueue_fn = AsyncMock()
         ch = TelegramChannel(
             token="x",
@@ -250,9 +235,7 @@ class TestTelegramDmSecurity:
             pairing_store=store,
         )
 
-        mock_update = _make_mock_update(
-            text="group msg", chat_type="supergroup", user_id=123
-        )
+        mock_update = _make_mock_update(text="group msg", chat_type="supergroup", user_id=123)
         await ch._dispatch(mock_update)
 
         enqueue_fn.assert_awaited_once()
@@ -269,13 +252,9 @@ class TestRequireMentionFalse:
     async def test_group_message_without_mention_dispatched(self):
         """When require_mention=False, group messages without mention are dispatched."""
         enqueue_fn = AsyncMock()
-        ch = TelegramChannel(
-            token="x", enqueue_fn=enqueue_fn, require_mention=False
-        )
+        ch = TelegramChannel(token="x", enqueue_fn=enqueue_fn, require_mention=False)
 
-        mock_update = _make_mock_update(
-            text="no mention here", chat_type="supergroup"
-        )
+        mock_update = _make_mock_update(text="no mention here", chat_type="supergroup")
         mock_context = MagicMock()
         mock_context.bot.username = "botname"
 
@@ -286,9 +265,7 @@ class TestRequireMentionFalse:
     async def test_slash_command_bypasses_mention_gate(self):
         """Slash commands always bypass mention gating."""
         enqueue_fn = AsyncMock()
-        ch = TelegramChannel(
-            token="x", enqueue_fn=enqueue_fn, require_mention=True
-        )
+        ch = TelegramChannel(token="x", enqueue_fn=enqueue_fn, require_mention=True)
 
         mock_update = _make_mock_update(text="/start", chat_type="group")
         mock_context = MagicMock()

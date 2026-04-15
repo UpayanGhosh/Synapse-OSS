@@ -11,6 +11,7 @@ Security:
   - T-02-04: max_snapshots enforced on every create(); configurable via
     synapse.json -> snapshots_max_count (default 50).
 """
+
 from __future__ import annotations
 
 import dataclasses
@@ -244,7 +245,9 @@ class SnapshotEngine:
             else:
                 shutil.copy2(str(src), str(dest))
 
-        logger.info("[Snapshot] Restored %s → live (pre-restore: %s)", snapshot_id, pre_restore_meta.id)
+        logger.info(
+            "[Snapshot] Restored %s → live (pre-restore: %s)", snapshot_id, pre_restore_meta.id
+        )
         return pre_restore_meta
 
     def get_snapshot(self, snapshot_id: str) -> SnapshotMeta | None:

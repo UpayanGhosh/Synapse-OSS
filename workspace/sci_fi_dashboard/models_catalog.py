@@ -55,9 +55,7 @@ class ContextWindowGuardResult:
 # --- Context Window Guard ---
 
 
-def check_context_window(
-    tokens: int, source: str = "default"
-) -> ContextWindowGuardResult:
+def check_context_window(tokens: int, source: str = "default") -> ContextWindowGuardResult:
     """Check whether a context window size is safe for operation.
 
     Args:

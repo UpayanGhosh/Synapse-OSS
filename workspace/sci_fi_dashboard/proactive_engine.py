@@ -2,6 +2,7 @@
 ProactiveAwarenessEngine — Background polling of personal MCP servers.
 Runs as asyncio task. Thermal-aware like GentleWorker.
 """
+
 import asyncio
 import json
 import logging
@@ -145,8 +146,9 @@ class ProactiveAwarenessEngine:
 
         Caller (GentleWorker) is responsible for sending the message.
         """
-        from datetime import datetime, timezone, timedelta
-        IST = timezone(timedelta(hours=5, minutes=30))
+        from datetime import datetime, timedelta, timezone
+
+        IST = timezone(timedelta(hours=5, minutes=30))  # noqa: N806
         now = datetime.now(IST)
 
         # Sleep window: 23:00 - 08:00 IST
@@ -157,6 +159,7 @@ class ProactiveAwarenessEngine:
         # Check last message gap
         if last_message_time is not None:
             import time as _time
+
             gap_seconds = _time.time() - last_message_time
             if gap_seconds < 8 * 3600:
                 return None  # Less than 8h — don't interrupt
@@ -165,6 +168,7 @@ class ProactiveAwarenessEngine:
         try:
             from sci_fi_dashboard.chat_pipeline import persona_chat
             from sci_fi_dashboard.schemas import ChatRequest
+
             payload = (
                 "Check in naturally with the user. "
                 "Don't say you're doing an automated check-in. "

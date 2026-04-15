@@ -19,7 +19,7 @@ import json
 import logging
 import os
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 from sci_fi_dashboard.multiuser.session_store import SessionEntry
@@ -119,12 +119,10 @@ def repair_all_transcripts(sessions_dir: Path) -> int:
             repaired, report = repair_orphaned_tool_pairs(messages)
             if report.repairs_made > 0:
                 # Rewrite the file atomically.
-                import tempfile
                 import contextlib
+                import tempfile
 
-                fd, tmp_path = tempfile.mkstemp(
-                    dir=str(jsonl_file.parent), suffix=".tmp"
-                )
+                fd, tmp_path = tempfile.mkstemp(dir=str(jsonl_file.parent), suffix=".tmp")
                 try:
                     with os.fdopen(fd, "w", encoding="utf-8") as fh:
                         for msg in repaired:
@@ -142,9 +140,7 @@ def repair_all_transcripts(sessions_dir: Path) -> int:
                     report.repairs_made,
                 )
         except Exception:
-            logger.warning(
-                "transcript: failed to repair %s", jsonl_file, exc_info=True
-            )
+            logger.warning("transcript: failed to repair %s", jsonl_file, exc_info=True)
 
     return repaired_count
 
@@ -152,12 +148,7 @@ def repair_all_transcripts(sessions_dir: Path) -> int:
 def transcript_path(session_entry: SessionEntry, data_root: Path, agent_id: str) -> Path:
     """Return the JSONL file path for *session_entry*."""
     return (
-        data_root
-        / "state"
-        / "agents"
-        / agent_id
-        / "sessions"
-        / f"{session_entry.session_id}.jsonl"
+        data_root / "state" / "agents" / agent_id / "sessions" / f"{session_entry.session_id}.jsonl"
     )
 
 
@@ -191,9 +182,7 @@ async def load_messages(path: Path, limit: int | None = None) -> list[dict]:
                 try:
                     messages.append(json.loads(line))
                 except json.JSONDecodeError:
-                    logger.warning(
-                        "transcript: skipping corrupt line %d in %s", lineno, path
-                    )
+                    logger.warning("transcript: skipping corrupt line %d in %s", lineno, path)
         return messages
 
     messages = await asyncio.to_thread(_read)

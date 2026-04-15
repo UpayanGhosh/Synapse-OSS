@@ -133,9 +133,7 @@ def _extract_city(text: str) -> str:
         return m.group(1).strip()
 
     # "<City> weather"
-    m = re.search(
-        r"^([A-Za-z\s\-']+?)\s+(?:weather|temperature|forecast)", text, re.IGNORECASE
-    )
+    m = re.search(r"^([A-Za-z\s\-']+?)\s+(?:weather|temperature|forecast)", text, re.IGNORECASE)
     if m:
         return m.group(1).strip()
 

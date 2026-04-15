@@ -5,9 +5,7 @@ Shared helpers and fixtures for FastEmbed reliability tests.
 import random
 import string
 import threading
-import time
 from dataclasses import dataclass, field
-from typing import List, Optional
 
 import pytest
 
@@ -25,9 +23,7 @@ try:
 except ImportError:
     _FASTEMBED_AVAILABLE = False
 
-SKIP_NO_FASTEMBED = pytest.mark.skipif(
-    not _FASTEMBED_AVAILABLE, reason="fastembed not installed"
-)
+SKIP_NO_FASTEMBED = pytest.mark.skipif(not _FASTEMBED_AVAILABLE, reason="fastembed not installed")
 
 
 # ---------------------------------------------------------------------------
@@ -58,9 +54,24 @@ class ReliabilityDataGenerator:
         "did you see the {} today?",
     ]
     TOPICS = [
-        "meeting", "report", "project", "deadline", "email", "code review",
-        "deployment", "database", "API", "test", "bug fix", "PR", "sprint",
-        "standup", "architecture", "feature", "hotfix", "documentation",
+        "meeting",
+        "report",
+        "project",
+        "deadline",
+        "email",
+        "code review",
+        "deployment",
+        "database",
+        "API",
+        "test",
+        "bug fix",
+        "PR",
+        "sprint",
+        "standup",
+        "architecture",
+        "feature",
+        "hotfix",
+        "documentation",
     ]
     CODE_TEMPLATES = [
         "def {fn}(x):\n    return x * 2\n",
@@ -73,9 +84,25 @@ class ReliabilityDataGenerator:
         "SELECT * FROM {tbl} WHERE id = {n};\n",
     ]
     WORDS = [
-        "system", "process", "function", "variable", "module", "interface",
-        "service", "component", "endpoint", "handler", "middleware", "pipeline",
-        "queue", "worker", "cache", "index", "token", "session", "config",
+        "system",
+        "process",
+        "function",
+        "variable",
+        "module",
+        "interface",
+        "service",
+        "component",
+        "endpoint",
+        "handler",
+        "middleware",
+        "pipeline",
+        "queue",
+        "worker",
+        "cache",
+        "index",
+        "token",
+        "session",
+        "config",
     ]
 
     def __init__(self, seed: int = 42):
@@ -119,7 +146,7 @@ class ReliabilityDataGenerator:
         ]
         return self._rng.choice(choices)
 
-    def generate(self, n: int) -> List[str]:
+    def generate(self, n: int) -> list[str]:
         """Generate n texts using the mixed distribution."""
         texts = []
         for _ in range(n):
@@ -134,7 +161,7 @@ class ReliabilityDataGenerator:
                 texts.append(self._edge())
         return texts
 
-    def generate_long(self, n: int, min_chars: int = 5000) -> List[str]:
+    def generate_long(self, n: int, min_chars: int = 5000) -> list[str]:
         """Generate n texts that are at least min_chars long."""
         texts = []
         for _ in range(n):
@@ -155,7 +182,7 @@ class LatencyTracker:
 
     def __init__(self):
         self._lock = threading.Lock()
-        self._latencies: List[float] = []
+        self._latencies: list[float] = []
 
     def record(self, elapsed: float):
         with self._lock:
@@ -212,8 +239,8 @@ class ReliabilityReport:
     p99_ms: float = 0.0
     memory_start_mb: float = 0.0
     memory_end_mb: float = 0.0
-    memory_samples: List[float] = field(default_factory=list)
-    notes: List[str] = field(default_factory=list)
+    memory_samples: list[float] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
 
     @property
     def error_rate(self) -> float:

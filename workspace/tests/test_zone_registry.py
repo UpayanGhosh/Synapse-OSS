@@ -1,17 +1,16 @@
 """Tests for Zone 1/Zone 2 registry constants and Sentinel enforcement."""
+
 from __future__ import annotations
 
 import pytest
-from pathlib import Path
-
-from sci_fi_dashboard.sbs.sentinel.manifest import (
-    CRITICAL_FILES,
-    CRITICAL_DIRECTORIES,
-    ZONE_1_PATHS,
-    ZONE_2_PATHS,
-    ZONE_2_DESCRIPTIONS,
-)
 from sci_fi_dashboard.sbs.sentinel.gateway import Sentinel, SentinelError
+from sci_fi_dashboard.sbs.sentinel.manifest import (
+    CRITICAL_DIRECTORIES,
+    CRITICAL_FILES,
+    ZONE_1_PATHS,
+    ZONE_2_DESCRIPTIONS,
+    ZONE_2_PATHS,
+)
 
 
 @pytest.fixture
@@ -68,7 +67,7 @@ class TestZone2Writability:
         (logs/ is listed in WRITABLE_ZONES), demonstrating that the sentinel correctly
         allows zone-2-equivalent writes with audit logging.
         """
-        from sci_fi_dashboard.sbs.sentinel.manifest import ProtectionLevel, WRITABLE_ZONES
+        from sci_fi_dashboard.sbs.sentinel.manifest import WRITABLE_ZONES, ProtectionLevel
 
         # Pick the first writable zone (deterministic: smallest alphabetically)
         first_writable = sorted(WRITABLE_ZONES)[0]
@@ -80,6 +79,6 @@ class TestZone2Writability:
         test_file.write_text("test")
 
         level = sentinel._classify_path(test_file.resolve())
-        assert level == ProtectionLevel.MONITORED, (
-            f"Expected MONITORED for file in writable zone '{first_writable}', got {level}"
-        )
+        assert (
+            level == ProtectionLevel.MONITORED
+        ), f"Expected MONITORED for file in writable zone '{first_writable}', got {level}"

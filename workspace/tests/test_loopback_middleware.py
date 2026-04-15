@@ -7,18 +7,16 @@ Verifies that:
 - Non-dashboard routes are not restricted
 - /static/dashboard/* is also protected
 """
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from sci_fi_dashboard.middleware import LOOPBACK_HOSTS, LoopbackOnlyMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
-
-from sci_fi_dashboard.middleware import LOOPBACK_HOSTS, LoopbackOnlyMiddleware
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -88,9 +86,11 @@ class TestLoopbackOnlyMiddleware:
             request._client = mock_client  # type: ignore[attr-defined]
             return await original_dispatch(self, request, call_next)
 
-        with patch.object(LoopbackOnlyMiddleware, "dispatch", patched_dispatch):
-            with TestClient(app, raise_server_exceptions=True) as client:
-                resp = client.get("/dashboard")
+        with (
+            patch.object(LoopbackOnlyMiddleware, "dispatch", patched_dispatch),
+            TestClient(app, raise_server_exceptions=True) as client,
+        ):
+            resp = client.get("/dashboard")
 
         assert resp.status_code == 403
         assert "Dashboard restricted to localhost" in resp.json().get("detail", "")
@@ -107,9 +107,11 @@ class TestLoopbackOnlyMiddleware:
             request._client = mock_client  # type: ignore[attr-defined]
             return await original_dispatch(self, request, call_next)
 
-        with patch.object(LoopbackOnlyMiddleware, "dispatch", patched_dispatch):
-            with TestClient(app, raise_server_exceptions=True) as client:
-                resp = client.get("/api/health")
+        with (
+            patch.object(LoopbackOnlyMiddleware, "dispatch", patched_dispatch),
+            TestClient(app, raise_server_exceptions=True) as client,
+        ):
+            resp = client.get("/api/health")
 
         assert resp.status_code == 200
         assert resp.json()["status"] == "ok"
@@ -126,9 +128,11 @@ class TestLoopbackOnlyMiddleware:
             request._client = mock_client  # type: ignore[attr-defined]
             return await original_dispatch(self, request, call_next)
 
-        with patch.object(LoopbackOnlyMiddleware, "dispatch", patched_dispatch):
-            with TestClient(app, raise_server_exceptions=True) as client:
-                resp = client.get("/static/dashboard/synapse.js")
+        with (
+            patch.object(LoopbackOnlyMiddleware, "dispatch", patched_dispatch),
+            TestClient(app, raise_server_exceptions=True) as client,
+        ):
+            resp = client.get("/static/dashboard/synapse.js")
 
         assert resp.status_code == 403
         assert "Dashboard restricted to localhost" in resp.json().get("detail", "")

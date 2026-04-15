@@ -2,16 +2,18 @@
 MCP Server: Google Gmail
 Run standalone: python -m sci_fi_dashboard.mcp_servers.gmail_server
 """
+
 import asyncio
-import json
 import base64
 import email.mime.text
+import json
 from pathlib import Path
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
-from mcp.types import Tool, TextContent
-from .base import setup_logging, logger, check_mcp_auth
+from mcp.types import TextContent, Tool
+
+from .base import check_mcp_auth, logger, setup_logging
 
 _gmail_service = None
 
@@ -21,18 +23,22 @@ def _get_gmail_service():
     if _gmail_service is None:
         from google.oauth2.credentials import Credentials
         from googleapiclient.discovery import build
-        from synapse_config import SynapseConfig
         from mcp_config import load_mcp_config
+        from synapse_config import SynapseConfig
+
         cfg = SynapseConfig.load()
         mcp_cfg = load_mcp_config(cfg.mcp)
         gmail_cfg = mcp_cfg.builtin_servers.get("gmail")
         if not gmail_cfg:
             raise RuntimeError("Gmail not configured in synapse.json mcp.builtin_servers.gmail")
         token_path = str(Path(gmail_cfg.token_path).expanduser())
-        creds = Credentials.from_authorized_user_file(token_path, [
-            "https://www.googleapis.com/auth/gmail.readonly",
-            "https://www.googleapis.com/auth/gmail.send",
-        ])
+        creds = Credentials.from_authorized_user_file(
+            token_path,
+            [
+                "https://www.googleapis.com/auth/gmail.readonly",
+                "https://www.googleapis.com/auth/gmail.send",
+            ],
+        )
         _gmail_service = build("gmail", "v1", credentials=creds)
     return _gmail_service
 
@@ -89,32 +95,32 @@ async def list_tools() -> list[Tool]:
 
 
 def _search_emails(svc, arguments: dict) -> list[TextContent]:
-    results = svc.users().messages().list(
-        userId="me", q=arguments["query"], maxResults=arguments.get("max_results", 10)
-    ).execute()
+    results = (
+        svc.users()
+        .messages()
+        .list(userId="me", q=arguments["query"], maxResults=arguments.get("max_results", 10))
+        .execute()
+    )
     summaries = []
     for msg in results.get("messages", []):
-        detail = svc.users().messages().get(
-            userId="me", id=msg["id"], format="metadata"
-        ).execute()
-        headers = {
-            h["name"]: h["value"]
-            for h in detail.get("payload", {}).get("headers", [])
-        }
-        summaries.append({
-            "id": msg["id"],
-            "from": headers.get("From", ""),
-            "subject": headers.get("Subject", ""),
-            "date": headers.get("Date", ""),
-            "snippet": detail.get("snippet", ""),
-        })
+        detail = svc.users().messages().get(userId="me", id=msg["id"], format="metadata").execute()
+        headers = {h["name"]: h["value"] for h in detail.get("payload", {}).get("headers", [])}
+        summaries.append(
+            {
+                "id": msg["id"],
+                "from": headers.get("From", ""),
+                "subject": headers.get("Subject", ""),
+                "date": headers.get("Date", ""),
+                "snippet": detail.get("snippet", ""),
+            }
+        )
     return [TextContent(type="text", text=json.dumps(summaries, indent=2))]
 
 
 def _read_email(svc, arguments: dict) -> list[TextContent]:
-    msg = svc.users().messages().get(
-        userId="me", id=arguments["message_id"], format="full"
-    ).execute()
+    msg = (
+        svc.users().messages().get(userId="me", id=arguments["message_id"], format="full").execute()
+    )
     payload = msg.get("payload", {})
     body = ""
     if "parts" in payload:
@@ -125,33 +131,41 @@ def _read_email(svc, arguments: dict) -> list[TextContent]:
     elif "body" in payload and "data" in payload["body"]:
         body = base64.urlsafe_b64decode(payload["body"]["data"]).decode("utf-8")
     headers = {h["name"]: h["value"] for h in payload.get("headers", [])}
-    return [TextContent(type="text", text=json.dumps({
-        "from": headers.get("From"),
-        "subject": headers.get("Subject"),
-        "date": headers.get("Date"),
-        "body": body[:3000],
-    }, indent=2))]
+    return [
+        TextContent(
+            type="text",
+            text=json.dumps(
+                {
+                    "from": headers.get("From"),
+                    "subject": headers.get("Subject"),
+                    "date": headers.get("Date"),
+                    "body": body[:3000],
+                },
+                indent=2,
+            ),
+        )
+    ]
 
 
 def _get_unread(svc, arguments: dict) -> list[TextContent]:
-    results = svc.users().messages().list(
-        userId="me", q="is:unread", maxResults=arguments.get("limit", 5)
-    ).execute()
+    results = (
+        svc.users()
+        .messages()
+        .list(userId="me", q="is:unread", maxResults=arguments.get("limit", 5))
+        .execute()
+    )
     summaries = []
     for msg in results.get("messages", []):
-        detail = svc.users().messages().get(
-            userId="me", id=msg["id"], format="metadata"
-        ).execute()
-        headers = {
-            h["name"]: h["value"]
-            for h in detail.get("payload", {}).get("headers", [])
-        }
-        summaries.append({
-            "id": msg["id"],
-            "from": headers.get("From", ""),
-            "subject": headers.get("Subject", ""),
-            "snippet": detail.get("snippet", ""),
-        })
+        detail = svc.users().messages().get(userId="me", id=msg["id"], format="metadata").execute()
+        headers = {h["name"]: h["value"] for h in detail.get("payload", {}).get("headers", [])}
+        summaries.append(
+            {
+                "id": msg["id"],
+                "from": headers.get("From", ""),
+                "subject": headers.get("Subject", ""),
+                "snippet": detail.get("snippet", ""),
+            }
+        )
     return [TextContent(type="text", text=json.dumps(summaries, indent=2))]
 
 
@@ -172,7 +186,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
 
     try:
         svc = _get_gmail_service()
-        _HANDLERS = {
+        _HANDLERS = {  # noqa: N806
             "search_emails": _search_emails,
             "read_email": _read_email,
             "get_unread": _get_unread,

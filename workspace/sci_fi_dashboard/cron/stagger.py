@@ -4,6 +4,7 @@ Cron Scheduler — top-of-hour deterministic stagger.
 Uses SHA-256 of the job ID to distribute jobs evenly within a window,
 preventing all jobs from firing at exactly :00.
 """
+
 from __future__ import annotations
 
 import hashlib

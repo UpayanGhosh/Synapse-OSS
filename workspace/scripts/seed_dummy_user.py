@@ -50,37 +50,98 @@ DUMMY_MEMORIES = [
     ("our apartment AC broke again, sweating through the afternoon", "daily_life", 12),
     ("morning jog along the lake — it rained halfway through", "daily_life", 15),
     ("finally fixed the wobbly shelf in the bedroom", "daily_life", 20),
-
     # --- work (10) ---
     ("shipped the payment reconciliation fix — 3 days of debugging, one line change", "work", 1),
     ("standup ran 45 minutes today because of the infra incident, completely draining", "work", 3),
     ("got positive feedback from Priya (CTO) on the Q1 reconciliation work", "work", 5),
-    ("got promoted to senior engineer — Q1 performance cycle, effective from next month", "work", 7),
+    (
+        "got promoted to senior engineer — Q1 performance cycle, effective from next month",
+        "work",
+        7,
+    ),
     ("first round interview with Razorpay went well, they want a system design round", "work", 10),
-    ("system design round with Razorpay — designed a distributed rate limiter, felt solid", "work", 14),
+    (
+        "system design round with Razorpay — designed a distributed rate limiter, felt solid",
+        "work",
+        14,
+    ),
     ("on-call this week, got paged at 2am for a payment timeout spike", "work", 18),
     ("sprint retrospective was tense — the feature delay is blamed on our team", "work", 22),
     ("wrote a design doc for the new transaction audit trail feature", "work", 25),
     ("parents are visiting next month, need to request WFH days from Arjun (manager)", "work", 30),
-
     # --- relationships (8) ---
-    ("Jordan surprised me with new climbing shoes — La Sportiva Katanas, exactly what I wanted", "relationships", 2),
-    ("Jordan and I had a small argument about moving back to Kolkata — I'm not ready", "relationships", 6),
-    ("called mom and dad, they're excited about the Bangalore visit, asked about Jordan", "relationships", 9),
-    ("Jordan cooked my favourite biryani for our two-year anniversary of moving in together", "relationships", 13),
+    (
+        "Jordan surprised me with new climbing shoes — La Sportiva Katanas, exactly what I wanted",
+        "relationships",
+        2,
+    ),
+    (
+        "Jordan and I had a small argument about moving back to Kolkata — I'm not ready",
+        "relationships",
+        6,
+    ),
+    (
+        "called mom and dad, they're excited about the Bangalore visit, asked about Jordan",
+        "relationships",
+        9,
+    ),
+    (
+        "Jordan cooked my favourite biryani for our two-year anniversary of moving in together",
+        "relationships",
+        13,
+    ),
     ("mom asked when we're getting married — changed the topic quickly", "relationships", 16),
-    ("Jordan is stressed about their PhD viva prep, I've been making extra tea", "relationships", 19),
-    ("had a long conversation with dad about the promotion — he was genuinely proud", "relationships", 24),
-    ("Jordan and I went to a rooftop bar with Mihir and his girlfriend, rare social event", "relationships", 35),
-
+    (
+        "Jordan is stressed about their PhD viva prep, I've been making extra tea",
+        "relationships",
+        19,
+    ),
+    (
+        "had a long conversation with dad about the promotion — he was genuinely proud",
+        "relationships",
+        24,
+    ),
+    (
+        "Jordan and I went to a rooftop bar with Mihir and his girlfriend, rare social event",
+        "relationships",
+        35,
+    ),
     # --- hobbies / interests (7) ---
-    ("finished Stories of Your Life and Others by Ted Chiang — mind completely blown", "hobbies", 4),
-    ("built a new mechanical keyboard — Bakeneko 60, holy pandas, GMK Umbra keycaps", "hobbies", 11),
-    ("went bouldering at Boulder Box — finally solved the V4 overhang that beat me for 3 weeks", "hobbies", 6),
-    ("started reading Exhalation by Ted Chiang — the second story is already wrecking me", "hobbies", 17),
-    ("bouldering session with Mihir on Saturday, he's got better footwork than me now", "hobbies", 21),
-    ("ordered a Keychron Q1 for work desk — lubed Boba U4 switches, quieter office setup", "hobbies", 28),
-    ("picked up a used copy of Blindsight by Peter Watts — someone at the gym recommended it", "hobbies", 40),
+    (
+        "finished Stories of Your Life and Others by Ted Chiang — mind completely blown",
+        "hobbies",
+        4,
+    ),
+    (
+        "built a new mechanical keyboard — Bakeneko 60, holy pandas, GMK Umbra keycaps",
+        "hobbies",
+        11,
+    ),
+    (
+        "went bouldering at Boulder Box — finally solved the V4 overhang that beat me for 3 weeks",
+        "hobbies",
+        6,
+    ),
+    (
+        "started reading Exhalation by Ted Chiang — the second story is already wrecking me",
+        "hobbies",
+        17,
+    ),
+    (
+        "bouldering session with Mihir on Saturday, he's got better footwork than me now",
+        "hobbies",
+        21,
+    ),
+    (
+        "ordered a Keychron Q1 for work desk — lubed Boba U4 switches, quieter office setup",
+        "hobbies",
+        28,
+    ),
+    (
+        "picked up a used copy of Blindsight by Peter Watts — someone at the gym recommended it",
+        "hobbies",
+        40,
+    ),
 ]
 
 # Graph: (name, node_type, properties_dict)
@@ -92,7 +153,11 @@ DUMMY_NODES = [
     ("Bangalore", "location", {"country": "India", "state": "Karnataka"}),
     ("fintech startup", "organization", {"type": "startup", "domain": "fintech"}),
     ("Razorpay", "organization", {"type": "company", "domain": "payments"}),
-    ("rock climbing", "activity", {"type": "sport", "frequency": "2x per week", "style": "bouldering"}),
+    (
+        "rock climbing",
+        "activity",
+        {"type": "sport", "frequency": "2x per week", "style": "bouldering"},
+    ),
     ("Boulder Box", "location", {"type": "climbing gym", "city": "Bangalore"}),
     ("Ted Chiang", "person", {"type": "author", "genre": "sci-fi"}),
     ("mechanical keyboards", "hobby", {"type": "hobby", "current_build": "Bakeneko 60"}),
@@ -149,7 +214,10 @@ DUMMY_TURNS = [
     ("assistant", "three days of debugging for one line. the classic"),
     ("user", "exactly. anyway. promoted btw"),
     ("assistant", "wait seriously? congrats, that's huge"),
-    ("user", "yeah. Priya said the reconciliation work was the deciding factor. senior engineer from next month"),
+    (
+        "user",
+        "yeah. Priya said the reconciliation work was the deciding factor. senior engineer from next month",
+    ),
     ("assistant", "well earned. how does it feel"),
     ("user", "good I guess. also terrifying. more responsibility"),
     ("assistant", "you'll handle it. what's the Razorpay situation"),
@@ -166,7 +234,10 @@ DUMMY_TURNS = [
     ("assistant", "what's the architecture"),
     ("user", "event sourcing. append-only ledger, Kafka in the middle"),
     ("assistant", "clean. any pushback from the team"),
-    ("user", "Vikram wants to use a message queue directly without kafka. says it's overengineered"),
+    (
+        "user",
+        "Vikram wants to use a message queue directly without kafka. says it's overengineered",
+    ),
     ("assistant", "is it"),
     ("user", "maybe for MVP. but audit trails need replay. kafka makes that trivial"),
     ("assistant", "agreed. write that into the doc"),
@@ -208,6 +279,7 @@ DUMMY_TURNS = [
 
 # ── helpers ────────────────────────────────────────────────────────────────────
 
+
 def _days_ago_to_ts(days: float) -> int:
     return int(time.time() - days * 86400)
 
@@ -215,9 +287,7 @@ def _days_ago_to_ts(days: float) -> int:
 def already_seeded(graph) -> bool:
     """Check if Alex Chen node exists in the knowledge graph."""
     conn = graph._conn()
-    row = conn.execute(
-        "SELECT name FROM nodes WHERE name = ?", ("Alex Chen",)
-    ).fetchone()
+    row = conn.execute("SELECT name FROM nodes WHERE name = ?", ("Alex Chen",)).fetchone()
     return row is not None
 
 
@@ -252,16 +322,20 @@ def seed_memories(engine, dry_run: bool = False) -> int:
         # The embedding is already in LanceDB; we upsert to overwrite metadata.
         try:
             vec = list(engine.get_embedding(content))
-            engine.vector_store.upsert_facts([{
-                "id": doc_id,
-                "vector": vec,
-                "metadata": {
-                    "text": content,
-                    "hemisphere_tag": "safe",
-                    "unix_timestamp": target_ts,
-                    "importance": engine._score_importance_heuristic(content),
-                },
-            }])
+            engine.vector_store.upsert_facts(
+                [
+                    {
+                        "id": doc_id,
+                        "vector": vec,
+                        "metadata": {
+                            "text": content,
+                            "hemisphere_tag": "safe",
+                            "unix_timestamp": target_ts,
+                            "importance": engine._score_importance_heuristic(content),
+                        },
+                    }
+                ]
+            )
         except Exception as e:
             print(f"[WARN] LanceDB backdate failed for doc {doc_id}: {e}")
 
@@ -331,21 +405,23 @@ def wipe_seed_data(graph) -> None:
 
 # ── main ───────────────────────────────────────────────────────────────────────
 
+
 def main():
     parser = argparse.ArgumentParser(
         description="Seed dummy user (Alex Chen) into Synapse memory stores for brain validation"
     )
     parser.add_argument(
-        "--force", action="store_true",
-        help="Force re-seed even if Alex Chen is already seeded (wipes graph first)"
+        "--force",
+        action="store_true",
+        help="Force re-seed even if Alex Chen is already seeded (wipes graph first)",
     )
     parser.add_argument(
-        "--skip-sbs", action="store_true",
-        help="Skip SBS profile seeding (faster, memories+graph only)"
+        "--skip-sbs",
+        action="store_true",
+        help="Skip SBS profile seeding (faster, memories+graph only)",
     )
     parser.add_argument(
-        "--dry-run", action="store_true",
-        help="Print what would be seeded without writing anything"
+        "--dry-run", action="store_true", help="Print what would be seeded without writing anything"
     )
     args = parser.parse_args()
 
@@ -382,7 +458,9 @@ def main():
     print(f"[OK]  Seeded {n_mem} memories in {time.time()-t0:.1f}s")
 
     # ── seed graph ───────────────────────────────────────────────────────────
-    print(f"\n[2/3] Seeding {len(DUMMY_NODES)} nodes, {len(DUMMY_EDGES)} edges (knowledge_graph.db)...")
+    print(
+        f"\n[2/3] Seeding {len(DUMMY_NODES)} nodes, {len(DUMMY_EDGES)} edges (knowledge_graph.db)..."
+    )
     t0 = time.time()
     n_nodes, n_edges = seed_graph(graph, dry_run=args.dry_run)
     print(f"[OK]  Seeded {n_nodes} nodes, {n_edges} edges in {time.time()-t0:.1f}s")
@@ -395,6 +473,7 @@ def main():
 
         if not args.dry_run:
             from sci_fi_dashboard.sbs.orchestrator import SBSOrchestrator
+
             sbs = SBSOrchestrator(data_dir=sbs_data_dir)
 
         t0 = time.time()
@@ -404,16 +483,18 @@ def main():
         print("\n[3/3] Skipping SBS seeding (--skip-sbs)")
 
     # ── summary ──────────────────────────────────────────────────────────────
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("  SEED COMPLETE — Alex Chen is ready for brain validation")
-    print("="*60)
+    print("=" * 60)
     print(f"  Memories  : {n_mem}")
     print(f"  Graph     : {n_nodes} nodes, {n_edges} edges")
     if not args.skip_sbs:
         print(f"  SBS turns : {n_turns}")
     print()
     print("  Next steps:")
-    print("  1. Start server: cd workspace && uv run --no-project uvicorn sci_fi_dashboard.api_gateway:app --host 0.0.0.0 --port 8000")
+    print(
+        "  1. Start server: cd workspace && uv run --no-project uvicorn sci_fi_dashboard.api_gateway:app --host 0.0.0.0 --port 8000"
+    )
     print("  2. Open: http://localhost:8000/dashboard")
     print('  3. Send: "What did I do at work today?"')
     print('           "Tell me about Jordan"')

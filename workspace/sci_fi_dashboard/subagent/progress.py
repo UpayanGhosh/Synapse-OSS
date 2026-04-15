@@ -148,6 +148,4 @@ class ProgressReporter:
         try:
             await self.callback(self.agent_id, message)
         except Exception:
-            logger.exception(
-                "ProgressReporter callback raised for agent %s", self.agent_id
-            )
+            logger.exception("ProgressReporter callback raised for agent %s", self.agent_id)

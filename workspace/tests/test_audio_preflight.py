@@ -14,7 +14,7 @@ Covers:
 import os
 import sys
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -29,14 +29,18 @@ from sci_fi_dashboard.media.audio_preflight import (
 
 class TestAudioPreflightResult:
     def test_construction_ok(self):
-        result = AudioPreflightResult(ok=True, reason="", duration_seconds=10.5, file_size_bytes=1024)
+        result = AudioPreflightResult(
+            ok=True, reason="", duration_seconds=10.5, file_size_bytes=1024
+        )
         assert result.ok is True
         assert result.reason == ""
         assert result.duration_seconds == 10.5
         assert result.file_size_bytes == 1024
 
     def test_construction_failed(self):
-        result = AudioPreflightResult(ok=False, reason="Too big", duration_seconds=None, file_size_bytes=0)
+        result = AudioPreflightResult(
+            ok=False, reason="Too big", duration_seconds=None, file_size_bytes=0
+        )
         assert result.ok is False
         assert result.reason == "Too big"
 
@@ -88,7 +92,9 @@ class TestCheckAudioPreflight:
         audio_file.write_bytes(b"x" * 100)
 
         with patch("sci_fi_dashboard.media.audio_preflight._probe_duration", return_value=60.0):
-            result = await check_audio_preflight(audio_file, max_size_bytes=1000, max_duration_seconds=7200)
+            result = await check_audio_preflight(
+                audio_file, max_size_bytes=1000, max_duration_seconds=7200
+            )
             assert result.ok is True
             assert result.duration_seconds == 60.0
 
@@ -116,8 +122,10 @@ class TestProbeDuration:
         mock_proc.communicate.return_value = (b"123.456\n", b"")
         mock_proc.returncode = 0
 
-        with patch("shutil.which", return_value="/usr/bin/ffprobe"), \
-             patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+        with (
+            patch("shutil.which", return_value="/usr/bin/ffprobe"),
+            patch("asyncio.create_subprocess_exec", return_value=mock_proc),
+        ):
             result = await _probe_duration(Path("/some/file.ogg"))
             assert result == pytest.approx(123.456)
 
@@ -127,8 +135,10 @@ class TestProbeDuration:
         mock_proc.communicate.return_value = (b"", b"error")
         mock_proc.returncode = 1
 
-        with patch("shutil.which", return_value="/usr/bin/ffprobe"), \
-             patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+        with (
+            patch("shutil.which", return_value="/usr/bin/ffprobe"),
+            patch("asyncio.create_subprocess_exec", return_value=mock_proc),
+        ):
             result = await _probe_duration(Path("/some/file.ogg"))
             assert result is None
 
@@ -138,14 +148,18 @@ class TestProbeDuration:
         mock_proc.communicate.return_value = (b"", b"")
         mock_proc.returncode = 0
 
-        with patch("shutil.which", return_value="/usr/bin/ffprobe"), \
-             patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+        with (
+            patch("shutil.which", return_value="/usr/bin/ffprobe"),
+            patch("asyncio.create_subprocess_exec", return_value=mock_proc),
+        ):
             result = await _probe_duration(Path("/some/file.ogg"))
             assert result is None
 
     @pytest.mark.asyncio
     async def test_ffprobe_oserror(self):
-        with patch("shutil.which", return_value="/usr/bin/ffprobe"), \
-             patch("asyncio.create_subprocess_exec", side_effect=OSError("boom")):
+        with (
+            patch("shutil.which", return_value="/usr/bin/ffprobe"),
+            patch("asyncio.create_subprocess_exec", side_effect=OSError("boom")),
+        ):
             result = await _probe_duration(Path("/some/file.ogg"))
             assert result is None

@@ -7,14 +7,11 @@ Tests are organized in two groups:
 
 from __future__ import annotations
 
-import asyncio
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from sci_fi_dashboard.skills.schema import SkillManifest
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -66,7 +63,7 @@ class TestSkillRunner:
     @pytest.mark.asyncio
     async def test_runner_calls_llm_with_skill_instructions(self):
         """SkillRunner.execute calls the LLM with skill instructions as system prompt."""
-        from sci_fi_dashboard.skills.runner import SkillRunner, SkillResult
+        from sci_fi_dashboard.skills.runner import SkillResult, SkillRunner
 
         manifest = _make_manifest(instructions="You are a code review skill.")
         llm = _make_llm_router("Code looks good!")
@@ -131,7 +128,7 @@ class TestSkillRunner:
     @pytest.mark.asyncio
     async def test_runner_catches_exception_returns_error_result(self):
         """SkillRunner.execute wraps LLM exceptions — returns error SkillResult, never raises."""
-        from sci_fi_dashboard.skills.runner import SkillRunner, SkillResult
+        from sci_fi_dashboard.skills.runner import SkillResult, SkillRunner
 
         manifest = _make_manifest(name="failing-skill")
         llm = AsyncMock()
@@ -199,7 +196,7 @@ class TestSkillRunner:
     @pytest.mark.asyncio
     async def test_runner_execution_ms_recorded(self):
         """SkillRunner.execute records execution_ms on the result."""
-        from sci_fi_dashboard.skills.runner import SkillRunner, SkillResult
+        from sci_fi_dashboard.skills.runner import SkillResult, SkillRunner
 
         manifest = _make_manifest()
         llm = _make_llm_router("fast response")
@@ -294,9 +291,7 @@ class TestSkillPipelineIntegration:
         """When skill_router.match returns a manifest, persona_chat returns skill response."""
         from sci_fi_dashboard.chat_pipeline import persona_chat
 
-        manifest = _make_manifest(
-            name="weather-skill", instructions="You are a weather skill."
-        )
+        manifest = _make_manifest(name="weather-skill", instructions="You are a weather skill.")
 
         with patch("sci_fi_dashboard.chat_pipeline.deps") as mock_deps:
             self._base_deps(mock_deps)
@@ -333,9 +328,7 @@ class TestSkillPipelineIntegration:
             mock_result.prompt_tokens = 100
             mock_result.total_tokens = 110
             mock_result.tool_calls = None
-            mock_deps.synapse_llm_router.call_with_metadata = AsyncMock(
-                return_value=mock_result
-            )
+            mock_deps.synapse_llm_router.call_with_metadata = AsyncMock(return_value=mock_result)
 
             request = self._make_chat_request("Hello there!")
             result = await persona_chat(request, "the_creator")
@@ -361,9 +354,7 @@ class TestSkillPipelineIntegration:
             mock_result.prompt_tokens = 100
             mock_result.total_tokens = 110
             mock_result.tool_calls = None
-            mock_deps.synapse_llm_router.call_with_metadata = AsyncMock(
-                return_value=mock_result
-            )
+            mock_deps.synapse_llm_router.call_with_metadata = AsyncMock(return_value=mock_result)
 
             request = self._make_chat_request("Hi!")
             result = await persona_chat(request, "the_creator")
@@ -382,9 +373,7 @@ class TestSkillPipelineIntegration:
             mock_deps._SKILL_SYSTEM_AVAILABLE = True
             mock_deps.skill_router = MagicMock()
             mock_deps.skill_router.match = MagicMock(return_value=manifest)
-            mock_deps._synapse_cfg.model_mappings = {
-                "vault": {"model": "ollama/mistral"}
-            }
+            mock_deps._synapse_cfg.model_mappings = {"vault": {"model": "ollama/mistral"}}
 
             # Vault path
             mock_result = MagicMock()
@@ -394,9 +383,7 @@ class TestSkillPipelineIntegration:
             mock_result.prompt_tokens = 50
             mock_result.total_tokens = 55
             mock_deps.synapse_llm_router = AsyncMock()
-            mock_deps.synapse_llm_router.call_with_metadata = AsyncMock(
-                return_value=mock_result
-            )
+            mock_deps.synapse_llm_router.call_with_metadata = AsyncMock(return_value=mock_result)
 
             request = self._make_chat_request("secret message", session_type="spicy")
             result = await persona_chat(request, "the_creator")

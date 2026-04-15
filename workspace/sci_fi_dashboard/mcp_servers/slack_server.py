@@ -2,14 +2,16 @@
 MCP Server: Slack
 Run standalone: python -m sci_fi_dashboard.mcp_servers.slack_server
 """
+
 import asyncio
 import json
 import time
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
-from mcp.types import Tool, TextContent
-from .base import setup_logging, logger
+from mcp.types import TextContent, Tool
+
+from .base import logger, setup_logging
 
 _slack_client = None
 
@@ -17,9 +19,10 @@ _slack_client = None
 def _get_slack_client():
     global _slack_client
     if _slack_client is None:
+        from mcp_config import load_mcp_config
         from slack_sdk.web.async_client import AsyncWebClient
         from synapse_config import SynapseConfig
-        from mcp_config import load_mcp_config
+
         cfg = SynapseConfig.load()
         mcp_cfg = load_mcp_config(cfg.mcp)
         slack_cfg = mcp_cfg.builtin_servers.get("slack")
@@ -111,7 +114,8 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             query=f"<@{auth_resp['user_id']}>", sort="timestamp", count=20
         )
         matches = [
-            m for m in resp.get("messages", {}).get("matches", [])
+            m
+            for m in resp.get("messages", {}).get("matches", [])
             if float(m.get("ts", "0")) >= since
         ]
         results = [

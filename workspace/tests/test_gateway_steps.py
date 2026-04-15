@@ -56,11 +56,13 @@ def test_quickstart_keeps_existing_token():
     existing_token = "a" * 48  # valid 48-char hex-like string
     existing_gateway = {"token": existing_token}
 
-    result = configure_gateway(flow="quickstart", existing_gateway=existing_gateway, non_interactive=False)
-
-    assert result["token"] == existing_token, (
-        f"QuickStart should keep existing token, got: {result['token']!r}"
+    result = configure_gateway(
+        flow="quickstart", existing_gateway=existing_gateway, non_interactive=False
     )
+
+    assert (
+        result["token"] == existing_token
+    ), f"QuickStart should keep existing token, got: {result['token']!r}"
 
 
 # ===========================================================================
@@ -118,7 +120,9 @@ def test_non_interactive_disabled_auth_sets_token_none(monkeypatch):
 
     result = configure_gateway(flow="advanced", existing_gateway={}, non_interactive=True)
 
-    assert result["token"] is None, f"Expected token=None with disabled auth, got: {result['token']!r}"
+    assert (
+        result["token"] is None
+    ), f"Expected token=None with disabled auth, got: {result['token']!r}"
 
 
 def test_non_interactive_invalid_port_falls_back_to_default(monkeypatch):
@@ -141,9 +145,9 @@ def test_configure_gateway_returns_flat_dict():
     result = configure_gateway(flow="quickstart", existing_gateway={}, non_interactive=False)
 
     assert isinstance(result, dict), "Result must be a dict"
-    assert "auth" not in result, (
-        f"Result must be flat (no nested 'auth' key), got keys: {list(result.keys())}"
-    )
+    assert (
+        "auth" not in result
+    ), f"Result must be flat (no nested 'auth' key), got keys: {list(result.keys())}"
     # Required top-level keys
     assert "port" in result, "Result must contain 'port'"
     assert "bind" in result, "Result must contain 'bind'"

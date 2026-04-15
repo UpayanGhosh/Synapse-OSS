@@ -15,7 +15,6 @@ Design notes:
 
 import logging
 from pathlib import Path
-from typing import Any
 
 import pyarrow as pa
 
@@ -38,17 +37,19 @@ def _default_db_path() -> Path:
 
 
 def _build_schema(embedding_dimensions: int) -> pa.Schema:
-    return pa.schema([
-        pa.field("id", pa.int64()),
-        pa.field("vector", pa.list_(pa.float32(), embedding_dimensions)),
-        pa.field("text", pa.utf8()),
-        pa.field("hemisphere_tag", pa.utf8()),
-        pa.field("unix_timestamp", pa.int64()),
-        pa.field("importance", pa.int64()),
-        pa.field("source_id", pa.int64()),
-        pa.field("entity", pa.utf8()),
-        pa.field("category", pa.utf8()),
-    ])
+    return pa.schema(
+        [
+            pa.field("id", pa.int64()),
+            pa.field("vector", pa.list_(pa.float32(), embedding_dimensions)),
+            pa.field("text", pa.utf8()),
+            pa.field("hemisphere_tag", pa.utf8()),
+            pa.field("unix_timestamp", pa.int64()),
+            pa.field("importance", pa.int64()),
+            pa.field("source_id", pa.int64()),
+            pa.field("entity", pa.utf8()),
+            pa.field("category", pa.utf8()),
+        ]
+    )
 
 
 class LanceDBVectorStore(VectorStore):
@@ -110,17 +111,19 @@ class LanceDBVectorStore(VectorStore):
         rows = []
         for f in facts:
             meta = f.get("metadata", {})
-            rows.append({
-                "id": int(f["id"]),
-                "vector": [float(x) for x in f["vector"]],
-                "text": str(meta.get("text", "")),
-                "hemisphere_tag": str(meta.get("hemisphere_tag", "safe")),
-                "unix_timestamp": int(meta.get("unix_timestamp", 0)),
-                "importance": int(meta.get("importance", 5)),
-                "source_id": int(meta.get("source_id", 0)),
-                "entity": str(meta.get("entity", "")),
-                "category": str(meta.get("category", "")),
-            })
+            rows.append(
+                {
+                    "id": int(f["id"]),
+                    "vector": [float(x) for x in f["vector"]],
+                    "text": str(meta.get("text", "")),
+                    "hemisphere_tag": str(meta.get("hemisphere_tag", "safe")),
+                    "unix_timestamp": int(meta.get("unix_timestamp", 0)),
+                    "importance": int(meta.get("importance", 5)),
+                    "source_id": int(meta.get("source_id", 0)),
+                    "entity": str(meta.get("entity", "")),
+                    "category": str(meta.get("category", "")),
+                }
+            )
 
         (
             self.table.merge_insert("id")
@@ -157,19 +160,21 @@ class LanceDBVectorStore(VectorStore):
             score = 1.0 - float(r.get("_distance", 1.0))
             if score < score_threshold:
                 continue
-            output.append({
-                "id": r["id"],
-                "score": score,
-                "metadata": {
-                    "text": r.get("text", ""),
-                    "hemisphere_tag": r.get("hemisphere_tag", "safe"),
-                    "unix_timestamp": r.get("unix_timestamp", 0),
-                    "importance": r.get("importance", 5),
-                    "source_id": r.get("source_id", 0),
-                    "entity": r.get("entity", ""),
-                    "category": r.get("category", ""),
-                },
-            })
+            output.append(
+                {
+                    "id": r["id"],
+                    "score": score,
+                    "metadata": {
+                        "text": r.get("text", ""),
+                        "hemisphere_tag": r.get("hemisphere_tag", "safe"),
+                        "unix_timestamp": r.get("unix_timestamp", 0),
+                        "importance": r.get("importance", 5),
+                        "source_id": r.get("source_id", 0),
+                        "entity": r.get("entity", ""),
+                        "category": r.get("category", ""),
+                    },
+                }
+            )
         return output
 
     def close(self) -> None:

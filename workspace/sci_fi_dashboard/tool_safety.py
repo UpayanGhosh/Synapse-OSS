@@ -16,9 +16,9 @@ import hashlib
 import json
 import logging
 import os
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Awaitable, Callable
+from datetime import UTC, datetime
 
 logger = logging.getLogger(__name__)
 
@@ -71,9 +71,7 @@ def apply_tool_policy_pipeline(
 
             # Owner-only check
             if is_owner_only and not sender_is_owner:
-                removed_log.append(
-                    {"tool": name, "step": step.label, "reason": "owner_only"}
-                )
+                removed_log.append({"tool": name, "step": step.label, "reason": "owner_only"})
                 logger.info(
                     '[tool-policy] "%s" removed by step "%s" (owner_only)',
                     name,
@@ -83,9 +81,7 @@ def apply_tool_policy_pipeline(
 
             # Deny list
             if step.policy.deny and name in step.policy.deny:
-                removed_log.append(
-                    {"tool": name, "step": step.label, "reason": "denied"}
-                )
+                removed_log.append({"tool": name, "step": step.label, "reason": "denied"})
                 logger.info(
                     '[tool-policy] "%s" removed by step "%s" (denied)',
                     name,
@@ -95,9 +91,7 @@ def apply_tool_policy_pipeline(
 
             # Allow list
             if step.policy.allow is not None and name not in step.policy.allow:
-                removed_log.append(
-                    {"tool": name, "step": step.label, "reason": "not_in_allowlist"}
-                )
+                removed_log.append({"tool": name, "step": step.label, "reason": "not_in_allowlist"})
                 logger.info(
                     '[tool-policy] "%s" removed by step "%s" (not_in_allowlist)',
                     name,
@@ -142,30 +136,22 @@ class ToolHookRunner:
     def register_after(self, hook: AfterToolCallHook) -> None:
         self._after_hooks.append(hook)
 
-    async def run_before(
-        self, tool_name: str, args: dict, context: dict
-    ) -> tuple[str, dict]:
+    async def run_before(self, tool_name: str, args: dict, context: dict) -> tuple[str, dict]:
         """Run all before-hooks. Any hook can block or modify args."""
         effective_args = dict(args)
         for hook in self._before_hooks:
             try:
                 action, modified = await hook(tool_name, effective_args, context)
                 if action == "block":
-                    logger.warning(
-                        "[tool-hooks] '%s' blocked by before-hook", tool_name
-                    )
+                    logger.warning("[tool-hooks] '%s' blocked by before-hook", tool_name)
                     return ("block", effective_args)
                 if modified is not None:
                     effective_args = modified
             except Exception as exc:
-                logger.warning(
-                    "[tool-hooks] Before-hook error for '%s': %s", tool_name, exc
-                )
+                logger.warning("[tool-hooks] Before-hook error for '%s': %s", tool_name, exc)
         return ("allow", effective_args)
 
-    async def run_after(
-        self, tool_name: str, args: dict, result: dict, duration_ms: float
-    ) -> None:
+    async def run_after(self, tool_name: str, args: dict, result: dict, duration_ms: float) -> None:
         """Run all after-hooks (fire-and-forget, errors logged)."""
         for hook in self._after_hooks:
             try:
@@ -188,9 +174,7 @@ class ToolLoopDetector:
 
     def record(self, name: str, arguments: dict) -> str:
         """Record a tool call. Returns severity: 'ok', 'warn', 'error', 'block'."""
-        args_hash = hashlib.md5(
-            json.dumps(arguments, sort_keys=True).encode()
-        ).hexdigest()[:12]
+        args_hash = hashlib.md5(json.dumps(arguments, sort_keys=True).encode()).hexdigest()[:12]
         key = (name, args_hash)
         self._history.append(key)
 
@@ -281,11 +265,9 @@ class ToolAuditLogger:
             "duration_ms": round(duration_ms, 1),
             "sender": sender_id,
             "chat_id": chat_id,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
         }
-        logger.debug(
-            "[tool-audit] %s: %.1fms, error=%s", tool_name, duration_ms, is_error
-        )
+        logger.debug("[tool-audit] %s: %.1fms, error=%s", tool_name, duration_ms, is_error)
 
         if self._log_path:
             try:
@@ -300,9 +282,7 @@ class ToolAuditLogger:
 # ---------------------------------------------------------------------------
 
 
-def build_policy_steps(
-    config: dict, channel_id: str | None = None
-) -> list[PolicyStep]:
+def build_policy_steps(config: dict, channel_id: str | None = None) -> list[PolicyStep]:
     """Build policy steps from synapse.json config.
 
     Produces up to 3 steps:

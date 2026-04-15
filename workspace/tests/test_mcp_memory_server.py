@@ -1,6 +1,7 @@
 """
 Tests for sci_fi_dashboard.mcp_servers.memory_server — knowledge base query + fact ingest.
 """
+
 from __future__ import annotations
 
 import json
@@ -99,9 +100,7 @@ class TestQueryMemory:
                 {"query": "test", "limit": 10, "with_graph": False},
             )
 
-        mock_engine.query.assert_called_once_with(
-            text="test", limit=10, with_graph=False
-        )
+        mock_engine.query.assert_called_once_with(text="test", limit=10, with_graph=False)
 
     @pytest.mark.asyncio
     async def test_query_defaults_limit_5_graph_true(self):
@@ -113,9 +112,7 @@ class TestQueryMemory:
         with patch.object(mem_srv, "_get_engine", return_value=mock_engine):
             await mem_srv.call_tool("query_memory", {"query": "test"})
 
-        mock_engine.query.assert_called_once_with(
-            text="test", limit=5, with_graph=True
-        )
+        mock_engine.query.assert_called_once_with(text="test", limit=5, with_graph=True)
 
 
 # ---------------------------------------------------------------------------
@@ -179,7 +176,9 @@ class TestEngineSingleton:
         import sci_fi_dashboard.mcp_servers.memory_server as mem_srv
 
         mock_engine = MagicMock()
-        with patch.dict("sys.modules", {"memory_engine": MagicMock(MemoryEngine=lambda: mock_engine)}):
+        with patch.dict(
+            "sys.modules", {"memory_engine": MagicMock(MemoryEngine=lambda: mock_engine)}
+        ):
             mem_srv._engine = None  # reset
             e1 = mem_srv._get_engine()
             e2 = mem_srv._get_engine()

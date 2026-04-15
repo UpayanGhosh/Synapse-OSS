@@ -2,14 +2,15 @@
 MCP Server: Synapse Tool Registry — web browsing + Sentinel-gated file ops
 Run standalone: python -m sci_fi_dashboard.mcp_servers.tools_server
 """
+
 import asyncio
 import json
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
-from mcp.types import Tool, TextContent
+from mcp.types import TextContent, Tool
 
-from .base import setup_logging, logger, check_mcp_auth
+from .base import check_mcp_auth, logger, setup_logging
 
 server = Server("synapse-tools")
 
@@ -122,6 +123,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
     if name == "web_search":
         try:
             from db.tools import ToolRegistry
+
             content = await ToolRegistry.search_web(arguments["url"])
             return [TextContent(type="text", text=content)]
         except Exception as e:
@@ -129,15 +131,14 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
 
     elif name == "read_file":
         try:
-            from sbs.sentinel.tools import _sentinel
-            from sbs.sentinel.gateway import SentinelError
             from file_ops.paging import read_file_paged
+            from sbs.sentinel.gateway import SentinelError
+            from sbs.sentinel.tools import _sentinel
+
             if not _sentinel:
                 raise RuntimeError("Sentinel not initialized")
             # Sentinel gate: check read access, get resolved path
-            resolved = _sentinel.check_access(
-                arguments["path"], "read", "mcp read_file"
-            )
+            resolved = _sentinel.check_access(arguments["path"], "read", "mcp read_file")
             # Use the already-resolved path for paging (no second resolution)
             result = read_file_paged(
                 str(resolved),
@@ -156,6 +157,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
     elif name == "write_file":
         try:
             from sbs.sentinel.tools import agent_write_file
+
             result = agent_write_file(arguments["path"], arguments["content"])
             return [TextContent(type="text", text=result)]
         except PermissionError as e:
@@ -168,13 +170,12 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
 
     elif name == "edit_file":
         try:
-            from sbs.sentinel.tools import agent_check_write_access
-            from sbs.sentinel.gateway import SentinelError
             from file_ops.edit import apply_edit
+            from sbs.sentinel.gateway import SentinelError
+            from sbs.sentinel.tools import agent_check_write_access
+
             # Sentinel WRITE gate -- edit_file modifies the file
-            resolved = agent_check_write_access(
-                arguments["path"], "mcp edit_file"
-            )
+            resolved = agent_check_write_access(arguments["path"], "mcp edit_file")
             # Use the resolved path for the edit to avoid TOCTOU
             result = apply_edit(
                 str(resolved),
@@ -194,6 +195,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
     elif name == "delete_file":
         try:
             from sbs.sentinel.tools import agent_delete_file
+
             result = agent_delete_file(
                 arguments["path"],
                 arguments.get("reason", ""),
@@ -212,6 +214,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
     elif name == "list_directory":
         try:
             from sbs.sentinel.tools import agent_list_directory
+
             result = agent_list_directory(arguments["path"])
             if result.startswith("[SENTINEL DENIED]"):
                 return [TextContent(type="text", text=f"DENIED: {result}")]

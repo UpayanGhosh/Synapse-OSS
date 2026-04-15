@@ -18,7 +18,6 @@ Configuration (synapse.json):
 """
 
 import logging
-from typing import Optional
 
 from .convert import mp3_to_ogg_opus
 from .providers.edge import EdgeTTSProvider
@@ -40,7 +39,7 @@ class TTSEngine:
     Returns OGG Opus bytes when synthesis succeeds.
     """
 
-    async def synthesize(self, text: str) -> Optional[bytes]:
+    async def synthesize(self, text: str) -> bytes | None:
         """Synthesize text to OGG Opus bytes.
 
         Args:

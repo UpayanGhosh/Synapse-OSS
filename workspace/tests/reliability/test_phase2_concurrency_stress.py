@@ -14,8 +14,8 @@ Tests:
   8. Recovery after failure — mock first call to fail, verify subsequent calls succeed
 """
 
-import sys
 import os
+import sys
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -26,8 +26,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from tests.reliability.conftest import (
     SKIP_NO_FASTEMBED,
-    ReliabilityDataGenerator,
     LatencyTracker,
+    ReliabilityDataGenerator,
 )
 
 pytestmark = [pytest.mark.reliability, pytest.mark.slow, SKIP_NO_FASTEMBED]
@@ -112,7 +112,7 @@ def test_2_workers_plus_ingest():
                 tracker.record(time.perf_counter() - t0)
 
     with ThreadPoolExecutor(max_workers=3) as ex:
-        f1 = ex.submit(query_worker, query_texts[:QUERIES_PER_WORKER // 2])
+        f1 = ex.submit(query_worker, query_texts[: QUERIES_PER_WORKER // 2])
         f2 = ex.submit(query_worker, query_texts[QUERIES_PER_WORKER // 2 :])
         f3 = ex.submit(ingest_worker)
         for f in [f1, f2, f3]:
@@ -178,7 +178,7 @@ def test_concurrent_lazy_init_race():
     # All threads must get the same result (deterministic)
     vecs = list(results.values())
     for v in vecs[1:]:
-        for j, (a, b) in enumerate(zip(vecs[0], v)):
+        for j, (a, b) in enumerate(zip(vecs[0], v, strict=False)):
             assert abs(a - b) < 1e-7, f"Dim {j} differs across concurrent init threads"
 
 
@@ -245,8 +245,12 @@ def test_mixed_query_and_document():
                 errors.append(f"doc: {e}")
 
     with ThreadPoolExecutor(max_workers=4) as ex:
-        futures = [ex.submit(query_thread), ex.submit(doc_thread),
-                   ex.submit(query_thread), ex.submit(doc_thread)]
+        futures = [
+            ex.submit(query_thread),
+            ex.submit(doc_thread),
+            ex.submit(query_thread),
+            ex.submit(doc_thread),
+        ]
         for f in futures:
             f.result()
 
@@ -270,7 +274,7 @@ def test_no_result_corruption():
         for text in subset:
             vec = provider.embed_query(text)
             exp = expected[text]
-            for j, (a, b) in enumerate(zip(vec, exp)):
+            for j, (a, b) in enumerate(zip(vec, exp, strict=False)):
                 if abs(a - b) > 1e-7:
                     mismatches.append(f"text={text[:20]!r} dim={j} got={a} exp={b}")
                     return

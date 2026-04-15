@@ -11,15 +11,15 @@ Tests cover:
 Run:
     cd workspace && pytest tests/test_embedding_pipeline_deep.py -v
 """
+
 from __future__ import annotations
 
 import math
 import sqlite3
 import sys
-import os
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
 # ---------------------------------------------------------------------------
 # Path bootstrap
@@ -36,6 +36,7 @@ sys.modules.setdefault("lancedb", MagicMock())
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_provider(
     dims: int = 768,
@@ -83,13 +84,16 @@ def _make_fresh_db_for_reembed(
 # Category 1: Retriever Deep Tests
 # ===========================================================================
 
+
 class TestRetrieverDeep(unittest.TestCase):
     """Deep behavioural tests for sci_fi_dashboard.retriever.get_embedding()."""
 
     def setUp(self):
         # Clear any module-level singleton so patches take effect cleanly.
         import importlib
+
         import sci_fi_dashboard.retriever as _r
+
         importlib.reload(_r)
 
     def test_retriever_calls_embed_query_not_embed_documents(self):
@@ -98,7 +102,8 @@ class TestRetrieverDeep(unittest.TestCase):
 
         with patch("sci_fi_dashboard.retriever.get_provider", return_value=mock_provider):
             import sci_fi_dashboard.retriever as retriever
-            result = retriever.get_embedding("search text")
+
+            retriever.get_embedding("search text")
 
         mock_provider.embed_query.assert_called_once_with("search text")
         mock_provider.embed_documents.assert_not_called()
@@ -110,6 +115,7 @@ class TestRetrieverDeep(unittest.TestCase):
 
         with patch("sci_fi_dashboard.retriever.get_provider", return_value=mock_provider):
             import sci_fi_dashboard.retriever as retriever
+
             result = retriever.get_embedding("some text")
 
         self.assertIsInstance(result, list, "get_embedding() must return a list, not a tuple")
@@ -121,6 +127,7 @@ class TestRetrieverDeep(unittest.TestCase):
 
         with patch("sci_fi_dashboard.retriever.get_provider", return_value=mock_provider):
             import sci_fi_dashboard.retriever as retriever
+
             result = retriever.get_embedding("failing text")
 
         # The function must swallow the exception and return None
@@ -130,6 +137,7 @@ class TestRetrieverDeep(unittest.TestCase):
         """get_embedding() returns None when get_provider() returns None."""
         with patch("sci_fi_dashboard.retriever.get_provider", return_value=None):
             import sci_fi_dashboard.retriever as retriever
+
             result = retriever.get_embedding("any text")
 
         self.assertIsNone(result)
@@ -141,6 +149,7 @@ class TestRetrieverDeep(unittest.TestCase):
 
         with patch("sci_fi_dashboard.retriever.get_provider", return_value=mock_provider):
             import sci_fi_dashboard.retriever as retriever
+
             result = retriever.get_embedding("")
 
         # Must return a list of floats, no exception raised
@@ -152,6 +161,7 @@ class TestRetrieverDeep(unittest.TestCase):
 # ===========================================================================
 # Category 2: MemoryEngine LRU Cache Deep Tests
 # ===========================================================================
+
 
 class TestMemoryEngineLRUCache(unittest.TestCase):
     """Deep LRU cache and provider-wiring tests for MemoryEngine.get_embedding()."""
@@ -171,6 +181,7 @@ class TestMemoryEngineLRUCache(unittest.TestCase):
         )
         with lancedb_patch, provider_patch:
             from sci_fi_dashboard.memory_engine import MemoryEngine
+
             engine = MemoryEngine()
             engine.get_embedding.cache_clear()
         return engine
@@ -210,8 +221,11 @@ class TestMemoryEngineLRUCache(unittest.TestCase):
 
         result = engine.get_embedding("cache me")
 
-        self.assertIsInstance(result, tuple,
-            "MemoryEngine.get_embedding() must return tuple (needed for lru_cache key)")
+        self.assertIsInstance(
+            result,
+            tuple,
+            "MemoryEngine.get_embedding() must return tuple (needed for lru_cache key)",
+        )
 
     def test_memory_engine_provider_stored_at_init(self):
         """The provider returned by get_provider() is stored as self._embed_provider."""
@@ -227,6 +241,7 @@ class TestMemoryEngineLRUCache(unittest.TestCase):
         )
         with lancedb_patch, provider_patch:
             from sci_fi_dashboard.memory_engine import MemoryEngine
+
             engine = MemoryEngine()
 
         self.assertIs(engine._embed_provider, mock_provider)
@@ -250,14 +265,18 @@ class TestMemoryEngineLRUCache(unittest.TestCase):
         result = engine.get_embedding("broken query")
 
         self.assertIsInstance(result, tuple)
-        self.assertEqual(len(result), 512,
-            "Zero-vector length must match the provider's dimensions (512), not 768")
+        self.assertEqual(
+            len(result),
+            512,
+            "Zero-vector length must match the provider's dimensions (512), not 768",
+        )
         self.assertTrue(all(v == 0.0 for v in result))
 
 
 # ===========================================================================
 # Category 3: Ingest Batch Efficiency Tests
 # ===========================================================================
+
 
 class TestIngestBatchEfficiency(unittest.TestCase):
     """Verify that ingest_atomic() uses embed_documents for batch embedding."""
@@ -285,11 +304,13 @@ class TestIngestBatchEfficiency(unittest.TestCase):
         fake_content = "\n\n".join(text for _, text, _ in items)
 
         import builtins
+
         real_open = builtins.open
 
         def _fake_open(path, *args, **kwargs):
             if path.endswith("memory.txt"):
                 import io
+
                 return io.StringIO(fake_content)
             return real_open(path, *args, **kwargs)
 
@@ -315,7 +336,8 @@ class TestIngestBatchEfficiency(unittest.TestCase):
         self._run_ingest_with_items(items, mock_provider)
 
         self.assertEqual(
-            mock_provider.embed_documents.call_count, 1,
+            mock_provider.embed_documents.call_count,
+            1,
             "embed_documents must be called exactly once for all items in a batch",
         )
 
@@ -337,12 +359,10 @@ class TestIngestBatchEfficiency(unittest.TestCase):
         """
         mock_provider = _make_provider()
         texts = ["doc alpha", "doc beta", "doc gamma"]
-        items = [("f.txt", t, f"h{i}") for i, t in enumerate(texts)]
+        [("f.txt", t, f"h{i}") for i, t in enumerate(texts)]
 
         # Provide distinct vectors so we can verify ordering
-        vectors = [
-            [float(i) / 10.0] * 768 for i in range(len(texts))
-        ]
+        vectors = [[float(i) / 10.0] * 768 for i in range(len(texts))]
         mock_provider.embed_documents.return_value = vectors
 
         mock_conn = MagicMock()
@@ -354,7 +374,9 @@ class TestIngestBatchEfficiency(unittest.TestCase):
 
         fake_content = "\n\n".join(texts)
 
-        import builtins, io
+        import builtins
+        import io
+
         real_open = builtins.open
 
         def _fake_open(path, *a, **kw):
@@ -373,6 +395,7 @@ class TestIngestBatchEfficiency(unittest.TestCase):
             patch("builtins.open", side_effect=_fake_open),
         ):
             import sci_fi_dashboard.ingest as ingest_mod
+
             ingest_mod.ingest_atomic()
 
         # embed_documents must have been called with all 3 texts
@@ -402,6 +425,7 @@ class TestIngestBatchEfficiency(unittest.TestCase):
             patch("os.path.exists", return_value=False),
         ):
             import sci_fi_dashboard.ingest as ingest_mod
+
             # Must not raise
             ingest_mod.ingest_atomic()
 
@@ -412,17 +436,20 @@ class TestIngestBatchEfficiency(unittest.TestCase):
 # Category 4: Database Schema Real SQLite Tests
 # ===========================================================================
 
+
 class TestDatabaseSchemaRealSQLite(unittest.TestCase):
     """Tests that exercise the actual db.py constants and helpers against real SQLite."""
 
     def test_embedding_dimensions_constant_is_768(self):
         """EMBEDDING_DIMENSIONS must equal 768 (the project-wide embedding size)."""
         from sci_fi_dashboard.db import EMBEDDING_DIMENSIONS
+
         self.assertEqual(EMBEDDING_DIMENSIONS, 768)
 
     def test_validate_embedding_dimension_passes_768(self):
         """validate_embedding_dimension([0.0] * 768) must not raise."""
-        from sci_fi_dashboard.db import validate_embedding_dimension, EMBEDDING_DIMENSIONS
+        from sci_fi_dashboard.db import validate_embedding_dimension
+
         try:
             validate_embedding_dimension([0.0] * 768)
         except ValueError as exc:
@@ -431,17 +458,17 @@ class TestDatabaseSchemaRealSQLite(unittest.TestCase):
     def test_validate_embedding_dimension_blocks_384(self):
         """validate_embedding_dimension([0.0] * 384) must raise ValueError."""
         from sci_fi_dashboard.db import validate_embedding_dimension
+
         with self.assertRaises(ValueError) as ctx:
             validate_embedding_dimension([0.0] * 384)
         error_msg = str(ctx.exception)
-        self.assertIn("768", error_msg,
-            "Error message must mention expected size 768")
-        self.assertIn("384", error_msg,
-            "Error message must mention the actual size 384")
+        self.assertIn("768", error_msg, "Error message must mention expected size 768")
+        self.assertIn("384", error_msg, "Error message must mention the actual size 384")
 
     def test_validate_error_message_mentions_re_embed(self):
         """validate_embedding_dimension error must guide user to run 'synapse re-embed'."""
         from sci_fi_dashboard.db import validate_embedding_dimension
+
         with self.assertRaises(ValueError) as ctx:
             validate_embedding_dimension([0.0] * 100)
         error_msg = str(ctx.exception).lower()
@@ -476,10 +503,16 @@ class TestDatabaseSchemaRealSQLite(unittest.TestCase):
 
         cursor = conn.execute("PRAGMA table_info(documents)")
         cols_after = {row[1] for row in cursor.fetchall()}
-        self.assertIn("embedding_model", cols_after,
-            "_ensure_embedding_metadata must add 'embedding_model' column")
-        self.assertIn("embedding_version", cols_after,
-            "_ensure_embedding_metadata must add 'embedding_version' column")
+        self.assertIn(
+            "embedding_model",
+            cols_after,
+            "_ensure_embedding_metadata must add 'embedding_model' column",
+        )
+        self.assertIn(
+            "embedding_version",
+            cols_after,
+            "_ensure_embedding_metadata must add 'embedding_version' column",
+        )
         conn.close()
 
 
@@ -487,12 +520,14 @@ class TestDatabaseSchemaRealSQLite(unittest.TestCase):
 # Category 5: Re-Embed Engine Deep Tests
 # ===========================================================================
 
+
 class TestReEmbedEngineDeep(unittest.TestCase):
     """Deep behavioural tests for embedding.migrate.re_embed_documents()."""
 
     def _make_provider_with_model(self, model_name: str = "target-model") -> MagicMock:
         """Return a provider mock whose info().model is model_name."""
         from sci_fi_dashboard.db import EMBEDDING_DIMENSIONS
+
         info = MagicMock()
         info.name = "test-provider"
         info.model = model_name
@@ -538,12 +573,13 @@ class TestReEmbedEngineDeep(unittest.TestCase):
             stats = re_embed_documents(Path(":memory:"), provider, batch_size=64)
 
         # All 3 rows should now have the new model
-        cursor = conn.execute(
-            "SELECT COUNT(*) FROM documents WHERE embedding_model = 'new-model'"
-        )
+        cursor = conn.execute("SELECT COUNT(*) FROM documents WHERE embedding_model = 'new-model'")
         updated_count = cursor.fetchone()[0]
-        self.assertEqual(updated_count, 3,
-            "embedding_model column must be updated to 'new-model' for all processed rows")
+        self.assertEqual(
+            updated_count,
+            3,
+            "embedding_model column must be updated to 'new-model' for all processed rows",
+        )
         self.assertEqual(stats["processed"], 3)
         conn.close()
 
@@ -579,8 +615,9 @@ class TestReEmbedEngineDeep(unittest.TestCase):
             stats = re_embed_documents(Path(":memory:"), provider, batch_size=64)
 
         # Only the 2 stale rows should be processed
-        self.assertEqual(stats["processed"], 2,
-            "Only rows with mismatched embedding_model should be processed")
+        self.assertEqual(
+            stats["processed"], 2, "Only rows with mismatched embedding_model should be processed"
+        )
         conn.close()
 
     def test_re_embed_dry_run_count_is_accurate(self):
@@ -595,16 +632,16 @@ class TestReEmbedEngineDeep(unittest.TestCase):
             stats = re_embed_documents(Path(":memory:"), provider, dry_run=True)
 
         # Dry-run stats must reflect all 7 stale rows
-        self.assertEqual(stats["processed"], n,
-            "Dry-run stats['processed'] must equal the number of stale rows")
+        self.assertEqual(
+            stats["processed"], n, "Dry-run stats['processed'] must equal the number of stale rows"
+        )
 
         # But the database must be untouched
         cursor = conn.execute(
             "SELECT COUNT(*) FROM documents WHERE embedding_model = 'stale-model'"
         )
         still_stale = cursor.fetchone()[0]
-        self.assertEqual(still_stale, n,
-            "Dry-run must NOT update embedding_model in the database")
+        self.assertEqual(still_stale, n, "Dry-run must NOT update embedding_model in the database")
         conn.close()
 
     def test_re_embed_handles_provider_error_gracefully(self):
@@ -620,19 +657,19 @@ class TestReEmbedEngineDeep(unittest.TestCase):
             try:
                 stats = re_embed_documents(Path(":memory:"), provider, batch_size=64)
             except Exception as exc:
-                self.fail(
-                    f"re_embed_documents must not propagate provider errors, got: {exc}"
-                )
+                self.fail(f"re_embed_documents must not propagate provider errors, got: {exc}")
 
         # Errors should be counted
-        self.assertGreater(stats["errors"], 0,
-            "stats['errors'] must be > 0 when embed_documents raises")
+        self.assertGreater(
+            stats["errors"], 0, "stats['errors'] must be > 0 when embed_documents raises"
+        )
         conn.close()
 
 
 # ===========================================================================
 # Additional edge-case tests (to reach 25+ total)
 # ===========================================================================
+
 
 class TestRetrieverEdgeCases(unittest.TestCase):
     """Extra edge cases for retriever not covered by basic tests."""
@@ -644,6 +681,7 @@ class TestRetrieverEdgeCases(unittest.TestCase):
 
         with patch("sci_fi_dashboard.retriever.get_provider", return_value=mock_provider):
             import sci_fi_dashboard.retriever as retriever
+
             result = retriever.get_embedding("test")
 
         self.assertEqual(len(result), 512)
@@ -655,6 +693,7 @@ class TestRetrieverEdgeCases(unittest.TestCase):
 
         with patch("sci_fi_dashboard.retriever.get_provider", return_value=mock_provider):
             import sci_fi_dashboard.retriever as retriever
+
             retriever.get_embedding(special_text)
 
         mock_provider.embed_query.assert_called_once_with(special_text)
@@ -674,6 +713,7 @@ class TestMemoryEngineEdgeCases(unittest.TestCase):
         )
         with lancedb_patch, provider_patch:
             from sci_fi_dashboard.memory_engine import MemoryEngine
+
             engine = MemoryEngine()
             engine.get_embedding.cache_clear()
         return engine
@@ -714,6 +754,7 @@ class TestDatabaseSchemaExtraValidation(unittest.TestCase):
     def test_validate_accepts_any_expected_size_when_overridden(self):
         """validate_embedding_dimension respects the 'expected' parameter."""
         from sci_fi_dashboard.db import validate_embedding_dimension
+
         # Custom expected size — should not raise
         try:
             validate_embedding_dimension([0.0] * 512, expected=512)
@@ -723,6 +764,7 @@ class TestDatabaseSchemaExtraValidation(unittest.TestCase):
     def test_validate_rejects_empty_vector(self):
         """An empty vector [] has 0 dimensions — must raise ValueError."""
         from sci_fi_dashboard.db import validate_embedding_dimension
+
         with self.assertRaises(ValueError):
             validate_embedding_dimension([], expected=768)
 
@@ -763,9 +805,7 @@ class TestDatabaseSchemaExtraValidation(unittest.TestCase):
         try:
             _ensure_embedding_metadata(conn)
         except Exception as exc:
-            self.fail(
-                f"_ensure_embedding_metadata raised when atomic_facts is absent: {exc}"
-            )
+            self.fail(f"_ensure_embedding_metadata raised when atomic_facts is absent: {exc}")
         conn.close()
 
 
@@ -826,8 +866,9 @@ class TestReEmbedEngineBatchContent(unittest.TestCase):
             stats = re_embed_documents(Path(":memory:"), provider, batch_size=64)
 
         # Rows with NULL and 'old' must be processed (2 total); row with 'target' skipped
-        self.assertEqual(stats["processed"], 2,
-            "Both NULL and mismatched model rows must be processed")
+        self.assertEqual(
+            stats["processed"], 2, "Both NULL and mismatched model rows must be processed"
+        )
         conn.close()
 
 

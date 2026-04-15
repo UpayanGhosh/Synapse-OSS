@@ -165,16 +165,18 @@ class SynapseConfig:
             tts_raw = raw.get("tts", {})
 
         # Build SBSConfig from the "sbs" key (missing keys use dataclass defaults)
-        sbs_config = SBSConfig(**{
-            k: v for k, v in sbs_raw.items()
-            if k in SBSConfig.__dataclass_fields__
-        })
+        sbs_config = SBSConfig(
+            **{k: v for k, v in sbs_raw.items() if k in SBSConfig.__dataclass_fields__}
+        )
 
         # Build KGExtractionConfig from the "kg_extraction" key
-        kg_config = KGExtractionConfig(**{
-            k: v for k, v in kg_extraction_raw.items()
-            if k in KGExtractionConfig.__dataclass_fields__
-        })
+        kg_config = KGExtractionConfig(
+            **{
+                k: v
+                for k, v in kg_extraction_raw.items()
+                if k in KGExtractionConfig.__dataclass_fields__
+            }
+        )
 
         return cls(
             data_root=data_root,

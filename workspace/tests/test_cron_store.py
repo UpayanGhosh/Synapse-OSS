@@ -1,13 +1,13 @@
 """
 Tests for sci_fi_dashboard.cron.store — JSON persistence.
 """
+
 from __future__ import annotations
 
 import json
 import os
 
 import pytest
-
 from sci_fi_dashboard.cron.store import CronStore
 from sci_fi_dashboard.cron.types import (
     CronDelivery,

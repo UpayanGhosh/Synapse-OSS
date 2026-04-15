@@ -14,15 +14,14 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from sci_fi_dashboard.tool_safety import (
+    PolicyStep,
     ToolAuditLogger,
     ToolHookRunner,
     ToolLoopDetector,
     ToolPolicy,
-    PolicyStep,
     apply_tool_policy_pipeline,
     build_policy_steps,
 )
-
 
 # ---------------------------------------------------------------------------
 # 1. Policy Pipeline Tests
@@ -86,9 +85,7 @@ class TestToolPolicyPipeline:
             PolicyStep(policy=ToolPolicy(), label="sender"),
         ]
 
-        surviving, log = apply_tool_policy_pipeline(
-            tools, steps, sender_is_owner=False
-        )
+        surviving, log = apply_tool_policy_pipeline(tools, steps, sender_is_owner=False)
 
         assert surviving == ["web_search"]
         assert log[0]["reason"] == "owner_only"
@@ -104,9 +101,7 @@ class TestToolPolicyPipeline:
             PolicyStep(policy=ToolPolicy(), label="sender"),
         ]
 
-        surviving, log = apply_tool_policy_pipeline(
-            tools, steps, sender_is_owner=True
-        )
+        surviving, log = apply_tool_policy_pipeline(tools, steps, sender_is_owner=True)
 
         assert surviving == ["web_search", "write_file"]
         assert log == []

@@ -1,6 +1,7 @@
 """
 Tests for sci_fi_dashboard.proactive_engine — ProactiveAwarenessEngine and ProactiveContext.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -17,7 +18,6 @@ from sci_fi_dashboard.proactive_engine import (
     ProactiveAwarenessEngine,
     ProactiveContext,
 )
-
 
 # ---------------------------------------------------------------------------
 # ProactiveContext
@@ -53,9 +53,7 @@ class TestProactiveContext:
 
     def test_slack_mentions_in_prompt(self):
         ctx = ProactiveContext(
-            slack_mentions=[
-                {"channel": "general", "user": "carol", "text": "Hey look at this"}
-            ]
+            slack_mentions=[{"channel": "general", "user": "carol", "text": "Hey look at this"}]
         )
         block = ctx.compile_prompt_block()
         assert "SLACK MENTIONS: 1" in block
@@ -75,10 +73,7 @@ class TestProactiveContext:
         assert "SLACK MENTIONS" in block
 
     def test_only_first_3_emails_shown(self):
-        emails = [
-            {"from": f"user{i}@test.com", "subject": f"Email {i}"}
-            for i in range(10)
-        ]
+        emails = [{"from": f"user{i}@test.com", "subject": f"Email {i}"} for i in range(10)]
         ctx = ProactiveContext(unread_emails=emails)
         block = ctx.compile_prompt_block()
         assert "user0@test.com" in block
@@ -87,21 +82,14 @@ class TestProactiveContext:
         assert "user3@test.com" not in block
 
     def test_only_first_3_mentions_shown(self):
-        mentions = [
-            {"channel": "ch", "user": f"u{i}", "text": f"msg {i}"}
-            for i in range(10)
-        ]
+        mentions = [{"channel": "ch", "user": f"u{i}", "text": f"msg {i}"} for i in range(10)]
         ctx = ProactiveContext(slack_mentions=mentions)
         block = ctx.compile_prompt_block()
         assert "u2" in block
         assert "u3" not in block
 
     def test_slack_text_truncated_at_80_chars(self):
-        ctx = ProactiveContext(
-            slack_mentions=[
-                {"channel": "ch", "user": "u1", "text": "A" * 200}
-            ]
-        )
+        ctx = ProactiveContext(slack_mentions=[{"channel": "ch", "user": "u1", "text": "A" * 200}])
         block = ctx.compile_prompt_block()
         # The text in the block should be truncated
         # Find the mention line and check it's reasonable length
@@ -124,9 +112,7 @@ class TestProactiveContext:
         assert ctx.has_urgent_items() is False
 
     def test_not_urgent_slack_only(self):
-        ctx = ProactiveContext(
-            slack_mentions=[{"channel": "ch", "user": "u", "text": "hi"}]
-        )
+        ctx = ProactiveContext(slack_mentions=[{"channel": "ch", "user": "u", "text": "hi"}])
         assert ctx.has_urgent_items() is False
 
 
@@ -210,9 +196,11 @@ class TestPollAll:
     async def test_polls_gmail(self):
         mock_client = AsyncMock()
         mock_client.call_tool = AsyncMock(
-            return_value=json.dumps([
-                {"from": "alice@test.com", "subject": "Hi"},
-            ])
+            return_value=json.dumps(
+                [
+                    {"from": "alice@test.com", "subject": "Hi"},
+                ]
+            )
         )
 
         config = MagicMock()
@@ -231,9 +219,11 @@ class TestPollAll:
     async def test_polls_slack(self):
         mock_client = AsyncMock()
         mock_client.call_tool = AsyncMock(
-            return_value=json.dumps([
-                {"channel": "dev", "user": "bob", "text": "ping"},
-            ])
+            return_value=json.dumps(
+                [
+                    {"channel": "dev", "user": "bob", "text": "ping"},
+                ]
+            )
         )
 
         config = MagicMock()

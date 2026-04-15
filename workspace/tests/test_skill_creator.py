@@ -11,14 +11,17 @@ Covers:
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from sci_fi_dashboard.skills.schema import SkillManifest
+
 import asyncio
 import json
-import textwrap
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -115,9 +118,9 @@ class TestSkillCreatorCreate:
             description="A cool skill",
             skills_dir=tmp_path,
         )
-        assert skill_dir.name == "my-cool-skill", (
-            "Name should be normalized to lowercase-hyphenated"
-        )
+        assert (
+            skill_dir.name == "my-cool-skill"
+        ), "Name should be normalized to lowercase-hyphenated"
 
     def test_create_raises_if_skill_already_exists(self, tmp_path):
         """Test 6: ValueError raised if skill already exists."""
@@ -147,9 +150,7 @@ class TestSkillCreatorCreate:
             instructions=custom_instructions,
         )
         content = (skill_dir / "SKILL.md").read_text(encoding="utf-8")
-        assert custom_instructions in content, (
-            "Custom instructions must appear in SKILL.md body"
-        )
+        assert custom_instructions in content, "Custom instructions must appear in SKILL.md body"
 
     def test_create_uses_optional_subdirs_constant(self, tmp_path):
         """Test 8: All OPTIONAL_SUBDIRS from schema are created (scripts, references, assets)."""
@@ -278,9 +279,7 @@ class TestBundledSkillCreator:
     def test_bundled_skill_creator_skill_md_exists(self):
         """Bundled skill-creator SKILL.md exists."""
         bundled_dir = self._bundled_dir()
-        assert (bundled_dir / "SKILL.md").exists(), (
-            f"SKILL.md must exist at {bundled_dir}"
-        )
+        assert (bundled_dir / "SKILL.md").exists(), f"SKILL.md must exist at {bundled_dir}"
 
     def test_bundled_skill_creator_loads_with_skill_loader(self):
         """Bundled skill-creator SKILL.md is loadable by SkillLoader."""
@@ -298,27 +297,27 @@ class TestBundledSkillCreator:
 
         bundled_dir = self._bundled_dir()
         for subdir in OPTIONAL_SUBDIRS:
-            assert (bundled_dir / subdir).is_dir(), (
-                f"Bundled skill-creator must have {subdir}/ per SKILL-01"
-            )
+            assert (
+                bundled_dir / subdir
+            ).is_dir(), f"Bundled skill-creator must have {subdir}/ per SKILL-01"
 
     def test_bundled_skill_creator_has_trigger_phrases(self):
         """Bundled skill-creator has trigger phrases including 'create a skill'."""
         from sci_fi_dashboard.skills.loader import SkillLoader
 
         manifest = SkillLoader.load_skill(self._bundled_dir())
-        assert any("create" in t.lower() for t in manifest.triggers), (
-            "skill-creator must have at least one 'create' trigger phrase"
-        )
+        assert any(
+            "create" in t.lower() for t in manifest.triggers
+        ), "skill-creator must have at least one 'create' trigger phrase"
 
     def test_bundled_skill_creator_has_filesystem_write_permission(self):
         """Bundled skill-creator has filesystem:write permission declared."""
         from sci_fi_dashboard.skills.loader import SkillLoader
 
         manifest = SkillLoader.load_skill(self._bundled_dir())
-        assert "filesystem:write" in manifest.permissions, (
-            "skill-creator must declare filesystem:write permission"
-        )
+        assert (
+            "filesystem:write" in manifest.permissions
+        ), "skill-creator must declare filesystem:write permission"
 
 
 # ---------------------------------------------------------------------------
@@ -329,7 +328,7 @@ class TestBundledSkillCreator:
 class TestSkillRunnerSkillCreator:
     """Tests for SkillRunner special handling of skill-creator."""
 
-    def _skill_creator_manifest(self) -> "SkillManifest":
+    def _skill_creator_manifest(self) -> SkillManifest:
         """Build a minimal skill-creator manifest for testing."""
         from sci_fi_dashboard.skills.schema import SkillManifest
 
@@ -342,7 +341,7 @@ class TestSkillRunnerSkillCreator:
 
     def test_runner_calls_skill_creator_handler_for_skill_creator(self, tmp_path):
         """SkillRunner.execute() routes to _execute_skill_creator for skill-creator."""
-        from sci_fi_dashboard.skills.runner import SkillRunner, SkillResult
+        from sci_fi_dashboard.skills.runner import SkillResult, SkillRunner
 
         manifest = self._skill_creator_manifest()
         mock_result = SkillResult(
@@ -383,9 +382,7 @@ class TestSkillRunnerSkillCreator:
             new_callable=AsyncMock,
             return_value=mock_gen_result,
         ):
-            with patch(
-                "sci_fi_dashboard.skills.runner.SynapseConfig"
-            ) as mock_cfg_cls:
+            with patch("sci_fi_dashboard.skills.runner.SynapseConfig") as mock_cfg_cls:
                 mock_cfg = MagicMock()
                 mock_cfg.data_root = tmp_path
                 mock_cfg_cls.load.return_value = mock_cfg
@@ -443,9 +440,7 @@ class TestSkillRegistrySeedBundledSkills:
 
         count = SkillRegistry.seed_bundled_skills(tmp_path)
         assert count >= 1, "Expected at least 1 bundled skill to be seeded"
-        assert (tmp_path / "skill-creator").is_dir(), (
-            "skill-creator must be copied to skills_dir"
-        )
+        assert (tmp_path / "skill-creator").is_dir(), "skill-creator must be copied to skills_dir"
         assert (tmp_path / "skill-creator" / "SKILL.md").exists()
 
     def test_seed_bundled_skills_does_not_overwrite_existing(self, tmp_path):
@@ -461,9 +456,7 @@ class TestSkillRegistrySeedBundledSkills:
         SkillRegistry.seed_bundled_skills(tmp_path)
 
         # Custom file must still exist — not overwritten
-        assert marker.exists(), (
-            "seed_bundled_skills must NOT overwrite existing skill directories"
-        )
+        assert marker.exists(), "seed_bundled_skills must NOT overwrite existing skill directories"
 
     def test_seed_bundled_skills_returns_zero_when_all_exist(self, tmp_path):
         """seed_bundled_skills returns 0 when all bundled skills already exist."""

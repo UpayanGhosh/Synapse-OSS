@@ -20,9 +20,7 @@ from __future__ import annotations
 
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
-import numpy as np
 import pytest
 
 from .conftest import LanceDBDataGenerator, LatencyTracker
@@ -32,12 +30,14 @@ lancedb = pytest.importorskip("lancedb", reason="lancedb not installed")
 
 def _make_store(tmp_path, dims=768):
     from sci_fi_dashboard.vector_store.lancedb_store import LanceDBVectorStore
+
     return LanceDBVectorStore(db_path=tmp_path / "db", embedding_dimensions=dims)
 
 
 # ---------------------------------------------------------------------------
 # Phase 3a — Concurrent reads
 # ---------------------------------------------------------------------------
+
 
 class TestConcurrentReads:
 
@@ -48,6 +48,7 @@ class TestConcurrentReads:
         query_vecs = gen.vectors_random(800, dims=768)  # 100 per thread
 
         errors = []
+
         def worker(thread_id: int):
             for i in range(100):
                 vec = query_vecs[thread_id * 100 + i].tolist()
@@ -87,8 +88,9 @@ class TestConcurrentReads:
             t.join()
 
         assert len(top1_ids) == 4
-        assert all(i == anchor_id for i in top1_ids), \
-            f"Inconsistent results under concurrent reads: {top1_ids}"
+        assert all(
+            i == anchor_id for i in top1_ids
+        ), f"Inconsistent results under concurrent reads: {top1_ids}"
 
     def test_read_latency_under_concurrency_p95(self, store_10k):
         """p95 latency with 4 concurrent readers stays under 500ms."""
@@ -119,6 +121,7 @@ class TestConcurrentReads:
 # Phase 3b — Concurrent writes
 # ---------------------------------------------------------------------------
 
+
 class TestConcurrentWrites:
 
     def test_4_threads_non_overlapping_ids_correct_row_count(self, tmp_path):
@@ -130,6 +133,7 @@ class TestConcurrentWrites:
         chunks = [all_facts[i * 250 : (i + 1) * 250] for i in range(4)]
 
         errors = []
+
         def writer(chunk):
             try:
                 store.upsert_facts(chunk)
@@ -153,14 +157,18 @@ class TestConcurrentWrites:
 
         # Plant 4 anchor vectors with known IDs in separate threads
         anchor_vecs = gen.vectors_random(4, dims=768)
-        ANCHOR_IDS = [90001, 90002, 90003, 90004]
+        ANCHOR_IDS = [90001, 90002, 90003, 90004]  # noqa: N806
 
         def write_anchor(idx):
-            store.upsert_facts([{
-                "id": ANCHOR_IDS[idx],
-                "vector": anchor_vecs[idx].tolist(),
-                "metadata": {"text": f"anchor-{idx}", "hemisphere_tag": "safe"},
-            }])
+            store.upsert_facts(
+                [
+                    {
+                        "id": ANCHOR_IDS[idx],
+                        "vector": anchor_vecs[idx].tolist(),
+                        "metadata": {"text": f"anchor-{idx}", "hemisphere_tag": "safe"},
+                    }
+                ]
+            )
 
         threads = [threading.Thread(target=write_anchor, args=(i,)) for i in range(4)]
         for t in threads:
@@ -172,8 +180,7 @@ class TestConcurrentWrites:
         for idx, anchor_id in enumerate(ANCHOR_IDS):
             results = store.search(anchor_vecs[idx].tolist(), limit=5)
             found_ids = [r["id"] for r in results]
-            assert anchor_id in found_ids, \
-                f"Anchor id={anchor_id} not found after concurrent write"
+            assert anchor_id in found_ids, f"Anchor id={anchor_id} not found after concurrent write"
 
     @pytest.mark.slow
     def test_concurrent_writes_100k_total_correct_count(self, tmp_path):
@@ -186,6 +193,7 @@ class TestConcurrentWrites:
         chunks = [all_facts[i * chunk_size : (i + 1) * chunk_size] for i in range(n_threads)]
 
         errors = []
+
         def writer(chunk):
             try:
                 for i in range(0, len(chunk), 500):
@@ -207,6 +215,7 @@ class TestConcurrentWrites:
 # ---------------------------------------------------------------------------
 # Phase 3c — Mixed read + write
 # ---------------------------------------------------------------------------
+
 
 class TestMixedReadWrite:
 
@@ -263,11 +272,15 @@ class TestMixedReadWrite:
         write_done = threading.Event()
 
         def writer():
-            store.upsert_facts([{
-                "id": anchor_id,
-                "vector": anchor_vec,
-                "metadata": {"text": "just written", "hemisphere_tag": "safe"},
-            }])
+            store.upsert_facts(
+                [
+                    {
+                        "id": anchor_id,
+                        "vector": anchor_vec,
+                        "metadata": {"text": "just written", "hemisphere_tag": "safe"},
+                    }
+                ]
+            )
             write_done.set()
 
         def reader():
@@ -290,11 +303,13 @@ class TestMixedReadWrite:
 # Phase 3d — Singleton store safety
 # ---------------------------------------------------------------------------
 
+
 class TestSingletonStoreSafety:
 
     def test_factory_returns_same_store_instance_across_threads(self, tmp_path):
         """get_provider() singleton pattern: all threads see the same instance."""
         from sci_fi_dashboard.embedding.factory import get_provider, reset_provider
+
         reset_provider()
 
         instances = []
@@ -321,17 +336,19 @@ class TestSingletonStoreSafety:
         # All non-None instances must be the same object
         non_none = [i for i in instances if i is not None]
         if non_none:
-            assert len(set(non_none)) == 1, \
-                f"Multiple provider instances created: {set(non_none)}"
+            assert len(set(non_none)) == 1, f"Multiple provider instances created: {set(non_none)}"
 
     def test_concurrent_lazy_init_no_race(self, tmp_path):
         """10 threads hit _open_or_create_table simultaneously — no crash."""
         from sci_fi_dashboard.vector_store.lancedb_store import LanceDBVectorStore
+
         errors = []
 
         def create_store():
             try:
-                s = LanceDBVectorStore(db_path=tmp_path / "concurrent_init", embedding_dimensions=768)
+                s = LanceDBVectorStore(
+                    db_path=tmp_path / "concurrent_init", embedding_dimensions=768
+                )
                 s.close()
             except Exception as e:
                 errors.append(str(e))

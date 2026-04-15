@@ -19,7 +19,7 @@ import time
 import numpy as np
 import pytest
 
-from .conftest import LanceDBDataGenerator, LanceDBReport, get_memory_mb
+from .conftest import LanceDBDataGenerator, get_memory_mb
 
 lancedb = pytest.importorskip("lancedb", reason="lancedb not installed")
 
@@ -28,18 +28,21 @@ lancedb = pytest.importorskip("lancedb", reason="lancedb not installed")
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _row_count(store) -> int:
     return store.table.count_rows()
 
 
 def _make_store(tmp_path, dims=768):
     from sci_fi_dashboard.vector_store.lancedb_store import LanceDBVectorStore
+
     return LanceDBVectorStore(db_path=tmp_path / "db", embedding_dimensions=dims)
 
 
 # ---------------------------------------------------------------------------
 # Phase 1a — Scale: zero-error ingestion
 # ---------------------------------------------------------------------------
+
 
 class TestIngestionZeroErrors:
 
@@ -87,6 +90,7 @@ class TestIngestionZeroErrors:
 # ---------------------------------------------------------------------------
 # Phase 1b — Throughput
 # ---------------------------------------------------------------------------
+
 
 class TestIngestionThroughput:
 
@@ -156,6 +160,7 @@ class TestIngestionThroughput:
 # Phase 1c — Memory
 # ---------------------------------------------------------------------------
 
+
 class TestIngestionMemory:
 
     def test_memory_growth_bounded_10k(self, tmp_path):
@@ -169,7 +174,9 @@ class TestIngestionMemory:
         store.upsert_facts(facts)
         mem_after = get_memory_mb()
         delta = mem_after - mem_before
-        print(f"\n[memory] 10k ingest: +{delta:.1f} MB (before={mem_before:.1f}, after={mem_after:.1f})")
+        print(
+            f"\n[memory] 10k ingest: +{delta:.1f} MB (before={mem_before:.1f}, after={mem_after:.1f})"
+        )
         assert delta < 200, f"Memory grew {delta:.1f} MB — possible leak"
 
     @pytest.mark.slow
@@ -193,6 +200,7 @@ class TestIngestionMemory:
 # Phase 1d — Idempotency
 # ---------------------------------------------------------------------------
 
+
 class TestIngestionIdempotency:
 
     def test_double_upsert_same_ids_no_duplicate_rows(self, tmp_path):
@@ -208,14 +216,24 @@ class TestIngestionIdempotency:
         """Re-upsert with same id but different text updates in place."""
         store = _make_store(tmp_path)
         vec = [0.1] * 768
-        store.upsert_facts([{
-            "id": 1, "vector": vec,
-            "metadata": {"text": "original text", "hemisphere_tag": "safe"}
-        }])
-        store.upsert_facts([{
-            "id": 1, "vector": vec,
-            "metadata": {"text": "updated text", "hemisphere_tag": "safe"}
-        }])
+        store.upsert_facts(
+            [
+                {
+                    "id": 1,
+                    "vector": vec,
+                    "metadata": {"text": "original text", "hemisphere_tag": "safe"},
+                }
+            ]
+        )
+        store.upsert_facts(
+            [
+                {
+                    "id": 1,
+                    "vector": vec,
+                    "metadata": {"text": "updated text", "hemisphere_tag": "safe"},
+                }
+            ]
+        )
         assert _row_count(store) == 1
         results = store.search(vec, limit=1)
         assert results[0]["metadata"]["text"] == "updated text"
@@ -251,6 +269,7 @@ class TestIngestionIdempotency:
 # Phase 1e — Index creation
 # ---------------------------------------------------------------------------
 
+
 class TestIndexCreation:
 
     def test_no_index_below_threshold(self, tmp_path):
@@ -284,6 +303,7 @@ class TestIndexCreation:
 # Phase 1f — FastEmbed end-to-end ingestion
 # ---------------------------------------------------------------------------
 
+
 class TestFastEmbedIngestion:
 
     @pytest.mark.fastembed
@@ -308,8 +328,9 @@ class TestFastEmbedIngestion:
         texts = gen.texts(100)
         vectors = gen.vectors_fastembed(texts, batch_size=100)
         norms = np.linalg.norm(vectors, axis=1)
-        assert np.allclose(norms, 1.0, atol=0.05), \
-            f"Vectors not unit-normalized: min={norms.min():.4f} max={norms.max():.4f}"
+        assert np.allclose(
+            norms, 1.0, atol=0.05
+        ), f"Vectors not unit-normalized: min={norms.min():.4f} max={norms.max():.4f}"
 
     @pytest.mark.fastembed
     def test_fastembed_dimension_is_768(self, tmp_path):
@@ -376,6 +397,7 @@ class TestFastEmbedIngestion:
 # Phase 1g — Progressive ingestion
 # ---------------------------------------------------------------------------
 
+
 class TestProgressiveIngestion:
 
     def test_progressive_build_row_counts_are_cumulative(self, tmp_path):
@@ -396,11 +418,15 @@ class TestProgressiveIngestion:
 
         # Plant a known vector at id=0
         known_vec = gen.vectors_random(1, dims=768)[0].tolist()
-        store.upsert_facts([{
-            "id": 0,
-            "vector": known_vec,
-            "metadata": {"text": "known anchor", "hemisphere_tag": "safe"},
-        }])
+        store.upsert_facts(
+            [
+                {
+                    "id": 0,
+                    "vector": known_vec,
+                    "metadata": {"text": "known anchor", "hemisphere_tag": "safe"},
+                }
+            ]
+        )
 
         # Grow the store with unrelated vectors
         facts = gen.facts(99_999, id_offset=1)

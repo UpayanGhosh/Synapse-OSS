@@ -21,16 +21,17 @@ import asyncio
 import os
 import sys
 import time
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+import contextlib
+
 from sci_fi_dashboard.subagent.models import AgentStatus, SubAgent
 from sci_fi_dashboard.subagent.registry import AgentRegistry
 from sci_fi_dashboard.subagent.runner import SubAgentRunner
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -39,13 +40,13 @@ from sci_fi_dashboard.subagent.runner import SubAgentRunner
 
 def _make_agent(**kwargs) -> SubAgent:
     """Create a SubAgent with defaults suitable for integration tests."""
-    defaults = dict(
-        description="integration test task",
-        channel_id="whatsapp",
-        chat_id="chat_001",
-        parent_session_key="session_key",
-        timeout_seconds=120.0,
-    )
+    defaults = {
+        "description": "integration test task",
+        "channel_id": "whatsapp",
+        "chat_id": "chat_001",
+        "parent_session_key": "session_key",
+        "timeout_seconds": 120.0,
+    }
     defaults.update(kwargs)
     return SubAgent(**defaults)
 
@@ -138,10 +139,8 @@ class TestSubAgentRunner:
         for task in asyncio.all_tasks():
             if task.get_name().startswith("subagent-"):
                 task.cancel()
-                try:
+                with contextlib.suppress(asyncio.CancelledError, Exception):
                     await task
-                except (asyncio.CancelledError, Exception):
-                    pass
 
     # -----------------------------------------------------------------------
     # AGENT-04: parallel execution timing
@@ -221,18 +220,16 @@ class TestSubAgentRunner:
         a_status = agent_map[agent_a.agent_id].status
         b_status = agent_map[agent_b.agent_id].status
 
-        assert a_status == AgentStatus.FAILED, (
-            f"Crash agent A should be FAILED, got {a_status}"
-        )
-        assert b_status == AgentStatus.COMPLETED, (
-            f"Success agent B should be COMPLETED, got {b_status}"
-        )
+        assert a_status == AgentStatus.FAILED, f"Crash agent A should be FAILED, got {a_status}"
+        assert (
+            b_status == AgentStatus.COMPLETED
+        ), f"Success agent B should be COMPLETED, got {b_status}"
 
         # Agent A's error should mention the exception
         a_error = agent_map[agent_a.agent_id].error
-        assert a_error is not None and "LLM exploded" in a_error, (
-            f"Agent A error should contain 'LLM exploded', got {a_error!r}"
-        )
+        assert (
+            a_error is not None and "LLM exploded" in a_error
+        ), f"Agent A error should contain 'LLM exploded', got {a_error!r}"
 
     # -----------------------------------------------------------------------
     # AGENT-03: result delivery via channel.send()
@@ -257,17 +254,15 @@ class TestSubAgentRunner:
         # The call must have been for the correct chat_id
         call_args_list = mock_channel.send.call_args_list
         chat_ids_called = [args[0][0] for args in call_args_list]
-        assert "target_chat" in chat_ids_called, (
-            f"channel.send() not called with 'target_chat'; calls: {call_args_list}"
-        )
+        assert (
+            "target_chat" in chat_ids_called
+        ), f"channel.send() not called with 'target_chat'; calls: {call_args_list}"
 
         # The result text must appear somewhere in the delivery
-        all_messages = " ".join(
-            str(args[0][1]) for args in call_args_list if len(args[0]) > 1
-        )
-        assert "Agent result text" in all_messages, (
-            f"Result text not found in channel.send() calls: {all_messages!r}"
-        )
+        all_messages = " ".join(str(args[0][1]) for args in call_args_list if len(args[0]) > 1)
+        assert (
+            "Agent result text" in all_messages
+        ), f"Result text not found in channel.send() calls: {all_messages!r}"
 
     # -----------------------------------------------------------------------
     # Timeout handling
@@ -293,20 +288,16 @@ class TestSubAgentRunner:
         assert agent.agent_id in agent_map, "Timed-out agent should be in registry"
 
         status = agent_map[agent.agent_id].status
-        assert status == AgentStatus.TIMED_OUT, (
-            f"Expected TIMED_OUT, got {status}"
-        )
+        assert status == AgentStatus.TIMED_OUT, f"Expected TIMED_OUT, got {status}"
 
         # channel.send() must have been called with a timeout message
         assert mock_channel.send.called, "channel.send() not called for timeout"
         timeout_msgs = [
-            str(args[0][1])
-            for args in mock_channel.send.call_args_list
-            if len(args[0]) > 1
+            str(args[0][1]) for args in mock_channel.send.call_args_list if len(args[0]) > 1
         ]
-        assert any("Timed out" in msg or "timed out" in msg.lower() for msg in timeout_msgs), (
-            f"No timeout message sent; messages: {timeout_msgs}"
-        )
+        assert any(
+            "Timed out" in msg or "timed out" in msg.lower() for msg in timeout_msgs
+        ), f"No timeout message sent; messages: {timeout_msgs}"
 
     # -----------------------------------------------------------------------
     # AGENT-06: progress updates
@@ -333,9 +324,9 @@ class TestSubAgentRunner:
 
         # At least 2 progress messages + 1 final result = 3+ channel.send() calls
         call_count = mock_channel.send.call_count
-        assert call_count >= 2, (
-            f"Expected at least 2 channel.send() calls (progress + result), got {call_count}"
-        )
+        assert (
+            call_count >= 2
+        ), f"Expected at least 2 channel.send() calls (progress + result), got {call_count}"
 
     # -----------------------------------------------------------------------
     # AGENT-07: GET /agents endpoint
@@ -345,8 +336,8 @@ class TestSubAgentRunner:
         """GET /api/agents returns 200 with a JSON list of agents (AGENT-07)."""
         from fastapi import FastAPI
         from fastapi.testclient import TestClient
-        from sci_fi_dashboard.routes.agents import router as agents_router
         from sci_fi_dashboard import _deps as deps
+        from sci_fi_dashboard.routes.agents import router as agents_router
 
         # Build a minimal test app with the agents router and no auth (no token configured)
         app = FastAPI()
@@ -366,13 +357,15 @@ class TestSubAgentRunner:
             with TestClient(app) as client:
                 response = client.get("/api/agents")
 
-            assert response.status_code == 200, (
-                f"Expected 200, got {response.status_code}: {response.text}"
-            )
+            assert (
+                response.status_code == 200
+            ), f"Expected 200, got {response.status_code}: {response.text}"
             data = response.json()
             assert "agents" in data, f"Response missing 'agents' key: {data}"
             agents_list = data["agents"]
-            assert isinstance(agents_list, list), f"'agents' should be a list, got {type(agents_list)}"
+            assert isinstance(
+                agents_list, list
+            ), f"'agents' should be a list, got {type(agents_list)}"
             assert len(agents_list) == 1, f"Expected 1 agent, got {len(agents_list)}"
 
             agent_dict = agents_list[0]
@@ -477,9 +470,9 @@ class TestMaybeSpawnAgent:
         finally:
             deps.agent_runner = original_runner
 
-        assert result is None, (
-            f"Expected None when runner is None (graceful degradation), got {result!r}"
-        )
+        assert (
+            result is None
+        ), f"Expected None when runner is None (graceful degradation), got {result!r}"
 
     @pytest.mark.asyncio
     async def test_maybe_spawn_agent_unwraps_memory_correctly(self):
@@ -528,9 +521,9 @@ class TestMaybeSpawnAgent:
         spawned = spawned_agents[0]
 
         # memory_snapshot must be the list, NOT the raw dict from query()
-        assert isinstance(spawned.memory_snapshot, list), (
-            f"memory_snapshot should be a list, got {type(spawned.memory_snapshot)}"
-        )
-        assert spawned.memory_snapshot == memory_result_list, (
-            f"memory_snapshot mismatch: {spawned.memory_snapshot!r} != {memory_result_list!r}"
-        )
+        assert isinstance(
+            spawned.memory_snapshot, list
+        ), f"memory_snapshot should be a list, got {type(spawned.memory_snapshot)}"
+        assert (
+            spawned.memory_snapshot == memory_result_list
+        ), f"memory_snapshot mismatch: {spawned.memory_snapshot!r} != {memory_result_list!r}"

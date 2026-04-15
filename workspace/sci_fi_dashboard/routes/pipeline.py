@@ -5,12 +5,13 @@ GET  /pipeline/events  →  text/event-stream
 GET  /pipeline/state   →  JSON snapshot for dashboard cold-start
 POST /pipeline/send    →  Dashboard chat endpoint (no token required — local dev only)
 """
+
 from __future__ import annotations
 
 import asyncio
 
 from fastapi import APIRouter, BackgroundTasks
-from fastapi.responses import StreamingResponse, JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
 from sci_fi_dashboard import _deps as deps
 from sci_fi_dashboard.pipeline_emitter import get_emitter
@@ -27,12 +28,12 @@ async def pipeline_events():
     async def event_stream():
         try:
             # Initial handshake event
-            yield "event: connected\ndata: {\"status\": \"connected\"}\n\n"
+            yield 'event: connected\ndata: {"status": "connected"}\n\n'
             while True:
                 try:
                     msg = await asyncio.wait_for(queue.get(), timeout=25.0)
                     yield msg
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     # SSE keep-alive comment (not parsed by EventSource)
                     yield ": heartbeat\n\n"
         except asyncio.CancelledError:
@@ -63,16 +64,19 @@ async def pipeline_state():
     try:
         # Use configured default persona (falls back to "the_creator")
         from synapse_config import SynapseConfig
+
         _default_target = SynapseConfig.load().session.get("default_persona", "the_creator")
         sbs_summary = deps.get_sbs_for_target(_default_target).get_profile_summary()
     except Exception:
         sbs_summary = {}
 
-    return JSONResponse({
-        "status": "online",
-        "queue": queue_stats,
-        "sbs_profile": sbs_summary,
-    })
+    return JSONResponse(
+        {
+            "status": "online",
+            "queue": queue_stats,
+            "sbs_profile": sbs_summary,
+        }
+    )
 
 
 @router.post("/pipeline/send")
@@ -87,6 +91,7 @@ async def pipeline_send(body: dict, background_tasks: BackgroundTasks):
     # Use configured default persona (falls back to "the_creator")
     try:
         from synapse_config import SynapseConfig
+
         _default_target = SynapseConfig.load().session.get("default_persona", "the_creator")
     except Exception:
         _default_target = "the_creator"

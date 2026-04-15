@@ -22,7 +22,7 @@ import re
 import threading
 import time
 import warnings
-from typing import Callable, Optional
+from collections.abc import Callable
 
 warnings.warn(
     "triple_extractor is deprecated; use conv_kg_extractor instead",
@@ -82,7 +82,7 @@ def _select_model() -> tuple[str, object]:
         device = _detect_device()
 
         if device == "cuda":
-            vram_gb = torch.cuda.get_device_properties(0).total_memory / (1024 ** 3)
+            vram_gb = torch.cuda.get_device_properties(0).total_memory / (1024**3)
             if vram_gb >= 6:
                 return "Qwen/Qwen2.5-1.5B-Instruct", torch.float16
             return "Qwen/Qwen2.5-0.5B-Instruct", torch.float16
@@ -90,7 +90,7 @@ def _select_model() -> tuple[str, object]:
         if device == "mps":
             import psutil  # noqa: PLC0415
 
-            total_gb = psutil.virtual_memory().total / (1024 ** 3)
+            total_gb = psutil.virtual_memory().total / (1024**3)
             if total_gb >= 16:
                 return "Qwen/Qwen2.5-1.5B-Instruct", torch.float16
             return "Qwen/Qwen2.5-0.5B-Instruct", torch.float16
@@ -172,9 +172,7 @@ def _parse_llm_output(raw: str) -> dict:
             pass
 
     # Tier 3 — extract triple patterns
-    triples = re.findall(
-        r'\[\s*"([^"]+)"\s*,\s*"([^"]+)"\s*,\s*"([^"]+)"\s*\]', raw
-    )
+    triples = re.findall(r'\[\s*"([^"]+)"\s*,\s*"([^"]+)"\s*,\s*"([^"]+)"\s*\]', raw)
     if triples:
         logger.warning("[KG] LLM output not valid JSON — regex fallback used")
         return {"facts": [], "triples": [[s, r, o] for s, r, o in triples]}
@@ -197,11 +195,13 @@ def _normalize_result(result: dict) -> dict:
         content = re.sub(r"\s+", " ", (f.get("content") or "").strip())
         if content and content not in seen_facts:
             seen_facts.add(content)
-            facts.append({
-                "entity": entity,
-                "content": content,
-                "category": f.get("category", ""),
-            })
+            facts.append(
+                {
+                    "entity": entity,
+                    "content": content,
+                    "category": f.get("category", ""),
+                }
+            )
 
     triples: list[list[str]] = []
     seen_triples: set[tuple] = set()
@@ -243,11 +243,11 @@ class TripleExtractor:
         self.idle_timeout = idle_timeout
         self._model = None
         self._tokenizer = None
-        self._device: Optional[str] = None
-        self._model_name: Optional[str] = None
+        self._device: str | None = None
+        self._model_name: str | None = None
         self._lock = threading.Lock()
         self._last_used = 0.0
-        self._cleanup_timer: Optional[threading.Timer] = None
+        self._cleanup_timer: threading.Timer | None = None
 
     # ------------------------------------------------------------------
     # Load / unload
@@ -344,7 +344,7 @@ class TripleExtractor:
                 pad_token_id=tokenizer.eos_token_id,
             )
 
-        new_tokens = outputs[0][inputs["input_ids"].shape[1]:]
+        new_tokens = outputs[0][inputs["input_ids"].shape[1] :]
         return tokenizer.decode(new_tokens, skip_special_tokens=True)
 
     # ------------------------------------------------------------------
@@ -399,7 +399,7 @@ class TripleExtractor:
     def extract_batch(
         self,
         texts: list[str],
-        progress_callback: Optional[Callable[[int, int], None]] = None,
+        progress_callback: Callable[[int, int], None] | None = None,
     ) -> list[dict]:
         """
         Extract from multiple texts sequentially.

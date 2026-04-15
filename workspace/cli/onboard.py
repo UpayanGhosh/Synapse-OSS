@@ -398,7 +398,10 @@ def _handle_reset(reset_scope: str, data_root: Path) -> None:
 _KNOWN_MODELS: dict[str, list[dict[str, str]]] = {
     "gemini": [
         {"value": "gemini/gemini-2.5-flash", "label": "Gemini 2.5 Flash (fast, cheap)"},
-        {"value": "gemini/gemini-2.5-flash-lite", "label": "Gemini 2.5 Flash-Lite (fastest, free tier)"},
+        {
+            "value": "gemini/gemini-2.5-flash-lite",
+            "label": "Gemini 2.5 Flash-Lite (fastest, free tier)",
+        },
         {"value": "gemini/gemini-2.5-pro", "label": "Gemini 2.5 Pro (best quality)"},
         {"value": "gemini/gemini-2.0-flash", "label": "Gemini 2.0 Flash"},
     ],
@@ -445,7 +448,11 @@ _KNOWN_MODELS: dict[str, list[dict[str, str]]] = {
 
 # Roles with descriptions and default preference order
 _ROLES: list[tuple[str, str, list[str]]] = [
-    ("casual", "Casual chat — fast, everyday", ["gemini", "openai", "github_copilot", "groq", "anthropic"]),
+    (
+        "casual",
+        "Casual chat — fast, everyday",
+        ["gemini", "openai", "github_copilot", "groq", "anthropic"],
+    ),
     ("code", "Code generation & debugging", ["anthropic", "openai", "github_copilot", "groq"]),
     ("analysis", "Analysis & deep research", ["gemini", "openai", "github_copilot", "anthropic"]),
     ("review", "Code review & critique", ["anthropic", "openai", "github_copilot", "gemini"]),
@@ -586,9 +593,7 @@ def _run_migration(legacy_root: Path, dest_root: Path) -> None:
         _print("[green]Migration complete.[/]")
     except Exception as exc:  # noqa: BLE001
         _print(f"[red]Migration failed: {exc}[/]")
-        _print(
-            "You can run migration manually: python workspace/scripts/migrate_legacy.py"
-        )
+        _print("You can run migration manually: python workspace/scripts/migrate_legacy.py")
 
 
 # ---------------------------------------------------------------------------
@@ -775,9 +780,7 @@ def _collect_provider_keys(
                             for m in ollama_models:
                                 _print(f"  {m.name}")
                     else:
-                        _print(
-                            "  [yellow]No models found — pull one with: ollama pull llama3.3[/]"
-                        )
+                        _print("  [yellow]No models found — pull one with: ollama pull llama3.3[/]")
                 except Exception:  # noqa: BLE001
                     _print("  [yellow]Could not discover Ollama models (non-fatal).[/]")
             else:
@@ -840,9 +843,7 @@ def _collect_provider_keys(
                 continue  # empty input — re-prompt
 
             if _RICH_AVAILABLE and console is not None:
-                with console.status(
-                    f"[yellow]Validating {provider} key...[/]", spinner="dots"
-                ):
+                with console.status(f"[yellow]Validating {provider} key...[/]", spinner="dots"):
                     result = validate_provider(provider, key.strip())
             else:
                 result = validate_provider(provider, key.strip())
@@ -859,14 +860,10 @@ def _collect_provider_keys(
                 config["providers"][provider] = {"api_key": key.strip()}
                 break
             elif result.error in ("timeout", "network_error") and attempt < MAX_KEY_ATTEMPTS - 1:
-                _print(
-                    f"  [yellow]  {result.error} — retrying in {NETWORK_RETRY_DELAY}s...[/]"
-                )
+                _print(f"  [yellow]  {result.error} — retrying in {NETWORK_RETRY_DELAY}s...[/]")
                 time.sleep(NETWORK_RETRY_DELAY)
             else:
-                _print(
-                    f"  [red]x[/] {provider}: {result.error} — {result.detail or 'check key'}"
-                )
+                _print(f"  [red]x[/] {provider}: {result.error} — {result.detail or 'check key'}")
 
 
 # ---------------------------------------------------------------------------
@@ -916,7 +913,16 @@ def _run_sbs_questions(prompter: "object", data_root: Path) -> None:
     # --- Q3: Interests (multi-select) ---
     interest_displays = prompter.multiselect(  # type: ignore[attr-defined]
         "What topics are you most interested in? (select all that apply)",
-        choices=["Technology", "Music", "Wellness", "Finance", "Science", "Arts", "Sports", "Cooking"],
+        choices=[
+            "Technology",
+            "Music",
+            "Wellness",
+            "Finance",
+            "Science",
+            "Arts",
+            "Sports",
+            "Cooking",
+        ],
     )
 
     # --- Q4: Privacy sensitivity ---
@@ -1083,7 +1089,7 @@ def _run_interactive_impl(
     from cli.channel_steps import NodeJsMissingError  # noqa: PLC0415
 
     _print("\n[bold cyan]--- WhatsApp (required) ---[/]")
-    _MAX_WA_RETRIES = 3
+    _MAX_WA_RETRIES = 3  # noqa: N806
     _wa_paired = False
     for _attempt in range(1, _MAX_WA_RETRIES + 1):
         try:
@@ -1243,7 +1249,9 @@ def _validate_environment(config: dict) -> None:
     except Exception as exc:  # noqa: BLE001
         _print(f"  [yellow]![/] python-magic: import error ({exc})")
         if sys.platform == "win32":
-            issues.append("  Fix: pip install python-magic-bin  (Windows requires the -bin variant)")
+            issues.append(
+                "  Fix: pip install python-magic-bin  (Windows requires the -bin variant)"
+            )
         else:
             issues.append(
                 "  Fix: pip install python-magic"

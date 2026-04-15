@@ -5,11 +5,11 @@ re-embedding engine, and parameterized vector dimensions.
 Run with:
     pytest workspace/tests/test_schema_migration.py -v
 """
+
 from __future__ import annotations
 
 import sqlite3
 import sys
-import os
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -31,10 +31,10 @@ from sci_fi_dashboard.db import (  # noqa: E402
 )
 from sci_fi_dashboard.embedding.migrate import re_embed_documents  # noqa: E402
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_fresh_db(with_atomic_facts: bool = False) -> sqlite3.Connection:
     """Create an in-memory SQLite DB with the base schema (no embedding columns)."""
@@ -66,7 +66,13 @@ def _make_provider_mock(model: str = "test-model", name: str = "test-provider") 
     from sci_fi_dashboard.embedding.base import ProviderInfo
 
     provider = MagicMock()
-    provider.info.return_value = ProviderInfo(name=name, model=model, dimensions=EMBEDDING_DIMENSIONS, requires_network=False, requires_gpu=False)
+    provider.info.return_value = ProviderInfo(
+        name=name,
+        model=model,
+        dimensions=EMBEDDING_DIMENSIONS,
+        requires_network=False,
+        requires_gpu=False,
+    )
     # embed_documents returns one 768-dim zero vector per text
     provider.embed_documents.side_effect = lambda texts: [
         [0.0] * EMBEDDING_DIMENSIONS for _ in texts
@@ -77,6 +83,7 @@ def _make_provider_mock(model: str = "test-model", name: str = "test-provider") 
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+
 
 class TestMigrationAddsColumns(unittest.TestCase):
     """_ensure_embedding_metadata must add provenance columns when absent."""
@@ -134,7 +141,9 @@ class TestDimensionValidation(unittest.TestCase):
     def test_dimension_validation_correct(self):
         """No exception raised for a vector of the correct size."""
         try:
-            validate_embedding_dimension([0.0] * EMBEDDING_DIMENSIONS, expected=EMBEDDING_DIMENSIONS)
+            validate_embedding_dimension(
+                [0.0] * EMBEDDING_DIMENSIONS, expected=EMBEDDING_DIMENSIONS
+            )
         except ValueError as exc:
             self.fail(f"Raised unexpectedly: {exc}")
 
@@ -182,9 +191,7 @@ class TestReEmbedEngine(unittest.TestCase):
 
         # Pass the already-open connection through by patching sqlite3.connect
         with patch("sqlite3.connect", return_value=conn):
-            stats = re_embed_documents(
-                Path(":memory:"), provider, batch_size=64, dry_run=False
-            )
+            stats = re_embed_documents(Path(":memory:"), provider, batch_size=64, dry_run=False)
 
         self.assertEqual(stats["processed"], n)
         self.assertEqual(stats["errors"], 0)
@@ -197,9 +204,7 @@ class TestReEmbedEngine(unittest.TestCase):
         conn = self._setup_db_with_docs(4, embedding_model="test-model")
 
         with patch("sqlite3.connect", return_value=conn):
-            stats = re_embed_documents(
-                Path(":memory:"), provider, batch_size=64, dry_run=False
-            )
+            stats = re_embed_documents(Path(":memory:"), provider, batch_size=64, dry_run=False)
 
         # Nothing to process — all rows already match
         self.assertEqual(stats["processed"], 0)
@@ -213,17 +218,13 @@ class TestReEmbedEngine(unittest.TestCase):
         provider = _make_provider_mock(model="test-model")
 
         with patch("sqlite3.connect", return_value=conn):
-            stats = re_embed_documents(
-                Path(":memory:"), provider, batch_size=64, dry_run=True
-            )
+            stats = re_embed_documents(Path(":memory:"), provider, batch_size=64, dry_run=True)
 
         # Stats reflect what *would* happen
         self.assertEqual(stats["processed"], n)
 
         # Verify the DB was NOT touched
-        cursor = conn.execute(
-            "SELECT COUNT(*) FROM documents WHERE embedding_model = 'old-model'"
-        )
+        cursor = conn.execute("SELECT COUNT(*) FROM documents WHERE embedding_model = 'old-model'")
         unchanged_count = cursor.fetchone()[0]
         self.assertEqual(unchanged_count, n, "Dry-run must not update embedding_model")
         conn.close()
@@ -237,7 +238,9 @@ class TestLanceDBDimensionsParameterized(unittest.TestCase):
         import tempfile
 
         try:
-            from sci_fi_dashboard.vector_store.lancedb_store import LanceDBVectorStore  # noqa: PLC0415
+            from sci_fi_dashboard.vector_store.lancedb_store import (
+                LanceDBVectorStore,  # noqa: PLC0415
+            )
 
             with tempfile.TemporaryDirectory() as tmpdir:
                 store = LanceDBVectorStore(db_path=tmpdir, embedding_dimensions=512)

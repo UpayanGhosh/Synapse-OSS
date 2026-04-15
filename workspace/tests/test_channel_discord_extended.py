@@ -8,7 +8,6 @@ Covers:
 - send_typing_loop (basic behavior)
 """
 
-import asyncio
 import importlib.util
 import os
 import sys
@@ -135,7 +134,6 @@ class TestDiscordSendVoice:
 
     @pytest.mark.asyncio
     async def test_send_voice_success(self):
-        import discord
 
         ch = DiscordChannel(token="t")
         mock_channel = MagicMock()

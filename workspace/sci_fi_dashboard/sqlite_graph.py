@@ -3,6 +3,7 @@ SQLite-backed Knowledge Graph -- replaces NetworkX.
 Memory: ~150MB -> ~1MB (only query results in RAM).
 """
 
+import contextlib
 import gzip
 import json
 import os
@@ -46,10 +47,8 @@ class SQLiteGraph:
 
     def close(self):
         """Close the persistent connection. Call during shutdown."""
-        try:
+        with contextlib.suppress(Exception):
             self._persistent_conn.close()
-        except Exception:
-            pass
 
     def _init_schema(self):
         conn = self._conn()

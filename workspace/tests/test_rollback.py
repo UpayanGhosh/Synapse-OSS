@@ -10,18 +10,16 @@ Test strategy: isolated SnapshotEngine backed by tmp_path; controlled
 timestamps injected via snapshot creation helpers; no monkeypatching of
 datetime needed because we compare snapshot positions, not wall-clock times.
 """
+
 from __future__ import annotations
 
-import time
 from datetime import datetime, timedelta
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
-
-from sci_fi_dashboard.rollback import RollbackResolver, RollbackResult
+from sci_fi_dashboard.rollback import RollbackResolver
 from sci_fi_dashboard.snapshot_engine import SnapshotEngine, SnapshotMeta
-
 
 # ---------------------------------------------------------------------------
 # Fixtures / helpers
@@ -65,10 +63,10 @@ class TestRollbackByDate:
         engine, resolver = make_resolver(tmp_path)
 
         add_skill_file(tmp_path, "skill_a")
-        snap_mar14 = engine.create("mar14-skill", "create_skill")
+        engine.create("mar14-skill", "create_skill")
 
         add_skill_file(tmp_path, "skill_b")
-        snap_mar16 = engine.create("mar16-skill", "create_skill")
+        engine.create("mar16-skill", "create_skill")
 
         # Build two known datetime objects around a target
         target = datetime(2026, 3, 15, 12, 0, 0)
@@ -306,9 +304,9 @@ class TestForwardHistoryPreservation:
         after_count = len(after_snapshots)
 
         # Forward history preserved: original 3 + 1 pre-restore = 4
-        assert after_count == before_count + 1, (
-            f"Expected {before_count + 1} snapshots after rollback, got {after_count}"
-        )
+        assert (
+            after_count == before_count + 1
+        ), f"Expected {before_count + 1} snapshots after rollback, got {after_count}"
 
         # All original IDs are still present
         snap_ids = {s.id for s in after_snapshots}

@@ -18,7 +18,7 @@ import asyncio
 import sys
 import time
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -26,14 +26,12 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from sci_fi_dashboard.auth_profiles import (
-    REFRESH_MARGIN_S,
     AuthProfile,
     AuthProfileStore,
     ProviderFallbackChain,
     TokenRefreshManager,
 )
 from sci_fi_dashboard.llm_router import AuthProfileFailureReason
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -206,9 +204,7 @@ class TestReportFailure:
         p = _make_profile("p1")
         store = AuthProfileStore([p])
 
-        store.report_failure(
-            "p1", AuthProfileFailureReason.RATE_LIMIT, model="gpt-4o"
-        )
+        store.report_failure("p1", AuthProfileFailureReason.RATE_LIMIT, model="gpt-4o")
 
         # Model-scoped cooldown set
         assert p._model_cooldowns.get("gpt-4o", 0.0) > time.monotonic()
@@ -220,12 +216,8 @@ class TestReportFailure:
         p = _make_profile("p1")
         store = AuthProfileStore([p])
 
-        store.report_failure(
-            "p1", AuthProfileFailureReason.RATE_LIMIT, model="gpt-4o"
-        )
-        store.report_failure(
-            "p1", AuthProfileFailureReason.RATE_LIMIT, model="gpt-4o"
-        )
+        store.report_failure("p1", AuthProfileFailureReason.RATE_LIMIT, model="gpt-4o")
+        store.report_failure("p1", AuthProfileFailureReason.RATE_LIMIT, model="gpt-4o")
 
         assert p.failure_counts["gpt-4o"] == 2
         # Global error count also incremented

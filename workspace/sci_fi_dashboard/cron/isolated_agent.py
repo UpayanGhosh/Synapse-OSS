@@ -5,11 +5,12 @@ Creates a temporary session key, executes the LLM payload via the provided
 ``execute_fn``, and returns the raw output text.  The session is discarded
 after the call, ensuring no state leaks into the main conversation.
 """
+
 from __future__ import annotations
 
 import logging
-import uuid
-from typing import Any, Callable, Coroutine, Optional
+from collections.abc import Callable, Coroutine
+from typing import Any
 
 from .types import CronPayload
 
@@ -19,7 +20,7 @@ logger = logging.getLogger(__name__)
 async def run_isolated_agent(
     payload: CronPayload,
     session_key: str,
-    execute_fn: Optional[Callable[..., Coroutine[Any, Any, str]]] = None,
+    execute_fn: Callable[..., Coroutine[Any, Any, str]] | None = None,
 ) -> str:
     """Create a temp session, run the LLM with the payload, return output text.
 

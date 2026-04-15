@@ -3,16 +3,17 @@ E2E smoke tests for the embedding provider layer (Phase 5).
 
 All tests use mocks — no real API calls or model downloads required.
 """
+
 from __future__ import annotations
 
 import os
 import unittest
 from unittest.mock import MagicMock, patch
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_mock_provider(dimensions: int = 768) -> MagicMock:
     """Return a mock EmbeddingProvider that returns zero-vectors."""

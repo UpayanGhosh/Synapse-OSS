@@ -2,13 +2,15 @@
 MCP Server: Full Synapse — exposes Synapse's cognitive pipeline to external MCP clients.
 Run: python -m sci_fi_dashboard.mcp_servers.synapse_server
 """
+
 import asyncio
 import json
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
-from mcp.types import Tool, TextContent, Resource
-from .base import setup_logging, logger, check_mcp_auth
+from mcp.types import Resource, TextContent, Tool
+
+from .base import check_mcp_auth, logger, setup_logging
 
 server = Server("synapse")
 
@@ -83,26 +85,28 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
     try:
         if name == "query_memory":
             from memory_engine import MemoryEngine
+
             engine = MemoryEngine()
             result = engine.query(arguments["query"], arguments.get("limit", 5))
             return [TextContent(type="text", text=json.dumps(result, indent=2, default=str))]
         elif name == "ingest_memory":
             from memory_engine import MemoryEngine
+
             engine = MemoryEngine()
             result = engine.add_memory(
                 arguments["content"], arguments.get("category", "mcp_ingest")
             )
             return [TextContent(type="text", text=json.dumps(result, default=str))]
         elif name == "get_profile":
-            from synapse_config import SynapseConfig
             from sbs.orchestrator import SBSOrchestrator
+            from synapse_config import SynapseConfig
+
             cfg = SynapseConfig.load()
             orch = SBSOrchestrator(data_dir=str(cfg.sbs_dir))
-            return [TextContent(
-                type="text", text=json.dumps(orch.get_profile_summary(), indent=2)
-            )]
+            return [TextContent(type="text", text=json.dumps(orch.get_profile_summary(), indent=2))]
         elif name == "chat":
             import httpx
+
             async with httpx.AsyncClient() as client:
                 resp = await client.post(
                     "http://127.0.0.1:8000/chat",

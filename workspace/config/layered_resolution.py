@@ -8,6 +8,7 @@ Layer priority (highest to lowest):
   4. Agent-level config (from SynapseConfigSchema.model_mappings)
   5. Gateway defaults (hardcoded fallbacks)
 """
+
 from __future__ import annotations
 
 import json
@@ -69,9 +70,7 @@ class ConfigResolver:
         merged = merge_patch(existing, patch)
         out_dir = self._session_dir(session_key)
         out_dir.mkdir(parents=True, exist_ok=True)
-        (out_dir / "config.json").write_text(
-            json.dumps(merged, indent=2), encoding="utf-8"
-        )
+        (out_dir / "config.json").write_text(json.dumps(merged, indent=2), encoding="utf-8")
 
     # ------------------------------------------------------------------
     # Resolution
@@ -104,9 +103,7 @@ class ConfigResolver:
 
         # Layer 4: agent-level config from base schema
         if agent_id and agent_id in self._base.model_mappings:
-            agent_cfg = self._base.model_mappings[agent_id].model_dump(
-                exclude_none=True
-            )
+            agent_cfg = self._base.model_mappings[agent_id].model_dump(exclude_none=True)
             result = merge_patch(result, agent_cfg)
 
         # Layer 3: session overrides

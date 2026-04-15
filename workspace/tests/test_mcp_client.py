@@ -1,6 +1,7 @@
 """
 Tests for sci_fi_dashboard.mcp_client — MCP client connection lifecycle, tool routing, discovery.
 """
+
 from __future__ import annotations
 
 import json
@@ -13,7 +14,6 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from sci_fi_dashboard.mcp_client import MCPServerConnection, SynapseMCPClient
-
 
 # ---------------------------------------------------------------------------
 # MCPServerConnection dataclass
@@ -85,9 +85,7 @@ class TestCallTool:
     async def test_disconnected_server_returns_error(self):
         client = SynapseMCPClient()
         client._tool_map["server__tool"] = ("server", "tool")
-        client._servers["server"] = MCPServerConnection(
-            name="server", connected=False
-        )
+        client._servers["server"] = MCPServerConnection(name="server", connected=False)
         result = await client.call_tool("server__tool", {})
         data = json.loads(result)
         assert "not connected" in data["error"]
@@ -160,9 +158,7 @@ class TestDynamicServerManagement:
     @pytest.mark.asyncio
     async def test_add_server_already_connected(self):
         client = SynapseMCPClient()
-        client._servers["existing"] = MCPServerConnection(
-            name="existing", connected=True
-        )
+        client._servers["existing"] = MCPServerConnection(name="existing", connected=True)
         result = await client.add_server("existing", "python", [])
         assert result is False
 
@@ -202,12 +198,8 @@ class TestDisconnectAll:
     @pytest.mark.asyncio
     async def test_disconnect_all_clears_state(self):
         client = SynapseMCPClient()
-        client._servers["a"] = MCPServerConnection(
-            name="a", session=AsyncMock(), ctx=AsyncMock()
-        )
-        client._servers["b"] = MCPServerConnection(
-            name="b", session=AsyncMock(), ctx=AsyncMock()
-        )
+        client._servers["a"] = MCPServerConnection(name="a", session=AsyncMock(), ctx=AsyncMock())
+        client._servers["b"] = MCPServerConnection(name="b", session=AsyncMock(), ctx=AsyncMock())
         client._tool_map["a__t"] = ("a", "t")
         client._tool_map["b__t"] = ("b", "t")
 
@@ -221,9 +213,7 @@ class TestDisconnectAll:
         bad_session = AsyncMock()
         bad_session.__aexit__ = AsyncMock(side_effect=RuntimeError("fail"))
 
-        client._servers["bad"] = MCPServerConnection(
-            name="bad", session=bad_session, ctx=None
-        )
+        client._servers["bad"] = MCPServerConnection(name="bad", session=bad_session, ctx=None)
 
         # Should not raise
         await client.disconnect_all()
@@ -251,9 +241,11 @@ class TestConnectAll:
         mock_custom.env = None
         mock_config.custom_servers = {"custom1": mock_custom}
 
-        with patch.object(client, "connect_builtin_server", new_callable=AsyncMock) as mock_bi:
-            with patch.object(client, "connect_custom_server", new_callable=AsyncMock) as mock_cs:
-                await client.connect_all(mock_config)
+        with (
+            patch.object(client, "connect_builtin_server", new_callable=AsyncMock) as mock_bi,
+            patch.object(client, "connect_custom_server", new_callable=AsyncMock) as mock_cs,
+        ):
+            await client.connect_all(mock_config)
 
         mock_bi.assert_awaited_once()
         mock_cs.assert_awaited_once()

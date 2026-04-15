@@ -26,8 +26,8 @@ from pathlib import Path
 # Ensure workspace/ is on sys.path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from synapse_config import SynapseConfig
 from sci_fi_dashboard.vector_store import LanceDBVectorStore
+from synapse_config import SynapseConfig
 
 BATCH_SIZE = 1000
 
@@ -54,7 +54,7 @@ def _load_sqlite_vec(db_path: str):
 
 def _unpack_vector(blob: bytes, dimensions: int = 768) -> list[float]:
     """Unpack a float32 blob to a Python list."""
-    return list(struct.unpack(f"{dimensions}f", blob[:dimensions * 4]))
+    return list(struct.unpack(f"{dimensions}f", blob[: dimensions * 4]))
 
 
 def migrate_documents(conn, store: LanceDBVectorStore, dry_run: bool) -> int:
@@ -85,19 +85,21 @@ def migrate_documents(conn, store: LanceDBVectorStore, dry_run: bool) -> int:
             print(f"  [WARN] Could not unpack vector for doc_id={doc_id}: {e}")
             continue
 
-        facts.append({
-            "id": int(doc_id),
-            "vector": vector,
-            "metadata": {
-                "text": content or "",
-                "hemisphere_tag": hemisphere_tag or "safe",
-                "unix_timestamp": int(unix_ts or 0),
-                "importance": int(importance or 5),
-                "source_id": 0,
-                "entity": "",
-                "category": "document",
-            },
-        })
+        facts.append(
+            {
+                "id": int(doc_id),
+                "vector": vector,
+                "metadata": {
+                    "text": content or "",
+                    "hemisphere_tag": hemisphere_tag or "safe",
+                    "unix_timestamp": int(unix_ts or 0),
+                    "importance": int(importance or 5),
+                    "source_id": 0,
+                    "entity": "",
+                    "category": "document",
+                },
+            }
+        )
 
         if len(facts) >= BATCH_SIZE:
             if not dry_run:
@@ -120,17 +122,13 @@ def migrate_atomic_facts(conn, store: LanceDBVectorStore, dry_run: bool) -> int:
     cursor = conn.cursor()
 
     # Check if atomic_facts_vec table exists
-    cursor.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='atomic_facts_vec'"
-    )
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='atomic_facts_vec'")
     if not cursor.fetchone():
         print("  [atomic_facts] Table atomic_facts_vec not found — skipping.")
         return 0
 
     # Check if atomic_facts table exists
-    cursor.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='atomic_facts'"
-    )
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='atomic_facts'")
     has_atomic = cursor.fetchone() is not None
 
     if has_atomic:
@@ -153,7 +151,7 @@ def migrate_atomic_facts(conn, store: LanceDBVectorStore, dry_run: bool) -> int:
     facts = []
     migrated = 0
     # Offset IDs to avoid colliding with document IDs
-    ID_OFFSET = 10_000_000
+    ID_OFFSET = 10_000_000  # noqa: N806
 
     for row in rows:
         if has_atomic:
@@ -170,19 +168,21 @@ def migrate_atomic_facts(conn, store: LanceDBVectorStore, dry_run: bool) -> int:
             print(f"  [WARN] Could not unpack atomic_fact vector id={fact_id}: {e}")
             continue
 
-        facts.append({
-            "id": int(fact_id) + ID_OFFSET,
-            "vector": vector,
-            "metadata": {
-                "text": content or "",
-                "hemisphere_tag": "safe",  # atomic_facts default to safe
-                "unix_timestamp": int(time.time()),
-                "importance": 5,
-                "source_id": int(source_doc_id or 0),
-                "entity": entity or "",
-                "category": category or "atomic_fact",
-            },
-        })
+        facts.append(
+            {
+                "id": int(fact_id) + ID_OFFSET,
+                "vector": vector,
+                "metadata": {
+                    "text": content or "",
+                    "hemisphere_tag": "safe",  # atomic_facts default to safe
+                    "unix_timestamp": int(time.time()),
+                    "importance": 5,
+                    "source_id": int(source_doc_id or 0),
+                    "entity": entity or "",
+                    "category": category or "atomic_fact",
+                },
+            }
+        )
 
         if len(facts) >= BATCH_SIZE:
             if not dry_run:
@@ -207,9 +207,7 @@ def verify(conn, store: LanceDBVectorStore) -> None:
     cursor.execute("SELECT COUNT(*) FROM vec_items")
     sqlite_docs = cursor.fetchone()[0]
 
-    cursor.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='atomic_facts_vec'"
-    )
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='atomic_facts_vec'")
     if cursor.fetchone():
         cursor.execute("SELECT COUNT(*) FROM atomic_facts_vec")
         sqlite_facts = cursor.fetchone()[0]

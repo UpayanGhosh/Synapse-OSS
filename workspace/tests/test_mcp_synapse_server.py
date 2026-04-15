@@ -1,6 +1,7 @@
 """
 Tests for sci_fi_dashboard.mcp_servers.synapse_server — full cognitive pipeline MCP.
 """
+
 from __future__ import annotations
 
 import json
@@ -144,10 +145,13 @@ class TestGetProfile:
         mock_sbs_mod = MagicMock()
         mock_sbs_mod.SBSOrchestrator.return_value = mock_orch
 
-        with patch.dict("sys.modules", {
-            "synapse_config": mock_config_mod,
-            "sbs.orchestrator": mock_sbs_mod,
-        }):
+        with patch.dict(
+            "sys.modules",
+            {
+                "synapse_config": mock_config_mod,
+                "sbs.orchestrator": mock_sbs_mod,
+            },
+        ):
             result = await call_tool("get_profile", {})
 
         data = json.loads(_text(result))

@@ -18,6 +18,7 @@ Security:
   - _parse_date() only produces datetime objects — no file-path construction
     from user text occurs in this module.
 """
+
 from __future__ import annotations
 
 import logging
@@ -26,7 +27,6 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from sci_fi_dashboard.snapshot_engine import SnapshotEngine, SnapshotMeta
-
 
 logger = logging.getLogger(__name__)
 
@@ -128,9 +128,7 @@ class RollbackResolver:
         # Pattern 3: date expression in text
         target_date = self._parse_date(text_lower)
         if target_date is not None:
-            self._logger.debug(
-                "[RollbackResolver] Resolved date: %s", target_date.isoformat()
-            )
+            self._logger.debug("[RollbackResolver] Resolved date: %s", target_date.isoformat())
             return self.resolve_by_date(target_date)
 
         raise ValueError(
@@ -152,14 +150,12 @@ class RollbackResolver:
         Raises:
             ValueError: When no eligible non-restore snapshot exists.
         """
-        _SKIP_TYPES = {"restore", "pre_modification"}
+        _SKIP_TYPES = {"restore", "pre_modification"}  # noqa: N806
         snapshots = self._engine.list_snapshots()  # newest-first
 
         for snap in snapshots:
             if snap.change_type not in _SKIP_TYPES:
-                self._logger.info(
-                    "[RollbackResolver] resolve_latest → restoring %s", snap.id
-                )
+                self._logger.info("[RollbackResolver] resolve_latest → restoring %s", snap.id)
                 pre_restore = self._engine.restore(snap.id)
                 return RollbackResult(
                     restored_snapshot=snap,
@@ -202,10 +198,11 @@ class RollbackResolver:
         for snap in snapshots:
             snap_dt = datetime.fromisoformat(snap.timestamp)
             delta = target - snap_dt
-            if delta.total_seconds() >= 0:  # snap is before or at target
-                if best_delta is None or delta < best_delta:
-                    best = snap
-                    best_delta = delta
+            if delta.total_seconds() >= 0 and (
+                best_delta is None or delta < best_delta
+            ):  # snap is before or at target
+                best = snap
+                best_delta = delta
 
         # Pass 2 fallback: absolute nearest in either direction
         if best is None:
@@ -219,9 +216,7 @@ class RollbackResolver:
         if best is None:
             raise ValueError(f"No snapshots found near {target.isoformat()}")
 
-        self._logger.info(
-            "[RollbackResolver] resolve_by_date → restoring %s", best.id
-        )
+        self._logger.info("[RollbackResolver] resolve_by_date → restoring %s", best.id)
         pre_restore = self._engine.restore(best.id)
         return RollbackResult(
             restored_snapshot=best,
@@ -249,9 +244,7 @@ class RollbackResolver:
         if snap is None:
             raise ValueError(f"Snapshot not found: {snapshot_id!r}")
 
-        self._logger.info(
-            "[RollbackResolver] resolve_by_id → restoring %s", snapshot_id
-        )
+        self._logger.info("[RollbackResolver] resolve_by_id → restoring %s", snapshot_id)
         pre_restore = self._engine.restore(snapshot_id)
         return RollbackResult(
             restored_snapshot=snap,

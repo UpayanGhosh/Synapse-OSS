@@ -1,6 +1,7 @@
 """
 media/fetch.py — SSRF-safe HTTP media downloader.
 """
+
 from __future__ import annotations
 
 import logging
@@ -58,31 +59,28 @@ async def fetch_media(
         raise MediaFetchError(f"SSRF blocked: {url}")
 
     try:
-        async with safe_httpx_client(timeout=timeout) as client:
-            async with client.stream("GET", url) as resp:
-                if resp.status_code >= 300:
-                    raise MediaFetchError(f"HTTP {resp.status_code} fetching {url}")
+        async with safe_httpx_client(timeout=timeout) as client, client.stream("GET", url) as resp:
+            if resp.status_code >= 300:
+                raise MediaFetchError(f"HTTP {resp.status_code} fetching {url}")
 
-                # Fast-fail on declared Content-Length
-                content_length = resp.headers.get("content-length")
-                if content_length is not None:
-                    try:
-                        if int(content_length) > max_bytes:
-                            raise MediaFetchError(
-                                f"Content-Length {content_length} exceeds limit of {max_bytes} bytes"
-                            )
-                    except ValueError:
-                        pass  # Non-integer header — proceed and enforce while streaming
-
-                chunks: list[bytes] = []
-                total = 0
-                async for chunk in resp.aiter_bytes(chunk_size=65_536):
-                    total += len(chunk)
-                    if total > max_bytes:
+            # Fast-fail on declared Content-Length
+            content_length = resp.headers.get("content-length")
+            if content_length is not None:
+                try:
+                    if int(content_length) > max_bytes:
                         raise MediaFetchError(
-                            f"Response body exceeds limit of {max_bytes} bytes"
+                            f"Content-Length {content_length} exceeds limit of {max_bytes} bytes"
                         )
-                    chunks.append(chunk)
+                except ValueError:
+                    pass  # Non-integer header — proceed and enforce while streaming
+
+            chunks: list[bytes] = []
+            total = 0
+            async for chunk in resp.aiter_bytes(chunk_size=65_536):
+                total += len(chunk)
+                if total > max_bytes:
+                    raise MediaFetchError(f"Response body exceeds limit of {max_bytes} bytes")
+                chunks.append(chunk)
 
     except MediaFetchError:
         raise

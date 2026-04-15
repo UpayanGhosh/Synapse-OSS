@@ -1,6 +1,7 @@
 """
 Cross-platform graceful→forced process tree kill utilities.
 """
+
 import asyncio
 import logging
 import os
@@ -23,10 +24,12 @@ def _win_get_creation_time(pid: int) -> int | None:
     import ctypes
     import ctypes.wintypes
 
-    PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+    PROCESS_QUERY_LIMITED_INFORMATION = 0x1000  # noqa: N806
 
     handle = ctypes.windll.kernel32.OpenProcess(
-        PROCESS_QUERY_LIMITED_INFORMATION, False, pid,
+        PROCESS_QUERY_LIMITED_INFORMATION,
+        False,
+        pid,
     )
     if not handle:
         return None
@@ -67,12 +70,12 @@ def get_creation_time(pid: int) -> int | None:
     else:
         # Linux: parse field 22 (starttime) from /proc/<pid>/stat
         try:
-            with open(f"/proc/{pid}/stat", "r") as f:
+            with open(f"/proc/{pid}/stat") as f:
                 # Fields after the comm field (which may contain spaces/parens)
                 data = f.read()
                 # Find the closing paren of the comm field
                 idx = data.rfind(")")
-                fields = data[idx + 2:].split()
+                fields = data[idx + 2 :].split()
                 # starttime is field 20 (0-indexed) after the comm section
                 return int(fields[19])
         except (OSError, IndexError, ValueError):
@@ -96,7 +99,8 @@ def is_pid_alive(pid: int, creation_time: int | None = None) -> bool:
     """
     if _IS_WIN:
         import ctypes
-        SYNCHRONIZE = 0x00100000
+
+        SYNCHRONIZE = 0x00100000  # noqa: N806
         handle = ctypes.windll.kernel32.OpenProcess(SYNCHRONIZE, False, pid)
         if not handle:
             return False
@@ -111,7 +115,9 @@ def is_pid_alive(pid: int, creation_time: int | None = None) -> bool:
                 logger.debug(
                     "PID %d alive but creation time mismatch "
                     "(expected %d, got %d) — treating as dead (PID reuse)",
-                    pid, creation_time, current_ct,
+                    pid,
+                    creation_time,
+                    current_ct,
                 )
                 return False
 
@@ -128,7 +134,9 @@ def is_pid_alive(pid: int, creation_time: int | None = None) -> bool:
                 logger.debug(
                     "PID %d alive but creation time mismatch "
                     "(expected %d, got %d) — treating as dead (PID reuse)",
-                    pid, creation_time, current_ct,
+                    pid,
+                    creation_time,
+                    current_ct,
                 )
                 return False
 
@@ -148,7 +156,7 @@ async def _taskkill(pid: int, force: bool = False) -> bool:
         )
         try:
             await asyncio.wait_for(proc.wait(), timeout=5.0)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             proc.kill()
             return False
         return proc.returncode == 0

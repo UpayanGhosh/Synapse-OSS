@@ -86,10 +86,8 @@ def detect_spawn_intent(message: str) -> tuple[bool, str]:
     # 1. Multi-word prefix match (most specific — check first).
     for prefix in SPAWN_PREFIXES:
         if lower.startswith(prefix):
-            remainder = clean[len(prefix):].strip()
-            logger.debug(
-                "detect_spawn_intent: prefix=%r matched, task=%r", prefix, remainder
-            )
+            remainder = clean[len(prefix) :].strip()
+            logger.debug("detect_spawn_intent: prefix=%r matched, task=%r", prefix, remainder)
             return (True, remainder) if remainder else (False, "")
 
     # 2. Background-marker phrase anywhere in the message.
@@ -98,7 +96,7 @@ def detect_spawn_intent(message: str) -> tuple[bool, str]:
             # Strip the marker and surrounding whitespace from the message.
             task_desc = lower.replace(marker, "").strip(" ,.")
             # Use original casing from the cleaned input for the task description.
-            original_no_marker = clean.lower().replace(marker, "").strip(" ,.")
+            clean.lower().replace(marker, "").strip(" ,.")
             # Preserve original case by removing the marker from the original string.
             task_desc = clean
             for m in _BACKGROUND_MARKERS:
@@ -114,10 +112,8 @@ def detect_spawn_intent(message: str) -> tuple[bool, str]:
     # 3. Single keyword / short-phrase prefix match.
     for keyword in SPAWN_KEYWORDS:
         if lower.startswith(keyword + " "):
-            remainder = clean[len(keyword):].strip()
-            logger.debug(
-                "detect_spawn_intent: keyword=%r matched, task=%r", keyword, remainder
-            )
+            remainder = clean[len(keyword) :].strip()
+            logger.debug("detect_spawn_intent: keyword=%r matched, task=%r", keyword, remainder)
             return (True, remainder) if remainder else (False, "")
 
     logger.debug("detect_spawn_intent: no spawn intent in %r", message[:60])

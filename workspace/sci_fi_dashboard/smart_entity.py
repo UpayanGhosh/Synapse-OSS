@@ -34,10 +34,7 @@ class EntityGate:
             # Empty dict is normal for OSS repo — skip silently
             return
         # Normalize: values may be lists (variations) or ints (counts from bulk extractor)
-        aliases_dict = {
-            k: v if isinstance(v, list) else [k]
-            for k, v in raw.items()
-        }
+        aliases_dict = {k: v if isinstance(v, list) else [k] for k, v in raw.items()}
         self.keyword_processor.add_keywords_from_dict(aliases_dict)
         print(f"[OK] EntityGate: merged {len(aliases_dict)} alias groups from {entities_file}")
 
@@ -69,7 +66,7 @@ class EntityGate:
 
 if __name__ == "__main__":
     # Quick Test
-    gate = EntityGate()   # no graph, no aliases — still runnable standalone
+    gate = EntityGate()  # no graph, no aliases — still runnable standalone
 
     test_sentences = [
         "I need to fix the py script for synapse.",

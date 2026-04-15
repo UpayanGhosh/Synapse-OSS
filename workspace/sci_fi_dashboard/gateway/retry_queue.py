@@ -10,6 +10,7 @@ Storage: ~/.synapse/state/retry_queue.db
 """
 
 import asyncio
+import contextlib
 import logging
 import sqlite3
 from datetime import datetime, timedelta
@@ -76,10 +77,8 @@ class RetryQueue:
         """Cancel background polling task."""
         if self._task and not self._task.done():
             self._task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._task
-            except asyncio.CancelledError:
-                pass
         logger.info("[RetryQueue] Stopped")
 
     async def enqueue(
@@ -104,9 +103,16 @@ class RetryQueue:
                         created_at, next_retry_at, attempt_count, max_attempts, last_error, status)
                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, 'pending')""",
                     (
-                        channel_id, chat_id, text, media_url, media_type, caption,
-                        now.isoformat(), next_retry.isoformat(),
-                        MAX_ATTEMPTS, error or None,
+                        channel_id,
+                        chat_id,
+                        text,
+                        media_url,
+                        media_type,
+                        caption,
+                        now.isoformat(),
+                        next_retry.isoformat(),
+                        MAX_ATTEMPTS,
+                        error or None,
                     ),
                 )
                 conn.commit()
@@ -118,6 +124,7 @@ class RetryQueue:
 
     async def flush(self) -> int:
         """Force immediate retry of all pending entries. Returns count attempted."""
+
         def _mark_due():
             now = datetime.utcnow().isoformat()
             with sqlite3.connect(self._db_path) as conn:
@@ -132,6 +139,7 @@ class RetryQueue:
 
     async def list_pending(self) -> list[dict]:
         """Return all non-dead-letter entries as dicts."""
+
         def _query():
             with sqlite3.connect(self._db_path) as conn:
                 conn.row_factory = sqlite3.Row
@@ -144,11 +152,10 @@ class RetryQueue:
 
     async def delete(self, entry_id: int) -> bool:
         """Delete a specific queue entry. Returns True if found and deleted."""
+
         def _delete():
             with sqlite3.connect(self._db_path) as conn:
-                cur = conn.execute(
-                    "DELETE FROM retry_queue WHERE id = ?", (entry_id,)
-                )
+                cur = conn.execute("DELETE FROM retry_queue WHERE id = ?", (entry_id,))
                 conn.commit()
                 return cur.rowcount > 0
 
@@ -217,7 +224,9 @@ class RetryQueue:
                         "UPDATE retry_queue SET status = 'delivered', attempt_count = ? WHERE id = ?",
                         (attempt, entry["id"]),
                     )
-                    logger.info("[RetryQueue] Entry %d delivered on attempt %d", entry["id"], attempt)
+                    logger.info(
+                        "[RetryQueue] Entry %d delivered on attempt %d", entry["id"], attempt
+                    )
                 elif attempt >= entry["max_attempts"]:
                     conn.execute(
                         "UPDATE retry_queue SET status = 'dead_letter', attempt_count = ?, "
@@ -225,7 +234,9 @@ class RetryQueue:
                         (attempt, error or "max attempts reached", entry["id"]),
                     )
                     logger.warning(
-                        "[RetryQueue] Entry %d dead-lettered after %d attempts", entry["id"], attempt
+                        "[RetryQueue] Entry %d dead-lettered after %d attempts",
+                        entry["id"],
+                        attempt,
                     )
                 else:
                     delay = RETRY_DELAYS[min(attempt, len(RETRY_DELAYS) - 1)]

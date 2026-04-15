@@ -229,9 +229,7 @@ class AgentRegistry:
         """Remove archive entries older than _archive_ttl_seconds."""
         cutoff = datetime.now() - timedelta(seconds=self._archive_ttl_seconds)
         before = len(self._archive)
-        self._archive = [
-            a for a in self._archive if (a.completed_at or a.created_at) > cutoff
-        ]
+        self._archive = [a for a in self._archive if (a.completed_at or a.created_at) > cutoff]
         pruned = before - len(self._archive)
         if pruned:
             logger.debug("[AgentRegistry] Pruned %d stale archive entries", pruned)

@@ -18,8 +18,9 @@ from __future__ import annotations
 import json
 import logging
 import time
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Any, Awaitable, Callable
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -97,27 +98,21 @@ def get_switch_model_tool(available_roles: list[str]) -> UserToolDef:
         role = args.get("model_role", "")
         if role not in available_roles:
             return {
-                "content": (
-                    f"Unknown role '{role}'. "
-                    f"Available: {', '.join(available_roles)}"
-                ),
+                "content": (f"Unknown role '{role}'. " f"Available: {', '.join(available_roles)}"),
                 "is_error": True,
             }
         chat_id = args.get("_chat_id", "default")
         set_model_override(chat_id, role)
         return {
             "content": (
-                f"Switched to '{role}'. This override lasts until "
-                "the session restarts."
+                f"Switched to '{role}'. This override lasts until " "the session restarts."
             ),
             "is_error": False,
         }
 
     return UserToolDef(
         name="switch_model",
-        description=(
-            f"Switch the AI model. Available roles: {', '.join(available_roles)}"
-        ),
+        description=(f"Switch the AI model. Available roles: {', '.join(available_roles)}"),
         parameters={
             "type": "object",
             "properties": {
@@ -162,9 +157,7 @@ def get_import_memory_tool() -> UserToolDef:
                 },
                 "category": {
                     "type": "string",
-                    "description": (
-                        "Category (personal, fact, preference, general)"
-                    ),
+                    "description": ("Category (personal, fact, preference, general)"),
                     "default": "general",
                 },
             },
@@ -226,10 +219,7 @@ def parse_command_shortcut(
         else:
             return CommandResult(
                 is_command=True,
-                response=(
-                    f"Unknown role '{role}'. "
-                    f"Available: {', '.join(available_roles)}"
-                ),
+                response=(f"Unknown role '{role}'. " f"Available: {', '.join(available_roles)}"),
             )
 
     if text == "/tools":

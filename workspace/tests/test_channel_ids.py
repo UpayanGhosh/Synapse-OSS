@@ -11,14 +11,11 @@ Covers:
 import os
 import sys
 
-import pytest
-
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from sci_fi_dashboard.channels.ids import (
     CHANNEL_ALIASES,
     CHANNEL_ORDER,
-    ChannelId,
     is_valid_channel_id,
     resolve_channel_id,
 )

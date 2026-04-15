@@ -11,6 +11,7 @@ Covers:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import os
 import sys
@@ -24,9 +25,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 try:
     from sci_fi_dashboard.multiuser.session_store import (
-        LockMetadata,
         SynapseFileLock,
-        _is_pid_alive,
         _watchdog_loop,
         clean_stale_lock_files,
     )
@@ -131,13 +130,13 @@ class TestSynapseFileLock:
         mock_proc = MagicMock()
         mock_proc.create_time.return_value = time.time()  # current, not 1000.0
 
-        with patch(
-            "sci_fi_dashboard.multiuser.session_store._HAS_PSUTIL", True
-        ), patch(
-            "sci_fi_dashboard.multiuser.session_store.psutil"
-        ) as mock_psutil, patch(
-            "sci_fi_dashboard.multiuser.session_store._is_pid_alive",
-            return_value=True,
+        with (
+            patch("sci_fi_dashboard.multiuser.session_store._HAS_PSUTIL", True),
+            patch("sci_fi_dashboard.multiuser.session_store.psutil") as mock_psutil,
+            patch(
+                "sci_fi_dashboard.multiuser.session_store._is_pid_alive",
+                return_value=True,
+            ),
         ):
             mock_psutil.Process.return_value = mock_proc
             mock_psutil.NoSuchProcess = Exception
@@ -215,14 +214,14 @@ class TestCleanStaleLockFiles:
         mock_proc = MagicMock()
         mock_proc.create_time.return_value = meta["starttime"]
 
-        with patch(
-            "sci_fi_dashboard.multiuser.session_store._is_pid_alive",
-            return_value=True,
-        ), patch(
-            "sci_fi_dashboard.multiuser.session_store._HAS_PSUTIL", True
-        ), patch(
-            "sci_fi_dashboard.multiuser.session_store.psutil"
-        ) as mock_psutil:
+        with (
+            patch(
+                "sci_fi_dashboard.multiuser.session_store._is_pid_alive",
+                return_value=True,
+            ),
+            patch("sci_fi_dashboard.multiuser.session_store._HAS_PSUTIL", True),
+            patch("sci_fi_dashboard.multiuser.session_store.psutil") as mock_psutil,
+        ):
             mock_psutil.Process.return_value = mock_proc
             mock_psutil.NoSuchProcess = Exception
             mock_psutil.AccessDenied = Exception
@@ -283,11 +282,11 @@ class TestWatchdog:
             if call_count > 1:
                 raise asyncio.CancelledError
 
-        with patch("sci_fi_dashboard.multiuser.session_store.asyncio.sleep", _mock_sleep):
-            try:
-                await _watchdog_loop(tmp_path)
-            except asyncio.CancelledError:
-                pass
+        with (
+            patch("sci_fi_dashboard.multiuser.session_store.asyncio.sleep", _mock_sleep),
+            contextlib.suppress(asyncio.CancelledError),
+        ):
+            await _watchdog_loop(tmp_path)
 
         assert not lock_file.exists()
         assert not meta_file.exists()
@@ -327,11 +326,12 @@ class TestGracefulDegradation:
         old_time = time.time() - SynapseFileLock.MAX_LOCK_AGE_S - 100
         os.utime(str(lock_path), (old_time, old_time))
 
-        with patch(
-            "sci_fi_dashboard.multiuser.session_store._HAS_PSUTIL", False
-        ), patch(
-            "sci_fi_dashboard.multiuser.session_store._is_pid_alive",
-            return_value=True,
+        with (
+            patch("sci_fi_dashboard.multiuser.session_store._HAS_PSUTIL", False),
+            patch(
+                "sci_fi_dashboard.multiuser.session_store._is_pid_alive",
+                return_value=True,
+            ),
         ):
             fl = SynapseFileLock(lock_path, timeout=5.0)
             # Without psutil, PID alive + old mtime -> stale via age check.

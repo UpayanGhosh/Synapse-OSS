@@ -11,7 +11,6 @@ Covers:
 import json
 import os
 import sys
-from pathlib import Path
 
 import pytest
 
@@ -107,7 +106,6 @@ class TestDeliveryQueue:
         assert d2.id in ids
 
     def test_list_pending_sorted_by_created_at(self, queue):
-        import time
 
         d1 = QueuedDelivery(channel_id="wa", to="u1", payloads=[], created_at=100.0)
         d2 = QueuedDelivery(channel_id="wa", to="u2", payloads=[], created_at=50.0)

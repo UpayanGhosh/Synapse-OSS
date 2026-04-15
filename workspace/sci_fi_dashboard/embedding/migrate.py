@@ -8,6 +8,7 @@ Responsibilities:
 - Update provenance columns (embedding_model, embedding_version) on success.
 - Support --dry-run to preview the plan without touching data.
 """
+
 from __future__ import annotations
 
 import logging
@@ -23,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 def re_embed_documents(
     db_path: Path,
-    provider: "EmbeddingProvider",
+    provider: EmbeddingProvider,
     batch_size: int = 64,
     dry_run: bool = False,
 ) -> dict[str, int]:
@@ -69,7 +70,7 @@ def re_embed_documents(
 
             try:
                 vectors = provider.embed_documents(texts)
-                for row_id, _vector in zip(ids, vectors):
+                for row_id, _vector in zip(ids, vectors, strict=False):
                     # Update provenance metadata.
                     # The actual embedding bytes are written by the ingestion
                     # pipeline's vec_items upsert — this function only updates

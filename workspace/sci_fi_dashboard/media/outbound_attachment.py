@@ -1,6 +1,7 @@
 """
 media/outbound_attachment.py — Resolve media:// URIs to real file paths for outbound delivery.
 """
+
 from __future__ import annotations
 
 import logging
@@ -47,7 +48,7 @@ def resolve_media_path(
 
     if uri.startswith("media://"):
         parsed = urlparse(uri)
-        subdir = parsed.netloc           # e.g. "inbound"
+        subdir = parsed.netloc  # e.g. "inbound"
         raw_id = parsed.path.lstrip("/")  # e.g. "abc123def456"
 
         # --- Security checks ---
@@ -69,18 +70,16 @@ def resolve_media_path(
         # store.py names files as "{subdir}---{id}{ext}" — glob by ID prefix
         prefix = f"{subdir}---{raw_id}"
         matches = [
-            m for m in media_dir.glob(f"{prefix}*")
-            if m.is_file() and not m.name.endswith(".tmp")
+            m for m in media_dir.glob(f"{prefix}*") if m.is_file() and not m.name.endswith(".tmp")
         ]
 
         if not matches:
-            raise MediaResolutionError(
-                f"No media file found for ID {raw_id!r} in {media_dir}"
-            )
+            raise MediaResolutionError(f"No media file found for ID {raw_id!r} in {media_dir}")
         if len(matches) > 1:
             logger.warning(
                 "resolve_media_path: multiple files match ID %s — using %s",
-                raw_id, matches[0],
+                raw_id,
+                matches[0],
             )
 
         return str(matches[0])
@@ -92,10 +91,10 @@ def resolve_media_path(
 
         try:
             resolved.relative_to(resolved_root)
-        except ValueError:
+        except ValueError as exc:
             raise MediaResolutionError(
                 f"Path {uri!r} resolves outside media root {resolved_root}"
-            )
+            ) from exc
 
         if not resolved.exists():
             raise MediaResolutionError(f"File not found: {uri!r}")

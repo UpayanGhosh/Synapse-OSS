@@ -157,7 +157,7 @@ class BatchProcessor:
                     }
 
         # Cap vocabulary registry to prevent unbounded growth
-        _MAX_VOCAB = 10000
+        _MAX_VOCAB = 10000  # noqa: N806
         if len(word_registry) > _MAX_VOCAB:
             # Evict entries with the lowest effective_weight
             sorted_words = sorted(
@@ -435,7 +435,7 @@ class BatchProcessor:
 
     def _fetch_all_user_messages(self) -> list[dict]:
         """Fetch all messages in paginated batches to avoid OOM."""
-        _PAGE_SIZE = 1000
+        _PAGE_SIZE = 1000  # noqa: N806
         results: list[dict] = []
         last_ts = ""
         last_id = ""

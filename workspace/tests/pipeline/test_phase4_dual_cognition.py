@@ -9,12 +9,10 @@ Fixtures from pipeline/conftest.py:
   - mock_llm_fn           (function-scoped) AsyncMock returning MOCK_UNIVERSAL_JSON
 """
 
-import asyncio
-import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from sci_fi_dashboard.dual_cognition import DualCognitionEngine, CognitiveMerge
-
+import pytest
+from sci_fi_dashboard.dual_cognition import CognitiveMerge, DualCognitionEngine
 
 # ---------------------------------------------------------------------------
 # Section 1: classify_complexity() — synchronous tests
@@ -171,7 +169,7 @@ async def test_think_tension_level_in_range(pipeline_memory_engine, pipeline_gra
 @pytest.mark.asyncio
 async def test_think_response_strategy_valid(pipeline_memory_engine, pipeline_graph, mock_llm_fn):
     """response_strategy must be one of the known valid strategy strings."""
-    VALID_STRATEGIES = {
+    VALID_STRATEGIES = {  # noqa: N806
         "acknowledge",
         "challenge",
         "support",

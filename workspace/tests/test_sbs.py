@@ -9,7 +9,6 @@ Covers C7 audit item — first-ever SBS test coverage.
 """
 
 import json
-import os
 import sqlite3
 import sys
 from datetime import datetime, timedelta
@@ -21,14 +20,13 @@ import pytest
 # Ensure workspace/ is on the import path regardless of cwd
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from sci_fi_dashboard.sbs.profile.manager import ProfileManager
-from sci_fi_dashboard.sbs.ingestion.schema import RawMessage
-from sci_fi_dashboard.sbs.ingestion.logger import ConversationLogger
-from sci_fi_dashboard.sbs.processing.realtime import RealtimeProcessor
-from sci_fi_dashboard.sbs.processing.batch import BatchProcessor
-from sci_fi_dashboard.sbs.injection.compiler import PromptCompiler
 from sci_fi_dashboard.sbs.feedback.implicit import ImplicitFeedbackDetector
-
+from sci_fi_dashboard.sbs.ingestion.logger import ConversationLogger
+from sci_fi_dashboard.sbs.ingestion.schema import RawMessage
+from sci_fi_dashboard.sbs.injection.compiler import PromptCompiler
+from sci_fi_dashboard.sbs.processing.batch import BatchProcessor
+from sci_fi_dashboard.sbs.processing.realtime import RealtimeProcessor
+from sci_fi_dashboard.sbs.profile.manager import ProfileManager
 
 # ---------------------------------------------------------------------------
 # ProfileManager
@@ -193,8 +191,9 @@ class TestConversationLogger:
 
         with sqlite3.connect(logger.db_path) as conn:
             conn.row_factory = sqlite3.Row
-            rows = conn.execute("SELECT * FROM messages WHERE msg_id = ?",
-                                (sample_msg.msg_id,)).fetchall()
+            rows = conn.execute(
+                "SELECT * FROM messages WHERE msg_id = ?", (sample_msg.msg_id,)
+            ).fetchall()
 
         assert len(rows) == 1
         row = dict(rows[0])
@@ -246,10 +245,12 @@ class TestConversationLogger:
 
         with sqlite3.connect(logger.db_path) as conn:
             conn.row_factory = sqlite3.Row
-            row = dict(conn.execute(
-                "SELECT rt_sentiment, rt_language, rt_mood_signal FROM messages WHERE msg_id = ?",
-                (sample_msg.msg_id,),
-            ).fetchone())
+            row = dict(
+                conn.execute(
+                    "SELECT rt_sentiment, rt_language, rt_mood_signal FROM messages WHERE msg_id = ?",
+                    (sample_msg.msg_id,),
+                ).fetchone()
+            )
 
         assert row["rt_sentiment"] == 0.75
         assert row["rt_language"] == "banglish"
@@ -320,19 +321,25 @@ class TestRealtimeProcessor:
         """A clearly positive message should yield positive sentiment."""
         msg = RawMessage(role="user", content="awesome great perfect love")
         result = processor.process(msg)
-        assert result["rt_sentiment"] > 0, f"Expected positive sentiment, got {result['rt_sentiment']}"
+        assert (
+            result["rt_sentiment"] > 0
+        ), f"Expected positive sentiment, got {result['rt_sentiment']}"
 
     def test_sentiment_negative(self, processor):
         """A clearly negative message should yield negative sentiment."""
         msg = RawMessage(role="user", content="hate broken error kharap")
         result = processor.process(msg)
-        assert result["rt_sentiment"] < 0, f"Expected negative sentiment, got {result['rt_sentiment']}"
+        assert (
+            result["rt_sentiment"] < 0
+        ), f"Expected negative sentiment, got {result['rt_sentiment']}"
 
     def test_sentiment_neutral(self, processor):
         """A neutral message with no sentiment words should score near zero."""
         msg = RawMessage(role="user", content="the quick brown fox")
         result = processor.process(msg)
-        assert abs(result["rt_sentiment"]) < 0.2, f"Expected near-zero, got {result['rt_sentiment']}"
+        assert (
+            abs(result["rt_sentiment"]) < 0.2
+        ), f"Expected near-zero, got {result['rt_sentiment']}"
 
     def test_language_detection_english(self, processor):
         """A purely English message should be detected as 'en'."""
@@ -427,17 +434,81 @@ class TestBatchProcessor:
             # Insert sample messages
             now = datetime.now()
             messages = [
-                ("m1", now.isoformat(), "user", "hey bhai chai khaowa", "s1",
-                 None, 20, 4, 0, 0, 0.3, "banglish", "playful"),
-                ("m2", now.isoformat(), "assistant", "sure, chai ready!",
-                 "s1", "m1", 17, 3, 0, 0, 0.5, "en", None),
-                ("m3", now.isoformat(), "user", "implement the python api endpoint",
-                 "s1", None, 33, 5, 0, 0, 0.0, "en", "focused"),
-                ("m4", now.isoformat(), "assistant", "ok let me build the fastapi route",
-                 "s1", "m3", 35, 7, 0, 0, 0.1, "en", None),
-                ("m5", (now - timedelta(hours=1)).isoformat(), "user",
-                 "arey model training dataset ml ai transformer", "s1",
-                 None, 45, 7, 0, 0, 0.2, "mixed", None),
+                (
+                    "m1",
+                    now.isoformat(),
+                    "user",
+                    "hey bhai chai khaowa",
+                    "s1",
+                    None,
+                    20,
+                    4,
+                    0,
+                    0,
+                    0.3,
+                    "banglish",
+                    "playful",
+                ),
+                (
+                    "m2",
+                    now.isoformat(),
+                    "assistant",
+                    "sure, chai ready!",
+                    "s1",
+                    "m1",
+                    17,
+                    3,
+                    0,
+                    0,
+                    0.5,
+                    "en",
+                    None,
+                ),
+                (
+                    "m3",
+                    now.isoformat(),
+                    "user",
+                    "implement the python api endpoint",
+                    "s1",
+                    None,
+                    33,
+                    5,
+                    0,
+                    0,
+                    0.0,
+                    "en",
+                    "focused",
+                ),
+                (
+                    "m4",
+                    now.isoformat(),
+                    "assistant",
+                    "ok let me build the fastapi route",
+                    "s1",
+                    "m3",
+                    35,
+                    7,
+                    0,
+                    0,
+                    0.1,
+                    "en",
+                    None,
+                ),
+                (
+                    "m5",
+                    (now - timedelta(hours=1)).isoformat(),
+                    "user",
+                    "arey model training dataset ml ai transformer",
+                    "s1",
+                    None,
+                    45,
+                    7,
+                    0,
+                    0,
+                    0.2,
+                    "mixed",
+                    None,
+                ),
             ]
             conn.executemany(
                 "INSERT INTO messages VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
@@ -513,12 +584,20 @@ class TestBatchProcessor:
         # Manually insert a low-weight entry
         vocab = pm.load_layer("vocabulary")
         vocab["registry"] = {
-            "active_word": {"total_count": 10, "effective_weight": 5.0,
-                            "first_seen": "2025-01-01", "last_seen": "2025-06-01",
-                            "monthly_counts": {}},
-            "stale_word": {"total_count": 1, "effective_weight": 0.1,
-                           "first_seen": "2024-01-01", "last_seen": "2024-01-01",
-                           "monthly_counts": {}},
+            "active_word": {
+                "total_count": 10,
+                "effective_weight": 5.0,
+                "first_seen": "2025-01-01",
+                "last_seen": "2025-06-01",
+                "monthly_counts": {},
+            },
+            "stale_word": {
+                "total_count": 1,
+                "effective_weight": 0.1,
+                "first_seen": "2024-01-01",
+                "last_seen": "2024-01-01",
+                "monthly_counts": {},
+            },
         }
         pm.save_layer("vocabulary", vocab)
 
@@ -609,9 +688,9 @@ class TestPromptCompiler:
         """The compiled prompt should not exceed MAX_CHARS."""
         comp, _ = compiler
         result = comp.compile()
-        assert len(result) <= comp.MAX_CHARS, (
-            f"Compiled prompt is {len(result)} chars, exceeds budget of {comp.MAX_CHARS}"
-        )
+        assert (
+            len(result) <= comp.MAX_CHARS
+        ), f"Compiled prompt is {len(result)} chars, exceeds budget of {comp.MAX_CHARS}"
 
     def test_compile_contains_identity_section(self, compiler):
         """The compiled prompt must always include the [IDENTITY] section."""
@@ -696,6 +775,7 @@ class TestSBSOrchestrator:
     def orchestrator(self, tmp_path):
         """Create an SBSOrchestrator rooted in a temp directory."""
         from sci_fi_dashboard.sbs.orchestrator import SBSOrchestrator
+
         return SBSOrchestrator(data_dir=str(tmp_path / "sbs_data"))
 
     def test_on_message_returns_rt_results(self, orchestrator):
@@ -734,6 +814,7 @@ class TestSBSOrchestrator:
             # The batch thread should have been spawned
             # Give it a moment to trigger
             import time
+
             time.sleep(0.5)
 
             # Verify batch was triggered (thread-based, so check mock)
@@ -771,8 +852,14 @@ class TestSBSOrchestrator:
     def test_get_profile_summary(self, orchestrator):
         """get_profile_summary should return a dict with expected keys."""
         summary = orchestrator.get_profile_summary()
-        expected_keys = {"current_mood", "sentiment", "primary_language_ratio",
-                         "vocab_size", "profile_version", "total_messages"}
+        expected_keys = {
+            "current_mood",
+            "sentiment",
+            "primary_language_ratio",
+            "vocab_size",
+            "profile_version",
+            "total_messages",
+        }
         assert set(summary.keys()) == expected_keys
 
     def test_on_message_tracks_assistant_for_feedback(self, orchestrator):
@@ -861,8 +948,7 @@ class TestImplicitFeedback:
         linguistic["current_style"] = {"primary_language_ratio": 0.3}
         pm.save_layer("linguistic", linguistic)
 
-        signal = {"type": "correction_formal", "matched_text": "why so formal",
-                  "context": None}
+        signal = {"type": "correction_formal", "matched_text": "why so formal", "context": None}
         detector.apply_feedback(signal)
 
         updated = pm.load_layer("linguistic")
@@ -876,8 +962,7 @@ class TestImplicitFeedback:
         linguistic["current_style"] = {"primary_language_ratio": 0.5}
         pm.save_layer("linguistic", linguistic)
 
-        signal = {"type": "correction_casual", "matched_text": "be serious",
-                  "context": None}
+        signal = {"type": "correction_casual", "matched_text": "be serious", "context": None}
         detector.apply_feedback(signal)
 
         updated = pm.load_layer("linguistic")
@@ -891,8 +976,7 @@ class TestImplicitFeedback:
         interaction["avg_response_length"] = 100
         pm.save_layer("interaction", interaction)
 
-        signal = {"type": "correction_length", "matched_text": "too long",
-                  "context": None}
+        signal = {"type": "correction_length", "matched_text": "too long", "context": None}
         detector.apply_feedback(signal)
 
         updated = pm.load_layer("interaction")
@@ -906,8 +990,7 @@ class TestImplicitFeedback:
         interaction["avg_response_length"] = 50
         pm.save_layer("interaction", interaction)
 
-        signal = {"type": "correction_short", "matched_text": "elaborate",
-                  "context": None}
+        signal = {"type": "correction_short", "matched_text": "elaborate", "context": None}
         detector.apply_feedback(signal)
 
         updated = pm.load_layer("interaction")
@@ -921,8 +1004,7 @@ class TestImplicitFeedback:
         linguistic["current_style"] = {"primary_language_ratio": 0.95}
         pm.save_layer("linguistic", linguistic)
 
-        signal = {"type": "correction_formal", "matched_text": "too formal",
-                  "context": None}
+        signal = {"type": "correction_formal", "matched_text": "too formal", "context": None}
         detector.apply_feedback(signal)
 
         updated = pm.load_layer("linguistic")
@@ -936,8 +1018,7 @@ class TestImplicitFeedback:
         linguistic["current_style"] = {"primary_language_ratio": 0.05}
         pm.save_layer("linguistic", linguistic)
 
-        signal = {"type": "correction_casual", "matched_text": "too casual",
-                  "context": None}
+        signal = {"type": "correction_casual", "matched_text": "too casual", "context": None}
         detector.apply_feedback(signal)
 
         updated = pm.load_layer("linguistic")

@@ -1,6 +1,7 @@
 """
 Tests for sci_fi_dashboard.cron.service — CRUD API, timer loop, catch-up, alerting, delivery.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -8,15 +9,7 @@ import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from sci_fi_dashboard.cron.service import CronService
-from sci_fi_dashboard.cron.types import (
-    DeliveryMode,
-    PayloadKind,
-    ScheduleKind,
-    SessionTarget,
-    WakeMode,
-)
 
 
 @pytest.fixture
@@ -107,7 +100,6 @@ class TestCRUD:
 
     def test_update_schedule_recomputes_next_run(self, service):
         job = service.add(_every_schedule(every_ms=60_000))
-        old_next = job.state.next_run_at_ms
 
         updated = service.update(
             job.id,
@@ -130,11 +122,13 @@ class TestCRUD:
 
     @pytest.mark.asyncio
     async def test_run_force(self, service, execute_fn):
-        job = service.add({
-            "schedule": {"kind": "every", "every_ms": 60_000, "anchor_ms": 0},
-            "payload": {"kind": "systemEvent", "message": "force run"},
-            "name": "force-test",
-        })
+        job = service.add(
+            {
+                "schedule": {"kind": "every", "every_ms": 60_000, "anchor_ms": 0},
+                "payload": {"kind": "systemEvent", "message": "force run"},
+                "name": "force-test",
+            }
+        )
 
         result = await service.run(job.id)
         assert result["status"] == "ok"
@@ -203,10 +197,12 @@ class TestCatchUp:
     @pytest.mark.asyncio
     async def test_missed_wake_now_runs_immediately(self, service, execute_fn):
         """Past next_run + wake_mode=NOW → run immediately on startup."""
-        job = service.add({
-            **_every_schedule(),
-            "wake_mode": "now",
-        })
+        job = service.add(
+            {
+                **_every_schedule(),
+                "wake_mode": "now",
+            }
+        )
         # Force next_run into the past
         job.state.next_run_at_ms = int(time.time() * 1000) - 5000
 
@@ -216,11 +212,12 @@ class TestCatchUp:
     @pytest.mark.asyncio
     async def test_missed_wake_next_heartbeat_skipped(self, service, execute_fn):
         """Past next_run + wake_mode=NEXT_HEARTBEAT → skipped, next_run recomputed."""
-        job = service.add({
-            **_every_schedule(),
-            "wake_mode": "next-heartbeat",
-        })
-        old_next = job.state.next_run_at_ms
+        job = service.add(
+            {
+                **_every_schedule(),
+                "wake_mode": "next-heartbeat",
+            }
+        )
         # Force next_run into the past
         job.state.next_run_at_ms = int(time.time() * 1000) - 5000
 
@@ -244,16 +241,18 @@ class TestFailureAlerting:
         failing_fn = AsyncMock(side_effect=RuntimeError("boom"))
         svc = CronService("test", data_root, failing_fn, channel_registry)
 
-        job = svc.add({
-            **_every_schedule(),
-            "failure_alert": {
-                "after": 3,
-                "channel": "whatsapp",
-                "to": "admin",
-                "cooldown_ms": 1000,
-                "mode": "announce",
-            },
-        })
+        job = svc.add(
+            {
+                **_every_schedule(),
+                "failure_alert": {
+                    "after": 3,
+                    "channel": "whatsapp",
+                    "to": "admin",
+                    "cooldown_ms": 1000,
+                    "mode": "announce",
+                },
+            }
+        )
 
         # Run 3 times to hit threshold
         for _ in range(3):
@@ -270,16 +269,18 @@ class TestFailureAlerting:
         failing_fn = AsyncMock(side_effect=RuntimeError("boom"))
         svc = CronService("test", data_root, failing_fn, channel_registry)
 
-        job = svc.add({
-            **_every_schedule(),
-            "failure_alert": {
-                "after": 1,
-                "channel": "whatsapp",
-                "to": "admin",
-                "cooldown_ms": 999_999_999,  # very long cooldown
-                "mode": "announce",
-            },
-        })
+        job = svc.add(
+            {
+                **_every_schedule(),
+                "failure_alert": {
+                    "after": 1,
+                    "channel": "whatsapp",
+                    "to": "admin",
+                    "cooldown_ms": 999_999_999,  # very long cooldown
+                    "mode": "announce",
+                },
+            }
+        )
 
         # First failure — alert sent
         await svc._execute_job(job)
@@ -301,14 +302,16 @@ class TestDeliveryRouting:
     async def test_announce_calls_channel_send(self, data_root, execute_fn, channel_registry):
         svc = CronService("test", data_root, execute_fn, channel_registry)
 
-        job = svc.add({
-            **_every_schedule(),
-            "delivery": {
-                "mode": "announce",
-                "channel": "whatsapp",
-                "to": "+1234567890",
-            },
-        })
+        job = svc.add(
+            {
+                **_every_schedule(),
+                "delivery": {
+                    "mode": "announce",
+                    "channel": "whatsapp",
+                    "to": "+1234567890",
+                },
+            }
+        )
 
         result = await svc._execute_job(job)
         assert result["delivery"]["status"] == "ok"
@@ -319,13 +322,15 @@ class TestDeliveryRouting:
     async def test_webhook_calls_httpx_post(self, data_root, execute_fn):
         svc = CronService("test", data_root, execute_fn)
 
-        job = svc.add({
-            **_every_schedule(),
-            "delivery": {
-                "mode": "webhook",
-                "to": "https://example.com/hook",
-            },
-        })
+        job = svc.add(
+            {
+                **_every_schedule(),
+                "delivery": {
+                    "mode": "webhook",
+                    "to": "https://example.com/hook",
+                },
+            }
+        )
 
         mock_response = MagicMock()
         mock_response.status_code = 200

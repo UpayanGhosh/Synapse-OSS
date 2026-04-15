@@ -23,7 +23,7 @@ import re
 from pathlib import Path
 
 from sci_fi_dashboard.skills.loader import SkillLoader
-from sci_fi_dashboard.skills.schema import OPTIONAL_SUBDIRS, REQUIRED_FIELDS
+from sci_fi_dashboard.skills.schema import OPTIONAL_SUBDIRS
 
 logger = logging.getLogger(__name__)
 
@@ -88,8 +88,8 @@ def _build_skill_md(
         _YAML_DELIM,
         f"name: {name}",
         f'description: "{description}"',
-        f'version: "1.0.0"',
-        f'author: "synapse-skill-creator"',
+        'version: "1.0.0"',
+        'author: "synapse-skill-creator"',
         f"triggers: {triggers_yaml}",
         f'model_hint: "{model_hint}"',
         "permissions: []",

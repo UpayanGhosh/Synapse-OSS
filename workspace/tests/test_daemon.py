@@ -65,9 +65,9 @@ def test_build_gateway_plan_loopback_maps_to_127():
 
     assert "--host" in opts.args
     host_idx = opts.args.index("--host")
-    assert opts.args[host_idx + 1] == "127.0.0.1", (
-        f"Expected --host 127.0.0.1 for loopback, got {opts.args[host_idx + 1]!r}"
-    )
+    assert (
+        opts.args[host_idx + 1] == "127.0.0.1"
+    ), f"Expected --host 127.0.0.1 for loopback, got {opts.args[host_idx + 1]!r}"
 
 
 def test_build_gateway_plan_lan_maps_to_0000():
@@ -77,9 +77,9 @@ def test_build_gateway_plan_lan_maps_to_0000():
 
     assert "--host" in opts.args
     host_idx = opts.args.index("--host")
-    assert opts.args[host_idx + 1] == "0.0.0.0", (
-        f"Expected --host 0.0.0.0 for lan, got {opts.args[host_idx + 1]!r}"
-    )
+    assert (
+        opts.args[host_idx + 1] == "0.0.0.0"
+    ), f"Expected --host 0.0.0.0 for lan, got {opts.args[host_idx + 1]!r}"
 
 
 def test_build_gateway_plan_auto_maps_to_0000():
@@ -98,9 +98,9 @@ def test_build_gateway_plan_port_in_args():
 
     assert "--port" in opts.args
     port_idx = opts.args.index("--port")
-    assert opts.args[port_idx + 1] == "9000", (
-        f"Expected --port 9000, got {opts.args[port_idx + 1]!r}"
-    )
+    assert (
+        opts.args[port_idx + 1] == "9000"
+    ), f"Expected --port 9000, got {opts.args[port_idx + 1]!r}"
 
 
 def test_build_gateway_plan_sets_token_env():
@@ -262,9 +262,9 @@ def test_resolve_gateway_service_darwin():
 
     with patch.object(daemon_mod.sys, "platform", "darwin"):
         svc = daemon_mod.resolve_gateway_service()
-    assert type(svc).__name__ == "LaunchdService", (
-        f"Expected LaunchdService on darwin, got {type(svc).__name__}"
-    )
+    assert (
+        type(svc).__name__ == "LaunchdService"
+    ), f"Expected LaunchdService on darwin, got {type(svc).__name__}"
 
 
 def test_resolve_gateway_service_linux():
@@ -273,9 +273,9 @@ def test_resolve_gateway_service_linux():
 
     with patch.object(daemon_mod.sys, "platform", "linux"):
         svc = daemon_mod.resolve_gateway_service()
-    assert type(svc).__name__ == "SystemdUserService", (
-        f"Expected SystemdUserService on linux, got {type(svc).__name__}"
-    )
+    assert (
+        type(svc).__name__ == "SystemdUserService"
+    ), f"Expected SystemdUserService on linux, got {type(svc).__name__}"
 
 
 def test_resolve_gateway_service_win32():
@@ -284,9 +284,9 @@ def test_resolve_gateway_service_win32():
 
     with patch.object(daemon_mod.sys, "platform", "win32"):
         svc = daemon_mod.resolve_gateway_service()
-    assert type(svc).__name__ == "WindowsTaskService", (
-        f"Expected WindowsTaskService on win32, got {type(svc).__name__}"
-    )
+    assert (
+        type(svc).__name__ == "WindowsTaskService"
+    ), f"Expected WindowsTaskService on win32, got {type(svc).__name__}"
 
 
 def test_resolve_gateway_service_unsupported_raises():

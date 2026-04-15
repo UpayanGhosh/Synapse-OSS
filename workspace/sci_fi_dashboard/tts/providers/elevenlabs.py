@@ -9,7 +9,6 @@ not in the dict it is passed through directly (allows raw voice_id usage).
 """
 
 import logging
-from typing import Optional
 
 logger = logging.getLogger("synapse.tts")
 
@@ -77,9 +76,7 @@ class ElevenLabsProvider:
             return b"".join(chunks)
 
         except ImportError:
-            logger.error(
-                "elevenlabs SDK is not installed. Run: pip install elevenlabs>=1.0.0"
-            )
+            logger.error("elevenlabs SDK is not installed. Run: pip install elevenlabs>=1.0.0")
             return b""
         except Exception as exc:
             logger.error("ElevenLabsProvider.synthesize() failed: %s", exc)

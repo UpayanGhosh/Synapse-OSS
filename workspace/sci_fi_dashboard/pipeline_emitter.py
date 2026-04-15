@@ -7,9 +7,11 @@ Singleton PipelineEventEmitter that:
 - Handles slow/disconnected subscribers gracefully (QueueFull → drop + remove)
 - Thread-safe: emit() uses call_soon_threadsafe when called from a thread
 """
+
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import time
 import uuid
@@ -35,10 +37,8 @@ class PipelineEventEmitter:
         return q
 
     def unsubscribe(self, q: asyncio.Queue[str]) -> None:
-        try:
+        with contextlib.suppress(ValueError):
             self._subscribers.remove(q)
-        except ValueError:
-            pass
 
     # ------------------------------------------------------------------
     # Event emission
@@ -54,7 +54,7 @@ class PipelineEventEmitter:
         """
         payload = {
             "event": event_type,
-            "ts": round(time.time() * 1000),   # ms timestamp
+            "ts": round(time.time() * 1000),  # ms timestamp
             "run_id": self._current_run_id,
             **(data or {}),
         }

@@ -13,7 +13,7 @@ Covers:
 
 import os
 import sys
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -35,9 +35,11 @@ class TestMediaFetchError:
 class TestFetchMedia:
     @pytest.mark.asyncio
     async def test_ssrf_blocked_url(self):
-        with patch("sci_fi_dashboard.media.fetch.is_ssrf_blocked", return_value=True):
-            with pytest.raises(MediaFetchError, match="SSRF blocked"):
-                await fetch_media("http://127.0.0.1/secret", max_bytes=1000)
+        with (
+            patch("sci_fi_dashboard.media.fetch.is_ssrf_blocked", return_value=True),
+            pytest.raises(MediaFetchError, match="SSRF blocked"),
+        ):
+            await fetch_media("http://127.0.0.1/secret", max_bytes=1000)
 
     @pytest.mark.asyncio
     async def test_ssrf_policy_allow_skips_check(self):
@@ -58,9 +60,13 @@ class TestFetchMedia:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("sci_fi_dashboard.media.fetch.is_ssrf_blocked") as mock_ssrf, \
-             patch("sci_fi_dashboard.media.fetch.safe_httpx_client", return_value=mock_client):
-            result = await fetch_media("http://127.0.0.1/data", max_bytes=10000, ssrf_policy="allow")
+        with (
+            patch("sci_fi_dashboard.media.fetch.is_ssrf_blocked") as mock_ssrf,
+            patch("sci_fi_dashboard.media.fetch.safe_httpx_client", return_value=mock_client),
+        ):
+            result = await fetch_media(
+                "http://127.0.0.1/data", max_bytes=10000, ssrf_policy="allow"
+            )
             mock_ssrf.assert_not_called()
             assert result == b"data"
 
@@ -77,10 +83,12 @@ class TestFetchMedia:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("sci_fi_dashboard.media.fetch.is_ssrf_blocked", return_value=False), \
-             patch("sci_fi_dashboard.media.fetch.safe_httpx_client", return_value=mock_client):
-            with pytest.raises(MediaFetchError, match="Content-Length"):
-                await fetch_media("https://example.com/big", max_bytes=1000)
+        with (
+            patch("sci_fi_dashboard.media.fetch.is_ssrf_blocked", return_value=False),
+            patch("sci_fi_dashboard.media.fetch.safe_httpx_client", return_value=mock_client),
+            pytest.raises(MediaFetchError, match="Content-Length"),
+        ):
+            await fetch_media("https://example.com/big", max_bytes=1000)
 
     @pytest.mark.asyncio
     async def test_http_error_status(self):
@@ -95,23 +103,29 @@ class TestFetchMedia:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("sci_fi_dashboard.media.fetch.is_ssrf_blocked", return_value=False), \
-             patch("sci_fi_dashboard.media.fetch.safe_httpx_client", return_value=mock_client):
-            with pytest.raises(MediaFetchError, match="HTTP 404"):
-                await fetch_media("https://example.com/gone", max_bytes=1000)
+        with (
+            patch("sci_fi_dashboard.media.fetch.is_ssrf_blocked", return_value=False),
+            patch("sci_fi_dashboard.media.fetch.safe_httpx_client", return_value=mock_client),
+            pytest.raises(MediaFetchError, match="HTTP 404"),
+        ):
+            await fetch_media("https://example.com/gone", max_bytes=1000)
 
     @pytest.mark.asyncio
     async def test_redirect_ssrf_raises_permission_error(self):
         """PermissionError from redirect hook is caught and wrapped."""
         mock_client = AsyncMock()
-        mock_client.stream.side_effect = PermissionError("SSRF blocked on redirect: http://127.0.0.1")
+        mock_client.stream.side_effect = PermissionError(
+            "SSRF blocked on redirect: http://127.0.0.1"
+        )
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("sci_fi_dashboard.media.fetch.is_ssrf_blocked", return_value=False), \
-             patch("sci_fi_dashboard.media.fetch.safe_httpx_client", return_value=mock_client):
-            with pytest.raises(MediaFetchError, match="SSRF blocked on redirect"):
-                await fetch_media("https://example.com/redir", max_bytes=1000)
+        with (
+            patch("sci_fi_dashboard.media.fetch.is_ssrf_blocked", return_value=False),
+            patch("sci_fi_dashboard.media.fetch.safe_httpx_client", return_value=mock_client),
+            pytest.raises(MediaFetchError, match="SSRF blocked on redirect"),
+        ):
+            await fetch_media("https://example.com/redir", max_bytes=1000)
 
     @pytest.mark.asyncio
     async def test_timeout_raises_media_fetch_error(self):
@@ -122,7 +136,9 @@ class TestFetchMedia:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("sci_fi_dashboard.media.fetch.is_ssrf_blocked", return_value=False), \
-             patch("sci_fi_dashboard.media.fetch.safe_httpx_client", return_value=mock_client):
-            with pytest.raises(MediaFetchError, match="Timeout"):
-                await fetch_media("https://slow.example.com", max_bytes=1000)
+        with (
+            patch("sci_fi_dashboard.media.fetch.is_ssrf_blocked", return_value=False),
+            patch("sci_fi_dashboard.media.fetch.safe_httpx_client", return_value=mock_client),
+            pytest.raises(MediaFetchError, match="Timeout"),
+        ):
+            await fetch_media("https://slow.example.com", max_bytes=1000)

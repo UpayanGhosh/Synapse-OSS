@@ -140,9 +140,7 @@ def _ensure_embedding_metadata(conn: sqlite3.Connection) -> None:
         conn.execute(
             "ALTER TABLE documents ADD COLUMN embedding_model TEXT DEFAULT 'nomic-embed-text'"
         )
-        conn.execute(
-            "ALTER TABLE documents ADD COLUMN embedding_version TEXT DEFAULT 'ollama-v1'"
-        )
+        conn.execute("ALTER TABLE documents ADD COLUMN embedding_version TEXT DEFAULT 'ollama-v1'")
     # Same migration for atomic_facts table (may not exist on all deployments)
     cursor = conn.execute("PRAGMA table_info(atomic_facts)")
     columns = {row[1] for row in cursor.fetchall()}
@@ -156,9 +154,7 @@ def _ensure_embedding_metadata(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
-def validate_embedding_dimension(
-    vector: list[float], expected: int = EMBEDDING_DIMENSIONS
-) -> None:
+def validate_embedding_dimension(vector: list[float], expected: int = EMBEDDING_DIMENSIONS) -> None:
     """Raise ValueError if vector has wrong dimension.
 
     Prevents silent data corruption when the embedding model changes but
@@ -213,9 +209,7 @@ class DatabaseManager:
                         conn.load_extension("vec0")
                     except Exception as e2:
                         print(f"[WARN] sqlite-vec not available during DB init: {e2}")
-                        print(
-                            "   Vector search will not work until sqlite-vec is installed."
-                        )
+                        print("   Vector search will not work until sqlite-vec is installed.")
                 conn.enable_load_extension(False)
 
                 conn.executescript("""

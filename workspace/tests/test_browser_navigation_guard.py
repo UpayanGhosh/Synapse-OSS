@@ -1,6 +1,7 @@
 """
 Tests for sci_fi_dashboard.browser.navigation_guard — SSRF prevention and redirect validation.
 """
+
 from __future__ import annotations
 
 import os
@@ -17,7 +18,6 @@ from sci_fi_dashboard.browser.navigation_guard import (
     assert_navigation_result_allowed,
     redirect_guard,
 )
-
 
 # ---------------------------------------------------------------------------
 # NavigationBlockedError
@@ -83,13 +83,15 @@ class TestAssertNavigationAllowed:
 
     @pytest.mark.asyncio
     async def test_blocks_ssrf_url(self):
-        with patch(
-            "sci_fi_dashboard.browser.navigation_guard.is_ssrf_blocked",
-            new_callable=AsyncMock,
-            return_value=True,
+        with (
+            patch(
+                "sci_fi_dashboard.browser.navigation_guard.is_ssrf_blocked",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            pytest.raises(NavigationBlockedError, match="private or blocked"),
         ):
-            with pytest.raises(NavigationBlockedError, match="private or blocked"):
-                await assert_navigation_allowed("http://169.254.169.254/metadata")
+            await assert_navigation_allowed("http://169.254.169.254/metadata")
 
     @pytest.mark.asyncio
     async def test_case_insensitive_protocol_check(self):
@@ -119,13 +121,15 @@ class TestAssertNavigationResultAllowed:
 
     @pytest.mark.asyncio
     async def test_blocks_private_final_url(self):
-        with patch(
-            "sci_fi_dashboard.browser.navigation_guard.is_ssrf_blocked",
-            new_callable=AsyncMock,
-            return_value=True,
+        with (
+            patch(
+                "sci_fi_dashboard.browser.navigation_guard.is_ssrf_blocked",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            pytest.raises(NavigationBlockedError),
         ):
-            with pytest.raises(NavigationBlockedError):
-                await assert_navigation_result_allowed("http://10.0.0.1/admin")
+            await assert_navigation_result_allowed("http://10.0.0.1/admin")
 
 
 # ---------------------------------------------------------------------------
@@ -183,20 +187,22 @@ class TestRedirectGuard:
 
         mock_page.on = capture_on
 
-        with patch(
-            "sci_fi_dashboard.browser.navigation_guard.is_ssrf_blocked",
-            new_callable=AsyncMock,
-            return_value=True,
+        with (
+            patch(
+                "sci_fi_dashboard.browser.navigation_guard.is_ssrf_blocked",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            pytest.raises(NavigationBlockedError, match="redirect hop"),
         ):
-            with pytest.raises(NavigationBlockedError, match="redirect hop"):
-                async with redirect_guard(mock_page):
-                    # Simulate a malicious 302 redirect to private IP
-                    if registered_handler:
-                        mock_response = MagicMock()
-                        mock_response.status = 302
-                        mock_response.headers = {"location": "http://169.254.169.254"}
-                        mock_response.url = "https://public.example.com"
-                        await registered_handler(mock_response)
+            async with redirect_guard(mock_page):
+                # Simulate a malicious 302 redirect to private IP
+                if registered_handler:
+                    mock_response = MagicMock()
+                    mock_response.status = 302
+                    mock_response.headers = {"location": "http://169.254.169.254"}
+                    mock_response.url = "https://public.example.com"
+                    await registered_handler(mock_response)
 
         mock_page.close.assert_awaited_once()
 

@@ -31,10 +31,8 @@ for _p in (_WORKSPACE, os.path.dirname(_WORKSPACE)):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-import pytest
-
-from sci_fi_dashboard.sbs.profile.manager import ProfileManager
-
+import pytest  # noqa: E402
+from sci_fi_dashboard.sbs.profile.manager import ProfileManager  # noqa: E402
 
 # ===========================================================================
 # Test 1 — Default layer returns expected structure and values
@@ -48,9 +46,9 @@ def test_load_layer_returns_defaults(pipeline_profile_manager):
 
     assert isinstance(layer, dict)
     assert "current_style" in layer, f"Expected 'current_style' key, got: {list(layer.keys())}"
-    assert layer["current_style"]["banglish_ratio"] == 0.3, (
-        f"Default banglish_ratio must be 0.3, got: {layer['current_style']['banglish_ratio']}"
-    )
+    assert (
+        layer["current_style"]["banglish_ratio"] == 0.3
+    ), f"Default banglish_ratio must be 0.3, got: {layer['current_style']['banglish_ratio']}"
 
 
 # ===========================================================================
@@ -63,9 +61,9 @@ def test_all_8_layers_present(pipeline_profile_manager):
     pm = pipeline_profile_manager
     profile = pm.load_full_profile()
 
-    assert set(profile.keys()) == set(pm.LAYERS), (
-        f"Expected keys {pm.LAYERS}, got: {list(profile.keys())}"
-    )
+    assert set(profile.keys()) == set(
+        pm.LAYERS
+    ), f"Expected keys {pm.LAYERS}, got: {list(profile.keys())}"
     assert len(profile) == 8, f"Expected 8 layers, got: {len(profile)}"
 
 
@@ -92,16 +90,21 @@ def test_save_and_reload_layer(pipeline_profile_manager, pipeline_profile_dir):
     pm = pipeline_profile_manager
     pm.save_layer(
         "emotional_state",
-        {"current_dominant_mood": "excited", "mood_history": [], "current_sentiment_avg": 0.8, "last_updated": None},
+        {
+            "current_dominant_mood": "excited",
+            "mood_history": [],
+            "current_sentiment_avg": 0.8,
+            "last_updated": None,
+        },
     )
 
     # Create a second manager pointing at the same directory
     pm2 = ProfileManager(profile_dir=pipeline_profile_dir)
     layer = pm2.load_layer("emotional_state")
 
-    assert layer["current_dominant_mood"] == "excited", (
-        f"Persisted value must survive a new ProfileManager. Got: {layer['current_dominant_mood']}"
-    )
+    assert (
+        layer["current_dominant_mood"] == "excited"
+    ), f"Persisted value must survive a new ProfileManager. Got: {layer['current_dominant_mood']}"
 
 
 # ===========================================================================
@@ -115,9 +118,7 @@ def test_snapshot_version_increments(pipeline_profile_manager):
     v1 = pm.snapshot_version()
     v2 = pm.snapshot_version()
 
-    assert v2 == v1 + 1, (
-        f"Second snapshot version ({v2}) must equal first ({v1}) + 1"
-    )
+    assert v2 == v1 + 1, f"Second snapshot version ({v2}) must equal first ({v1}) + 1"
 
 
 # ===========================================================================
@@ -153,9 +154,9 @@ def test_rollback_to_version(pipeline_profile_manager):
     # Rollback and verify state A is restored
     pm.rollback_to(v)
     restored = pm.load_layer("linguistic")
-    assert restored["current_style"]["banglish_ratio"] == 0.1, (
-        f"After rollback banglish_ratio must be 0.1 (state A), got: {restored['current_style']['banglish_ratio']}"
-    )
+    assert (
+        restored["current_style"]["banglish_ratio"] == 0.1
+    ), f"After rollback banglish_ratio must be 0.1 (state A), got: {restored['current_style']['banglish_ratio']}"
 
 
 # ===========================================================================
@@ -182,9 +183,9 @@ def test_max_versions_enforced(pipeline_profile_dir):
         pm.snapshot_version()
 
     archive_dirs = list(pm.archive_dir.iterdir())
-    assert len(archive_dirs) <= 30, (
-        f"Archive must not exceed max_versions=30, but found {len(archive_dirs)} snapshots"
-    )
+    assert (
+        len(archive_dirs) <= 30
+    ), f"Archive must not exceed max_versions=30, but found {len(archive_dirs)} snapshots"
 
 
 # ===========================================================================
@@ -202,12 +203,12 @@ def test_vocabulary_layer_accumulates(pipeline_profile_manager):
     pm.save_layer("vocabulary", existing)
 
     loaded = pm.load_layer("vocabulary")
-    assert loaded["registry"]["hello"] == 5, (
-        f"vocabulary['registry']['hello'] must be 5, got: {loaded['registry'].get('hello')}"
-    )
-    assert loaded["total_unique_words"] == 1, (
-        f"total_unique_words must be 1, got: {loaded['total_unique_words']}"
-    )
+    assert (
+        loaded["registry"]["hello"] == 5
+    ), f"vocabulary['registry']['hello'] must be 5, got: {loaded['registry'].get('hello')}"
+    assert (
+        loaded["total_unique_words"] == 1
+    ), f"total_unique_words must be 1, got: {loaded['total_unique_words']}"
 
 
 # ===========================================================================
@@ -226,7 +227,11 @@ def test_profile_isolated_per_target(pipeline_profile_dir):
     pm_a.save_layer(
         "linguistic",
         {
-            "current_style": {"banglish_ratio": 0.3, "avg_message_length": 15, "emoji_frequency": 0.1},
+            "current_style": {
+                "banglish_ratio": 0.3,
+                "avg_message_length": 15,
+                "emoji_frequency": 0.1,
+            },
             "style_history": [],
             "last_updated": "a_val",
         },
@@ -234,7 +239,11 @@ def test_profile_isolated_per_target(pipeline_profile_dir):
     pm_b.save_layer(
         "linguistic",
         {
-            "current_style": {"banglish_ratio": 0.3, "avg_message_length": 15, "emoji_frequency": 0.1},
+            "current_style": {
+                "banglish_ratio": 0.3,
+                "avg_message_length": 15,
+                "emoji_frequency": 0.1,
+            },
             "style_history": [],
             "last_updated": "b_val",
         },
@@ -243,15 +252,15 @@ def test_profile_isolated_per_target(pipeline_profile_dir):
     a_layer = pm_a.load_layer("linguistic")
     b_layer = pm_b.load_layer("linguistic")
 
-    assert a_layer["last_updated"] == "a_val", (
-        f"pm_a should have 'a_val', got: {a_layer['last_updated']!r}"
-    )
-    assert b_layer["last_updated"] == "b_val", (
-        f"pm_b should have 'b_val', got: {b_layer['last_updated']!r}"
-    )
-    assert a_layer["last_updated"] != b_layer["last_updated"], (
-        "Two isolated ProfileManagers must not share state"
-    )
+    assert (
+        a_layer["last_updated"] == "a_val"
+    ), f"pm_a should have 'a_val', got: {a_layer['last_updated']!r}"
+    assert (
+        b_layer["last_updated"] == "b_val"
+    ), f"pm_b should have 'b_val', got: {b_layer['last_updated']!r}"
+    assert (
+        a_layer["last_updated"] != b_layer["last_updated"]
+    ), "Two isolated ProfileManagers must not share state"
 
 
 # ===========================================================================
@@ -278,6 +287,6 @@ def test_rollback_preserves_core_identity(pipeline_profile_manager):
         f"core_identity.assistant_name must survive rollback. "
         f"Expected: {original_core['assistant_name']!r}, got: {restored_core['assistant_name']!r}"
     )
-    assert restored_core == original_core, (
-        "core_identity must be byte-for-byte identical before and after rollback"
-    )
+    assert (
+        restored_core == original_core
+    ), "core_identity must be byte-for-byte identical before and after rollback"

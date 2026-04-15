@@ -65,28 +65,32 @@ class TestPruneConflicts:
     def test_prune_keeps_max_20(self, cm):
         # Add 25 conflicts
         for i in range(25):
-            cm.pending_conflicts.append({
-                "id": f"id-{i}",
-                "subject": f"subject-{i}",
-                "timestamp": float(i),
-                "option_a": {"fact": "a", "source": "Memory"},
-                "option_b": {"fact": "b", "source": "Chat"},
-                "status": "pending",
-            })
+            cm.pending_conflicts.append(
+                {
+                    "id": f"id-{i}",
+                    "subject": f"subject-{i}",
+                    "timestamp": float(i),
+                    "option_a": {"fact": "a", "source": "Memory"},
+                    "option_b": {"fact": "b", "source": "Chat"},
+                    "status": "pending",
+                }
+            )
         cm.prune_conflicts(max_conflicts=20)
         pending = [c for c in cm.pending_conflicts if c["status"] == "pending"]
         assert len(pending) <= 20
 
     def test_prune_keeps_newest(self, cm):
         for i in range(25):
-            cm.pending_conflicts.append({
-                "id": f"id-{i}",
-                "subject": f"subject-{i}",
-                "timestamp": float(i),
-                "option_a": {"fact": "a", "source": "Memory"},
-                "option_b": {"fact": "b", "source": "Chat"},
-                "status": "pending",
-            })
+            cm.pending_conflicts.append(
+                {
+                    "id": f"id-{i}",
+                    "subject": f"subject-{i}",
+                    "timestamp": float(i),
+                    "option_a": {"fact": "a", "source": "Memory"},
+                    "option_b": {"fact": "b", "source": "Chat"},
+                    "status": "pending",
+                }
+            )
         cm.prune_conflicts(max_conflicts=5)
         pending = [c for c in cm.pending_conflicts if c["status"] == "pending"]
         timestamps = [c["timestamp"] for c in pending]
@@ -95,13 +99,26 @@ class TestPruneConflicts:
 
     def test_prune_preserves_resolved(self, cm):
         cm.pending_conflicts = [
-            {"id": "r1", "subject": "x", "timestamp": 1.0, "option_a": {}, "option_b": {}, "status": "resolved"},
+            {
+                "id": "r1",
+                "subject": "x",
+                "timestamp": 1.0,
+                "option_a": {},
+                "option_b": {},
+                "status": "resolved",
+            },
         ]
         for i in range(25):
-            cm.pending_conflicts.append({
-                "id": f"id-{i}", "subject": f"s-{i}", "timestamp": float(i + 10),
-                "option_a": {}, "option_b": {}, "status": "pending",
-            })
+            cm.pending_conflicts.append(
+                {
+                    "id": f"id-{i}",
+                    "subject": f"s-{i}",
+                    "timestamp": float(i + 10),
+                    "option_a": {},
+                    "option_b": {},
+                    "status": "pending",
+                }
+            )
         cm.prune_conflicts(max_conflicts=5)
         resolved = [c for c in cm.pending_conflicts if c["status"] == "resolved"]
         assert len(resolved) == 1

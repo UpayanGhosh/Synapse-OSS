@@ -10,7 +10,7 @@ Covers:
 import os
 import sys
 import time
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -36,9 +36,7 @@ def _make_channel(enqueue_fn=None):
         patch("slack_bolt.async_app.AsyncApp.__init__", return_value=None),
         patch("slack_sdk.web.async_client.AsyncWebClient.__init__", return_value=None),
     ):
-        ch = SlackChannel(
-            bot_token="xoxb-fake", app_token="xapp-fake", enqueue_fn=enqueue_fn
-        )
+        ch = SlackChannel(bot_token="xoxb-fake", app_token="xapp-fake", enqueue_fn=enqueue_fn)
     return ch
 
 
@@ -66,9 +64,7 @@ class TestSlackThreadTracking:
 
     def test_is_active_thread_false_for_expired(self):
         ch = _make_channel()
-        ch._active_threads["old_thread"] = time.monotonic() - (
-            SlackChannel._THREAD_TTL_SECS + 1
-        )
+        ch._active_threads["old_thread"] = time.monotonic() - (SlackChannel._THREAD_TTL_SECS + 1)
         assert ch._is_active_thread("old_thread") is False
         # Expired entry should be lazily removed
         assert "old_thread" not in ch._active_threads
@@ -151,9 +147,7 @@ class TestSlackSendThread:
 
         result = await ch.send("C123", "hi")
         assert result is True
-        ch._web_client.chat_postMessage.assert_awaited_once_with(
-            channel="C123", text="hi"
-        )
+        ch._web_client.chat_postMessage.assert_awaited_once_with(channel="C123", text="hi")
 
 
 # ===========================================================================

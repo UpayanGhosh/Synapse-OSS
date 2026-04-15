@@ -1,4 +1,5 @@
 """GET /snapshots — list all Zone 2 snapshots with metadata."""
+
 from __future__ import annotations
 
 import logging

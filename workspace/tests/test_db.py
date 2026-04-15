@@ -16,8 +16,9 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 
 
 class TestDatabaseManagerEnsureDb:
@@ -28,6 +29,7 @@ class TestDatabaseManagerEnsureDb:
         db_path = str(tmp_path / "db" / "memory.db")
         with patch("sci_fi_dashboard.db.DB_PATH", db_path):
             from sci_fi_dashboard.db import DatabaseManager
+
             DatabaseManager._initialized = False
             DatabaseManager._ensure_db()
             assert os.path.exists(db_path)
@@ -38,6 +40,7 @@ class TestDatabaseManagerEnsureDb:
         db_path = str(tmp_path / "db" / "memory.db")
         with patch("sci_fi_dashboard.db.DB_PATH", db_path):
             from sci_fi_dashboard.db import DatabaseManager
+
             DatabaseManager._initialized = False
             DatabaseManager._ensure_db()
             # Second call should not fail
@@ -50,14 +53,13 @@ class TestDatabaseManagerEnsureDb:
         db_path = str(tmp_path / "db" / "memory.db")
         with patch("sci_fi_dashboard.db.DB_PATH", db_path):
             from sci_fi_dashboard.db import DatabaseManager
+
             DatabaseManager._initialized = False
             DatabaseManager._ensure_db()
             DatabaseManager._initialized = False
 
             conn = sqlite3.connect(db_path)
-            tables = conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='table'"
-            ).fetchall()
+            tables = conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
             table_names = [t[0] for t in tables]
             assert "documents" in table_names
             conn.close()
@@ -67,14 +69,13 @@ class TestDatabaseManagerEnsureDb:
         db_path = str(tmp_path / "db" / "memory.db")
         with patch("sci_fi_dashboard.db.DB_PATH", db_path):
             from sci_fi_dashboard.db import DatabaseManager
+
             DatabaseManager._initialized = False
             DatabaseManager._ensure_db()
             DatabaseManager._initialized = False
 
             conn = sqlite3.connect(db_path)
-            tables = conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='table'"
-            ).fetchall()
+            tables = conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
             table_names = [t[0] for t in tables]
             assert "sessions" in table_names
             conn.close()
@@ -88,6 +89,7 @@ class TestGetConnection:
         db_path = str(tmp_path / "db" / "memory.db")
         with patch("sci_fi_dashboard.db.DB_PATH", db_path):
             from sci_fi_dashboard.db import DatabaseManager
+
             DatabaseManager._initialized = False
             try:
                 conn = DatabaseManager.get_connection()
@@ -104,6 +106,7 @@ class TestGetConnection:
         db_path = str(tmp_path / "db" / "memory.db")
         with patch("sci_fi_dashboard.db.DB_PATH", db_path):
             from sci_fi_dashboard.db import DatabaseManager
+
             DatabaseManager._initialized = False
             try:
                 conn = DatabaseManager.get_connection()
@@ -123,19 +126,22 @@ class TestGetConnection:
         with open(db_path, "wb") as f:
             f.write(b"x")  # small file, but we'll mock os.path.getsize
 
-        with patch("sci_fi_dashboard.db.DB_PATH", db_path):
-            with patch("os.path.getsize", return_value=200 * 1024 * 1024):  # 200 MB
-                from sci_fi_dashboard.db import DatabaseManager
-                DatabaseManager._initialized = True  # skip _ensure_db
-                try:
-                    conn = DatabaseManager.get_connection()
-                    conn.close()
-                except Exception:
-                    pass
-                finally:
-                    DatabaseManager._initialized = False
-                captured = capsys.readouterr()
-                assert "exceeds" in captured.out.lower() or True  # May or may not print
+        with (
+            patch("sci_fi_dashboard.db.DB_PATH", db_path),
+            patch("os.path.getsize", return_value=200 * 1024 * 1024),
+        ):  # 200 MB
+            from sci_fi_dashboard.db import DatabaseManager
+
+            DatabaseManager._initialized = True  # skip _ensure_db
+            try:
+                conn = DatabaseManager.get_connection()
+                conn.close()
+            except Exception:
+                pass
+            finally:
+                DatabaseManager._initialized = False
+            captured = capsys.readouterr()
+            assert "exceeds" in captured.out.lower() or True  # May or may not print
 
 
 class TestEnsureSessionsTable:
@@ -146,6 +152,7 @@ class TestEnsureSessionsTable:
         db_path = str(tmp_path / "test_sessions.db")
         conn = sqlite3.connect(db_path)
         from sci_fi_dashboard.db import _ensure_sessions_table
+
         _ensure_sessions_table(conn)
 
         tables = conn.execute(
@@ -165,6 +172,7 @@ class TestEnsureSessionsTable:
         db_path = str(tmp_path / "test_sessions.db")
         conn = sqlite3.connect(db_path)
         from sci_fi_dashboard.db import _ensure_sessions_table
+
         _ensure_sessions_table(conn)
         _ensure_sessions_table(conn)  # second call
         conn.close()
@@ -174,12 +182,22 @@ class TestEnsureSessionsTable:
         db_path = str(tmp_path / "test_sessions.db")
         conn = sqlite3.connect(db_path)
         from sci_fi_dashboard.db import _ensure_sessions_table
+
         _ensure_sessions_table(conn)
 
         # Get column names
         cursor = conn.execute("PRAGMA table_info(sessions)")
         columns = {row[1] for row in cursor.fetchall()}
-        expected = {"id", "session_id", "role", "model", "input_tokens", "output_tokens", "total_tokens", "created_at"}
+        expected = {
+            "id",
+            "session_id",
+            "role",
+            "model",
+            "input_tokens",
+            "output_tokens",
+            "total_tokens",
+            "created_at",
+        }
         assert expected.issubset(columns)
         conn.close()
 
@@ -189,7 +207,8 @@ class TestGetDbConnection:
 
     def test_is_alias(self):
         """get_db_connection should call DatabaseManager.get_connection."""
-        from sci_fi_dashboard.db import get_db_connection, DatabaseManager
+        from sci_fi_dashboard.db import DatabaseManager, get_db_connection
+
         with patch.object(DatabaseManager, "get_connection") as mock_get:
             mock_conn = MagicMock()
             mock_get.return_value = mock_conn
@@ -206,6 +225,7 @@ class TestVerifyAirGap:
         db_path = str(tmp_path / "db" / "memory.db")
         with patch("sci_fi_dashboard.db.DB_PATH", db_path):
             from sci_fi_dashboard.db import DatabaseManager
+
             DatabaseManager._initialized = False
             try:
                 result = DatabaseManager.verify_air_gap()

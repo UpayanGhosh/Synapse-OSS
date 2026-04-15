@@ -366,9 +366,8 @@ def test_whatsapp_qr_flow_aborts_no_node(tmp_path):
     """ONB-06: WhatsApp QR flow raises NodeJsMissingError when Node.js not on PATH."""
     from cli.channel_steps import NodeJsMissingError, run_whatsapp_qr_flow
 
-    with patch("shutil.which", return_value=None):
-        with pytest.raises(NodeJsMissingError):
-            run_whatsapp_qr_flow(bridge_dir=str(tmp_path))
+    with patch("shutil.which", return_value=None), pytest.raises(NodeJsMissingError):
+        run_whatsapp_qr_flow(bridge_dir=str(tmp_path))
 
 
 # ===========================================================================
@@ -632,7 +631,10 @@ def test_advanced_flow_prompts_for_workspace_dir(tmp_path, monkeypatch):
         # Password prompt for gemini key
         patch.object(TrackingPrompter, "text", wraps=stub.text),
         patch("cli.onboard._collect_provider_keys"),  # skip key collection for speed
-        patch("cli.gateway_steps.configure_gateway", return_value={"port": 8000, "bind": "loopback", "token": "a" * 48}),
+        patch(
+            "cli.gateway_steps.configure_gateway",
+            return_value={"port": 8000, "bind": "loopback", "token": "a" * 48},
+        ),
         patch("synapse_config.write_config"),
     ):
         try:
@@ -643,9 +645,9 @@ def test_advanced_flow_prompts_for_workspace_dir(tmp_path, monkeypatch):
             pass  # Some prompts may be unexpected — that's OK for this test
 
     # The workspace dir question should have been asked
-    assert workspace_questions_asked, (
-        "Advanced flow must prompt for workspace directory, but no workspace question was seen"
-    )
+    assert (
+        workspace_questions_asked
+    ), "Advanced flow must prompt for workspace directory, but no workspace question was seen"
 
 
 # ===========================================================================
@@ -664,13 +666,13 @@ def test_non_interactive_without_accept_risk_exits_1(tmp_path, monkeypatch):
         ["onboard", "--non-interactive"],  # no --accept-risk
         env={"SYNAPSE_HOME": str(tmp_path)},
     )
-    assert result.exit_code == 1, (
-        f"Expected exit 1 without --accept-risk, got {result.exit_code}. Output: {result.output}"
-    )
+    assert (
+        result.exit_code == 1
+    ), f"Expected exit 1 without --accept-risk, got {result.exit_code}. Output: {result.output}"
     combined = result.output or ""
-    assert "accept-risk" in combined.lower(), (
-        f"Expected 'accept-risk' in error message, got: {combined}"
-    )
+    assert (
+        "accept-risk" in combined.lower()
+    ), f"Expected 'accept-risk' in error message, got: {combined}"
 
 
 # ===========================================================================
@@ -693,9 +695,7 @@ def test_reset_config_moves_synapse_json(tmp_path, monkeypatch):
     _handle_reset("config", tmp_path)
 
     # synapse.json should be gone from its original location
-    assert not existing_config.exists(), (
-        "synapse.json should be moved away after --reset config"
-    )
+    assert not existing_config.exists(), "synapse.json should be moved away after --reset config"
 
     # A backup should exist in tmp_path/backups/
     backups_dir = tmp_path / "backups"
@@ -748,8 +748,13 @@ def test_ensure_agent_workspace_seeds_all_7_files(tmp_path):
 
     # All 7 template files must exist
     expected_files = [
-        "AGENTS.md", "SOUL.md", "IDENTITY.md", "USER.md",
-        "TOOLS.md", "HEARTBEAT.md", "BOOTSTRAP.md",
+        "AGENTS.md",
+        "SOUL.md",
+        "IDENTITY.md",
+        "USER.md",
+        "TOOLS.md",
+        "HEARTBEAT.md",
+        "BOOTSTRAP.md",
     ]
     for fname in expected_files:
         fpath = workspace / fname
@@ -772,9 +777,9 @@ def test_ensure_agent_workspace_second_call_is_idempotent(tmp_path):
     # Second call — should NOT overwrite existing files
     ensure_agent_workspace(workspace, ensure_bootstrap_files=True)
 
-    assert (workspace / "SOUL.md").read_text(encoding="utf-8") == sentinel_content, (
-        "Second call must not overwrite existing SOUL.md"
-    )
+    assert (workspace / "SOUL.md").read_text(
+        encoding="utf-8"
+    ) == sentinel_content, "Second call must not overwrite existing SOUL.md"
 
 
 def test_ensure_agent_workspace_bootstrap_deleted_sets_completed_at(tmp_path):
@@ -793,9 +798,9 @@ def test_ensure_agent_workspace_bootstrap_deleted_sets_completed_at(tmp_path):
 
     # Third call — should set setupCompletedAt
     state2 = ensure_agent_workspace(workspace, ensure_bootstrap_files=True)
-    assert "setupCompletedAt" in state2, (
-        "setupCompletedAt must be set when BOOTSTRAP.md has been deleted"
-    )
+    assert (
+        "setupCompletedAt" in state2
+    ), "setupCompletedAt must be set when BOOTSTRAP.md has been deleted"
     assert state2["setupCompletedAt"], "setupCompletedAt must be non-empty"
 
 
@@ -811,13 +816,13 @@ def test_ensure_agent_workspace_legacy_git_dir_sets_completed_at(tmp_path):
 
     state = ensure_agent_workspace(workspace, ensure_bootstrap_files=True)
 
-    assert "setupCompletedAt" in state, (
-        "setupCompletedAt must be set immediately for legacy (.git) workspace"
-    )
+    assert (
+        "setupCompletedAt" in state
+    ), "setupCompletedAt must be set immediately for legacy (.git) workspace"
     # BOOTSTRAP.md must NOT be written
-    assert not (workspace / "BOOTSTRAP.md").exists(), (
-        "BOOTSTRAP.md must NOT be created for a legacy (.git) workspace"
-    )
+    assert not (
+        workspace / "BOOTSTRAP.md"
+    ).exists(), "BOOTSTRAP.md must NOT be created for a legacy (.git) workspace"
 
 
 # ===========================================================================

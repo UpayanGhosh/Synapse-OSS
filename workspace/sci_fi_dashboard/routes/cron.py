@@ -22,10 +22,12 @@ async def list_cron_jobs(request: Request):
     if svc is None:
         return JSONResponse({"jobs": [], "error": "CronService not running"})
     jobs = svc.list()
-    return JSONResponse({
-        "jobs": jobs,
-        "count": len(jobs),
-    })
+    return JSONResponse(
+        {
+            "jobs": jobs,
+            "count": len(jobs),
+        }
+    )
 
 
 @router.post(
@@ -40,8 +42,8 @@ async def run_cron_job(job_id: str, request: Request):
     try:
         result = await svc.run(job_id, mode="force")
         return JSONResponse(result)
-    except KeyError:
-        raise HTTPException(404, f"Job '{job_id}' not found")
+    except KeyError as exc:
+        raise HTTPException(404, f"Job '{job_id}' not found") from exc
     except Exception as exc:
         logger.exception("[Cron] Force-run failed for job %s", job_id)
-        raise HTTPException(500, f"Job execution failed: {exc}")
+        raise HTTPException(500, f"Job execution failed: {exc}") from exc

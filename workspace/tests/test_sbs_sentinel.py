@@ -19,23 +19,20 @@ import json
 import os
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+from sci_fi_dashboard.sbs.sentinel.audit import AuditLogger
 from sci_fi_dashboard.sbs.sentinel.gateway import Sentinel, SentinelError
 from sci_fi_dashboard.sbs.sentinel.manifest import (
     CRITICAL_DIRECTORIES,
     CRITICAL_FILES,
     FORBIDDEN_OPERATIONS,
-    PROTECTED_FILES,
     WRITABLE_ZONES,
     ProtectionLevel,
 )
-from sci_fi_dashboard.sbs.sentinel.audit import AuditLogger
-
 
 # ---------------------------------------------------------------------------
 # AuditLogger
@@ -91,7 +88,7 @@ class TestAuditLogger:
     def test_audit_dir_created(self, tmp_path):
         """AuditLogger should create the audit directory if it doesn't exist."""
         audit_dir = tmp_path / "deep" / "nested" / "audit"
-        audit = AuditLogger(audit_dir)
+        AuditLogger(audit_dir)
         assert audit_dir.exists()
 
 
@@ -493,9 +490,7 @@ class TestAgentTools:
         old = tools_mod._sentinel
         try:
             tools_mod.init_sentinel(project_root)
-            result = tools_mod.agent_write_file(
-                "data/raw/output.txt", "written content"
-            )
+            result = tools_mod.agent_write_file("data/raw/output.txt", "written content")
             assert "[SUCCESS]" in result
             assert (project_root / "data" / "raw" / "output.txt").read_text() == "written content"
         finally:

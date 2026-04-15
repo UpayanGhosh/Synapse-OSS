@@ -1,11 +1,11 @@
 """Tests for ConsentProtocol: explain → confirm → execute → snapshot cycle."""
+
 from __future__ import annotations
 
 import time
-
-import pytest
 from unittest.mock import AsyncMock
 
+import pytest
 from sci_fi_dashboard.consent_protocol import (
     ConsentProtocol,
     ModificationIntent,
@@ -15,7 +15,6 @@ from sci_fi_dashboard.consent_protocol import (
     is_negative,
 )
 from sci_fi_dashboard.snapshot_engine import SnapshotEngine
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -174,7 +173,7 @@ def test_pending_consent_expires(skill_intent):
         sender_id="u",
         explanation="?",
         created_at=time.time() - 1.0,  # created 1 second ago
-        ttl_seconds=0.1,               # TTL of 0.1s
+        ttl_seconds=0.1,  # TTL of 0.1s
     )
     assert pc.is_expired
 

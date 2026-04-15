@@ -287,8 +287,18 @@ class TestLimitHistoryTurns:
     def test_limit_returns_correct_user_turns(self):
         """10 messages with 5 user turns → limit=3 returns tail with 3 user turns."""
         messages = self._make_messages(
-            ["user", "assistant", "user", "assistant", "user",
-             "assistant", "user", "assistant", "user", "assistant"]
+            [
+                "user",
+                "assistant",
+                "user",
+                "assistant",
+                "user",
+                "assistant",
+                "user",
+                "assistant",
+                "user",
+                "assistant",
+            ]
         )
         # 5 user turns; limit=3 → keep last 3 user turns
         result = limit_history_turns(messages, 3)
@@ -335,7 +345,9 @@ class TestLimitHistoryTurns:
     async def test_load_messages_skips_corrupt_lines(self, tmp_path):
         """Corrupt JSONL lines are skipped without raising."""
         p = tmp_path / "transcript.jsonl"
-        p.write_text('{"role":"user","content":"good"}\nNOT JSON\n{"role":"assistant","content":"ok"}\n')
+        p.write_text(
+            '{"role":"user","content":"good"}\nNOT JSON\n{"role":"assistant","content":"ok"}\n'
+        )
         loaded = await load_messages(p)
         assert len(loaded) == 2
         assert loaded[0]["role"] == "user"
@@ -609,6 +621,7 @@ class TestCompactionBelowThreshold:
         transcript.parent.mkdir(parents=True)
         msg = {"role": "user", "content": "hi", "timestamp": time.time()}
         import json
+
         transcript.write_text(json.dumps(msg) + "\n")
 
         store = SessionStore("test-agent", data_root=tmp_path)
@@ -619,7 +632,7 @@ class TestCompactionBelowThreshold:
 
         result = await compact_session(
             transcript_path=transcript,
-            context_window_tokens=100_000,   # huge window → tiny transcript is well below 80%
+            context_window_tokens=100_000,  # huge window → tiny transcript is well below 80%
             llm_client=mock_llm,
             agent_id="test-agent",
             session_key="agent:test-agent:test",
@@ -635,8 +648,8 @@ class TestCompactionBelowThreshold:
     async def test_estimate_tokens_heuristic(self):
         """estimate_tokens returns sum(len(content)//4) for messages."""
         messages = [
-            {"role": "user", "content": "abcd"},       # 4 chars → 1 token
-            {"role": "assistant", "content": "abcdef"}, # 6 chars → 1 token
+            {"role": "user", "content": "abcd"},  # 4 chars → 1 token
+            {"role": "assistant", "content": "abcdef"},  # 6 chars → 1 token
         ]
         assert estimate_tokens(messages) == 2  # 4//4 + 6//4 = 1 + 1
 
@@ -664,10 +677,7 @@ class TestCompactionTimeoutPath:
         transcript.parent.mkdir(parents=True)
         # Write enough content to be above threshold for context_window_tokens=100.
         # 5 messages × 32 chars each = 160 chars → 40 tokens > 80 tokens threshold.
-        msgs = [
-            {"role": "user", "content": "a" * 32, "timestamp": time.time()}
-            for _ in range(5)
-        ]
+        msgs = [{"role": "user", "content": "a" * 32, "timestamp": time.time()} for _ in range(5)]
         transcript.write_text("\n".join(json.dumps(m) for m in msgs) + "\n")
 
         store = SessionStore("test-agent", data_root=tmp_path)

@@ -34,10 +34,10 @@ from typing import TYPE_CHECKING
 from .progress import ProgressReporter
 
 if TYPE_CHECKING:
-    from .models import SubAgent
-    from .registry import AgentRegistry
     from ..channels.registry import ChannelRegistry
     from ..llm_router import SynapseLLMRouter
+    from .models import SubAgent
+    from .registry import AgentRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -63,9 +63,9 @@ class SubAgentRunner:
 
     def __init__(
         self,
-        registry: "AgentRegistry",
-        channel_registry: "ChannelRegistry",
-        llm_router: "SynapseLLMRouter",
+        registry: AgentRegistry,
+        channel_registry: ChannelRegistry,
+        llm_router: SynapseLLMRouter,
         progress_interval: float = 15.0,
     ) -> None:
         self.registry = registry
@@ -77,7 +77,7 @@ class SubAgentRunner:
     # Public API
     # ------------------------------------------------------------------
 
-    async def spawn_agent(self, agent: "SubAgent") -> "SubAgent":
+    async def spawn_agent(self, agent: SubAgent) -> SubAgent:
         """Register and start an agent as an independent asyncio task.
 
         This method returns immediately after the task is created.  The caller
@@ -126,7 +126,7 @@ class SubAgentRunner:
     # Internal execution pipeline
     # ------------------------------------------------------------------
 
-    async def _run_agent(self, agent: "SubAgent") -> None:
+    async def _run_agent(self, agent: SubAgent) -> None:
         """Top-level crash isolation boundary for a single agent execution.
 
         Any non-cancellation exception raised inside ``_execute()`` is caught
@@ -142,7 +142,7 @@ class SubAgentRunner:
             self.registry.complete(agent.agent_id, result)
             await self._deliver_result(agent, result)
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning(
                 "Sub-agent %s timed out after %.1fs",
                 agent.agent_id,
@@ -173,7 +173,7 @@ class SubAgentRunner:
             # _execute's own finally block so it is cancelled even on timeout.
             pass
 
-    async def _execute(self, agent: "SubAgent") -> str:
+    async def _execute(self, agent: SubAgent) -> str:
         """Run the actual agent work: build prompt, call LLM, return result.
 
         The agent only sees ``context_snapshot`` and ``memory_snapshot``
@@ -198,7 +198,7 @@ class SubAgentRunner:
         finally:
             reporter.stop()
 
-    def _build_messages(self, agent: "SubAgent") -> list[dict]:
+    def _build_messages(self, agent: SubAgent) -> list[dict]:
         """Assemble the messages list sent to the LLM.
 
         Message structure:
@@ -260,7 +260,7 @@ class SubAgentRunner:
     # Delivery helpers
     # ------------------------------------------------------------------
 
-    async def _deliver_result(self, agent: "SubAgent", text: str) -> None:
+    async def _deliver_result(self, agent: SubAgent, text: str) -> None:
         """Send the agent's final result to the user via the channel.
 
         Delivery failures are swallowed so they never propagate back into
@@ -286,7 +286,7 @@ class SubAgentRunner:
                 agent.channel_id,
             )
 
-    async def _send_progress(self, agent: "SubAgent", message: str) -> None:
+    async def _send_progress(self, agent: SubAgent, message: str) -> None:
         """Send an intermediate progress update to the user.
 
         Progress delivery failures are always swallowed — a failed progress

@@ -26,8 +26,8 @@ Tests:
 """
 
 import math
-import sys
 import os
+import sys
 
 import pytest
 
@@ -50,7 +50,7 @@ def get_provider():
 
 
 def cosine_sim(a: list, b: list) -> float:
-    dot = sum(x * y for x, y in zip(a, b))
+    dot = sum(x * y for x, y in zip(a, b, strict=False))
     mag_a = math.sqrt(sum(x * x for x in a))
     mag_b = math.sqrt(sum(x * x for x in b))
     if mag_a == 0 or mag_b == 0:
@@ -123,7 +123,7 @@ def test_edge_code_special_chars():
     ]
     for text in samples:
         vec = p.embed_query(text)
-        assert len(vec) == 768, f"Bad dim for code sample"
+        assert len(vec) == 768, "Bad dim for code sample"
 
 
 # ---------------------------------------------------------------------------
@@ -138,10 +138,8 @@ def test_determinism_same_input_100x():
     reference = p.embed_query(text)
     for i in range(99):
         vec = p.embed_query(text)
-        for j, (a, b) in enumerate(zip(reference, vec)):
-            assert abs(a - b) < 1e-7, (
-                f"Dimension {j} differs on repeat {i + 1}: {a} vs {b}"
-            )
+        for j, (a, b) in enumerate(zip(reference, vec, strict=False)):
+            assert abs(a - b) < 1e-7, f"Dimension {j} differs on repeat {i + 1}: {a} vs {b}"
 
 
 def test_determinism_query_vs_document():
@@ -157,15 +155,15 @@ def test_determinism_query_vs_document():
     d2 = p.embed_documents([text])[0]
 
     # query is deterministic
-    for j, (a, b) in enumerate(zip(q1, q2)):
+    for j, (a, b) in enumerate(zip(q1, q2, strict=False)):
         assert abs(a - b) < 1e-7, f"Query not deterministic at dim {j}"
 
     # document is deterministic
-    for j, (a, b) in enumerate(zip(d1, d2)):
+    for j, (a, b) in enumerate(zip(d1, d2, strict=False)):
         assert abs(a - b) < 1e-7, f"Document not deterministic at dim {j}"
 
     # query != document (different prefixes)
-    diff = sum(abs(a - b) for a, b in zip(q1, d1))
+    diff = sum(abs(a - b) for a, b in zip(q1, d1, strict=False))
     assert diff > 0.01, "embed_query and embed_documents produced identical vectors (wrong!)"
 
 
@@ -228,6 +226,7 @@ def test_memory_engine_returns_zero_vector_on_failure(monkeypatch, tmp_path):
 def test_retriever_returns_none_on_failure(monkeypatch):
     """retriever.get_embedding() should return None on provider failure."""
     from unittest.mock import MagicMock
+
     import sci_fi_dashboard.retriever as retriever_mod
 
     broken = MagicMock()

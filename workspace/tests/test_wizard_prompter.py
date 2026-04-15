@@ -101,9 +101,7 @@ def test_questionary_prompter_text_raises_on_none():
 # ===========================================================================
 
 
-def test_run_interactive_exits_cleanly_when_stub_cancels_on_first_prompt(
-    tmp_path, monkeypatch
-):
+def test_run_interactive_exits_cleanly_when_stub_cancels_on_first_prompt(tmp_path, monkeypatch):
     """WP-05: WizardCancelledError from StubPrompter is caught and converted to typer.Exit(1).
 
     The StubPrompter cancels on 'Synapse-OSS Setup Wizard' (the intro call is a no-op),
@@ -111,7 +109,6 @@ def test_run_interactive_exits_cleanly_when_stub_cancels_on_first_prompt(
     multiselect. The wizard should swallow WizardCancelledError and raise typer.Exit(1).
     """
     import typer
-
     from cli.onboard import _run_interactive
 
     monkeypatch.setenv("SYNAPSE_HOME", str(tmp_path))
@@ -125,13 +122,13 @@ def test_run_interactive_exits_cleanly_when_stub_cancels_on_first_prompt(
 
     with (
         patch("cli.onboard._check_for_legacy_install", return_value=None),
+        pytest.raises(typer.Exit) as exc_info,
     ):
-        with pytest.raises(typer.Exit) as exc_info:
-            _run_interactive(prompter=stub, flow="quickstart")
+        _run_interactive(prompter=stub, flow="quickstart")
 
-    assert exc_info.value.exit_code == 1, (
-        f"WizardCancelledError must exit with code 1, got {exc_info.value.exit_code}"
-    )
+    assert (
+        exc_info.value.exit_code == 1
+    ), f"WizardCancelledError must exit with code 1, got {exc_info.value.exit_code}"
 
 
 # ===========================================================================
@@ -184,9 +181,8 @@ def test_questionary_prompter_select_raises_on_none():
     mock_q = MagicMock()
     mock_q.select.return_value.ask.return_value = None
 
-    with patch.dict("sys.modules", {"questionary": mock_q}):
-        with pytest.raises(WizardCancelledError):
-            prompter.select("Choose:", choices=["a", "b"])
+    with patch.dict("sys.modules", {"questionary": mock_q}), pytest.raises(WizardCancelledError):
+        prompter.select("Choose:", choices=["a", "b"])
 
 
 def test_questionary_prompter_multiselect_raises_on_none():
@@ -195,9 +191,8 @@ def test_questionary_prompter_multiselect_raises_on_none():
     mock_q = MagicMock()
     mock_q.checkbox.return_value.ask.return_value = None
 
-    with patch.dict("sys.modules", {"questionary": mock_q}):
-        with pytest.raises(WizardCancelledError):
-            prompter.multiselect("Choose many:", choices=["a", "b"])
+    with patch.dict("sys.modules", {"questionary": mock_q}), pytest.raises(WizardCancelledError):
+        prompter.multiselect("Choose many:", choices=["a", "b"])
 
 
 def test_questionary_prompter_confirm_raises_on_none():
@@ -206,6 +201,5 @@ def test_questionary_prompter_confirm_raises_on_none():
     mock_q = MagicMock()
     mock_q.confirm.return_value.ask.return_value = None
 
-    with patch.dict("sys.modules", {"questionary": mock_q}):
-        with pytest.raises(WizardCancelledError):
-            prompter.confirm("Are you sure?")
+    with patch.dict("sys.modules", {"questionary": mock_q}), pytest.raises(WizardCancelledError):
+        prompter.confirm("Are you sure?")

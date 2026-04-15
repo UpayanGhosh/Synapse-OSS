@@ -7,6 +7,7 @@ Injected into merge prompt as 72h peak-end weighted trajectory.
 Stored in a dedicated SQLite DB (~/.synapse/workspace/db/emotional_trajectory.db)
 so it is independent of memory.db and easily resettable.
 """
+
 import logging
 import os
 import sqlite3
@@ -60,9 +61,7 @@ class EmotionalTrajectory:
                 is_peak           INTEGER DEFAULT 0
             )
         """)
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_traj_ts ON trajectory(timestamp)"
-        )
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_traj_ts ON trajectory(timestamp)")
         conn.commit()
         conn.close()
 
@@ -139,8 +138,7 @@ class EmotionalTrajectory:
         for r in rows:
             age_hrs = (time.time() - r[4]) / 3600
             lines.append(
-                f"- {age_hrs:.0f}h ago: {r[0]} "
-                f"(tension={r[1]:.1f}, type={r[2]}, topic={r[3]})"
+                f"- {age_hrs:.0f}h ago: {r[0]} " f"(tension={r[1]:.1f}, type={r[2]}, topic={r[3]})"
             )
 
         return "EMOTIONAL TRAJECTORY (last 72h, peaks highlighted):\n" + "\n".join(lines)

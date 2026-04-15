@@ -77,11 +77,7 @@ async def maybe_spawn_agent(
     if deps.memory_engine is not None:
         try:
             mem_results = deps.memory_engine.query(task_desc, limit=5)
-            memory_snap = (
-                mem_results.get("results", [])
-                if isinstance(mem_results, dict)
-                else []
-            )
+            memory_snap = mem_results.get("results", []) if isinstance(mem_results, dict) else []
         except Exception:  # noqa: BLE001
             # Memory query failure is not fatal — agent still spawns without
             # pre-seeded memories.

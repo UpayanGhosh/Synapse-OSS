@@ -11,18 +11,16 @@ Covers:
 - mcp_context passing
 """
 
-import asyncio
 import os
 import sys
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from sci_fi_dashboard.gateway.worker import MessageWorker, _split_long_message
 from sci_fi_dashboard.gateway.queue import MessageTask, TaskQueue
-
+from sci_fi_dashboard.gateway.worker import MessageWorker, _split_long_message
 
 # ===========================================================================
 # _split_long_message
@@ -119,9 +117,7 @@ class TestGetChannel:
         mock_channel = MagicMock()
         mock_registry.get.return_value = mock_channel
 
-        worker = MessageWorker(
-            queue=q, process_fn=process, channel_registry=mock_registry
-        )
+        worker = MessageWorker(queue=q, process_fn=process, channel_registry=mock_registry)
 
         task = MagicMock()
         task.channel_id = "whatsapp"
@@ -147,9 +143,7 @@ class TestGetChannel:
             return "r"
 
         mock_registry = MagicMock()
-        worker = MessageWorker(
-            queue=q, process_fn=process, channel_registry=mock_registry
-        )
+        worker = MessageWorker(queue=q, process_fn=process, channel_registry=mock_registry)
 
         task = MagicMock(spec=[])  # no channel_id attr
         worker._get_channel(task)
@@ -215,9 +209,7 @@ class TestHandleTask:
         stub = StubChannel("whatsapp")
         reg.register(stub)
 
-        worker = MessageWorker(
-            queue=q, process_fn=process, num_workers=1, channel_registry=reg
-        )
+        worker = MessageWorker(queue=q, process_fn=process, num_workers=1, channel_registry=reg)
 
         task = MessageTask(
             task_id="t1",
@@ -245,9 +237,7 @@ class TestHandleTask:
         stub = StubChannel("whatsapp")
         reg.register(stub)
 
-        worker = MessageWorker(
-            queue=q, process_fn=process, num_workers=1, channel_registry=reg
-        )
+        worker = MessageWorker(queue=q, process_fn=process, num_workers=1, channel_registry=reg)
 
         task = MessageTask(
             task_id="t1",
@@ -275,9 +265,7 @@ class TestHandleTask:
         stub = StubChannel("whatsapp")
         reg.register(stub)
 
-        worker = MessageWorker(
-            queue=q, process_fn=process, num_workers=1, channel_registry=reg
-        )
+        worker = MessageWorker(queue=q, process_fn=process, num_workers=1, channel_registry=reg)
 
         task = MessageTask(
             task_id="t1",

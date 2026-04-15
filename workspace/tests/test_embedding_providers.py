@@ -2,13 +2,13 @@
 
 All tests use unittest.mock — fastembed does NOT need to be installed.
 """
+
 from __future__ import annotations
 
 import sys
 import types
 import unittest
 from unittest.mock import MagicMock, patch
-
 
 # ---------------------------------------------------------------------------
 # Helpers — build minimal fake modules so imports inside providers don't fail
@@ -115,8 +115,8 @@ class TestFastEmbedProvider(unittest.TestCase):
 
     # 10. info() returns correct ProviderInfo
     def test_provider_info_metadata(self):
-        from sci_fi_dashboard.embedding.fastembed_provider import FastEmbedProvider
         from sci_fi_dashboard.embedding.base import ProviderInfo
+        from sci_fi_dashboard.embedding.fastembed_provider import FastEmbedProvider
 
         provider = self._make_provider()
         info = provider.info()
@@ -151,20 +151,25 @@ class TestFactory(unittest.TestCase):
         # factory.py imports FastEmbedProvider lazily inside the function, so
         # we inject the mock directly into sys.modules for that submodule.
         fake_fastembed = _make_fake_fastembed_module()
-        MockFEP = MagicMock()
+        MockFEP = MagicMock()  # noqa: N806
         mock_instance = MagicMock()
         MockFEP.return_value = mock_instance
 
         stub_module = types.ModuleType("sci_fi_dashboard.embedding.fastembed_provider")
         stub_module.FastEmbedProvider = MockFEP
 
-        with patch.dict(sys.modules, {
-            "fastembed": fake_fastembed,
-            "sci_fi_dashboard.embedding.fastembed_provider": stub_module,
-        }):
+        with patch.dict(
+            sys.modules,
+            {
+                "fastembed": fake_fastembed,
+                "sci_fi_dashboard.embedding.fastembed_provider": stub_module,
+            },
+        ):
             from sci_fi_dashboard.embedding import reset_provider
+
             reset_provider()
             from sci_fi_dashboard.embedding.factory import create_provider
+
             result = create_provider()
 
         self.assertIs(result, mock_instance)

@@ -1,4 +1,5 @@
 """Gateway processing pipeline, background workers, and utility functions."""
+
 import asyncio
 import json
 import logging
@@ -9,12 +10,12 @@ import uuid
 from pathlib import Path
 
 import psutil
+from synapse_config import SynapseConfig
 
 from sci_fi_dashboard import _deps as deps
 from sci_fi_dashboard.conv_kg_extractor import run_batch_extraction
 from sci_fi_dashboard.schemas import ChatRequest
 from sci_fi_dashboard.session_ingest import _ingest_session_background
-from synapse_config import SynapseConfig
 
 logger = logging.getLogger(__name__)
 
@@ -104,7 +105,7 @@ def validate_env() -> None:
     if not os.environ.get("WHATSAPP_BRIDGE_TOKEN", "").strip():
         print("[WARN] WHATSAPP_BRIDGE_TOKEN not set -- WhatsApp bridge unauthenticated")
 
-    from synapse_config import SynapseConfig as _SC
+    from synapse_config import SynapseConfig as _SC  # noqa: N814
 
     ollama_on = _port_open("localhost", 11434)
     lance_dir = _SC.load().db_dir / "lancedb"
@@ -132,10 +133,7 @@ def _extract_cli_send_route(raw_stdout: str) -> str:
     if not isinstance(payload, dict):
         return ""
     return (
-        payload.get("via")
-        or payload.get("delivery")
-        or payload.get("payload", {}).get("via")
-        or ""
+        payload.get("via") or payload.get("delivery") or payload.get("payload", {}).get("via") or ""
     )
 
 
@@ -168,9 +166,7 @@ async def continue_conversation(
     try:
         from sci_fi_dashboard.llm_wrappers import call_gemini_flash
 
-        continuation = await call_gemini_flash(
-            new_history, temperature=0.7, max_tokens=2000
-        )
+        continuation = await call_gemini_flash(new_history, temperature=0.7, max_tokens=2000)
 
         if not continuation.strip():
             print("[WARN] Continuation was empty.")
@@ -241,8 +237,8 @@ _diary_tasks: set[asyncio.Task] = set()
 async def _send_voice_note(reply: str, chat_id: str) -> None:
     """Background task: synthesize TTS, save to media store, deliver via WhatsApp."""
     try:
-        from sci_fi_dashboard.tts import TTSEngine
         from sci_fi_dashboard.media.store import save_media_buffer
+        from sci_fi_dashboard.tts import TTSEngine
 
         engine = TTSEngine()
         ogg_bytes = await engine.synthesize(reply)
@@ -288,7 +284,9 @@ async def _generate_diary_background(
         )
         logger.info("[Diary] Entry generated for session %s", session_key)
     except Exception:
-        logger.warning("[Diary] Background diary generation failed for %s", session_key, exc_info=True)
+        logger.warning(
+            "[Diary] Background diary generation failed for %s", session_key, exc_info=True
+        )
 
 
 async def _handle_new_command(
@@ -304,7 +302,7 @@ async def _handle_new_command(
     Background task runs vector + KG ingestion on the archived transcript.
     Returns confirmation immediately — callers must NOT call the LLM.
     """
-    from sci_fi_dashboard.multiuser.transcript import transcript_path, archive_transcript
+    from sci_fi_dashboard.multiuser.transcript import archive_transcript, transcript_path
 
     entry = await session_store.get(session_key)
     archived_path = None
@@ -360,14 +358,14 @@ async def process_message_pipeline(
     """
     # Deferred imports to avoid circular dependencies at module load time.
     from sci_fi_dashboard.chat_pipeline import persona_chat
+    from sci_fi_dashboard.multiuser.compaction import compact_session, estimate_tokens
     from sci_fi_dashboard.multiuser.session_key import build_session_key
     from sci_fi_dashboard.multiuser.session_store import SessionStore
     from sci_fi_dashboard.multiuser.transcript import (
-        transcript_path,
-        load_messages,
         append_message,
+        load_messages,
+        transcript_path,
     )
-    from sci_fi_dashboard.multiuser.compaction import estimate_tokens, compact_session
 
     # ------------------------------------------------------------------
     # Step 1: Resolve target persona and load config
@@ -436,7 +434,9 @@ async def process_message_pipeline(
     # ------------------------------------------------------------------
     # Step 4: Load history with cache (per D-10, D-13, Research Pitfall 7)
     # ------------------------------------------------------------------
-    channels_cfg = cfg.channels if hasattr(cfg, "channels") and isinstance(cfg.channels, dict) else {}
+    channels_cfg = (
+        cfg.channels if hasattr(cfg, "channels") and isinstance(cfg.channels, dict) else {}
+    )
     history_limit = int(channels_cfg.get("whatsapp", {}).get("dmHistoryLimit", 50))
 
     messages = deps.conversation_cache.get(session_key)
@@ -511,16 +511,12 @@ async def process_message_pipeline(
     return reply
 
 
-async def on_batch_ready(
-    chat_id: str, combined_message: str, metadata: dict
-):
+async def on_batch_ready(chat_id: str, combined_message: str, metadata: dict):
     from gateway.queue import MessageTask
 
     is_group = metadata.get("is_group", False)
     chat_type = "group" if is_group else "direct"
-    session_key = (
-        f"{metadata.get('channel_id', 'whatsapp')}:{chat_type}:{chat_id}"
-    )
+    session_key = f"{metadata.get('channel_id', 'whatsapp')}:{chat_type}:{chat_id}"
     task = MessageTask(
         task_id=str(uuid.uuid4()),
         chat_id=chat_id,
@@ -568,9 +564,7 @@ async def gentle_worker_loop():
                                 llm_router=deps.synapse_llm_router,
                                 graph=deps.brain,
                                 memory_db_path=str(cfg.db_dir / "memory.db"),
-                                entities_json_path=str(
-                                    Path(__file__).parent / "entities.json"
-                                ),
+                                entities_json_path=str(Path(__file__).parent / "entities.json"),
                                 min_messages=cfg.kg_extraction.min_messages,
                                 kg_role=cfg.kg_extraction.kg_role,
                             )

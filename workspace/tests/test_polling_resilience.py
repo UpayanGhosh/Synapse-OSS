@@ -14,7 +14,6 @@ import asyncio
 import importlib.util
 import json
 import sys
-import time
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -23,11 +22,13 @@ import pytest
 # Ensure workspace/ is on the import path regardless of cwd
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from sci_fi_dashboard.channels.telegram_offset_store import TelegramOffsetStore, STORE_VERSION
+import contextlib
+
 from sci_fi_dashboard.channels.polling_watchdog import (
-    PollingWatchdog,
     RESTART_POLICY,
+    PollingWatchdog,
 )
+from sci_fi_dashboard.channels.telegram_offset_store import STORE_VERSION, TelegramOffsetStore
 
 # ---------------------------------------------------------------------------
 # Conditional imports for channel adapters
@@ -139,12 +140,15 @@ class TestPollingWatchdog:
         )
 
         # Patch the watchdog interval to be very short
-        with patch(
-            "sci_fi_dashboard.channels.polling_watchdog.POLL_WATCHDOG_INTERVAL_S",
-            0.02,
-        ), patch(
-            "sci_fi_dashboard.channels.polling_watchdog.RESTART_POLICY",
-            {"initial_s": 0.0, "max_s": 0.0, "factor": 1.0, "jitter": 0.0},
+        with (
+            patch(
+                "sci_fi_dashboard.channels.polling_watchdog.POLL_WATCHDOG_INTERVAL_S",
+                0.02,
+            ),
+            patch(
+                "sci_fi_dashboard.channels.polling_watchdog.RESTART_POLICY",
+                {"initial_s": 0.0, "max_s": 0.0, "factor": 1.0, "jitter": 0.0},
+            ),
         ):
             await watchdog.start()
             # Don't record any activity — stall should trigger
@@ -307,15 +311,11 @@ class TestTelegramProxy:
         await asyncio.sleep(0)
         await asyncio.sleep(0)
         task.cancel()
-        try:
+        with contextlib.suppress(asyncio.CancelledError, Exception):
             await task
-        except (asyncio.CancelledError, Exception):
-            pass
 
         builder_mock.proxy.assert_called_once_with("socks5://proxy.example.com:1080")
-        builder_mock.get_updates_proxy.assert_called_once_with(
-            "socks5://proxy.example.com:1080"
-        )
+        builder_mock.get_updates_proxy.assert_called_once_with("socks5://proxy.example.com:1080")
 
 
 @pytest.mark.skipif(not TEL_AVAILABLE, reason="python-telegram-bot not installed")
@@ -391,7 +391,6 @@ class TestWhatsAppQRLogin:
     @pytest.mark.asyncio
     async def test_qr_login_returns_true_when_connected(self, monkeypatch):
         """wait_for_qr_login returns True when bridge reports connected."""
-        import httpx
 
         ch = WhatsAppChannel(bridge_port=59999)
 

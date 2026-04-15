@@ -10,19 +10,16 @@ Covers:
 
 import os
 import sys
-from unittest.mock import MagicMock, patch
-
-import pytest
+from unittest.mock import patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from sci_fi_dashboard.media.mime import (
-    MIME_BY_EXT,
     _FALLBACK,
     _GENERIC_CONTAINER_MIMES,
+    MIME_BY_EXT,
     detect_mime,
 )
-
 
 # ---------------------------------------------------------------------------
 # Extension-based detection (strategy 3)
@@ -115,32 +112,40 @@ class TestHeaderMimeDetection:
 class TestMagicBytesDetection:
     def test_magic_overrides_header_and_extension(self):
         """When python-magic detects a non-generic type, it wins."""
-        with patch("sci_fi_dashboard.media.mime._MAGIC_AVAILABLE", True), \
-             patch("sci_fi_dashboard.media.mime.magic") as mock_magic:
+        with (
+            patch("sci_fi_dashboard.media.mime._MAGIC_AVAILABLE", True),
+            patch("sci_fi_dashboard.media.mime.magic") as mock_magic,
+        ):
             mock_magic.from_buffer.return_value = "image/png"
             result = detect_mime(b"\x89PNG", header_mime="image/jpeg", filename="test.jpg")
             assert result == "image/png"
 
     def test_magic_fallback_ignored_when_octet_stream(self):
         """If magic returns application/octet-stream, it falls through."""
-        with patch("sci_fi_dashboard.media.mime._MAGIC_AVAILABLE", True), \
-             patch("sci_fi_dashboard.media.mime.magic") as mock_magic:
+        with (
+            patch("sci_fi_dashboard.media.mime._MAGIC_AVAILABLE", True),
+            patch("sci_fi_dashboard.media.mime.magic") as mock_magic,
+        ):
             mock_magic.from_buffer.return_value = "application/octet-stream"
             result = detect_mime(b"data", header_mime="text/plain")
             assert result == "text/plain"
 
     def test_magic_exception_handled(self):
         """If python-magic raises, falls through gracefully."""
-        with patch("sci_fi_dashboard.media.mime._MAGIC_AVAILABLE", True), \
-             patch("sci_fi_dashboard.media.mime.magic") as mock_magic:
+        with (
+            patch("sci_fi_dashboard.media.mime._MAGIC_AVAILABLE", True),
+            patch("sci_fi_dashboard.media.mime.magic") as mock_magic,
+        ):
             mock_magic.from_buffer.side_effect = RuntimeError("magic failed")
             result = detect_mime(b"data", header_mime="image/jpeg")
             assert result == "image/jpeg"
 
     def test_magic_not_called_on_empty_data(self):
         """Magic is skipped when data is empty (len(data) == 0)."""
-        with patch("sci_fi_dashboard.media.mime._MAGIC_AVAILABLE", True), \
-             patch("sci_fi_dashboard.media.mime.magic") as mock_magic:
+        with (
+            patch("sci_fi_dashboard.media.mime._MAGIC_AVAILABLE", True),
+            patch("sci_fi_dashboard.media.mime.magic") as mock_magic,
+        ):
             detect_mime(b"", header_mime="image/jpeg")
             mock_magic.from_buffer.assert_not_called()
 
@@ -159,8 +164,10 @@ class TestMagicBytesDetection:
 class TestGenericContainerOverride:
     def test_xlsx_zip_override(self):
         """Magic detects ZIP but extension says .xlsx -> prefer extension."""
-        with patch("sci_fi_dashboard.media.mime._MAGIC_AVAILABLE", True), \
-             patch("sci_fi_dashboard.media.mime.magic") as mock_magic:
+        with (
+            patch("sci_fi_dashboard.media.mime._MAGIC_AVAILABLE", True),
+            patch("sci_fi_dashboard.media.mime.magic") as mock_magic,
+        ):
             mock_magic.from_buffer.return_value = "application/zip"
             result = detect_mime(b"PK\x03\x04", filename="spreadsheet.xlsx")
             expected = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -168,8 +175,10 @@ class TestGenericContainerOverride:
 
     def test_docx_zip_override(self):
         """Magic detects ZIP but extension says .docx -> prefer extension."""
-        with patch("sci_fi_dashboard.media.mime._MAGIC_AVAILABLE", True), \
-             patch("sci_fi_dashboard.media.mime.magic") as mock_magic:
+        with (
+            patch("sci_fi_dashboard.media.mime._MAGIC_AVAILABLE", True),
+            patch("sci_fi_dashboard.media.mime.magic") as mock_magic,
+        ):
             mock_magic.from_buffer.return_value = "application/zip"
             result = detect_mime(b"PK\x03\x04", filename="document.docx")
             expected = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
@@ -177,8 +186,10 @@ class TestGenericContainerOverride:
 
     def test_generic_zip_with_no_extension_returns_zip(self):
         """Magic detects ZIP with no filename -> returns zip."""
-        with patch("sci_fi_dashboard.media.mime._MAGIC_AVAILABLE", True), \
-             patch("sci_fi_dashboard.media.mime.magic") as mock_magic:
+        with (
+            patch("sci_fi_dashboard.media.mime._MAGIC_AVAILABLE", True),
+            patch("sci_fi_dashboard.media.mime.magic") as mock_magic,
+        ):
             mock_magic.from_buffer.return_value = "application/zip"
             result = detect_mime(b"PK\x03\x04")
             assert result == "application/zip"

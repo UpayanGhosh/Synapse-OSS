@@ -25,7 +25,6 @@ from sci_fi_dashboard.channels.base import (
 )
 from sci_fi_dashboard.channels.stub import StubChannel
 
-
 # ===========================================================================
 # MsgContext Tests
 # ===========================================================================
@@ -105,9 +104,7 @@ class TestMsgContext:
 
     def test_from_channel_message_with_overrides(self):
         """from_channel_message applies keyword overrides."""
-        cm = ChannelMessage(
-            channel_id="wa", user_id="u1", chat_id="c1", text="hi"
-        )
+        cm = ChannelMessage(channel_id="wa", user_id="u1", chat_id="c1", text="hi")
         ctx = MsgContext.from_channel_message(cm, provider="custom", max_chars=500)
         assert ctx.provider == "custom"
         assert ctx.max_chars == 500
@@ -263,9 +260,7 @@ class TestSendPayload:
         """send_payload with media_url calls send_media()."""
         stub = StubChannel("test")
         stub.send_media = AsyncMock(return_value=True)
-        payload = ReplyPayload(
-            text="Caption", media_url="http://example.com/img.png"
-        )
+        payload = ReplyPayload(text="Caption", media_url="http://example.com/img.png")
         result = await stub.send_payload("chat1", payload)
         assert result is True
         stub.send_media.assert_awaited_once_with(

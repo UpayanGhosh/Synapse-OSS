@@ -1,4 +1,5 @@
 """Health and status endpoints."""
+
 import logging
 
 from fastapi import APIRouter, Depends
@@ -33,8 +34,7 @@ async def health():
     # H-08: Use module-level cached config (_synapse_cfg) instead of 5x SynapseConfig.load()
     _cached_mappings = deps._synapse_cfg.model_mappings
     all_roles_configured = all(
-        _cached_mappings.get(r, {}).get("model")
-        for r in ("casual", "code", "analysis", "review")
+        _cached_mappings.get(r, {}).get("model") for r in ("casual", "code", "analysis", "review")
     )
 
     overall = "ok" if all_roles_configured else "degraded"
@@ -55,8 +55,6 @@ async def health():
 async def gateway_status():
     return {
         "queue": deps.task_queue.get_stats(),
-        "workers": deps.app.state.worker.num_workers
-        if hasattr(deps.app.state, "worker")
-        else 0,
+        "workers": deps.app.state.worker.num_workers if hasattr(deps.app.state, "worker") else 0,
         "timestamp": __import__("datetime").datetime.now().isoformat(),
     }

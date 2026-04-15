@@ -22,7 +22,7 @@ def _cosine_similarity(a: list[float], b: list[float]) -> float:
     """Compute cosine similarity between two vectors. No numpy dependency."""
     if not a or not b or len(a) != len(b):
         return 0.0
-    dot = sum(x * y for x, y in zip(a, b))
+    dot = sum(x * y for x, y in zip(a, b, strict=False))
     norm_a = math.sqrt(sum(x * x for x in a))
     norm_b = math.sqrt(sum(x * x for x in b))
     if norm_a == 0.0 or norm_b == 0.0:
@@ -62,17 +62,11 @@ class SkillRouter:
             if provider is None:
                 raise RuntimeError("No embedding provider available")
 
-            self._embeddings = provider.embed_documents(
-                [m.description for m in manifests]
-            )
+            self._embeddings = provider.embed_documents([m.description for m in manifests])
             self._embed_fn = provider.embed_query
-            logger.info(
-                "[Skills] SkillRouter: embedded %d skill descriptions", len(manifests)
-            )
+            logger.info("[Skills] SkillRouter: embedded %d skill descriptions", len(manifests))
         except Exception as exc:
-            logger.info(
-                "[Skills] No embedding provider — trigger-only routing active (%s)", exc
-            )
+            logger.info("[Skills] No embedding provider — trigger-only routing active (%s)", exc)
             self._embeddings = []
             self._embed_fn = None
 
@@ -132,7 +126,7 @@ class SkillRouter:
         best_skill: SkillManifest | None = None
         best_score = 0.0
 
-        for skill, emb in zip(self._skills, self._embeddings):
+        for skill, emb in zip(self._skills, self._embeddings, strict=False):
             score = _cosine_similarity(query_vec, emb)
             if score > best_score:
                 best_score = score

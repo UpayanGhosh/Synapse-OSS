@@ -1,5 +1,5 @@
-import os
 import logging
+import os
 import threading
 
 from sci_fi_dashboard.embedding.base import EmbeddingProvider, ProviderInfo
@@ -15,6 +15,7 @@ def _detect_accelerator() -> str:
     """
     try:
         import onnxruntime as ort
+
         available = ort.get_available_providers()
         if "CUDAExecutionProvider" in available:
             return "cuda"
@@ -85,7 +86,8 @@ class FastEmbedProvider(EmbeddingProvider):
         if os.name != "nt":
             return  # DLL injection only needed on Windows (pip-installed CUDA)
 
-        import glob, site
+        import glob
+        import site
 
         added = []
         for sp in site.getsitepackages():

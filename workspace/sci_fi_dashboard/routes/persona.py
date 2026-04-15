@@ -1,4 +1,5 @@
 """Persona management endpoints."""
+
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request

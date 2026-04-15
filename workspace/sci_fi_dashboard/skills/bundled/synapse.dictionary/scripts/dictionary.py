@@ -102,9 +102,31 @@ def _extract_word(text: str) -> str:
     # Last resort: grab the last standalone capitalised or standalone word
     words = re.findall(r"\b[A-Za-z]{3,}\b", text)
     # Filter out common question words
-    stop = {"what", "does", "mean", "define", "the", "a", "an", "is", "are", "how",
-            "can", "you", "tell", "me", "about", "please", "dictionary", "meaning",
-            "definition", "word", "for", "look", "up"}
+    stop = {
+        "what",
+        "does",
+        "mean",
+        "define",
+        "the",
+        "a",
+        "an",
+        "is",
+        "are",
+        "how",
+        "can",
+        "you",
+        "tell",
+        "me",
+        "about",
+        "please",
+        "dictionary",
+        "meaning",
+        "definition",
+        "word",
+        "for",
+        "look",
+        "up",
+    }
     candidates = [w for w in words if w.lower() not in stop]
     return candidates[-1] if candidates else ""
 
@@ -121,9 +143,7 @@ def _format_definition(word: str, data: list[dict]) -> str:
 
     # Phonetics
     phonetics = entry.get("phonetics", [])
-    phonetic_text = next(
-        (p.get("text", "") for p in phonetics if p.get("text")), ""
-    )
+    phonetic_text = next((p.get("text", "") for p in phonetics if p.get("text")), "")
     if phonetic_text:
         lines.append(f"Pronunciation: {phonetic_text}")
 

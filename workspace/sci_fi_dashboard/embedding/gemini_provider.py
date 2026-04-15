@@ -7,6 +7,7 @@ NEVER auto-selected — only used when explicitly configured:
 NOT suitable for vault/spicy hemisphere (cloud leakage risk).
 DIFFERENT embedding space from nomic — requires re-embed when switching.
 """
+
 from __future__ import annotations
 
 import logging
@@ -48,7 +49,10 @@ class GeminiAPIProvider(EmbeddingProvider):
         result = client.models.embed_content(
             model=self._model_name,
             content=text,
-            config={"task_type": "RETRIEVAL_QUERY", "output_dimensionality": self.OUTPUT_DIMENSIONS},
+            config={
+                "task_type": "RETRIEVAL_QUERY",
+                "output_dimensionality": self.OUTPUT_DIMENSIONS,
+            },
         )
         return result.embeddings[0].values
 

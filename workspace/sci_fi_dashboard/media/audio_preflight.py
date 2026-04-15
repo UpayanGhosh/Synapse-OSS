@@ -71,10 +71,7 @@ async def check_audio_preflight(
     if file_size > max_size_bytes:
         return AudioPreflightResult(
             ok=False,
-            reason=(
-                f"File size {file_size} bytes exceeds limit of "
-                f"{max_size_bytes} bytes"
-            ),
+            reason=(f"File size {file_size} bytes exceeds limit of " f"{max_size_bytes} bytes"),
             duration_seconds=None,
             file_size_bytes=file_size,
         )
@@ -85,10 +82,7 @@ async def check_audio_preflight(
     if duration is not None and duration > max_duration_seconds:
         return AudioPreflightResult(
             ok=False,
-            reason=(
-                f"Duration {duration:.1f}s exceeds limit of "
-                f"{max_duration_seconds:.0f}s"
-            ),
+            reason=(f"Duration {duration:.1f}s exceeds limit of " f"{max_duration_seconds:.0f}s"),
             duration_seconds=duration,
             file_size_bytes=file_size,
         )
@@ -118,9 +112,12 @@ async def _probe_duration(file_path: Path) -> float | None:
     try:
         proc = await asyncio.create_subprocess_exec(
             "ffprobe",
-            "-v", "quiet",
-            "-show_entries", "format=duration",
-            "-of", "csv=p=0",
+            "-v",
+            "quiet",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "csv=p=0",
             str(file_path),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,

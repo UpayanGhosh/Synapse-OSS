@@ -3,6 +3,7 @@ from .flood import FloodGate
 from .queue import MessageTask, TaskQueue
 from .sender import WhatsAppSender
 from .session_actor import SessionActorQueue
+from .voice_session import VoiceSession
 from .worker import MessageWorker
 from .ws_protocol import (
     ConnectParams,
@@ -16,7 +17,6 @@ from .ws_protocol import (
     make_response,
     parse_frame,
 )
-from .voice_session import VoiceSession
 from .ws_server import GatewayWebSocket
 
 __all__ = [

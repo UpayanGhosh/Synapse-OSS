@@ -1,6 +1,7 @@
 """MCP configuration models — Pydantic validation for synapse.json mcp section."""
 
 from __future__ import annotations
+
 from pydantic import BaseModel, Field, field_validator
 
 

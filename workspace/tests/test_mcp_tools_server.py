@@ -1,6 +1,7 @@
 """
 Tests for sci_fi_dashboard.mcp_servers.tools_server — Sentinel-gated file ops + web search.
 """
+
 from __future__ import annotations
 
 import json
@@ -36,8 +37,12 @@ class TestListTools:
         tools = await list_tools()
         names = {t.name for t in tools}
         assert names == {
-            "web_search", "read_file", "write_file",
-            "edit_file", "delete_file", "list_directory",
+            "web_search",
+            "read_file",
+            "write_file",
+            "edit_file",
+            "delete_file",
+            "list_directory",
         }
 
     @pytest.mark.asyncio
@@ -109,11 +114,14 @@ class TestReadFile:
         paging_mod = MagicMock()
         paging_mod.read_file_paged = MagicMock(return_value=paged_result)
 
-        with patch.dict("sys.modules", {
-            "sbs.sentinel.tools": sentinel_mod,
-            "sbs.sentinel.gateway": gateway_mod,
-            "file_ops.paging": paging_mod,
-        }):
+        with patch.dict(
+            "sys.modules",
+            {
+                "sbs.sentinel.tools": sentinel_mod,
+                "sbs.sentinel.gateway": gateway_mod,
+                "file_ops.paging": paging_mod,
+            },
+        ):
             result = await call_tool("read_file", {"path": "/some/file.txt"})
 
         data = json.loads(_text(result))
@@ -131,11 +139,14 @@ class TestReadFile:
 
         paging_mod = MagicMock()
 
-        with patch.dict("sys.modules", {
-            "sbs.sentinel.tools": sentinel_mod,
-            "sbs.sentinel.gateway": gateway_mod,
-            "file_ops.paging": paging_mod,
-        }):
+        with patch.dict(
+            "sys.modules",
+            {
+                "sbs.sentinel.tools": sentinel_mod,
+                "sbs.sentinel.gateway": gateway_mod,
+                "file_ops.paging": paging_mod,
+            },
+        ):
             result = await call_tool("read_file", {"path": "/some/file.txt"})
 
         assert "ERROR:" in _text(result)
@@ -144,7 +155,7 @@ class TestReadFile:
     async def test_read_file_permission_denied(self):
         from sci_fi_dashboard.mcp_servers.tools_server import call_tool
 
-        SentinelError = type("SentinelError", (Exception,), {})
+        SentinelError = type("SentinelError", (Exception,), {})  # noqa: N806
 
         sentinel_mod = MagicMock()
         sentinel_mod._sentinel = MagicMock()
@@ -155,11 +166,14 @@ class TestReadFile:
 
         paging_mod = MagicMock()
 
-        with patch.dict("sys.modules", {
-            "sbs.sentinel.tools": sentinel_mod,
-            "sbs.sentinel.gateway": gateway_mod,
-            "file_ops.paging": paging_mod,
-        }):
+        with patch.dict(
+            "sys.modules",
+            {
+                "sbs.sentinel.tools": sentinel_mod,
+                "sbs.sentinel.gateway": gateway_mod,
+                "file_ops.paging": paging_mod,
+            },
+        ):
             result = await call_tool("read_file", {"path": "/etc/shadow"})
 
         assert "DENIED:" in _text(result)
@@ -177,11 +191,14 @@ class TestReadFile:
 
         paging_mod = MagicMock()
 
-        with patch.dict("sys.modules", {
-            "sbs.sentinel.tools": sentinel_mod,
-            "sbs.sentinel.gateway": gateway_mod,
-            "file_ops.paging": paging_mod,
-        }):
+        with patch.dict(
+            "sys.modules",
+            {
+                "sbs.sentinel.tools": sentinel_mod,
+                "sbs.sentinel.gateway": gateway_mod,
+                "file_ops.paging": paging_mod,
+            },
+        ):
             result = await call_tool("read_file", {"path": "/no/such/file.txt"})
 
         assert "NOT_FOUND:" in _text(result)
@@ -204,12 +221,15 @@ class TestReadFile:
             return_value={"content": "data", "offset": 100, "size": 4, "truncated": False}
         )
 
-        with patch.dict("sys.modules", {
-            "sbs.sentinel.tools": sentinel_mod,
-            "sbs.sentinel.gateway": gateway_mod,
-            "file_ops.paging": paging_mod,
-        }):
-            result = await call_tool(
+        with patch.dict(
+            "sys.modules",
+            {
+                "sbs.sentinel.tools": sentinel_mod,
+                "sbs.sentinel.gateway": gateway_mod,
+                "file_ops.paging": paging_mod,
+            },
+        ):
+            await call_tool(
                 "read_file",
                 {"path": "/some/file.txt", "offset": 100, "page_bytes": 65536},
             )
@@ -233,9 +253,7 @@ class TestWriteFile:
         sentinel_mod.agent_write_file = MagicMock(return_value="Written 5 bytes")
 
         with patch.dict("sys.modules", {"sbs.sentinel.tools": sentinel_mod}):
-            result = await call_tool(
-                "write_file", {"path": "/some/file.txt", "content": "hello"}
-            )
+            result = await call_tool("write_file", {"path": "/some/file.txt", "content": "hello"})
 
         assert "Written" in _text(result)
 
@@ -247,9 +265,7 @@ class TestWriteFile:
         sentinel_mod.agent_write_file = MagicMock(side_effect=PermissionError("denied"))
 
         with patch.dict("sys.modules", {"sbs.sentinel.tools": sentinel_mod}):
-            result = await call_tool(
-                "write_file", {"path": "/root/file.txt", "content": "bad"}
-            )
+            result = await call_tool("write_file", {"path": "/root/file.txt", "content": "bad"})
 
         assert "DENIED:" in _text(result)
 
@@ -273,11 +289,14 @@ class TestEditFile:
         edit_mod = MagicMock()
         edit_mod.apply_edit = MagicMock(return_value={"ok": True, "replacements": 1})
 
-        with patch.dict("sys.modules", {
-            "sbs.sentinel.tools": sentinel_mod,
-            "sbs.sentinel.gateway": gateway_mod,
-            "file_ops.edit": edit_mod,
-        }):
+        with patch.dict(
+            "sys.modules",
+            {
+                "sbs.sentinel.tools": sentinel_mod,
+                "sbs.sentinel.gateway": gateway_mod,
+                "file_ops.edit": edit_mod,
+            },
+        ):
             result = await call_tool(
                 "edit_file",
                 {"path": "/some/file.py", "old_text": "foo", "new_text": "bar"},
@@ -290,23 +309,24 @@ class TestEditFile:
     async def test_edit_file_sentinel_denied(self):
         from sci_fi_dashboard.mcp_servers.tools_server import call_tool
 
-        SentinelError = type("SentinelError", (Exception,), {})
+        SentinelError = type("SentinelError", (Exception,), {})  # noqa: N806
 
         sentinel_mod = MagicMock()
-        sentinel_mod.agent_check_write_access = MagicMock(
-            side_effect=SentinelError("denied")
-        )
+        sentinel_mod.agent_check_write_access = MagicMock(side_effect=SentinelError("denied"))
 
         gateway_mod = MagicMock()
         gateway_mod.SentinelError = SentinelError
 
         edit_mod = MagicMock()
 
-        with patch.dict("sys.modules", {
-            "sbs.sentinel.tools": sentinel_mod,
-            "sbs.sentinel.gateway": gateway_mod,
-            "file_ops.edit": edit_mod,
-        }):
+        with patch.dict(
+            "sys.modules",
+            {
+                "sbs.sentinel.tools": sentinel_mod,
+                "sbs.sentinel.gateway": gateway_mod,
+                "file_ops.edit": edit_mod,
+            },
+        ):
             result = await call_tool(
                 "edit_file",
                 {"path": "/file.py", "old_text": "a", "new_text": "b"},
@@ -338,9 +358,7 @@ class TestDeleteFile:
         from sci_fi_dashboard.mcp_servers.tools_server import call_tool
 
         sentinel_mod = MagicMock()
-        sentinel_mod.agent_delete_file = MagicMock(
-            return_value="[SENTINEL DENIED] not allowed"
-        )
+        sentinel_mod.agent_delete_file = MagicMock(return_value="[SENTINEL DENIED] not allowed")
 
         with patch.dict("sys.modules", {"sbs.sentinel.tools": sentinel_mod}):
             result = await call_tool("delete_file", {"path": "/etc/passwd"})
@@ -355,9 +373,7 @@ class TestDeleteFile:
         sentinel_mod.agent_delete_file = MagicMock(return_value="Deleted /tmp/old.txt")
 
         with patch.dict("sys.modules", {"sbs.sentinel.tools": sentinel_mod}):
-            result = await call_tool(
-                "delete_file", {"path": "/tmp/old.txt", "reason": "cleanup"}
-            )
+            await call_tool("delete_file", {"path": "/tmp/old.txt", "reason": "cleanup"})
 
         sentinel_mod.agent_delete_file.assert_called_once_with("/tmp/old.txt", "cleanup")
 
@@ -373,9 +389,7 @@ class TestListDirectory:
         from sci_fi_dashboard.mcp_servers.tools_server import call_tool
 
         sentinel_mod = MagicMock()
-        sentinel_mod.agent_list_directory = MagicMock(
-            return_value="file1.txt\nfile2.py\n"
-        )
+        sentinel_mod.agent_list_directory = MagicMock(return_value="file1.txt\nfile2.py\n")
 
         with patch.dict("sys.modules", {"sbs.sentinel.tools": sentinel_mod}):
             result = await call_tool("list_directory", {"path": "/some/dir"})

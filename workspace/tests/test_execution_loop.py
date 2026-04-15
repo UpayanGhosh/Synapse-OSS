@@ -13,7 +13,7 @@ import json
 import os
 import sys
 from dataclasses import dataclass, field
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -111,9 +111,7 @@ async def _execute_tool_call(tc, registry) -> ToolResult:
         args = json.loads(tc.arguments)
     except (json.JSONDecodeError, TypeError):
         return ToolResult(
-            content=json.dumps(
-                {"error": f"Invalid JSON arguments for {tc.name}"}
-            ),
+            content=json.dumps({"error": f"Invalid JSON arguments for {tc.name}"}),
             is_error=True,
         )
     return await registry.execute(tc.name, args)
@@ -146,20 +144,14 @@ class TestExecuteToolCall:
     async def test_valid_json_args(self):
         """Tool call with valid JSON arguments should execute successfully."""
         registry = AsyncMock()
-        registry.execute = AsyncMock(
-            return_value=ToolResult(content='{"result": "ok"}')
-        )
-        tc = ToolCall(
-            id="tc_1", name="web_search", arguments='{"query": "test"}'
-        )
+        registry.execute = AsyncMock(return_value=ToolResult(content='{"result": "ok"}'))
+        tc = ToolCall(id="tc_1", name="web_search", arguments='{"query": "test"}')
 
         result = await _execute_tool_call(tc, registry)
 
         assert result.content == '{"result": "ok"}'
         assert not result.is_error
-        registry.execute.assert_awaited_once_with(
-            "web_search", {"query": "test"}
-        )
+        registry.execute.assert_awaited_once_with("web_search", {"query": "test"})
 
     async def test_invalid_json_args(self):
         """Tool call with malformed JSON should return an error ToolResult."""
@@ -326,9 +318,7 @@ class TestToolLoopIntegration:
         Returns dict with reply, tools_used, rounds.
         """
         messages = [{"role": "user", "content": "test message"}]
-        use_tools = (
-            session_mode != "spicy" and tool_registry_mock is not None
-        )
+        use_tools = session_mode != "spicy" and tool_registry_mock is not None
         session_tools = (
             [
                 SynapseTool(name="web_search"),
@@ -338,9 +328,7 @@ class TestToolLoopIntegration:
             else []
         )
         tool_schemas = (
-            [{"type": "function", "function": {"name": "web_search"}}]
-            if use_tools
-            else None
+            [{"type": "function", "function": {"name": "web_search"}}] if use_tools else None
         )
 
         reply = ""
@@ -349,7 +337,7 @@ class TestToolLoopIntegration:
         result = None
         call_idx = 0
 
-        for round_num in range(max_rounds):
+        for _round_num in range(max_rounds):
             if tool_schemas and call_idx < len(llm_responses):
                 result = llm_responses[call_idx]
                 call_idx += 1
@@ -368,44 +356,35 @@ class TestToolLoopIntegration:
                 break
 
             # Append assistant message with tool_calls
-            messages.append({
-                "role": "assistant",
-                "content": result.text or None,
-                "tool_calls": [
-                    {
-                        "id": tc.id,
-                        "type": "function",
-                        "function": {
-                            "name": tc.name,
-                            "arguments": tc.arguments,
-                        },
-                    }
-                    for tc in tool_calls
-                ],
-            })
+            messages.append(
+                {
+                    "role": "assistant",
+                    "content": result.text or None,
+                    "tool_calls": [
+                        {
+                            "id": tc.id,
+                            "type": "function",
+                            "function": {
+                                "name": tc.name,
+                                "arguments": tc.arguments,
+                            },
+                        }
+                        for tc in tool_calls
+                    ],
+                }
+            )
 
             # Execute tools
-            serial_calls = [
-                tc
-                for tc in tool_calls
-                if _is_serial_tool(tc.name, session_tools)
-            ]
+            serial_calls = [tc for tc in tool_calls if _is_serial_tool(tc.name, session_tools)]
             parallel_calls = [
-                tc
-                for tc in tool_calls
-                if not _is_serial_tool(tc.name, session_tools)
+                tc for tc in tool_calls if not _is_serial_tool(tc.name, session_tools)
             ]
             tool_results = {}
 
             if parallel_calls:
-                tasks = [
-                    _execute_tool_call(tc, tool_registry_mock)
-                    for tc in parallel_calls
-                ]
-                par_results = await asyncio.gather(
-                    *tasks, return_exceptions=True
-                )
-                for tc, res in zip(parallel_calls, par_results):
+                tasks = [_execute_tool_call(tc, tool_registry_mock) for tc in parallel_calls]
+                par_results = await asyncio.gather(*tasks, return_exceptions=True)
+                for tc, res in zip(parallel_calls, par_results, strict=False):
                     if isinstance(res, Exception):
                         tool_results[tc.id] = ToolResult(
                             content=json.dumps({"error": str(res)}),
@@ -415,42 +394,39 @@ class TestToolLoopIntegration:
                         tool_results[tc.id] = res
 
             for tc in serial_calls:
-                tool_results[tc.id] = await _execute_tool_call(
-                    tc, tool_registry_mock
-                )
+                tool_results[tc.id] = await _execute_tool_call(tc, tool_registry_mock)
 
             for tc in tool_calls:
                 tr = tool_results[tc.id]
                 content = tr.content
                 if len(content) > TOOL_RESULT_MAX_CHARS:
-                    content = (
-                        content[:TOOL_RESULT_MAX_CHARS]
-                        + "\n... [truncated]"
-                    )
+                    content = content[:TOOL_RESULT_MAX_CHARS] + "\n... [truncated]"
                 total_result_chars += len(content)
                 tools_used.append(tc.name)
-                messages.append({
-                    "role": "tool",
-                    "tool_call_id": tc.id,
-                    "content": content,
-                })
+                messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tc.id,
+                        "content": content,
+                    }
+                )
 
             # Context overflow guard
             if total_result_chars > MAX_TOTAL_TOOL_RESULT_CHARS:
                 tool_schemas = None
-                messages.append({
-                    "role": "system",
-                    "content": (
-                        "Tool result limit reached. Respond with the "
-                        "information gathered so far."
-                    ),
-                })
+                messages.append(
+                    {
+                        "role": "system",
+                        "content": (
+                            "Tool result limit reached. Respond with the "
+                            "information gathered so far."
+                        ),
+                    }
+                )
         else:
             # MAX_TOOL_ROUNDS exhausted — for-else fires
             reply = (
-                result.text
-                if result and result.text
-                else "I wasn't able to complete that request."
+                result.text if result and result.text else "I wasn't able to complete that request."
             )
 
         return {
@@ -461,12 +437,8 @@ class TestToolLoopIntegration:
 
     async def test_no_tool_calls_single_round(self):
         """LLM returns text with no tool_calls -> one round, text returned."""
-        responses = [
-            LLMResultWithTools(text="Hello! How can I help?", tool_calls=[])
-        ]
-        result = await self._run_tool_loop(
-            responses, tool_registry_mock=AsyncMock()
-        )
+        responses = [LLMResultWithTools(text="Hello! How can I help?", tool_calls=[])]
+        result = await self._run_tool_loop(responses, tool_registry_mock=AsyncMock())
 
         assert result["reply"] == "Hello! How can I help?"
         assert result["tools_used"] == []
@@ -475,9 +447,7 @@ class TestToolLoopIntegration:
     async def test_tool_call_then_text(self):
         """LLM calls a tool first round, then returns text second round."""
         registry = AsyncMock()
-        registry.execute = AsyncMock(
-            return_value=ToolResult(content='{"answer": "42"}')
-        )
+        registry.execute = AsyncMock(return_value=ToolResult(content='{"answer": "42"}'))
         responses = [
             LLMResultWithTools(
                 text="",
@@ -494,9 +464,7 @@ class TestToolLoopIntegration:
                 tool_calls=[],
             ),
         ]
-        result = await self._run_tool_loop(
-            responses, tool_registry_mock=registry
-        )
+        result = await self._run_tool_loop(responses, tool_registry_mock=registry)
 
         assert result["reply"] == "The answer is 42."
         assert result["tools_used"] == ["web_search"]
@@ -505,9 +473,7 @@ class TestToolLoopIntegration:
     async def test_max_rounds_exhausted(self):
         """LLM keeps requesting tools beyond MAX_TOOL_ROUNDS -> fallback."""
         registry = AsyncMock()
-        registry.execute = AsyncMock(
-            return_value=ToolResult(content='{"partial": true}')
-        )
+        registry.execute = AsyncMock(return_value=ToolResult(content='{"partial": true}'))
         # Every round returns tool_calls — never a plain text response
         responses = [
             LLMResultWithTools(
@@ -529,20 +495,13 @@ class TestToolLoopIntegration:
         )
 
         # for-else fires -> fallback message
-        assert (
-            "wasn't able to complete" in result["reply"]
-            or result["reply"] == ""
-        )
+        assert "wasn't able to complete" in result["reply"] or result["reply"] == ""
         assert len(result["tools_used"]) == MAX_TOOL_ROUNDS
 
     async def test_spicy_mode_no_tools(self):
         """Vault/spicy mode should bypass tools entirely."""
-        responses = [
-            LLMResultWithTools(text="Spicy reply!", tool_calls=[])
-        ]
-        result = await self._run_tool_loop(
-            responses, tool_registry_mock=None, session_mode="spicy"
-        )
+        responses = [LLMResultWithTools(text="Spicy reply!", tool_calls=[])]
+        result = await self._run_tool_loop(responses, tool_registry_mock=None, session_mode="spicy")
 
         assert result["reply"] == "Spicy reply!"
         assert result["tools_used"] == []
@@ -551,9 +510,7 @@ class TestToolLoopIntegration:
         """When a tool returns an error, it propagates to messages."""
         registry = AsyncMock()
         registry.execute = AsyncMock(
-            return_value=ToolResult(
-                content='{"error": "disk full"}', is_error=True
-            )
+            return_value=ToolResult(content='{"error": "disk full"}', is_error=True)
         )
         responses = [
             LLMResultWithTools(
@@ -571,9 +528,7 @@ class TestToolLoopIntegration:
                 tool_calls=[],
             ),
         ]
-        result = await self._run_tool_loop(
-            responses, tool_registry_mock=registry
-        )
+        result = await self._run_tool_loop(responses, tool_registry_mock=registry)
 
         assert result["reply"] == "Sorry, the file write failed."
         assert "write_file" in result["tools_used"]
@@ -581,9 +536,7 @@ class TestToolLoopIntegration:
     async def test_multiple_tool_calls_single_round(self):
         """LLM requests two tools in one round — both execute."""
         registry = AsyncMock()
-        registry.execute = AsyncMock(
-            return_value=ToolResult(content='{"ok": true}')
-        )
+        registry.execute = AsyncMock(return_value=ToolResult(content='{"ok": true}'))
         responses = [
             LLMResultWithTools(
                 text="",
@@ -605,9 +558,7 @@ class TestToolLoopIntegration:
                 tool_calls=[],
             ),
         ]
-        result = await self._run_tool_loop(
-            responses, tool_registry_mock=registry
-        )
+        result = await self._run_tool_loop(responses, tool_registry_mock=registry)
 
         assert result["reply"] == "Got both results."
         assert len(result["tools_used"]) == 2
@@ -616,9 +567,7 @@ class TestToolLoopIntegration:
         """When total tool result chars exceed limit, tools are disabled."""
         big_content = "x" * (MAX_TOTAL_TOOL_RESULT_CHARS + 1)
         registry = AsyncMock()
-        registry.execute = AsyncMock(
-            return_value=ToolResult(content=big_content)
-        )
+        registry.execute = AsyncMock(return_value=ToolResult(content=big_content))
         responses = [
             LLMResultWithTools(
                 text="",
@@ -636,9 +585,7 @@ class TestToolLoopIntegration:
                 tool_calls=[],
             ),
         ]
-        result = await self._run_tool_loop(
-            responses, tool_registry_mock=registry
-        )
+        result = await self._run_tool_loop(responses, tool_registry_mock=registry)
 
         assert result["reply"] == "Here is what I found so far."
         assert "web_search" in result["tools_used"]

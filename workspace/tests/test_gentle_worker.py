@@ -11,7 +11,7 @@ Covers:
 
 import os
 import sys
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -31,16 +31,19 @@ class TestGentleWorker:
     def worker(self, mock_graph):
         with patch("sci_fi_dashboard.gentle_worker.SQLiteGraph", return_value=mock_graph):
             from sci_fi_dashboard.gentle_worker import GentleWorker
+
             return GentleWorker(graph=mock_graph)
 
     def test_construction_default(self):
-        with patch("sci_fi_dashboard.gentle_worker.SQLiteGraph") as mock_cls:
+        with patch("sci_fi_dashboard.gentle_worker.SQLiteGraph"):
             from sci_fi_dashboard.gentle_worker import GentleWorker
+
             w = GentleWorker()
             assert w.is_running is True
 
     def test_construction_with_graph(self, mock_graph):
         from sci_fi_dashboard.gentle_worker import GentleWorker
+
         w = GentleWorker(graph=mock_graph)
         assert w.graph is mock_graph
 
@@ -50,8 +53,10 @@ class TestGentleWorker:
         mock_battery.power_plugged = True
         mock_battery.percent = 80
 
-        with patch("psutil.sensors_battery", return_value=mock_battery), \
-             patch("psutil.cpu_percent", return_value=5.0):
+        with (
+            patch("psutil.sensors_battery", return_value=mock_battery),
+            patch("psutil.cpu_percent", return_value=5.0),
+        ):
             can_run, reason = worker.check_conditions()
             assert can_run is True
             assert "OK" in reason
@@ -72,23 +77,29 @@ class TestGentleWorker:
         mock_battery = MagicMock()
         mock_battery.power_plugged = True
 
-        with patch("psutil.sensors_battery", return_value=mock_battery), \
-             patch("psutil.cpu_percent", return_value=50.0):
+        with (
+            patch("psutil.sensors_battery", return_value=mock_battery),
+            patch("psutil.cpu_percent", return_value=50.0),
+        ):
             can_run, reason = worker.check_conditions()
             assert can_run is False
             assert "CPU" in reason.upper() or "FIRE" in reason
 
     def test_check_conditions_no_battery(self, worker):
         """Desktop with no battery should pass battery check."""
-        with patch("psutil.sensors_battery", return_value=None), \
-             patch("psutil.cpu_percent", return_value=5.0):
+        with (
+            patch("psutil.sensors_battery", return_value=None),
+            patch("psutil.cpu_percent", return_value=5.0),
+        ):
             can_run, reason = worker.check_conditions()
             assert can_run is True
 
     def test_check_conditions_battery_error(self, worker):
         """Battery check error should not crash, falls through to CPU check."""
-        with patch("psutil.sensors_battery", side_effect=RuntimeError("no battery")), \
-             patch("psutil.cpu_percent", return_value=5.0):
+        with (
+            patch("psutil.sensors_battery", side_effect=RuntimeError("no battery")),
+            patch("psutil.cpu_percent", return_value=5.0),
+        ):
             can_run, reason = worker.check_conditions()
             assert can_run is True
 

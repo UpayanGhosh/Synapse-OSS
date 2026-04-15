@@ -13,10 +13,10 @@ Tests:
   7. Vectors not all-zeros — spot-check 1000 random vectors
 """
 
-import sys
 import os
-import time
 import random
+import sys
+import time
 
 import pytest
 from tqdm import tqdm
@@ -25,8 +25,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from tests.reliability.conftest import (
     SKIP_NO_FASTEMBED,
-    ReliabilityDataGenerator,
     LatencyTracker,
+    ReliabilityDataGenerator,
     ReliabilityReport,
     get_memory_mb,
 )
@@ -97,9 +97,7 @@ def test_100k_single_embeddings_zero_errors(provider, gen):
                 tps = (i + 1) / elapsed
                 bar.set_postfix(tps=f"{tps:.0f}/s", errors=len(errors))
 
-    assert errors == [], (
-        f"{len(errors)} errors in 100k single queries. First 3: {errors[:3]}"
-    )
+    assert errors == [], f"{len(errors)} errors in 100k single queries. First 3: {errors[:3]}"
 
 
 def test_100k_batch_embeddings(provider, gen):
@@ -156,9 +154,12 @@ def test_memory_no_leak_over_100k(provider, gen):
     end_mb = memory_samples[-1]
     drift_mb = end_mb - baseline_mb
 
-    print(f"\n  Baseline: {baseline_mb:.1f}MB  |  Final: {end_mb:.1f}MB  |  Drift: +{drift_mb:.1f}MB", flush=True)
+    print(
+        f"\n  Baseline: {baseline_mb:.1f}MB  |  Final: {end_mb:.1f}MB  |  Drift: +{drift_mb:.1f}MB",
+        flush=True,
+    )
 
-    report = ReliabilityReport(
+    ReliabilityReport(
         total_calls=TOTAL,
         memory_start_mb=baseline_mb,
         memory_end_mb=end_mb,
@@ -172,9 +173,9 @@ def test_memory_no_leak_over_100k(provider, gen):
 
     if len(memory_samples) >= 3:
         trend = memory_samples[-1] - memory_samples[1]
-        assert trend < 200, (
-            f"Upward memory trend detected: +{trend:.1f} MB from sample[1] to sample[-1]"
-        )
+        assert (
+            trend < 200
+        ), f"Upward memory trend detected: +{trend:.1f} MB from sample[1] to sample[-1]"
 
 
 def test_latency_stability(provider, gen):
@@ -262,8 +263,7 @@ def test_dimensions_consistent(provider, gen):
     print(f"\n  Wrong dimensions: {len(wrong_dims)}", flush=True)
 
     assert wrong_dims == [], (
-        f"{len(wrong_dims)} vectors had wrong dimensions. "
-        f"First 3: {wrong_dims[:3]}"
+        f"{len(wrong_dims)} vectors had wrong dimensions. " f"First 3: {wrong_dims[:3]}"
     )
 
 
@@ -285,6 +285,5 @@ def test_vectors_not_all_zeros(provider, gen):
     print(f"\n  All-zero vectors found: {len(zero_vectors)}", flush=True)
 
     assert zero_vectors == [], (
-        f"{len(zero_vectors)} all-zero vectors found in spot-check. "
-        f"First 3: {zero_vectors[:3]}"
+        f"{len(zero_vectors)} all-zero vectors found in spot-check. " f"First 3: {zero_vectors[:3]}"
     )

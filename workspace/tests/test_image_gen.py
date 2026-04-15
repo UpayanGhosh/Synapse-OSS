@@ -12,13 +12,11 @@ Test classes:
   - TestBackgroundImageDelivery — tests for the _generate_and_send_image helper
 """
 
-import asyncio
 import base64
 import os
 import sys
 import types
 from pathlib import Path
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -155,6 +153,7 @@ class TestImageGenEngine:
         # Patch 'openai.AsyncOpenAI' — the provider does `from openai import AsyncOpenAI`
         # so we patch the name in the openai module namespace
         import openai as _openai_mod
+
         with patch.object(_openai_mod, "AsyncOpenAI", mock_async_openai_cls):
             result = await engine.generate("A sunset over mountains")
 
@@ -187,6 +186,7 @@ class TestImageGenEngine:
             return mock_fal_result
 
         import fal_client as _fal_mod
+
         with (
             patch.object(_fal_mod, "run_async", _mock_fal_run),
             patch("httpx.AsyncClient", return_value=mock_http_client),
@@ -222,6 +222,7 @@ class TestImageGenEngine:
         mock_async_openai_cls = MagicMock(return_value=mock_openai_client)
 
         import openai as _openai_mod
+
         with patch.object(_openai_mod, "AsyncOpenAI", mock_async_openai_cls):
             result = await engine.generate("A test prompt")
 
@@ -230,7 +231,7 @@ class TestImageGenEngine:
     @pytest.mark.asyncio
     async def test_prompt_truncation(self):
         """Prompt longer than 4000 chars is silently truncated — provider receives ≤4000 chars."""
-        from sci_fi_dashboard.image_gen.engine import ImageGenEngine, MAX_PROMPT_CHARS
+        from sci_fi_dashboard.image_gen.engine import MAX_PROMPT_CHARS
 
         long_prompt = "x" * 5000  # 5000-char prompt
         fake_png = _make_fake_png()
@@ -238,8 +239,6 @@ class TestImageGenEngine:
         engine = self._make_engine(provider="openai", api_key="sk-test")
 
         captured_prompt: list[str] = []
-
-        original_generate_openai = engine._generate_openai.__func__
 
         async def _spy_generate_openai(self_inner, prompt: str):
             captured_prompt.append(prompt)
@@ -350,9 +349,9 @@ class TestImagePipelineRouting:
         assert result["role"] == "image_gen"
         # Ack text must mention image/generating
         reply_lower = result["reply"].lower()
-        assert "image" in reply_lower or "generat" in reply_lower, (
-            f"Reply should mention image/generating, got: {result['reply']!r}"
-        )
+        assert (
+            "image" in reply_lower or "generat" in reply_lower
+        ), f"Reply should mention image/generating, got: {result['reply']!r}"
         # BackgroundTask should have been dispatched
         mock_bg_tasks.add_task.assert_called_once()
 
@@ -390,6 +389,7 @@ class TestImagePipelineRouting:
 
         # Make vault LLM call succeed so we can get a result
         from sci_fi_dashboard.llm_router import LLMResult
+
         mock_llm_result = LLMResult(
             text="This is a private session.",
             model="vault-mock",
@@ -451,9 +451,9 @@ class TestImagePipelineRouting:
             result = await persona_chat(request, "the_creator", background_tasks=mock_bg_tasks)
 
         assert result["role"] == "image_gen_disabled"
-        assert "disabled" in result["reply"].lower(), (
-            f"Disabled reply should say 'disabled', got: {result['reply']!r}"
-        )
+        assert (
+            "disabled" in result["reply"].lower()
+        ), f"Disabled reply should say 'disabled', got: {result['reply']!r}"
         # NO BackgroundTask must be spawned when disabled
         mock_bg_tasks.add_task.assert_not_called()
 
@@ -544,12 +544,12 @@ class TestBackgroundImageDelivery:
         call_args = mock_channel.send_media.call_args
         # Positional: (chat_id, img_url)
         url_arg = call_args[0][1] if len(call_args[0]) > 1 else ""
-        assert "image_gen_outbound" in url_arg, (
-            f"URL should contain 'image_gen_outbound', got: {url_arg!r}"
-        )
-        assert "abc123.png" in url_arg, (
-            f"URL should contain file name 'abc123.png', got: {url_arg!r}"
-        )
+        assert (
+            "image_gen_outbound" in url_arg
+        ), f"URL should contain 'image_gen_outbound', got: {url_arg!r}"
+        assert (
+            "abc123.png" in url_arg
+        ), f"URL should contain file name 'abc123.png', got: {url_arg!r}"
 
     @pytest.mark.asyncio
     async def test_generate_and_send_image_failure(self):

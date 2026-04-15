@@ -1,4 +1,5 @@
 """Optional channel registration (Telegram, Discord, Slack)."""
+
 import logging
 import uuid
 
@@ -50,9 +51,7 @@ def register_optional_channels():
             from channels.telegram import TelegramChannel
 
             tel_enqueue = _make_flood_enqueue("telegram")
-            deps.channel_registry.register(
-                TelegramChannel(token=tg_token, enqueue_fn=tel_enqueue)
-            )
+            deps.channel_registry.register(TelegramChannel(token=tg_token, enqueue_fn=tel_enqueue))
             logger.info("Telegram channel registered")
         except ImportError:
             logger.warning(
@@ -71,9 +70,7 @@ def register_optional_channels():
         try:
             from channels.discord_channel import DiscordChannel
 
-            ds_allowed = [
-                int(x) for x in ch_cfg.get("discord", {}).get("allowed_channel_ids", [])
-            ]
+            ds_allowed = [int(x) for x in ch_cfg.get("discord", {}).get("allowed_channel_ids", [])]
             dis_enqueue = _make_flood_enqueue("discord")
             deps.channel_registry.register(
                 DiscordChannel(

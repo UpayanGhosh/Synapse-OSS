@@ -36,6 +36,7 @@ lancedb = pytest.importorskip("lancedb", reason="lancedb not installed")
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _cosine_sim(a: list[float], b: list[float]) -> float:
     va, vb = np.array(a, dtype=np.float32), np.array(b, dtype=np.float32)
     denom = np.linalg.norm(va) * np.linalg.norm(vb)
@@ -58,6 +59,7 @@ def _recall_at_k(results: list[dict], true_category: str, k: int, total_relevant
 # Phase 5a — Category separation
 # ---------------------------------------------------------------------------
 
+
 class TestCategorySeparation:
 
     def test_intra_category_similarity_higher_than_inter(self, categorised_store):
@@ -71,8 +73,8 @@ class TestCategorySeparation:
 
         # Group indices by category
         by_cat: dict[int, list[int]] = defaultdict(list)
-        for i, l in enumerate(labels):
-            by_cat[l].append(i)
+        for i, label in enumerate(labels):
+            by_cat[label].append(i)
 
         # Sample intra-category pairs
         facts_list = store.table.to_pandas().to_dict("records")
@@ -114,7 +116,7 @@ class TestCategorySeparation:
 
         # Compute centroid per category
         centroids = {}
-        for i, name in enumerate(label_names):
+        for _i, name in enumerate(label_names):
             mask = facts_df["category"] == name
             if mask.sum() == 0:
                 continue
@@ -139,6 +141,7 @@ class TestCategorySeparation:
 # Phase 5b — Retrieval precision and recall
 # ---------------------------------------------------------------------------
 
+
 class TestRetrievalPrecisionRecall:
 
     def test_precision_at_10_same_category(self, categorised_store):
@@ -147,8 +150,8 @@ class TestRetrievalPrecisionRecall:
         rng = random.Random(43)
 
         by_cat: dict[int, list[int]] = defaultdict(list)
-        for i, l in enumerate(labels):
-            by_cat[l].append(i)
+        for i, label in enumerate(labels):
+            by_cat[label].append(i)
 
         facts_df = store.table.to_pandas()
         vec_by_id = {r["id"]: list(r["vector"]) for r in facts_df.to_dict("records")}
@@ -181,7 +184,7 @@ class TestRetrievalPrecisionRecall:
         if "Sports" not in label_names:
             pytest.skip("Dataset has no 'Sports' category (not AG News)")
 
-        sports_idx = label_names.index("Sports")
+        label_names.index("Sports")
         world_idx = label_names.index("World") if "World" in label_names else -1
 
         facts_df = store.table.to_pandas()
@@ -212,7 +215,9 @@ class TestRetrievalPrecisionRecall:
         """Sci/Tech articles should retrieve other Sci/Tech, not Business."""
         store, texts, labels, label_names = categorised_store
 
-        scitech_name = next((n for n in label_names if "sci" in n.lower() or "tech" in n.lower()), None)
+        scitech_name = next(
+            (n for n in label_names if "sci" in n.lower() or "tech" in n.lower()), None
+        )
         if scitech_name is None:
             pytest.skip("Dataset has no Sci/Tech category")
 
@@ -237,12 +242,14 @@ class TestRetrievalPrecisionRecall:
 # Phase 5c — Duplicate detection
 # ---------------------------------------------------------------------------
 
+
 class TestDuplicateDetection:
 
     def test_same_text_embedded_twice_scores_near_1(self, categorised_store, generator):
         """Embedding the same article twice → cosine similarity ≈ 1.0 (determinism)."""
         store, texts, labels, label_names = categorised_store
         from sci_fi_dashboard.embedding.factory import get_provider
+
         provider = get_provider()
         if provider is None:
             pytest.skip("No embedding provider available")
@@ -259,6 +266,7 @@ class TestDuplicateDetection:
         """A near-duplicate article (minor edit) scores higher than an unrelated one."""
         store, texts, labels, label_names = categorised_store
         from sci_fi_dashboard.embedding.factory import get_provider
+
         provider = get_provider()
         if provider is None:
             pytest.skip("No embedding provider available")
@@ -286,6 +294,7 @@ class TestDuplicateDetection:
 # Phase 5d — Embedding space health
 # ---------------------------------------------------------------------------
 
+
 class TestEmbeddingSpaceHealth:
 
     def test_vectors_have_positive_variance_per_dimension(self, categorised_store):
@@ -303,9 +312,9 @@ class TestEmbeddingSpaceHealth:
             f"mean_var={dim_variance.mean():.6f}"
         )
         # Allow up to 1% collapsed dimensions (some models zero-pad a few dims)
-        assert collapsed_dims / total_dims < 0.01, (
-            f"Too many collapsed dimensions: {collapsed_dims}/{total_dims}"
-        )
+        assert (
+            collapsed_dims / total_dims < 0.01
+        ), f"Too many collapsed dimensions: {collapsed_dims}/{total_dims}"
 
     def test_vectors_are_unit_normalised(self, categorised_store):
         """All stored vectors should be near unit length (L2 norm ≈ 1.0)."""
@@ -315,8 +324,7 @@ class TestEmbeddingSpaceHealth:
         norms = np.linalg.norm(vecs, axis=1)
         off_unit = int(np.abs(norms - 1.0) > 0.05).sum() if len(norms) > 0 else 0
         print(f"\n[unit norms] min={norms.min():.4f} max={norms.max():.4f} off_unit={off_unit}")
-        assert off_unit / len(norms) < 0.01, \
-            f"{off_unit}/{len(norms)} vectors not unit-normalised"
+        assert off_unit / len(norms) < 0.01, f"{off_unit}/{len(norms)} vectors not unit-normalised"
 
     def test_no_zero_vectors_in_store(self, categorised_store):
         """No stored vector should be all-zeros (indicates a failed embedding)."""
@@ -346,13 +354,15 @@ class TestEmbeddingSpaceHealth:
 
         mean_sim = np.mean(sims)
         print(f"\n[pairwise sim] mean={mean_sim:.4f} over 500 random pairs")
-        assert 0.05 < mean_sim < 0.95, \
-            f"Mean pairwise similarity {mean_sim:.4f} outside expected range [0.05, 0.95]"
+        assert (
+            0.05 < mean_sim < 0.95
+        ), f"Mean pairwise similarity {mean_sim:.4f} outside expected range [0.05, 0.95]"
 
 
 # ---------------------------------------------------------------------------
 # Phase 5e — Chat simulation (PersonaChat)
 # ---------------------------------------------------------------------------
+
 
 class TestChatMemorySimulation:
     """Simulate Synapse's actual workload: store persona facts, query with chat turns.
@@ -369,6 +379,7 @@ class TestChatMemorySimulation:
         """Basic smoke test: facts loaded, simple query returns results."""
         store, chat_data = persona_store
         from sci_fi_dashboard.embedding.factory import get_provider
+
         provider = get_provider()
         if provider is None:
             pytest.skip("No embedding provider available")
@@ -383,6 +394,7 @@ class TestChatMemorySimulation:
         """'I enjoy hiking' query should retrieve a hiking-related persona fact."""
         store, chat_data = persona_store
         from sci_fi_dashboard.embedding.factory import get_provider
+
         provider = get_provider()
         if provider is None:
             pytest.skip("No embedding provider available")
@@ -395,7 +407,9 @@ class TestChatMemorySimulation:
         q_vec = provider.embed_query("I really enjoy hiking and outdoor activities")
         results = store.search(q_vec, limit=10)
         texts = [r["metadata"]["text"].lower() for r in results]
-        hiking_hits = sum(1 for t in texts if "hik" in t or "outdoor" in t or "walk" in t or "nature" in t)
+        hiking_hits = sum(
+            1 for t in texts if "hik" in t or "outdoor" in t or "walk" in t or "nature" in t
+        )
         print(f"\n[hiking query] top-10 results: {hiking_hits} hiking-related facts")
         assert hiking_hits >= 1, f"No hiking facts in top-10 results. Got: {texts[:5]}"
 
@@ -403,14 +417,24 @@ class TestChatMemorySimulation:
         """'What do you do for work?' should retrieve occupation facts."""
         store, chat_data = persona_store
         from sci_fi_dashboard.embedding.factory import get_provider
+
         provider = get_provider()
         if provider is None:
             pytest.skip("No embedding provider available")
 
-        job_keywords = ["work", "job", "profession", "career", "employed", "nurse",
-                        "doctor", "engineer", "teacher", "student"]
-        job_facts = [f for f in chat_data.facts
-                     if any(k in f.lower() for k in job_keywords)]
+        job_keywords = [
+            "work",
+            "job",
+            "profession",
+            "career",
+            "employed",
+            "nurse",
+            "doctor",
+            "engineer",
+            "teacher",
+            "student",
+        ]
+        job_facts = [f for f in chat_data.facts if any(k in f.lower() for k in job_keywords)]
         if not job_facts:
             pytest.skip("No occupation facts in dataset")
 
@@ -425,14 +449,25 @@ class TestChatMemorySimulation:
         """A food preference query retrieves food-related persona facts."""
         store, chat_data = persona_store
         from sci_fi_dashboard.embedding.factory import get_provider
+
         provider = get_provider()
         if provider is None:
             pytest.skip("No embedding provider available")
 
-        food_keywords = ["food", "eat", "cook", "pizza", "pasta", "vegetarian",
-                         "vegan", "meat", "fish", "burger", "restaurant"]
-        food_facts = [f for f in chat_data.facts
-                      if any(k in f.lower() for k in food_keywords)]
+        food_keywords = [
+            "food",
+            "eat",
+            "cook",
+            "pizza",
+            "pasta",
+            "vegetarian",
+            "vegan",
+            "meat",
+            "fish",
+            "burger",
+            "restaurant",
+        ]
+        food_facts = [f for f in chat_data.facts if any(k in f.lower() for k in food_keywords)]
         if not food_facts:
             pytest.skip("No food facts in dataset")
 
@@ -446,8 +481,8 @@ class TestChatMemorySimulation:
     def test_same_persona_facts_cluster_together(self, persona_store):
         """Facts from the same persona should have higher mutual similarity than cross-persona."""
         store, chat_data = persona_store
-        from collections import defaultdict
         import random as _random
+        from collections import defaultdict
 
         # Find personas with at least 3 facts
         by_pid: dict[int, list[int]] = defaultdict(list)
@@ -485,16 +520,18 @@ class TestChatMemorySimulation:
         mean_inter = np.mean(inter_sims)
         print(f"\n[persona clustering] intra={mean_intra:.4f} inter={mean_inter:.4f}")
         # Same-persona facts should be somewhat more similar
-        assert mean_intra >= mean_inter - 0.05, (
-            f"Same-persona facts not more similar: intra={mean_intra:.4f} inter={mean_inter:.4f}"
-        )
+        assert (
+            mean_intra >= mean_inter - 0.05
+        ), f"Same-persona facts not more similar: intra={mean_intra:.4f} inter={mean_inter:.4f}"
 
     def test_retrieval_latency_with_real_chat_queries(self, persona_store):
         """p95 search latency over 200 real chat queries stays under 200ms."""
         store, chat_data = persona_store
-        from sci_fi_dashboard.embedding.factory import get_provider
-        from .conftest import LatencyTracker
         import time
+
+        from sci_fi_dashboard.embedding.factory import get_provider
+
+        from .conftest import LatencyTracker
 
         provider = get_provider()
         if provider is None:
@@ -519,19 +556,20 @@ class TestChatMemorySimulation:
         if persona_dataset is None:
             pytest.skip("PersonaChat unavailable")
         from collections import Counter
+
         pid_counts = Counter(persona_dataset.persona_ids)
         avg_facts = sum(pid_counts.values()) / len(pid_counts) if pid_counts else 0
         print(f"\n{'='*60}")
-        print(f"PERSONACHAT DATASET SUMMARY")
+        print("PERSONACHAT DATASET SUMMARY")
         print(f"{'='*60}")
         print(f"Total facts    : {len(persona_dataset.facts)}")
         print(f"Total personas : {len(set(persona_dataset.persona_ids))}")
         print(f"Avg facts/persona : {avg_facts:.1f}")
         print(f"Total query turns : {len(persona_dataset.queries)}")
-        print(f"Sample facts:")
+        print("Sample facts:")
         for f in persona_dataset.facts[:5]:
             print(f"  • {f}")
-        print(f"Sample queries:")
+        print("Sample queries:")
         for q in persona_dataset.queries[:5]:
             print(f"  ? {q}")
         print(f"{'='*60}")
@@ -542,6 +580,7 @@ class TestChatMemorySimulation:
 # Phase 5f — Cross-dataset coverage report
 # ---------------------------------------------------------------------------
 
+
 class TestDatasetCoverageReport:
 
     def test_print_dataset_summary(self, real_dataset):
@@ -550,14 +589,17 @@ class TestDatasetCoverageReport:
             pytest.skip("No real dataset loaded")
         texts, labels, label_names = real_dataset
         from collections import Counter
+
         counts = Counter(labels)
         print(f"\n{'='*60}")
-        print(f"DATASET SUMMARY")
+        print("DATASET SUMMARY")
         print(f"{'='*60}")
         print(f"Total records : {len(texts)}")
         print(f"Categories    : {len(label_names)}")
-        print(f"Avg text len  : {sum(len(t) for t in texts[:10000]) / min(len(texts), 10000):.0f} chars")
-        print(f"\nPer-category counts:")
+        print(
+            f"Avg text len  : {sum(len(t) for t in texts[:10000]) / min(len(texts), 10000):.0f} chars"
+        )
+        print("\nPer-category counts:")
         for i, name in enumerate(label_names):
             print(f"  [{i}] {name:20s}: {counts[i]:,}")
         print(f"{'='*60}")
@@ -567,12 +609,13 @@ class TestDatasetCoverageReport:
         """Print which embedding provider and model is active (GPU/CPU)."""
         try:
             from sci_fi_dashboard.embedding.factory import get_provider
+
             provider = get_provider()
             if provider is None:
                 pytest.skip("No provider available")
             info = provider.info()
             print(f"\n{'='*60}")
-            print(f"EMBEDDING PROVIDER")
+            print("EMBEDDING PROVIDER")
             print(f"{'='*60}")
             print(f"Provider   : {info.name}")
             print(f"Dimensions : {info.dimensions}")

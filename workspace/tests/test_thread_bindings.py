@@ -11,13 +11,9 @@ Covers:
 - Corrupt file handling
 """
 
-import json
 import os
 import sys
 import time
-from unittest.mock import patch
-
-import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -28,9 +24,7 @@ class TestThreadBindingDataclass:
     """Tests for ThreadBinding dataclass."""
 
     def test_construction(self):
-        b = ThreadBinding(
-            thread_id="t1", channel_id="slack", chat_id="c1", session_key="s1"
-        )
+        b = ThreadBinding(thread_id="t1", channel_id="slack", chat_id="c1", session_key="s1")
         assert b.thread_id == "t1"
         assert b.channel_id == "slack"
         assert b.chat_id == "c1"
@@ -80,9 +74,7 @@ class TestThreadBindingManager:
 
     def test_idle_timeout_expiry(self, tmp_path):
         """lookup() returns None when idle timeout exceeds threshold."""
-        mgr = ThreadBindingManager(
-            store_path=tmp_path / "bindings.json", idle_timeout=1.0
-        )
+        mgr = ThreadBindingManager(store_path=tmp_path / "bindings.json", idle_timeout=1.0)
         mgr.bind("t1", "slack", "c1", "s1")
 
         # Manually set last_activity to the past
@@ -95,9 +87,7 @@ class TestThreadBindingManager:
 
     def test_max_age_expiry(self, tmp_path):
         """lookup() returns None when max age exceeds threshold."""
-        mgr = ThreadBindingManager(
-            store_path=tmp_path / "bindings.json", max_age=1.0
-        )
+        mgr = ThreadBindingManager(store_path=tmp_path / "bindings.json", max_age=1.0)
         mgr.bind("t1", "slack", "c1", "s1")
 
         # Manually set created_at to the past
@@ -110,9 +100,7 @@ class TestThreadBindingManager:
 
     def test_sweep_removes_expired(self, tmp_path):
         """sweep() removes expired bindings and returns count."""
-        mgr = ThreadBindingManager(
-            store_path=tmp_path / "bindings.json", idle_timeout=1.0
-        )
+        mgr = ThreadBindingManager(store_path=tmp_path / "bindings.json", idle_timeout=1.0)
         mgr.bind("t1", "slack", "c1", "s1")
         mgr.bind("t2", "slack", "c2", "s2")
 
@@ -133,9 +121,7 @@ class TestThreadBindingManager:
 
     def test_max_bindings_eviction(self, tmp_path):
         """When at max_bindings, oldest is evicted on new bind()."""
-        mgr = ThreadBindingManager(
-            store_path=tmp_path / "bindings.json", max_bindings=3
-        )
+        mgr = ThreadBindingManager(store_path=tmp_path / "bindings.json", max_bindings=3)
         for i in range(3):
             mgr.bind(f"t{i}", "slack", f"c{i}", f"s{i}")
             time.sleep(0.01)  # ensure different last_activity

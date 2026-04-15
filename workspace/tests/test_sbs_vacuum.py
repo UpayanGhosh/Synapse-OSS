@@ -10,7 +10,6 @@ Covers:
 """
 
 import os
-import shutil
 import sqlite3
 import sys
 from pathlib import Path
@@ -19,6 +18,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+from sci_fi_dashboard.sbs.ingestion.schema import RawMessage  # noqa: F401
 from sci_fi_dashboard.sbs.vacuum import vacuum_sbs
 
 

@@ -3,7 +3,7 @@ import contextlib
 import inspect
 import logging
 import time
-from typing import Awaitable, Callable
+from collections.abc import Awaitable, Callable
 
 from .queue import MessageTask, TaskQueue
 from .sender import (
@@ -121,8 +121,11 @@ class MessageWorker:
             task.generation = new_gen
 
         logger.info(
-            "Worker-%d gen=%d Processing: \"%.60s...\" from %s",
-            worker_id, task.generation, task.user_message, task.sender_name,
+            'Worker-%d gen=%d Processing: "%.60s..." from %s',
+            worker_id,
+            task.generation,
+            task.user_message,
+            task.sender_name,
         )
 
         channel = self._get_channel(task)
@@ -158,7 +161,10 @@ class MessageWorker:
                 self.queue.supersede(task)
                 logger.info(
                     "Worker-%d gen=%d superseded by gen=%d for chat %s, dropping",
-                    worker_id, task.generation, latest_gen, chat_id,
+                    worker_id,
+                    task.generation,
+                    latest_gen,
+                    chat_id,
                 )
                 return
 
@@ -173,7 +179,8 @@ class MessageWorker:
                         if not ok:
                             logger.warning(
                                 "Worker-%d channel.send() failed on chunk %d",
-                                worker_id, i + 1,
+                                worker_id,
+                                i + 1,
                             )
                             success = False
                             # Enqueue failed chunk into retry queue if available
@@ -199,7 +206,9 @@ class MessageWorker:
                     self.queue.complete(task, response)
                     logger.info(
                         "Worker-%d gen=%d delivered in %dms",
-                        worker_id, task.generation, processing_time_ms,
+                        worker_id,
+                        task.generation,
+                        processing_time_ms,
                     )
                 else:
                     self.queue.fail(task, "Send failed")
@@ -216,7 +225,10 @@ class MessageWorker:
                 self.queue.supersede(task)
                 logger.info(
                     "Worker-%d gen=%d error after superseded by gen=%d for %s, dropping",
-                    worker_id, task.generation, latest_gen, chat_id,
+                    worker_id,
+                    task.generation,
+                    latest_gen,
+                    chat_id,
                 )
                 return
 

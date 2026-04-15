@@ -5,6 +5,7 @@ Lightweight guard for use when full Sentinel isn't available (e.g. remote
 agent connections). Enforces that all resolved paths stay within a declared
 workspace root.
 """
+
 from pathlib import Path
 from typing import Literal
 
@@ -60,8 +61,6 @@ class WorkspaceGuard:
         #    is_relative_to check above covers them. This explicit step re-confirms
         #    in case of multi-hop symlink chains.
         if p.is_symlink() and not resolved.is_relative_to(self.root):
-            raise PermissionError(
-                f"Symlink {path!r} points outside workspace root {self.root}"
-            )
+            raise PermissionError(f"Symlink {path!r} points outside workspace root {self.root}")
 
         return resolved

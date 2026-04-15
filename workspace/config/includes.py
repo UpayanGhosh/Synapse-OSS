@@ -10,6 +10,7 @@ Usage::
     raw = json.load(open("synapse.json"))
     resolved = resolve_includes(raw, Path("~/.synapse"))
 """
+
 from __future__ import annotations
 
 import json

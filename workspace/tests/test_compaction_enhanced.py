@@ -24,8 +24,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 try:
     from sci_fi_dashboard.multiuser.compaction import (
-        _AGGREGATE_TIMEOUT_S,
-        _PER_CALL_TIMEOUT_S,
         compact_session,
         compute_adaptive_chunk_ratio,
         estimate_tokens,
@@ -34,7 +32,6 @@ try:
         summarize_with_fallback,
     )
     from sci_fi_dashboard.multiuser.session_store import SessionStore
-    from sci_fi_dashboard.multiuser.transcript import load_messages
 
     AVAILABLE = True
 except ImportError:
@@ -165,9 +162,7 @@ class TestPruneHistoryForContextShare:
     def test_drops_oldest_to_fit_budget(self):
         """Messages exceeding budget are dropped from the front."""
         # Each message: 400 chars = 100 tokens. 10 messages = 1000 tokens.
-        messages = [
-            {"role": "user", "content": "a" * 400} for _ in range(10)
-        ]
+        messages = [{"role": "user", "content": "a" * 400} for _ in range(10)]
         # Budget: 1200 * 0.5 = 600 tokens. Should keep at most 6 messages.
         result = prune_history_for_context_share(messages, max_tokens=1200, max_share=0.5)
         assert len(result) <= 6
@@ -208,11 +203,11 @@ class TestPerCallTimeout:
         messages = [{"role": "user", "content": "hello"}]
 
         # Patch the per-call timeout to 0.1s so the test finishes quickly.
-        with patch(
-            "sci_fi_dashboard.multiuser.compaction._PER_CALL_TIMEOUT_S", 0.1
+        with (
+            patch("sci_fi_dashboard.multiuser.compaction._PER_CALL_TIMEOUT_S", 0.1),
+            pytest.raises((TimeoutError, asyncio.TimeoutError)),
         ):
-            with pytest.raises((TimeoutError, asyncio.TimeoutError)):
-                await summarize_with_fallback(messages, mock_llm, context_window=100_000)
+            await summarize_with_fallback(messages, mock_llm, context_window=100_000)
 
 
 # ===========================================================================
@@ -228,16 +223,11 @@ class TestAggregateTimeout:
         """compact_session returns ok=False when aggregate timeout is hit."""
         transcript = tmp_path / "sessions" / "test.jsonl"
         transcript.parent.mkdir(parents=True)
-        msgs = [
-            {"role": "user", "content": "a" * 32, "timestamp": time.time()}
-            for _ in range(11)
-        ]
+        msgs = [{"role": "user", "content": "a" * 32, "timestamp": time.time()} for _ in range(11)]
         transcript.write_text("\n".join(json.dumps(m) for m in msgs) + "\n")
 
         store = SessionStore("test-agent", data_root=tmp_path)
-        store_path = (
-            tmp_path / "state" / "agents" / "test-agent" / "sessions" / "sessions.json"
-        )
+        store_path = tmp_path / "state" / "agents" / "test-agent" / "sessions" / "sessions.json"
         store_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Force asyncio.wait_for to immediately timeout.
@@ -282,9 +272,7 @@ class TestMakeCompactFn:
         msgs = [{"role": "user", "content": "hi", "timestamp": time.time()}]
         transcript.write_text(json.dumps(msgs[0]) + "\n")
 
-        store_path = (
-            tmp_path / "state" / "agents" / "test-agent" / "sessions" / "sessions.json"
-        )
+        store_path = tmp_path / "state" / "agents" / "test-agent" / "sessions" / "sessions.json"
         store_path.parent.mkdir(parents=True, exist_ok=True)
 
         mock_llm = AsyncMock()

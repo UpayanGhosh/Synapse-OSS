@@ -123,9 +123,7 @@ class TestDetectMime:
     @_skip_mime
     def test_octet_stream_header_ignored(self):
         """application/octet-stream header falls through to extension."""
-        result = detect_mime(
-            b"", header_mime="application/octet-stream", filename="test.mp4"
-        )
+        result = detect_mime(b"", header_mime="application/octet-stream", filename="test.mp4")
         assert result == "video/mp4"
 
 
@@ -377,7 +375,6 @@ class TestSSRFRedirectHook:
     async def test_redirect_to_loopback_blocked(self):
         """Redirect to 127.0.0.1 is caught by the event hook."""
         import httpx
-
         from sci_fi_dashboard.media.ssrf import safe_httpx_client
 
         # Use httpx's MockTransport to simulate a redirect to a loopback IP

@@ -26,7 +26,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from synapse_config import SynapseConfig  # noqa: E402
 
-
 # ---------------------------------------------------------------------------
 # Test 1: config loads embedding section
 # ---------------------------------------------------------------------------
@@ -43,9 +42,9 @@ def test_config_loads_embedding_section(tmp_path, monkeypatch):
 
     config = SynapseConfig.load()
 
-    assert config.embedding == {"provider": "fastembed"}, (
-        f"Expected embedding={{'provider': 'fastembed'}}, got {config.embedding}"
-    )
+    assert config.embedding == {
+        "provider": "fastembed"
+    }, f"Expected embedding={{'provider': 'fastembed'}}, got {config.embedding}"
 
 
 # ---------------------------------------------------------------------------
@@ -169,24 +168,26 @@ def test_startup_logging_shows_provider(caplog):
     logger = logging.getLogger("embedding_startup_test")
 
     # Simulate the startup block from api_gateway.py
-    with patch.dict("sys.modules", {"sci_fi_dashboard.embedding": mock_embedding_module}):
-        with caplog.at_level(logging.INFO, logger="embedding_startup_test"):
-            try:
-                from sci_fi_dashboard.embedding import get_provider  # noqa: PLC0415
+    with (
+        patch.dict("sys.modules", {"sci_fi_dashboard.embedding": mock_embedding_module}),
+        caplog.at_level(logging.INFO, logger="embedding_startup_test"),
+    ):
+        try:
+            from sci_fi_dashboard.embedding import get_provider  # noqa: PLC0415
 
-                _emb_provider = get_provider()
-                if _emb_provider:
-                    _info = _emb_provider.info()
-                    logger.info(
-                        "[Embedding] Provider: %s | Model: %s | Dims: %s",
-                        _info.name,
-                        _info.model,
-                        _info.dimensions,
-                    )
-                else:
-                    logger.warning("[Embedding] No provider available -- semantic search disabled")
-            except Exception as exc:
-                logger.warning("[Embedding] Provider init failed: %s", exc)
+            _emb_provider = get_provider()
+            if _emb_provider:
+                _info = _emb_provider.info()
+                logger.info(
+                    "[Embedding] Provider: %s | Model: %s | Dims: %s",
+                    _info.name,
+                    _info.model,
+                    _info.dimensions,
+                )
+            else:
+                logger.warning("[Embedding] No provider available -- semantic search disabled")
+        except Exception as exc:
+            logger.warning("[Embedding] Provider init failed: %s", exc)
 
     assert any(
         "fastembed" in record.message for record in caplog.records

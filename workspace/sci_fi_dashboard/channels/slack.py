@@ -269,9 +269,7 @@ class SlackChannel(BaseChannel):
                 await self._web_client.chat_postMessage(**kwargs)
             except Exception as exc:
                 all_ok = False
-                logger.error(
-                    "[Slack] send() failed for channel %s: %s", chat_id, exc
-                )
+                logger.error("[Slack] send() failed for channel %s: %s", chat_id, exc)
                 break  # stop sending remaining chunks on failure
             # Small delay between chunks to avoid burst rate-limits
             if i < len(chunks) - 1:
@@ -441,9 +439,7 @@ class SlackChannel(BaseChannel):
         # Evict oldest entries when cap is exceeded
         if len(self._active_threads) > self._MAX_ACTIVE_THREADS:
             # Sort by timestamp ascending, remove the oldest excess entries
-            sorted_threads = sorted(
-                self._active_threads.items(), key=lambda kv: kv[1]
-            )
+            sorted_threads = sorted(self._active_threads.items(), key=lambda kv: kv[1])
             excess = len(self._active_threads) - self._MAX_ACTIVE_THREADS
             for ts_key, _ in sorted_threads[:excess]:
                 self._active_threads.pop(ts_key, None)
@@ -501,21 +497,21 @@ class SlackChannel(BaseChannel):
             cut = remaining.rfind("\n\n", 0, limit)
             if cut > 0:
                 chunks.append(remaining[:cut])
-                remaining = remaining[cut + 2:]  # skip the \n\n
+                remaining = remaining[cut + 2 :]  # skip the \n\n
                 continue
 
             # Try line boundary
             cut = remaining.rfind("\n", 0, limit)
             if cut > 0:
                 chunks.append(remaining[:cut])
-                remaining = remaining[cut + 1:]  # skip the \n
+                remaining = remaining[cut + 1 :]  # skip the \n
                 continue
 
             # Try space boundary
             cut = remaining.rfind(" ", 0, limit)
             if cut > 0:
                 chunks.append(remaining[:cut])
-                remaining = remaining[cut + 1:]  # skip the space
+                remaining = remaining[cut + 1 :]  # skip the space
                 continue
 
             # Hard cut — no natural boundary found

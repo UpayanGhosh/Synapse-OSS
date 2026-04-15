@@ -6,7 +6,6 @@ Covers resolution, schema generation, execution, normalization,
 and owner-only access gating.
 """
 
-import asyncio
 import os
 import sys
 
@@ -17,7 +16,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from sci_fi_dashboard.tool_registry import (
     SynapseTool,
     ToolContext,
-    ToolFactory,
     ToolRegistry,
     ToolResult,
     error_result,
@@ -25,7 +23,6 @@ from sci_fi_dashboard.tool_registry import (
     normalize_raw_result,
     text_result,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -75,9 +72,7 @@ def _make_echo_tool(name: str = "echo") -> SynapseTool:
         description="Echoes the input text.",
         parameters={
             "type": "object",
-            "properties": {
-                "text": {"type": "string", "description": "Text to echo."}
-            },
+            "properties": {"text": {"type": "string", "description": "Text to echo."}},
             "required": ["text"],
         },
         execute=_execute,
@@ -187,9 +182,7 @@ class TestToolRegistry:
 
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_owner_only_tool_excluded_for_guest(
-        self, registry, owner_context, guest_context
-    ):
+    async def test_owner_only_tool_excluded_for_guest(self, registry, owner_context, guest_context):
         """Owner-only factory returns None for non-owners, tool for owners."""
 
         def owner_only_factory(ctx: ToolContext) -> SynapseTool | None:

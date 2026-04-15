@@ -6,15 +6,14 @@ Covers:
 - DASH-02: Auth enforcement on GET and POST endpoints
 - DASH-05: No node_modules or npm references in dashboard static files
 """
+
 from __future__ import annotations
 
 import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-
 from sci_fi_dashboard.routes.cron import router
 
 # ---------------------------------------------------------------------------
@@ -62,9 +61,8 @@ class TestListCronJobs:
         mock_svc.list.return_value = []
         app = _make_app(cron_service=mock_svc)
 
-        with _patched_auth():
-            with TestClient(app) as client:
-                resp = client.get("/api/cron/jobs", headers=_auth_headers())
+        with _patched_auth(), TestClient(app) as client:
+            resp = client.get("/api/cron/jobs", headers=_auth_headers())
 
         assert resp.status_code == 200
         data = resp.json()
@@ -81,9 +79,8 @@ class TestListCronJobs:
         mock_svc.list.return_value = [job1, job2]
         app = _make_app(cron_service=mock_svc)
 
-        with _patched_auth():
-            with TestClient(app) as client:
-                resp = client.get("/api/cron/jobs", headers=_auth_headers())
+        with _patched_auth(), TestClient(app) as client:
+            resp = client.get("/api/cron/jobs", headers=_auth_headers())
 
         assert resp.status_code == 200
         data = resp.json()
@@ -97,9 +94,8 @@ class TestListCronJobs:
         """GET /api/cron/jobs returns {jobs: [], error: ...} when cron_service is None (DASH-02)."""
         app = _make_app(cron_service=None)
 
-        with _patched_auth():
-            with TestClient(app) as client:
-                resp = client.get("/api/cron/jobs", headers=_auth_headers())
+        with _patched_auth(), TestClient(app) as client:
+            resp = client.get("/api/cron/jobs", headers=_auth_headers())
 
         assert resp.status_code == 200
         data = resp.json()
@@ -112,9 +108,8 @@ class TestListCronJobs:
         mock_svc.list.return_value = []
         app = _make_app(cron_service=mock_svc)
 
-        with _patched_auth():
-            with TestClient(app) as client:
-                resp = client.get("/api/cron/jobs")  # No auth header
+        with _patched_auth(), TestClient(app) as client:
+            resp = client.get("/api/cron/jobs")  # No auth header
 
         assert resp.status_code == 401
 
@@ -124,9 +119,8 @@ class TestListCronJobs:
         mock_svc.run = AsyncMock(return_value={"status": "ok"})
         app = _make_app(cron_service=mock_svc)
 
-        with _patched_auth():
-            with TestClient(app) as client:
-                resp = client.post("/api/cron/jobs/test-job/run")  # No auth header
+        with _patched_auth(), TestClient(app) as client:
+            resp = client.post("/api/cron/jobs/test-job/run")  # No auth header
 
         assert resp.status_code == 401
 
@@ -136,11 +130,8 @@ class TestListCronJobs:
         mock_svc.run = AsyncMock(return_value={"status": "ok", "job_id": "test-job"})
         app = _make_app(cron_service=mock_svc)
 
-        with _patched_auth():
-            with TestClient(app) as client:
-                resp = client.post(
-                    "/api/cron/jobs/test-job/run", headers=_auth_headers()
-                )
+        with _patched_auth(), TestClient(app) as client:
+            resp = client.post("/api/cron/jobs/test-job/run", headers=_auth_headers())
 
         assert resp.status_code == 200
         data = resp.json()
@@ -161,15 +152,18 @@ class TestDashboardNpmFree:
         """index.html contains no node_modules references (DASH-05)."""
         path = os.path.join(self._dashboard_dir(), "index.html")
         assert os.path.exists(path), f"index.html not found at {path}"
-        content = open(path, encoding="utf-8").read()
+        with open(path, encoding="utf-8") as _f:
+            content = _f.read()
         assert "node_modules" not in content, "index.html references node_modules"
 
     def test_index_html_no_npm_script_tags(self):
         """index.html has no <script src=> pointing to local npm packages (DASH-05)."""
         path = os.path.join(self._dashboard_dir(), "index.html")
-        content = open(path, encoding="utf-8").read()
+        with open(path, encoding="utf-8") as _f:
+            content = _f.read()
         # Detect patterns like <script src="./node_modules/..." or <script src="/node_modules/..."
         import re
+
         npm_script = re.search(r'<script[^>]+src=["\'][^"\']*node_modules', content)
         assert npm_script is None, f"index.html has npm script tag: {npm_script}"
 
@@ -177,13 +171,18 @@ class TestDashboardNpmFree:
         """synapse.js has no CommonJS require() calls (DASH-05)."""
         path = os.path.join(self._dashboard_dir(), "synapse.js")
         assert os.path.exists(path), f"synapse.js not found at {path}"
-        content = open(path, encoding="utf-8").read()
-        assert "require(" not in content, "synapse.js contains require() — suggests CommonJS/npm bundle"
+        with open(path, encoding="utf-8") as _f:
+            content = _f.read()
+        assert (
+            "require(" not in content
+        ), "synapse.js contains require() — suggests CommonJS/npm bundle"
 
     def test_synapse_js_no_node_modules_imports(self):
         """synapse.js has no ES module imports from node_modules (DASH-05)."""
         path = os.path.join(self._dashboard_dir(), "synapse.js")
-        content = open(path, encoding="utf-8").read()
+        with open(path, encoding="utf-8") as _f:
+            content = _f.read()
         import re
+
         npm_import = re.search(r'import\s+.*from\s+["\'][^"\']*node_modules', content)
         assert npm_import is None, f"synapse.js has node_modules import: {npm_import}"

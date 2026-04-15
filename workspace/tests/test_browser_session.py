@@ -3,11 +3,12 @@ Tests for sci_fi_dashboard.browser.session — browser session and tab managemen
 
 Note: Playwright is fully mocked. No real browser is launched.
 """
+
 from __future__ import annotations
 
 import os
 import sys
-from unittest.mock import AsyncMock, MagicMock, patch, PropertyMock
+from unittest.mock import AsyncMock, MagicMock, PropertyMock
 
 import pytest
 
@@ -225,8 +226,9 @@ class TestGetStatus:
 class TestGetConsole:
     @pytest.mark.asyncio
     async def test_returns_console_for_tab(self):
-        import sci_fi_dashboard.browser.session as sess
         from weakref import WeakKeyDictionary
+
+        import sci_fi_dashboard.browser.session as sess
 
         old_pages = sess._pages
         old_states = sess._page_states

@@ -10,17 +10,14 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-import pytest
-
 # Ensure workspace/ is on the import path regardless of cwd
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from sci_fi_dashboard.channels.network_errors import (
+    _classify_exception,
     is_recoverable_poll_error,
     is_safe_to_retry_send,
-    _classify_exception,
 )
-
 
 # ---------------------------------------------------------------------------
 # is_safe_to_retry_send — only pre-connect errors
@@ -130,6 +127,7 @@ class TestNestedExceptionClassification:
     def test_gaierror_classified(self):
         """socket.gaierror is a subclass of OSError — should match by string."""
         import socket
+
         exc = socket.gaierror("Name or service not known")
         assert _classify_exception(exc) == "gaierror"
 

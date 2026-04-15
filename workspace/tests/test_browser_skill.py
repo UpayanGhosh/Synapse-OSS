@@ -39,9 +39,7 @@ def _load_script(name: str):
     Each call returns a fresh module object so tests don't share state.
     """
     module_path = _BROWSER_SCRIPTS / f"{name}.py"
-    spec = importlib.util.spec_from_file_location(
-        f"test_browser_{name}", module_path
-    )
+    spec = importlib.util.spec_from_file_location(f"test_browser_{name}", module_path)
     if spec is None or spec.loader is None:
         raise ImportError(f"Cannot load script: {module_path}")
     mod = importlib.util.module_from_spec(spec)
@@ -538,6 +536,7 @@ async def test_search_rate_limiting_called():
         rate_limit_call_count += 1
         # Do NOT actually sleep — just record the call
         import time
+
         ws_module._last_request_time = time.monotonic()
 
     ws_module._rate_limit_wait = counting_rate_limit
@@ -549,6 +548,6 @@ async def test_search_rate_limiting_called():
         ws_module._rate_limit_wait = original_rate_limit
 
     # _rate_limit_wait must have been called at least once per search
-    assert rate_limit_call_count >= 2, (
-        f"Expected _rate_limit_wait called >= 2 times, got {rate_limit_call_count}"
-    )
+    assert (
+        rate_limit_call_count >= 2
+    ), f"Expected _rate_limit_wait called >= 2 times, got {rate_limit_call_count}"

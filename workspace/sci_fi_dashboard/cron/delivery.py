@@ -4,10 +4,11 @@ Cron Scheduler — delivery routing.
 Routes job output to the appropriate destination: a channel via the
 ChannelRegistry, a webhook URL, or nowhere (``none``).
 """
+
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Any
 
 try:
     import httpx
@@ -22,7 +23,7 @@ logger = logging.getLogger(__name__)
 async def deliver_output(
     output: str,
     delivery: CronDelivery,
-    channel_registry: Optional[Any] = None,
+    channel_registry: Any | None = None,
 ) -> dict[str, Any]:
     """Send *output* according to the delivery configuration.
 
@@ -45,7 +46,7 @@ async def deliver_output(
 async def _deliver_announce(
     output: str,
     delivery: CronDelivery,
-    channel_registry: Optional[Any],
+    channel_registry: Any | None,
 ) -> dict[str, Any]:
     """Announce via a registered channel."""
     if channel_registry is None:

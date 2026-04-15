@@ -17,16 +17,13 @@ fixtures from conftest.py. No live Ollama or external services are required.
 
 from __future__ import annotations
 
-import os
-import sys
 import time
-
-import pytest
 
 # ---------------------------------------------------------------------------
 # Inline helpers (avoids conftest name collision with pytest's sys.modules).
 # ---------------------------------------------------------------------------
 import numpy as np  # noqa: E402
+import pytest
 
 DIMS = 768
 
@@ -39,6 +36,7 @@ def _hash_embed(text: str) -> list[float]:
     if norm > 1e-9:
         vec /= norm
     return vec.tolist()
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -93,13 +91,13 @@ class TestPhase1DataIngestion:
         for row in rows:
             vec = row.get("vector")
             assert vec is not None, f"Row {row.get('id')} has a null vector field."
-            assert len(vec) == DIMS, (
-                f"Row {row.get('id')} vector has {len(vec)} dims, expected {DIMS}."
-            )
+            assert (
+                len(vec) == DIMS
+            ), f"Row {row.get('id')} vector has {len(vec)} dims, expected {DIMS}."
             # An all-zero vector means the embedding call returned a zero-fallback.
-            assert any(v != 0.0 for v in vec), (
-                f"Row {row.get('id')} vector is all zeros — embedding likely failed."
-            )
+            assert any(
+                v != 0.0 for v in vec
+            ), f"Row {row.get('id')} vector is all zeros — embedding likely failed."
 
     # ------------------------------------------------------------------
     # 3. Hemisphere tag validity
@@ -125,9 +123,7 @@ class TestPhase1DataIngestion:
             for row in rows
             if row.get("hemisphere_tag") not in valid_tags
         ]
-        assert not invalid, (
-            f"Found rows with invalid hemisphere_tag values: {invalid[:5]}"
-        )
+        assert not invalid, f"Found rows with invalid hemisphere_tag values: {invalid[:5]}"
 
     # ------------------------------------------------------------------
     # 4. Text round-trip
@@ -144,16 +140,15 @@ class TestPhase1DataIngestion:
 
         first_row = rows[0]
         stored_text = first_row.get("text", "")
-        assert isinstance(stored_text, str) and len(stored_text) > 0, (
-            f"Row id=0 text field is empty or non-string: {stored_text!r}"
-        )
+        assert (
+            isinstance(stored_text, str) and len(stored_text) > 0
+        ), f"Row id=0 text field is empty or non-string: {stored_text!r}"
         # Confirm stored text is one of the originally ingested facts.
         # (Arrow slice(0,1) returns the first physical row, not necessarily id=0,
         #  so we check membership rather than positional equality.)
         facts_set = set(pipeline_facts)
         assert stored_text in facts_set, (
-            f"Stored text is not found in the original fact list.\n"
-            f"  Got: {stored_text[:120]!r}"
+            f"Stored text is not found in the original fact list.\n" f"  Got: {stored_text[:120]!r}"
         )
 
     # ------------------------------------------------------------------
@@ -219,9 +214,9 @@ class TestPhase1DataIngestion:
         """
         query_vec = _hash_embed(pipeline_facts[0])
         results = pipeline_lancedb.search(query_vec, limit=5)
-        assert len(results) >= 1, (
-            "search() returned no results after ingest — ANN index may be broken."
-        )
+        assert (
+            len(results) >= 1
+        ), "search() returned no results after ingest — ANN index may be broken."
         # The top result should be the query itself (score near 1.0)
         top = results[0]
         assert top["score"] > 0.0, (
@@ -242,12 +237,10 @@ class TestPhase1DataIngestion:
         or a formatted neighbourhood string for known ones).
         """
         result = pipeline_graph.get_entity_neighborhood("sports")
-        assert result is not None, (
-            "get_entity_neighborhood() returned None — expected a string."
-        )
-        assert isinstance(result, str), (
-            f"get_entity_neighborhood() returned {type(result).__name__}, expected str."
-        )
+        assert result is not None, "get_entity_neighborhood() returned None — expected a string."
+        assert isinstance(
+            result, str
+        ), f"get_entity_neighborhood() returned {type(result).__name__}, expected str."
 
     # ------------------------------------------------------------------
     # 9. Idempotent double ingest

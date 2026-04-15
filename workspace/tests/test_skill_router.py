@@ -17,19 +17,15 @@ Test coverage:
 
 from __future__ import annotations
 
-import sys
 import os
+import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from unittest.mock import MagicMock, patch
-from pathlib import Path
 
-import pytest
-
-from sci_fi_dashboard.skills.schema import SkillManifest
 from sci_fi_dashboard.skills.router import SkillRouter
-
+from sci_fi_dashboard.skills.schema import SkillManifest
 
 # ---------------------------------------------------------------------------
 # Helpers / fixtures
@@ -85,9 +81,7 @@ def test_match_returns_best_skill():
         doc_vecs=[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
     )
 
-    with patch(
-        "sci_fi_dashboard.skills.router.get_provider", return_value=fake_provider
-    ):
+    with patch("sci_fi_dashboard.skills.router.get_provider", return_value=fake_provider):
         router = SkillRouter()
         router.update_skills([weather, coder])
         result = router.match("what's the weather like")
@@ -110,13 +104,11 @@ def test_match_returns_none_below_threshold():
     # cosine([0.3,0.3,0.3], [1.0,0.0,0.0]) ≈ 0.577  -- this actually exceeds threshold
     # Use different vectors to get genuinely low similarity
     fake_provider = _make_fake_provider(
-        query_vec=[0.0, 0.0, 1.0],   # orthogonal to both skill vectors
+        query_vec=[0.0, 0.0, 1.0],  # orthogonal to both skill vectors
         doc_vecs=[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
     )
 
-    with patch(
-        "sci_fi_dashboard.skills.router.get_provider", return_value=fake_provider
-    ):
+    with patch("sci_fi_dashboard.skills.router.get_provider", return_value=fake_provider):
         router = SkillRouter(threshold=0.45)
         router.update_skills([weather, coder])
         result = router.match("hello how are you")
@@ -137,9 +129,7 @@ def test_trigger_phrase_case_insensitive_match():
         triggers=["create a skill"],
     )
 
-    with patch(
-        "sci_fi_dashboard.skills.router.get_provider", return_value=None
-    ):
+    with patch("sci_fi_dashboard.skills.router.get_provider", return_value=None):
         router = SkillRouter()
         router.update_skills([skill])
         # "CREATE A SKILL for me" contains trigger "create a skill" case-insensitively
@@ -173,17 +163,15 @@ def test_trigger_priority_over_embedding():
         doc_vecs=[[0.0, 0.0, 1.0], [0.0, 1.0, 0.0]],  # skill_a=ortho, skill_b=identical
     )
 
-    with patch(
-        "sci_fi_dashboard.skills.router.get_provider", return_value=fake_provider
-    ):
+    with patch("sci_fi_dashboard.skills.router.get_provider", return_value=fake_provider):
         router = SkillRouter()
         router.update_skills([skill_a, skill_b])
         result = router.match("use the special keyword please")
 
     assert result is not None
-    assert result.name == "skill-a", (
-        f"Expected trigger-matched skill-a, got {result.name if result else None}"
-    )
+    assert (
+        result.name == "skill-a"
+    ), f"Expected trigger-matched skill-a, got {result.name if result else None}"
 
 
 # ---------------------------------------------------------------------------
@@ -227,9 +215,9 @@ def test_update_skills_reembeds():
 
         # After update, query should match new_skill
         result_after = router.match("new functionality request")
-        assert result_after is not None and result_after.name == "new-skill", (
-            f"Expected new-skill after update, got {result_after}"
-        )
+        assert (
+            result_after is not None and result_after.name == "new-skill"
+        ), f"Expected new-skill after update, got {result_after}"
 
 
 # ---------------------------------------------------------------------------
@@ -246,9 +234,7 @@ def test_no_provider_trigger_only_fallback():
     )
 
     # Simulate no provider by returning None
-    with patch(
-        "sci_fi_dashboard.skills.router.get_provider", return_value=None
-    ):
+    with patch("sci_fi_dashboard.skills.router.get_provider", return_value=None):
         router = SkillRouter()
         router.update_skills([skill])
 

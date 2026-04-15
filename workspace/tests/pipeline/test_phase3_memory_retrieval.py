@@ -21,8 +21,8 @@ Run:
 
 from __future__ import annotations
 
-import sys
 import os
+import sys
 import time
 
 # ---------------------------------------------------------------------------
@@ -34,23 +34,24 @@ for _p in (_WORKSPACE, os.path.dirname(_WORKSPACE)):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch  # noqa: E402
+
+import pytest  # noqa: E402
 
 pytest.importorskip("lancedb", reason="lancedb not installed")
 
-from sci_fi_dashboard.memory_engine import MemoryEngine
-from sci_fi_dashboard.vector_store.lancedb_store import LanceDBVectorStore
+from sci_fi_dashboard.memory_engine import MemoryEngine  # noqa: E402
+from sci_fi_dashboard.vector_store.lancedb_store import LanceDBVectorStore  # noqa: E402
 
 # Import test helpers from the sibling conftest.py.
 # conftest.py is auto-loaded by pytest, but for explicit use of the helpers
 # we import them directly.
-from .conftest import _hash_embed, _FakeEmbedProvider, DIMS
-
+from .conftest import DIMS, _FakeEmbedProvider, _hash_embed  # noqa: E402
 
 # ===========================================================================
 # Test 1 — Result format
 # ===========================================================================
+
 
 def test_query_result_format(pipeline_memory_engine):
     """query() must return a dict with 'results', 'tier', and valid result items."""
@@ -59,9 +60,11 @@ def test_query_result_format(pipeline_memory_engine):
     assert isinstance(result, dict), "query() must return a dict"
     assert "results" in result, "result must contain 'results' key"
     assert "tier" in result, "result must contain 'tier' key"
-    assert result["tier"] in ("fast_gate", "reranked", "error"), (
-        f"tier must be one of fast_gate/reranked/error, got: {result['tier']!r}"
-    )
+    assert result["tier"] in (
+        "fast_gate",
+        "reranked",
+        "error",
+    ), f"tier must be one of fast_gate/reranked/error, got: {result['tier']!r}"
 
     for r in result["results"]:
         assert "content" in r, f"Each result item must have 'content' key, got: {r!r}"
@@ -73,32 +76,31 @@ def test_query_result_format(pipeline_memory_engine):
 # Test 2 — limit parameter respected
 # ===========================================================================
 
+
 def test_query_limit_respected(pipeline_memory_engine):
     """query(limit=3) must return at most 3 results."""
     result = pipeline_memory_engine.query("sports business world", limit=3)
 
-    assert len(result["results"]) <= 3, (
-        f"Expected at most 3 results, got {len(result['results'])}"
-    )
+    assert len(result["results"]) <= 3, f"Expected at most 3 results, got {len(result['results'])}"
 
 
 # ===========================================================================
 # Test 3 — Score range
 # ===========================================================================
 
+
 def test_query_score_range(pipeline_memory_engine):
     """All result scores must be in [0.0, 1.0]."""
     result = pipeline_memory_engine.query("test fact topic", limit=5)
 
     for r in result["results"]:
-        assert 0.0 <= r["score"] <= 1.0, (
-            f"score {r['score']} is out of [0.0, 1.0] range"
-        )
+        assert 0.0 <= r["score"] <= 1.0, f"score {r['score']} is out of [0.0, 1.0] range"
 
 
 # ===========================================================================
 # Test 4 — Safe hemisphere filtering
 # ===========================================================================
+
 
 def test_query_safe_hemisphere_only(tmp_path):
     """hemisphere='safe' must exclude spicy facts and include safe ones."""
@@ -110,36 +112,44 @@ def test_query_safe_hemisphere_only(tmp_path):
     # Seed a spicy fact
     spicy_text = "this is spicy content unique xzq"
     spicy_vec = _hash_embed(spicy_text)
-    fresh_store.upsert_facts([{
-        "id": 1001,
-        "vector": spicy_vec,
-        "metadata": {
-            "text": spicy_text,
-            "hemisphere_tag": "spicy",
-            "unix_timestamp": int(time.time()),
-            "importance": 5,
-            "source_id": 1001,
-            "entity": "",
-            "category": "test",
-        },
-    }])
+    fresh_store.upsert_facts(
+        [
+            {
+                "id": 1001,
+                "vector": spicy_vec,
+                "metadata": {
+                    "text": spicy_text,
+                    "hemisphere_tag": "spicy",
+                    "unix_timestamp": int(time.time()),
+                    "importance": 5,
+                    "source_id": 1001,
+                    "entity": "",
+                    "category": "test",
+                },
+            }
+        ]
+    )
 
     # Seed a safe fact
     safe_text = "this is safe content unique abc"
     safe_vec = _hash_embed(safe_text)
-    fresh_store.upsert_facts([{
-        "id": 1002,
-        "vector": safe_vec,
-        "metadata": {
-            "text": safe_text,
-            "hemisphere_tag": "safe",
-            "unix_timestamp": int(time.time()),
-            "importance": 5,
-            "source_id": 1002,
-            "entity": "",
-            "category": "test",
-        },
-    }])
+    fresh_store.upsert_facts(
+        [
+            {
+                "id": 1002,
+                "vector": safe_vec,
+                "metadata": {
+                    "text": safe_text,
+                    "hemisphere_tag": "safe",
+                    "unix_timestamp": int(time.time()),
+                    "importance": 5,
+                    "source_id": 1002,
+                    "entity": "",
+                    "category": "test",
+                },
+            }
+        ]
+    )
 
     # Build a fresh engine pointing at this store
     fake_provider = _FakeEmbedProvider()
@@ -155,18 +165,19 @@ def test_query_safe_hemisphere_only(tmp_path):
     texts = [r["content"] for r in result["results"]]
 
     # Spicy fact must be excluded regardless of query
-    assert not any("spicy" in t.lower() for t in texts), (
-        f"hemisphere='safe' must not return spicy facts. Got: {texts}"
-    )
+    assert not any(
+        "spicy" in t.lower() for t in texts
+    ), f"hemisphere='safe' must not return spicy facts. Got: {texts}"
     # Safe fact must be present (exact-match vector → high score)
-    assert any("safe" in t.lower() for t in texts), (
-        f"hemisphere='safe' must return safe facts. Got: {texts}"
-    )
+    assert any(
+        "safe" in t.lower() for t in texts
+    ), f"hemisphere='safe' must return safe facts. Got: {texts}"
 
 
 # ===========================================================================
 # Test 5 — Empty store
 # ===========================================================================
+
 
 def test_query_empty_store(tmp_path):
     """Querying an empty store must return empty results without raising."""
@@ -185,14 +196,15 @@ def test_query_empty_store(tmp_path):
     # Must not raise
     result = empty_engine.query("anything at all")
 
-    assert result["results"] == [] or result["tier"] == "error", (
-        f"Empty store must yield empty results or error tier, got: {result}"
-    )
+    assert (
+        result["results"] == [] or result["tier"] == "error"
+    ), f"Empty store must yield empty results or error tier, got: {result}"
 
 
 # ===========================================================================
 # Test 6 — LRU cache: get_embedding called only once per unique text
 # ===========================================================================
+
 
 def test_get_embedding_lru_cache(tmp_path):
     """Calling get_embedding() twice with the same text hits the cache on the second call."""
@@ -224,6 +236,7 @@ def test_get_embedding_lru_cache(tmp_path):
 # ===========================================================================
 # Test 7 — pre_cached_memory bypasses memory.query() in DualCognitionEngine
 # ===========================================================================
+
 
 @pytest.mark.asyncio
 async def test_query_with_pre_cached_memory_skips_store_search(pipeline_graph):
@@ -259,32 +272,35 @@ async def test_query_with_pre_cached_memory_skips_store_search(pipeline_graph):
 # Test 8 — graph_context key always present when with_graph=True
 # ===========================================================================
 
+
 def test_query_graph_context_included(pipeline_memory_engine):
     """query(with_graph=True) result must always contain 'graph_context' as a string."""
     result = pipeline_memory_engine.query("sports", with_graph=True)
 
     assert "graph_context" in result, "result must contain 'graph_context' key"
-    assert isinstance(result["graph_context"], str), (
-        f"graph_context must be a str, got {type(result['graph_context'])}"
-    )
+    assert isinstance(
+        result["graph_context"], str
+    ), f"graph_context must be a str, got {type(result['graph_context'])}"
 
 
 # ===========================================================================
 # Test 9 — graph_context is empty string when with_graph=False
 # ===========================================================================
 
+
 def test_query_without_graph(pipeline_memory_engine):
     """query(with_graph=False) must set graph_context to empty string."""
     result = pipeline_memory_engine.query("technology", limit=3, with_graph=False)
 
-    assert result["graph_context"] == "", (
-        f"with_graph=False must produce empty graph_context, got: {result['graph_context']!r}"
-    )
+    assert (
+        result["graph_context"] == ""
+    ), f"with_graph=False must produce empty graph_context, got: {result['graph_context']!r}"
 
 
 # ===========================================================================
 # Test 10 — Direct store search finds seeded fact
 # ===========================================================================
+
 
 def test_query_returns_facts_from_seeded_store(pipeline_facts, pipeline_lancedb):
     """Direct LanceDB search using a seeded vector must return that fact with high score."""
@@ -293,17 +309,18 @@ def test_query_returns_facts_from_seeded_store(pipeline_facts, pipeline_lancedb)
 
     results = pipeline_lancedb.search(query_vec, limit=1)
 
-    assert len(results) >= 1, (
-        "Direct store search must find at least one result for a seeded fact vector"
-    )
-    assert results[0]["score"] > 0.9, (
-        f"Identical vector must produce score > 0.9. Got: {results[0]['score']}"
-    )
+    assert (
+        len(results) >= 1
+    ), "Direct store search must find at least one result for a seeded fact vector"
+    assert (
+        results[0]["score"] > 0.9
+    ), f"Identical vector must produce score > 0.9. Got: {results[0]['score']}"
 
 
 # ===========================================================================
 # Test 11 — Upsert then search round-trip
 # ===========================================================================
+
 
 def test_direct_upsert_then_searchable(tmp_path):
     """A fact upserted to a fresh store must be immediately findable with high score."""
@@ -315,36 +332,39 @@ def test_direct_upsert_then_searchable(tmp_path):
     target_text = "I am a professional chef who loves cooking Italian food"
     vec = _hash_embed(target_text)
 
-    fresh_store.upsert_facts([{
-        "id": 9999,
-        "vector": vec,
-        "metadata": {
-            "text": target_text,
-            "hemisphere_tag": "safe",
-            "unix_timestamp": int(time.time()),
-            "importance": 7,
-            "source_id": 9999,
-            "entity": "",
-            "category": "test",
-        },
-    }])
+    fresh_store.upsert_facts(
+        [
+            {
+                "id": 9999,
+                "vector": vec,
+                "metadata": {
+                    "text": target_text,
+                    "hemisphere_tag": "safe",
+                    "unix_timestamp": int(time.time()),
+                    "importance": 7,
+                    "source_id": 9999,
+                    "entity": "",
+                    "category": "test",
+                },
+            }
+        ]
+    )
 
     results = fresh_store.search(vec, limit=1)
 
-    assert len(results) == 1, (
-        "search() must return exactly 1 result for a freshly upserted fact"
-    )
-    assert results[0]["score"] > 0.99, (
-        f"Near-identical vector must score > 0.99. Got: {results[0]['score']}"
-    )
-    assert "chef" in results[0]["metadata"]["text"].lower(), (
-        f"Returned text must contain 'chef'. Got: {results[0]['metadata']['text']!r}"
-    )
+    assert len(results) == 1, "search() must return exactly 1 result for a freshly upserted fact"
+    assert (
+        results[0]["score"] > 0.99
+    ), f"Near-identical vector must score > 0.99. Got: {results[0]['score']}"
+    assert (
+        "chef" in results[0]["metadata"]["text"].lower()
+    ), f"Returned text must contain 'chef'. Got: {results[0]['metadata']['text']!r}"
 
 
 # ===========================================================================
 # Test 12 — Temporal scoring applied
 # ===========================================================================
+
 
 def test_temporal_score_applied(tmp_path):
     """
@@ -365,34 +385,42 @@ def test_temporal_score_applied(tmp_path):
     now = int(time.time())
 
     # Old fact: 365 days ago
-    fresh_store.upsert_facts([{
-        "id": 1,
-        "vector": vec,
-        "metadata": {
-            "text": text + " old",
-            "hemisphere_tag": "safe",
-            "unix_timestamp": now - 365 * 86400,
-            "importance": 5,
-            "source_id": 1,
-            "entity": "",
-            "category": "test",
-        },
-    }])
+    fresh_store.upsert_facts(
+        [
+            {
+                "id": 1,
+                "vector": vec,
+                "metadata": {
+                    "text": text + " old",
+                    "hemisphere_tag": "safe",
+                    "unix_timestamp": now - 365 * 86400,
+                    "importance": 5,
+                    "source_id": 1,
+                    "entity": "",
+                    "category": "test",
+                },
+            }
+        ]
+    )
 
     # Recent fact: now
-    fresh_store.upsert_facts([{
-        "id": 2,
-        "vector": vec,
-        "metadata": {
-            "text": text + " recent",
-            "hemisphere_tag": "safe",
-            "unix_timestamp": now,
-            "importance": 5,
-            "source_id": 2,
-            "entity": "",
-            "category": "test",
-        },
-    }])
+    fresh_store.upsert_facts(
+        [
+            {
+                "id": 2,
+                "vector": vec,
+                "metadata": {
+                    "text": text + " recent",
+                    "hemisphere_tag": "safe",
+                    "unix_timestamp": now,
+                    "importance": 5,
+                    "source_id": 2,
+                    "entity": "",
+                    "category": "test",
+                },
+            }
+        ]
+    )
 
     fake_provider = _FakeEmbedProvider()
     with patch("sci_fi_dashboard.memory_engine.get_provider", return_value=fake_provider):
@@ -407,8 +435,8 @@ def test_temporal_score_applied(tmp_path):
     if result["results"]:
         contents = [r["content"] for r in result["results"]]
         # At least one of the seeded facts must appear
-        assert any("recent" in c or "old" in c for c in contents), (
-            f"At least one seeded temporal fact must appear in results. Got: {contents}"
-        )
+        assert any(
+            "recent" in c or "old" in c for c in contents
+        ), f"At least one seeded temporal fact must appear in results. Got: {contents}"
 
     temp_engine.get_embedding.cache_clear()

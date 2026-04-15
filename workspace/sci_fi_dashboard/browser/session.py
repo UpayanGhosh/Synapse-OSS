@@ -8,13 +8,14 @@ for batch cleanup.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from weakref import WeakKeyDictionary
 
-from playwright.async_api import async_playwright, Browser, Page, Playwright
+from playwright.async_api import Browser, Page, Playwright, async_playwright
 
 from .navigation_guard import (
     assert_navigation_allowed,
@@ -43,6 +44,7 @@ _ERROR_CAP = 200
 # Page state
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class PageState:
     console: list[dict] = field(default_factory=list)
@@ -50,7 +52,7 @@ class PageState:
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def _attach_listeners(page: Page) -> None:
@@ -59,18 +61,22 @@ def _attach_listeners(page: Page) -> None:
 
     def on_console(msg):
         if len(state.console) < _CONSOLE_CAP:
-            state.console.append({
-                "type": msg.type,
-                "text": msg.text,
-                "timestamp": _now(),
-            })
+            state.console.append(
+                {
+                    "type": msg.type,
+                    "text": msg.text,
+                    "timestamp": _now(),
+                }
+            )
 
     def on_pageerror(exc):
         if len(state.errors) < _ERROR_CAP:
-            state.errors.append({
-                "message": str(exc),
-                "timestamp": _now(),
-            })
+            state.errors.append(
+                {
+                    "message": str(exc),
+                    "timestamp": _now(),
+                }
+            )
 
     page.on("console", on_console)
     page.on("pageerror", on_pageerror)
@@ -79,6 +85,7 @@ def _attach_listeners(page: Page) -> None:
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
 
 async def start_browser() -> dict:
     """Launch playwright chromium headless. No-op if already running."""
@@ -143,7 +150,8 @@ async def stop_browser() -> dict:
     if errors:
         logger.error(
             "Browser stopped with %d cleanup error(s): %s",
-            len(errors), "; ".join(errors),
+            len(errors),
+            "; ".join(errors),
         )
 
     logger.info("Browser stopped")
@@ -192,10 +200,8 @@ async def close_tab(tab_id: str) -> dict:
     if page is None:
         return {"closed": tab_id, "note": "tab not found"}
 
-    try:
+    with contextlib.suppress(Exception):
         await page.close()
-    except Exception:
-        pass
 
     for tabs in _session_tabs.values():
         if tab_id in tabs:
@@ -209,11 +215,13 @@ async def list_tabs() -> list[dict]:
     result = []
     for tab_id, page in list(_pages.items()):
         try:
-            result.append({
-                "tab_id": tab_id,
-                "url": page.url,
-                "title": await page.title(),
-            })
+            result.append(
+                {
+                    "tab_id": tab_id,
+                    "url": page.url,
+                    "title": await page.title(),
+                }
+            )
         except Exception:
             result.append({"tab_id": tab_id, "url": "unknown", "title": "unknown"})
     return result

@@ -10,11 +10,10 @@ Covers:
 - logout(), relink()
 """
 
-import asyncio
 import importlib.util
 import os
 import sys
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 
 import httpx
 import pytest
@@ -23,17 +22,15 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 WA_AVAILABLE = importlib.util.find_spec("sci_fi_dashboard.channels.whatsapp") is not None
 
-pytestmark = pytest.mark.skipif(
-    not WA_AVAILABLE, reason="WhatsAppChannel not available"
-)
+pytestmark = pytest.mark.skipif(not WA_AVAILABLE, reason="WhatsAppChannel not available")
 
 if WA_AVAILABLE:
-    from sci_fi_dashboard.channels.whatsapp import WhatsAppChannel
     from sci_fi_dashboard.channels.security import (
         ChannelSecurityConfig,
         DmPolicy,
         PairingStore,
     )
+    from sci_fi_dashboard.channels.whatsapp import WhatsAppChannel
 
 
 # ===========================================================================
@@ -95,12 +92,8 @@ class TestWhatsAppReceive:
     async def test_receive_dm_blocked_by_security(self, tmp_path):
         store = PairingStore("whatsapp", data_root=tmp_path)
         await store.load()
-        cfg = ChannelSecurityConfig(
-            dm_policy=DmPolicy.ALLOWLIST, allow_from=["allowed_user"]
-        )
-        ch = WhatsAppChannel(
-            bridge_port=5010, security_config=cfg, pairing_store=store
-        )
+        cfg = ChannelSecurityConfig(dm_policy=DmPolicy.ALLOWLIST, allow_from=["allowed_user"])
+        ch = WhatsAppChannel(bridge_port=5010, security_config=cfg, pairing_store=store)
         payload = {
             "type": "message",
             "chat_id": "blocked_user",
@@ -116,9 +109,7 @@ class TestWhatsAppReceive:
         store = PairingStore("whatsapp", data_root=tmp_path)
         await store.load()
         cfg = ChannelSecurityConfig(dm_policy=DmPolicy.DISABLED)
-        ch = WhatsAppChannel(
-            bridge_port=5010, security_config=cfg, pairing_store=store
-        )
+        ch = WhatsAppChannel(bridge_port=5010, security_config=cfg, pairing_store=store)
         payload = {
             "type": "message",
             "chat_id": "group@g.us",

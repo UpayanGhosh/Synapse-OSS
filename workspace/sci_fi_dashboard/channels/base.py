@@ -107,8 +107,7 @@ class MsgContext:
             value = getattr(self, field_name)
             if not isinstance(value, str) or not value.strip():
                 raise ValueError(
-                    f"MsgContext.{field_name} must be a non-empty string, "
-                    f"got {value!r}"
+                    f"MsgContext.{field_name} must be a non-empty string, " f"got {value!r}"
                 )
 
     @staticmethod

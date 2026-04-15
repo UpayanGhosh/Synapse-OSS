@@ -4,13 +4,13 @@ Cron Scheduler — schedule parsing and next-run computation.
 Handles all three schedule kinds (at / every / cron) and applies
 deterministic stagger offsets for top-of-hour jobs.
 """
+
 from __future__ import annotations
 
 import logging
 import math
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from functools import lru_cache
-from typing import Optional
 from zoneinfo import ZoneInfo
 
 from croniter import croniter
@@ -31,7 +31,7 @@ def _parse_cron_expr(expr: str) -> bool:
     return True
 
 
-def compute_next_run_at_ms(schedule: CronSchedule, now_ms: int) -> Optional[int]:
+def compute_next_run_at_ms(schedule: CronSchedule, now_ms: int) -> int | None:
     """Compute the next run time in epoch milliseconds.
 
     Returns:
@@ -50,7 +50,7 @@ def compute_next_run_at_ms(schedule: CronSchedule, now_ms: int) -> Optional[int]
         raise ValueError(f"Unknown schedule kind: {kind}")
 
 
-def _next_run_at(schedule: CronSchedule, now_ms: int) -> Optional[int]:
+def _next_run_at(schedule: CronSchedule, now_ms: int) -> int | None:
     """One-shot: return the ISO datetime as epoch ms if in the future."""
     if not schedule.at:
         return None
@@ -58,7 +58,7 @@ def _next_run_at(schedule: CronSchedule, now_ms: int) -> Optional[int]:
         dt = datetime.fromisoformat(schedule.at)
         # If naive, assume UTC
         if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
+            dt = dt.replace(tzinfo=UTC)
         target_ms = int(dt.timestamp() * 1000)
         return target_ms if target_ms > now_ms else None
     except (ValueError, OSError) as exc:
@@ -66,7 +66,7 @@ def _next_run_at(schedule: CronSchedule, now_ms: int) -> Optional[int]:
         return None
 
 
-def _next_run_every(schedule: CronSchedule, now_ms: int) -> Optional[int]:
+def _next_run_every(schedule: CronSchedule, now_ms: int) -> int | None:
     """Recurring interval: anchor + ceil((now - anchor) / every) * every."""
     every_ms = schedule.every_ms
     if not every_ms or every_ms <= 0:
@@ -82,7 +82,7 @@ def _next_run_every(schedule: CronSchedule, now_ms: int) -> Optional[int]:
     return next_ms + schedule.stagger_ms
 
 
-def _next_run_cron(schedule: CronSchedule, now_ms: int) -> Optional[int]:
+def _next_run_cron(schedule: CronSchedule, now_ms: int) -> int | None:
     """Cron expression: croniter.get_next() with timezone + stagger."""
     if not schedule.expr:
         return None
@@ -91,10 +91,10 @@ def _next_run_cron(schedule: CronSchedule, now_ms: int) -> Optional[int]:
     _parse_cron_expr(schedule.expr)
 
     try:
-        tz = ZoneInfo(schedule.tz) if schedule.tz else timezone.utc
+        tz = ZoneInfo(schedule.tz) if schedule.tz else UTC
     except KeyError:
         logger.warning("Unknown timezone %r, falling back to UTC", schedule.tz)
-        tz = timezone.utc
+        tz = UTC
 
     now_dt = datetime.fromtimestamp(now_ms / 1000, tz=tz)
     cron = croniter(schedule.expr, now_dt)

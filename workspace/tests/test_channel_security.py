@@ -7,8 +7,6 @@ Covers:
 - resolve_dm_access for all 4 policy variants
 """
 
-import asyncio
-import json
 import os
 import sys
 
@@ -22,7 +20,6 @@ from sci_fi_dashboard.channels.security import (
     PairingStore,
     resolve_dm_access,
 )
-
 
 # ===========================================================================
 # DmPolicy Tests
@@ -160,7 +157,7 @@ class TestPairingStore:
         store._path.parent.mkdir(parents=True, exist_ok=True)
         store._path.write_text(
             '{"action":"approve","sender_id":"good_user"}\n'
-            'NOT VALID JSON\n'
+            "NOT VALID JSON\n"
             '{"action":"approve","sender_id":"also_good"}\n'
         )
         await store.load()
@@ -173,8 +170,7 @@ class TestPairingStore:
         store = PairingStore("test", data_root=tmp_path)
         store._path.parent.mkdir(parents=True, exist_ok=True)
         store._path.write_text(
-            '{"action":"approve"}\n'
-            '{"action":"approve","sender_id":"valid"}\n'
+            '{"action":"approve"}\n' '{"action":"approve","sender_id":"valid"}\n'
         )
         await store.load()
         assert store.load_all() == ["valid"]
@@ -216,24 +212,18 @@ class TestResolveDmAccess:
         assert resolve_dm_access("anyone", cfg) == "deny"
 
     def test_allowlist_allows_listed(self):
-        cfg = ChannelSecurityConfig(
-            dm_policy=DmPolicy.ALLOWLIST, allow_from=["user1", "user2"]
-        )
+        cfg = ChannelSecurityConfig(dm_policy=DmPolicy.ALLOWLIST, allow_from=["user1", "user2"])
         assert resolve_dm_access("user1", cfg) == "allow"
         assert resolve_dm_access("user2", cfg) == "allow"
 
     def test_allowlist_denies_unlisted(self):
-        cfg = ChannelSecurityConfig(
-            dm_policy=DmPolicy.ALLOWLIST, allow_from=["user1"]
-        )
+        cfg = ChannelSecurityConfig(dm_policy=DmPolicy.ALLOWLIST, allow_from=["user1"])
         assert resolve_dm_access("stranger", cfg) == "deny"
 
     @pytest.mark.asyncio
     async def test_pairing_allows_from_allow_list(self, tmp_path):
         """Pairing mode: senders in allow_from are always allowed."""
-        cfg = ChannelSecurityConfig(
-            dm_policy=DmPolicy.PAIRING, allow_from=["trusted"]
-        )
+        cfg = ChannelSecurityConfig(dm_policy=DmPolicy.PAIRING, allow_from=["trusted"])
         store = PairingStore("test", data_root=tmp_path)
         await store.load()
         assert resolve_dm_access("trusted", cfg, store) == "allow"
@@ -262,7 +252,5 @@ class TestResolveDmAccess:
 
     def test_pairing_without_store_but_in_allow_from(self):
         """Pairing mode: sender in allow_from always allowed even without store."""
-        cfg = ChannelSecurityConfig(
-            dm_policy=DmPolicy.PAIRING, allow_from=["vip"]
-        )
+        cfg = ChannelSecurityConfig(dm_policy=DmPolicy.PAIRING, allow_from=["vip"])
         assert resolve_dm_access("vip", cfg, pairing_store=None) == "allow"

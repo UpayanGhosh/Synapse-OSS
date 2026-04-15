@@ -7,7 +7,6 @@ Default timeout is 5000ms unless noted.
 
 from __future__ import annotations
 
-import base64
 import re
 
 from playwright.async_api import Page
@@ -49,6 +48,7 @@ async def take_snapshot(page: Page, format: str = "ai") -> dict:
     if format == "aria":
         snapshot = await page.accessibility.snapshot()
         import json
+
         text = json.dumps(snapshot, ensure_ascii=False)
         return {"snapshot": text}
 

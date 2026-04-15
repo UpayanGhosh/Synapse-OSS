@@ -4,6 +4,7 @@ config/redaction.py — Redact and restore sensitive fields in config snapshots.
 Sensitive fields are replaced with ``{"type": "secret-ref", "ref": "path.to.field"}``
 so that config snapshots can be safely logged or displayed.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -42,9 +43,7 @@ def redact_snapshot(config_dict: dict[str, Any], path: str = "") -> dict[str, An
     return result
 
 
-def restore_snapshot(
-    redacted: dict[str, Any], live: dict[str, Any]
-) -> dict[str, Any]:
+def restore_snapshot(redacted: dict[str, Any], live: dict[str, Any]) -> dict[str, Any]:
     """Restore redacted fields by pulling values from *live* config.
 
     Parameters
@@ -61,11 +60,7 @@ def restore_snapshot(
     """
     result: dict[str, Any] = {}
     for key, value in redacted.items():
-        if (
-            isinstance(value, dict)
-            and value.get("type") == "secret-ref"
-            and "ref" in value
-        ):
+        if isinstance(value, dict) and value.get("type") == "secret-ref" and "ref" in value:
             # Restore from live config
             result[key] = live.get(key, value)
         elif isinstance(value, dict):

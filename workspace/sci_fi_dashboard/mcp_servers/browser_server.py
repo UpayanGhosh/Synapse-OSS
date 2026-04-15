@@ -9,9 +9,9 @@ import json
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
-from mcp.types import Tool, TextContent
+from mcp.types import TextContent, Tool
 
-from .base import setup_logging, logger
+from .base import logger, setup_logging
 
 server = Server("synapse-browser")
 
@@ -32,10 +32,17 @@ async def list_tools() -> list[Tool]:
                     "action": {
                         "type": "string",
                         "enum": [
-                            "start", "stop", "status",
-                            "open", "close", "tabs",
-                            "navigate", "screenshot", "snapshot",
-                            "console", "act",
+                            "start",
+                            "stop",
+                            "status",
+                            "open",
+                            "close",
+                            "tabs",
+                            "navigate",
+                            "screenshot",
+                            "snapshot",
+                            "console",
+                            "act",
                         ],
                     },
                     "tab_id": {"type": "string"},
@@ -51,8 +58,14 @@ async def list_tools() -> list[Tool]:
                     "kind": {
                         "type": "string",
                         "enum": [
-                            "click", "type", "press", "hover",
-                            "select", "fill", "wait", "evaluate",
+                            "click",
+                            "type",
+                            "press",
+                            "hover",
+                            "select",
+                            "fill",
+                            "wait",
+                            "evaluate",
                         ],
                     },
                     "text": {"type": "string"},
@@ -84,9 +97,9 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
     if name != "browser":
         return [TextContent(type="text", text=f"Unknown tool: {name}")]
 
-    from sci_fi_dashboard.browser.navigation_guard import NavigationBlockedError
-    from sci_fi_dashboard.browser import session as sess
     from sci_fi_dashboard.browser import interactions as ix
+    from sci_fi_dashboard.browser import session as sess
+    from sci_fi_dashboard.browser.navigation_guard import NavigationBlockedError
 
     action = arguments.get("action")
 

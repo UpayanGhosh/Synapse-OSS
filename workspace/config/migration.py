@@ -4,10 +4,12 @@ config/migration.py — Legacy config migration helpers.
 Each migration function is idempotent — running it on already-migrated data
 is a no-op.  Migrations are applied in order during config load.
 """
+
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 logger = logging.getLogger(__name__)
 

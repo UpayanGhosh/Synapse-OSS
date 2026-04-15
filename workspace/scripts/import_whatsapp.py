@@ -15,6 +15,7 @@ Usage:
     python scripts/import_whatsapp.py chat_export.txt --speaker "YourName" --hemisphere safe
     python scripts/import_whatsapp.py chat_export.txt --speaker "FriendName" --hemisphere spicy --dry-run
 """
+
 import argparse
 import re
 import sys
@@ -27,9 +28,13 @@ sys.path.insert(0, str(WORKSPACE_DIR))
 # WhatsApp date format patterns
 WA_PATTERNS = [
     # [MM/DD/YY, HH:MM:SS AM/PM] Name: message
-    re.compile(r"^\[(\d{1,2}/\d{1,2}/\d{2,4}),\s*(\d{1,2}:\d{2}(?::\d{2})?(?:\s*[AP]M)?)\]\s*([^:]+):\s*(.+)$"),
+    re.compile(
+        r"^\[(\d{1,2}/\d{1,2}/\d{2,4}),\s*(\d{1,2}:\d{2}(?::\d{2})?(?:\s*[AP]M)?)\]\s*([^:]+):\s*(.+)$"
+    ),
     # MM/DD/YY, HH:MM - Name: message (no brackets)
-    re.compile(r"^(\d{1,2}/\d{1,2}/\d{2,4}),\s*(\d{1,2}:\d{2}(?:\s*[AP]M)?)\s*-\s*([^:]+):\s*(.+)$"),
+    re.compile(
+        r"^(\d{1,2}/\d{1,2}/\d{2,4}),\s*(\d{1,2}:\d{2}(?:\s*[AP]M)?)\s*-\s*([^:]+):\s*(.+)$"
+    ),
 ]
 
 SKIP_MESSAGES = [
@@ -101,7 +106,7 @@ def chunk_messages(messages: list[dict], chunk_size: int = CHUNK_SIZE) -> list[s
     """Group messages into chunks of N for more meaningful context."""
     chunks = []
     for i in range(0, len(messages), chunk_size):
-        group = messages[i:i + chunk_size]
+        group = messages[i : i + chunk_size]
         lines = []
         for msg in group:
             lines.append(f"[{msg['date']}] {msg['sender']}: {msg['content']}")
@@ -116,6 +121,7 @@ def ingest_chunks(chunks: list[str], hemisphere: str, dry_run: bool) -> int:
         return 0
 
     from sci_fi_dashboard.db import DatabaseManager
+
     conn = DatabaseManager.get_connection()
     inserted = 0
     for chunk in chunks:
@@ -136,14 +142,24 @@ def ingest_chunks(chunks: list[str], hemisphere: str, dry_run: bool) -> int:
 def main():
     parser = argparse.ArgumentParser(description="Import WhatsApp export into Synapse memory")
     parser.add_argument("file", help="Path to WhatsApp .txt export file")
-    parser.add_argument("--speaker", default=None,
-                        help="Filter to only import messages from this speaker name")
-    parser.add_argument("--hemisphere", choices=["safe", "spicy"], default="safe",
-                        help="Hemisphere tag for imported messages (default: safe)")
-    parser.add_argument("--chunk-size", type=int, default=CHUNK_SIZE,
-                        help=f"Messages per chunk (default: {CHUNK_SIZE})")
-    parser.add_argument("--dry-run", action="store_true",
-                        help="Preview only — no writes to database")
+    parser.add_argument(
+        "--speaker", default=None, help="Filter to only import messages from this speaker name"
+    )
+    parser.add_argument(
+        "--hemisphere",
+        choices=["safe", "spicy"],
+        default="safe",
+        help="Hemisphere tag for imported messages (default: safe)",
+    )
+    parser.add_argument(
+        "--chunk-size",
+        type=int,
+        default=CHUNK_SIZE,
+        help=f"Messages per chunk (default: {CHUNK_SIZE})",
+    )
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Preview only — no writes to database"
+    )
     args = parser.parse_args()
 
     filepath = Path(args.file)

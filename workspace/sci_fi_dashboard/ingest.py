@@ -118,7 +118,7 @@ def ingest_atomic():
 
                 cursor = conn.cursor()
                 count = 0
-                for (filename, content, chash), vec in zip(new_items, vectors):
+                for (filename, content, chash), vec in zip(new_items, vectors, strict=False):
                     if not vec:
                         continue
 

@@ -132,7 +132,9 @@ def initialize_sbs_from_wizard(answers: dict, data_root: Path) -> None:  # noqa:
             "communication_style", "casual_and_witty"
         )
         mgr.save_layer("linguistic", linguistic)
-        logger.debug("SBS linguistic layer seeded: preferred_style=%s", answers.get("communication_style"))
+        logger.debug(
+            "SBS linguistic layer seeded: preferred_style=%s", answers.get("communication_style")
+        )
     except Exception:  # noqa: BLE001
         logger.warning("Could not write linguistic layer — skipping", exc_info=True)
 

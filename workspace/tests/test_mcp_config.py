@@ -1,6 +1,7 @@
 """
 Tests for sci_fi_dashboard.mcp_config — MCP configuration Pydantic models.
 """
+
 from __future__ import annotations
 
 import os
@@ -18,7 +19,6 @@ from sci_fi_dashboard.mcp_config import (
     ProactiveSourceConfig,
     load_mcp_config,
 )
-
 
 # ---------------------------------------------------------------------------
 # ProactiveSourceConfig
@@ -54,11 +54,11 @@ class TestProactiveConfig:
         assert cfg.sources == {}
 
     def test_poll_interval_min_bound(self):
-        with pytest.raises(Exception):
+        with pytest.raises(Exception):  # noqa: B017
             ProactiveConfig(poll_interval_seconds=5)  # below 10
 
     def test_poll_interval_max_bound(self):
-        with pytest.raises(Exception):
+        with pytest.raises(Exception):  # noqa: B017
             ProactiveConfig(poll_interval_seconds=7200)  # above 3600
 
 
@@ -77,9 +77,7 @@ class TestBuiltinServerConfig:
         assert cfg.user_token == ""
 
     def test_custom_values(self):
-        cfg = BuiltinServerConfig(
-            enabled=False, token_path="~/.tokens/gmail.json"
-        )
+        cfg = BuiltinServerConfig(enabled=False, token_path="~/.tokens/gmail.json")
         assert cfg.enabled is False
         assert cfg.token_path == "~/.tokens/gmail.json"
 
@@ -105,9 +103,7 @@ class TestCustomServerConfig:
             CustomServerConfig(command="   ")
 
     def test_with_env(self):
-        cfg = CustomServerConfig(
-            command="node", args=["server.js"], env={"PORT": "3000"}
-        )
+        cfg = CustomServerConfig(command="node", args=["server.js"], env={"PORT": "3000"})
         assert cfg.env["PORT"] == "3000"
 
 
@@ -186,5 +182,5 @@ class TestLoadMcpConfig:
         assert "my_server" in cfg.custom_servers
 
     def test_invalid_poll_interval_raises(self):
-        with pytest.raises(Exception):
+        with pytest.raises(Exception):  # noqa: B017
             load_mcp_config({"proactive": {"poll_interval_seconds": 1}})

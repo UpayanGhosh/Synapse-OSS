@@ -29,21 +29,21 @@ PHASES = {
 BAR_WIDTH = 35
 
 # ANSI colours
-GREEN  = "\033[32m"
-RED    = "\033[31m"
+GREEN = "\033[32m"
+RED = "\033[31m"
 YELLOW = "\033[33m"
-CYAN   = "\033[36m"
-GREY   = "\033[90m"
-BOLD   = "\033[1m"
-RESET  = "\033[0m"
+CYAN = "\033[36m"
+GREY = "\033[90m"
+BOLD = "\033[1m"
+RESET = "\033[0m"
 
 STATUS_ICON = {
-    "PASSED":  f"{GREEN}✓ PASSED {RESET}",
-    "FAILED":  f"{RED}✗ FAILED {RESET}",
-    "ERROR":   f"{RED}✗ ERROR  {RESET}",
+    "PASSED": f"{GREEN}✓ PASSED {RESET}",
+    "FAILED": f"{RED}✗ FAILED {RESET}",
+    "ERROR": f"{RED}✗ ERROR  {RESET}",
     "SKIPPED": f"{YELLOW}⊘ SKIPPED{RESET}",
-    "XFAIL":   f"{YELLOW}⊘ XFAIL  {RESET}",
-    "XPASS":   f"{GREEN}✓ XPASS  {RESET}",
+    "XFAIL": f"{YELLOW}⊘ XFAIL  {RESET}",
+    "XPASS": f"{GREEN}✓ XPASS  {RESET}",
     "WARNING": f"{YELLOW}⚠ WARNING{RESET}",
 }
 
@@ -52,11 +52,12 @@ STATUS_ICON = {
 # Data
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class TestResult:
     node_id: str
     short_name: str
-    status: str          # PASSED / FAILED / ERROR / SKIPPED / XFAIL / WARNING
+    status: str  # PASSED / FAILED / ERROR / SKIPPED / XFAIL / WARNING
     warning_msgs: list[str] = field(default_factory=list)
     failure_detail: list[str] = field(default_factory=list)
 
@@ -65,6 +66,7 @@ class TestResult:
 # Terminal helpers
 # ---------------------------------------------------------------------------
 
+
 def _bar(done: int, total: int) -> str:
     if total == 0:
         return "░" * BAR_WIDTH
@@ -72,8 +74,9 @@ def _bar(done: int, total: int) -> str:
     return "█" * filled + "░" * (BAR_WIDTH - filled)
 
 
-def _render_bar(done: int, total: int, passed: int, failed: int,
-                skipped: int, warnings: int, label: str) -> str:
+def _render_bar(
+    done: int, total: int, passed: int, failed: int, skipped: int, warnings: int, label: str
+) -> str:
     pct = int(100 * done / total) if total else 0
     bar = _bar(done, total)
     label = label[-42:] if len(label) > 42 else label
@@ -97,19 +100,24 @@ def _clear_line() -> None:
 # Step 1: collect test count
 # ---------------------------------------------------------------------------
 
+
 def collect_count(base_cmd: list, workspace: Path) -> int:
     collect_cmd = base_cmd + ["--collect-only", "-q", "--no-header"]
     try:
         result = subprocess.run(
-            collect_cmd, cwd=workspace,
-            capture_output=True, text=True, timeout=60,
+            collect_cmd,
+            cwd=workspace,
+            capture_output=True,
+            text=True,
+            timeout=60,
         )
         output = result.stdout + result.stderr
         m = re.search(r"(\d+) tests? collected", output)
         if m:
             return int(m.group(1))
-        return sum(1 for line in output.splitlines()
-                   if "::" in line and not line.startswith("ERROR"))
+        return sum(
+            1 for line in output.splitlines() if "::" in line and not line.startswith("ERROR")
+        )
     except Exception:
         return 0
 
@@ -125,9 +133,7 @@ _RESULT_RE = re.compile(
 _WARNING_RE = re.compile(r"^\s*\w+Warning", re.IGNORECASE)
 
 
-def run_with_progress(
-    cmd: list, workspace: Path, total: int
-) -> tuple[int, list[TestResult]]:
+def run_with_progress(cmd: list, workspace: Path, total: int) -> tuple[int, list[TestResult]]:
     results: list[TestResult] = []
     current: TestResult | None = None
     in_failure_block = False
@@ -136,9 +142,12 @@ def run_with_progress(
     passed = failed = skipped = warn_count = done = 0
 
     proc = subprocess.Popen(
-        cmd, cwd=workspace,
-        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-        text=True, bufsize=1,
+        cmd,
+        cwd=workspace,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
     )
 
     sys.stdout.write("\n")
@@ -180,8 +189,7 @@ def run_with_progress(
                     passed += 1
 
                 sys.stdout.write(
-                    _render_bar(done, total or done, passed, failed,
-                                skipped, warn_count, short)
+                    _render_bar(done, total or done, passed, failed, skipped, warn_count, short)
                 )
                 sys.stdout.flush()
 
@@ -192,9 +200,7 @@ def run_with_progress(
     _attach_failure_detail(results, failure_lines)
 
     _clear_line()
-    sys.stdout.write(
-        _render_bar(done, total or done, passed, failed, skipped, warn_count, "done")
-    )
+    sys.stdout.write(_render_bar(done, total or done, passed, failed, skipped, warn_count, "done"))
     sys.stdout.write("\n\n")
     sys.stdout.flush()
 
@@ -223,11 +229,12 @@ def _attach_failure_detail(results: list[TestResult], failure_lines: list[str]) 
 # Step 3: print per-test report
 # ---------------------------------------------------------------------------
 
+
 def print_report(results: list[TestResult]) -> None:
     # Group by status
-    failed  = [r for r in results if r.status in ("FAILED", "ERROR")]
-    warned  = [r for r in results if r.warning_msgs and r.status == "PASSED"]
-    passed  = [r for r in results if r.status == "PASSED" and not r.warning_msgs]
+    failed = [r for r in results if r.status in ("FAILED", "ERROR")]
+    warned = [r for r in results if r.warning_msgs and r.status == "PASSED"]
+    passed = [r for r in results if r.status == "PASSED" and not r.warning_msgs]
     skipped = [r for r in results if r.status in ("SKIPPED", "XFAIL")]
     xpassed = [r for r in results if r.status == "XPASS"]
 
@@ -280,13 +287,14 @@ def print_report(results: list[TestResult]) -> None:
 # Main
 # ---------------------------------------------------------------------------
 
+
 def main() -> None:
     args = sys.argv[1:]
-    slow      = "--slow"      in args
+    slow = "--slow" in args
     fastembed = "--fastembed" in args
     phase_args = [a for a in args if a in PHASES]
 
-    targets   = [PHASES[p] for p in phase_args] if phase_args else ["tests/lancedb_reliability/"]
+    targets = [PHASES[p] for p in phase_args] if phase_args else ["tests/lancedb_reliability/"]
     workspace = Path(__file__).resolve().parents[2]
 
     base_cmd = [sys.executable, "-m", "pytest"] + targets
@@ -320,15 +328,17 @@ def main() -> None:
     print_report(results)
 
     # ---- footer ----
-    n_failed  = sum(1 for r in results if r.status in ("FAILED", "ERROR"))
-    n_warned  = sum(1 for r in results if r.warning_msgs and r.status == "PASSED")
+    n_failed = sum(1 for r in results if r.status in ("FAILED", "ERROR"))
+    n_warned = sum(1 for r in results if r.warning_msgs and r.status == "PASSED")
     n_skipped = sum(1 for r in results if r.status in ("SKIPPED", "XFAIL"))
-    n_passed  = sum(1 for r in results if r.status in ("PASSED", "XPASS"))
+    n_passed = sum(1 for r in results if r.status in ("PASSED", "XPASS"))
 
     print("=" * 62)
-    status_str = (f"{GREEN}{BOLD}ALL PASSED{RESET}"
-                  if exit_code == 0
-                  else f"{RED}{BOLD}FAILURES DETECTED{RESET}")
+    status_str = (
+        f"{GREEN}{BOLD}ALL PASSED{RESET}"
+        if exit_code == 0
+        else f"{RED}{BOLD}FAILURES DETECTED{RESET}"
+    )
     print(f"  RESULT  : {status_str}")
     print(
         f"  SUMMARY : "

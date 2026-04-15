@@ -13,7 +13,9 @@ Security hardening (2026-04-02):
  - Workdir validated against workspace root
  - Session count capped to prevent OOM
 """
+
 import asyncio
+import contextlib
 import json
 import os
 import re
@@ -27,18 +29,18 @@ from pathlib import Path
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
-from mcp.types import Tool, TextContent
+from mcp.types import TextContent, Tool
 
-from .base import setup_logging, logger, _WORKSPACE
+from .base import _WORKSPACE, logger, setup_logging
 
 server = Server("synapse-execution")
 
-_OUTPUT_CAP = 200 * 1024    # 200 KB
-_PENDING_CAP = 30 * 1024    # 30 KB per pending buffer
-_TAIL_SIZE = 2000            # last 2000 chars
-_SESSION_TTL = 30 * 60      # 30 minutes
+_OUTPUT_CAP = 200 * 1024  # 200 KB
+_PENDING_CAP = 30 * 1024  # 30 KB per pending buffer
+_TAIL_SIZE = 2000  # last 2000 chars
+_SESSION_TTL = 30 * 60  # 30 minutes
 _DEFAULT_YIELD_MS = 10_000  # 10s foreground yield
-_MAX_SESSIONS = 200          # cap to prevent OOM
+_MAX_SESSIONS = 200  # cap to prevent OOM
 _IS_WIN = sys.platform == "win32"
 
 # ── Workspace root for workdir validation ──────────────────────────
@@ -54,13 +56,36 @@ _ALLOWED_COMMANDS: set[str] | None = {
     # Version control
     "git",
     # Language runtimes
-    "python", "python3", "node", "npm", "npx",
+    "python",
+    "python3",
+    "node",
+    "npm",
+    "npx",
     # Build / lint
-    "pip", "pip3", "ruff", "black", "pytest", "mypy",
+    "pip",
+    "pip3",
+    "ruff",
+    "black",
+    "pytest",
+    "mypy",
     # File inspection (read-only)
-    "ls", "dir", "cat", "head", "tail", "find", "grep", "rg", "wc",
+    "ls",
+    "dir",
+    "cat",
+    "head",
+    "tail",
+    "find",
+    "grep",
+    "rg",
+    "wc",
     # Utilities
-    "echo", "pwd", "which", "where", "env", "date", "whoami",
+    "echo",
+    "pwd",
+    "which",
+    "where",
+    "env",
+    "date",
+    "whoami",
     # Project scripts
     "uvicorn",
 }
@@ -97,11 +122,7 @@ def _validate_command(command: str) -> str | None:
     # only the first command — downstream commands inherit the same restrictions
     # via the scrubbed env and process isolation.
     try:
-        if _IS_WIN:
-            # shlex.split doesn't handle Windows cmd well; split on whitespace
-            first_token = command.strip().split()[0].lower()
-        else:
-            first_token = shlex.split(command)[0]
+        first_token = command.strip().split()[0].lower() if _IS_WIN else shlex.split(command)[0]
         # Strip path prefix (e.g. /usr/bin/python -> python)
         base = os.path.basename(first_token)
         # Strip .exe suffix on Windows
@@ -124,10 +145,7 @@ def _validate_workdir(workdir: str | None) -> str | None:
     except (OSError, ValueError) as e:
         return f"Invalid workdir: {e}"
     if not (resolved == _WORKSPACE_ROOT or _WORKSPACE_ROOT in resolved.parents):
-        return (
-            f"workdir {str(resolved)!r} is outside workspace root "
-            f"{str(_WORKSPACE_ROOT)!r}"
-        )
+        return f"workdir {str(resolved)!r} is outside workspace root " f"{str(_WORKSPACE_ROOT)!r}"
     return None
 
 
@@ -233,6 +251,7 @@ async def _kill_session(sess: ProcessSession) -> None:
     # Kill the OS process first — prevents zombie accumulation
     if not sess.exited and sess.pid:
         from sci_fi_dashboard.process.kill_tree import kill_process_tree
+
         try:
             await kill_process_tree(sess.pid, grace_ms=2000)
         except Exception as e:
@@ -271,7 +290,9 @@ async def _enforce_timeout(session: ProcessSession, timeout_secs: float) -> None
     if not session.exited and session.pid:
         logger.warning(
             "Session %s (PID %s) exceeded %ds timeout — killing",
-            session.id, session.pid, timeout_secs,
+            session.id,
+            session.pid,
+            timeout_secs,
         )
         await _kill_session(session)
 
@@ -414,23 +435,20 @@ async def _handle_exec(args: dict) -> list[TextContent]:
     _sessions[session.id] = session
 
     # ── Process isolation + scrubbed env ──────────────────────────
-    spawn_kwargs: dict = dict(
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-        stdin=asyncio.subprocess.PIPE,
-        cwd=workdir,
-        env=_scrubbed_env(),
-    )
+    spawn_kwargs: dict = {
+        "stdout": asyncio.subprocess.PIPE,
+        "stderr": asyncio.subprocess.PIPE,
+        "stdin": asyncio.subprocess.PIPE,
+        "cwd": workdir,
+        "env": _scrubbed_env(),
+    }
     if _IS_WIN:
         spawn_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
     else:
         spawn_kwargs["start_new_session"] = True
 
     try:
-        if _IS_WIN:
-            cmd_args = command.strip().split()
-        else:
-            cmd_args = shlex.split(command)
+        cmd_args = command.strip().split() if _IS_WIN else shlex.split(command)
         proc = await asyncio.create_subprocess_exec(*cmd_args, **spawn_kwargs)
     except Exception as e:
         _sessions.pop(session.id, None)
@@ -444,9 +462,7 @@ async def _handle_exec(args: dict) -> list[TextContent]:
 
     # ── Timeout enforcement ───────────────────────────────────────
     if timeout > 0:
-        session._timeout_task = asyncio.create_task(
-            _enforce_timeout(session, timeout)
-        )
+        session._timeout_task = asyncio.create_task(_enforce_timeout(session, timeout))
 
     if background:
         session.backgrounded = True
@@ -455,15 +471,17 @@ async def _handle_exec(args: dict) -> list[TextContent]:
     # Foreground: wait up to yield_ms, then yield to background
     try:
         await asyncio.wait_for(proc.wait(), timeout=yield_ms / 1000)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         session.backgrounded = True
-        return _ok({
-            "status": "running",
-            "sessionId": session.id,
-            "pid": proc.pid,
-            "tail": session.tail,
-            "backgrounded": True,
-        })
+        return _ok(
+            {
+                "status": "running",
+                "sessionId": session.id,
+                "pid": proc.pid,
+                "tail": session.tail,
+                "backgrounded": True,
+            }
+        )
 
     # Process completed within yield window — _collect_output already set
     # session.exited and session.exit_code, so no need to overwrite here.
@@ -472,12 +490,14 @@ async def _handle_exec(args: dict) -> list[TextContent]:
     if session._timeout_task and not session._timeout_task.done():
         session._timeout_task.cancel()
 
-    return _ok({
-        "status": "completed" if proc.returncode == 0 else "failed",
-        "exitCode": proc.returncode,
-        "output": session.aggregated,
-        "truncated": session.truncated,
-    })
+    return _ok(
+        {
+            "status": "completed" if proc.returncode == 0 else "failed",
+            "exitCode": proc.returncode,
+            "output": session.aggregated,
+            "truncated": session.truncated,
+        }
+    )
 
 
 async def _handle_process(args: dict) -> list[TextContent]:
@@ -509,6 +529,7 @@ async def _handle_process(args: dict) -> list[TextContent]:
         if not scope:
             return _err("scope_key required")
         from sci_fi_dashboard.process.kill_tree import kill_process_tree
+
         killed = []
         for sid, s in list(_sessions.items()):
             if s.scope_key == scope and not s.exited:
@@ -536,24 +557,24 @@ async def _handle_process(args: dict) -> list[TextContent]:
             elif not session.exited:
                 session._new_output.clear()
                 timeout = min(float(args.get("timeout", 10)), 60)
-                try:
+                with contextlib.suppress(TimeoutError):
                     await asyncio.wait_for(session._new_output.wait(), timeout=timeout)
-                except asyncio.TimeoutError:
-                    pass
 
             stdout = "".join(session.pending_stdout)
             stderr = "".join(session.pending_stderr)
             session.pending_stdout.clear()
             session.pending_stderr.clear()
 
-        return _ok({
-            "sessionId": session_id,
-            "exited": session.exited,
-            "exitCode": session.exit_code,
-            "stdout": stdout,
-            "stderr": stderr,
-            "truncated": session.truncated,
-        })
+        return _ok(
+            {
+                "sessionId": session_id,
+                "exited": session.exited,
+                "exitCode": session.exit_code,
+                "stdout": stdout,
+                "stderr": stderr,
+                "truncated": session.truncated,
+            }
+        )
 
     elif action == "log":
         lines = int(args.get("lines", 50))
@@ -561,16 +582,19 @@ async def _handle_process(args: dict) -> list[TextContent]:
         tail = "\n".join(tail_lines)
         if len(tail) > _TAIL_SIZE:
             tail = tail[-_TAIL_SIZE:]
-        return _ok({
-            "output": tail,
-            "status": "exited" if session.exited else "running",
-            "exitCode": session.exit_code,
-        })
+        return _ok(
+            {
+                "output": tail,
+                "status": "exited" if session.exited else "running",
+                "exitCode": session.exit_code,
+            }
+        )
 
     elif action == "kill":
         if session.exited:
             return _ok({"status": "already_exited", "exitCode": session.exit_code})
         from sci_fi_dashboard.process.kill_tree import kill_process_tree
+
         dead = False
         if session.pid:
             dead = await kill_process_tree(session.pid, grace_ms=3000)
@@ -611,10 +635,8 @@ async def main():
     finally:
         if _cleanup_task and not _cleanup_task.done():
             _cleanup_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await _cleanup_task
-            except asyncio.CancelledError:
-                pass
 
 
 if __name__ == "__main__":

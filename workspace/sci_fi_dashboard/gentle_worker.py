@@ -13,8 +13,13 @@ class GentleWorker:
     Only runs heavy maintenance tasks when the system is idle and plugged in.
     """
 
-    def __init__(self, graph: SQLiteGraph = None, cron_service=None, proactive_engine=None,
-                 channel_registry=None):
+    def __init__(
+        self,
+        graph: SQLiteGraph = None,
+        cron_service=None,
+        proactive_engine=None,
+        channel_registry=None,
+    ):
         self.is_running = True
         self.graph = graph or SQLiteGraph()
         self.cron_service = cron_service

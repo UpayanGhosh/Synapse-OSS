@@ -50,17 +50,13 @@ async def transcribe_audio(
     # --- API key check ---
     api_key = os.environ.get("GROQ_API_KEY", "").strip()
     if not api_key:
-        logger.warning(
-            "[Transcribe] GROQ_API_KEY not set — audio transcription disabled"
-        )
+        logger.warning("[Transcribe] GROQ_API_KEY not set — audio transcription disabled")
         return ""
 
     # --- Pre-flight validation ---
     preflight = await check_audio_preflight(file_path)
     if not preflight.ok:
-        logger.warning(
-            "[Transcribe] Pre-flight rejected %s: %s", file_path, preflight.reason
-        )
+        logger.warning("[Transcribe] Pre-flight rejected %s: %s", file_path, preflight.reason)
         return ""
 
     # --- Build multipart form data ---
@@ -114,9 +110,7 @@ async def transcribe_audio(
         return transcript
 
     except httpx.TimeoutException:
-        logger.error(
-            "[Transcribe] Timeout after %.0fs for %s", _REQUEST_TIMEOUT, file_path.name
-        )
+        logger.error("[Transcribe] Timeout after %.0fs for %s", _REQUEST_TIMEOUT, file_path.name)
         return ""
     except httpx.HTTPError as exc:
         logger.error("[Transcribe] HTTP error for %s: %s", file_path.name, exc)

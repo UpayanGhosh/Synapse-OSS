@@ -87,7 +87,9 @@ def _extract_url(text: str) -> str:
 def _strip_html(html: str) -> str:
     """Remove HTML/XML tags and collapse whitespace."""
     # Remove script and style blocks entirely
-    no_scripts = re.sub(r"<(script|style)[^>]*>.*?</(script|style)>", "", html, flags=re.DOTALL | re.IGNORECASE)
+    no_scripts = re.sub(
+        r"<(script|style)[^>]*>.*?</(script|style)>", "", html, flags=re.DOTALL | re.IGNORECASE
+    )
     # Strip remaining tags
     no_tags = re.sub(r"<[^>]+>", " ", no_scripts)
     # Collapse repeated whitespace

@@ -4,10 +4,10 @@ config/group_policy.py — Group-level access policy with glob pattern matching.
 Evaluates an ordered list of rules (channel_id + glob pattern on group_id)
 and caches results for repeated lookups during the same process lifetime.
 """
+
 from __future__ import annotations
 
 import fnmatch
-from typing import Any
 
 from config.schema import GroupPolicyConfig
 

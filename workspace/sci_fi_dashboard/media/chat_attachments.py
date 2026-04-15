@@ -1,6 +1,7 @@
 """
 media/chat_attachments.py — Inbound attachment parser for the gateway.
 """
+
 from __future__ import annotations
 
 import base64
@@ -22,14 +23,14 @@ _INLINE_IMAGE_MAX = 2 * 1024 * 1024  # 2 MB
 class ParsedMessage:
     """Result of parsing a message that may contain attachments."""
 
-    message: str                      # original text + media:// markers for offloaded files
+    message: str  # original text + media:// markers for offloaded files
     inline_images: list[dict] = field(default_factory=list)  # base64 dicts for ≤2 MB images
     offloaded_refs: list[dict] = field(default_factory=list)  # {id, path, mime} for offloaded
 
 
 async def parse_message_with_attachments(
     message: str,
-    attachments: list[dict],   # each: {url, mime?, filename?, size?}
+    attachments: list[dict],  # each: {url, mime?, filename?, size?}
     max_bytes: int = 5_000_000,
 ) -> ParsedMessage:
     """Parse inbound attachments and classify them as inline or offloaded.
@@ -63,7 +64,7 @@ async def parse_message_with_attachments(
 
     inline_images: list[dict] = []
     offloaded_refs: list[dict] = []
-    saved_paths: list[Path] = []       # for rollback on failure
+    saved_paths: list[Path] = []  # for rollback on failure
     extra_markers: list[str] = []
 
     for i, attachment in enumerate(attachments):
@@ -78,7 +79,8 @@ async def parse_message_with_attachments(
             if mime == "application/octet-stream" and not hint_mime and not filename:
                 logger.warning(
                     "parse_message_with_attachments: undetectable MIME for attachment %d (%s), skipping",
-                    i, url,
+                    i,
+                    url,
                 )
                 continue
 
@@ -88,12 +90,14 @@ async def parse_message_with_attachments(
             if kind == MediaKind.IMAGE and file_size <= _INLINE_IMAGE_MAX:
                 # Inline: base64-encode
                 b64 = base64.b64encode(data).decode("ascii")
-                inline_images.append({
-                    "mime": mime,
-                    "data": b64,
-                    "filename": filename or "",
-                    "size": file_size,
-                })
+                inline_images.append(
+                    {
+                        "mime": mime,
+                        "data": b64,
+                        "filename": filename or "",
+                        "size": file_size,
+                    }
+                )
             else:
                 # Offload: save to disk
                 saved = save_media_buffer(
@@ -105,16 +109,20 @@ async def parse_message_with_attachments(
                 saved_paths.append(saved.path)
                 marker = f"media://inbound/{saved.id}"
                 extra_markers.append(marker)
-                offloaded_refs.append({
-                    "id": saved.id,
-                    "path": str(saved.path),
-                    "mime": saved.content_type,
-                })
+                offloaded_refs.append(
+                    {
+                        "id": saved.id,
+                        "path": str(saved.path),
+                        "mime": saved.content_type,
+                    }
+                )
 
         except (MediaFetchError, ValueError, OSError) as exc:
             logger.error(
                 "parse_message_with_attachments: failed on attachment %d (%s): %s",
-                i, url, exc,
+                i,
+                url,
+                exc,
             )
             # Best-effort cleanup of files saved so far
             for p in saved_paths:

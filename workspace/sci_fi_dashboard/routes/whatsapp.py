@@ -1,4 +1,5 @@
 """WhatsApp and channel webhook endpoints."""
+
 import logging
 import uuid
 
@@ -36,9 +37,7 @@ async def unified_webhook(channel_id: str, request: Request):
     # Handle non-message event types from WhatsApp bridge (delivery, typing, reactions)
     event_type = raw.get("type", "message")
     if event_type in ("message_status", "typing_indicator", "reaction"):
-        logger.debug(
-            "[gateway] WhatsApp event type=%s chat=%s", event_type, raw.get("chat_id", "")
-        )
+        logger.debug("[gateway] WhatsApp event type=%s chat=%s", event_type, raw.get("chat_id", ""))
         # Future: broadcast via WebSocket, update delivery tracking DB, etc.
         return {"status": "accepted", "event_type": event_type}
 
@@ -154,9 +153,7 @@ async def whatsapp_connection_state(request: Request):
 # ---------------------------------------------------------------------------
 
 
-@router.get(
-    "/channels/whatsapp/retry-queue", dependencies=[Depends(deps._require_gateway_auth)]
-)
+@router.get("/channels/whatsapp/retry-queue", dependencies=[Depends(deps._require_gateway_auth)])
 async def whatsapp_retry_queue_list():
     """List pending entries in the WhatsApp message retry queue."""
     wa_channel = deps.channel_registry.get("whatsapp")
@@ -206,9 +203,7 @@ def whatsapp_job_status(message_id: str):
 
 
 @router.post("/whatsapp/loop-test")
-async def whatsapp_loop_test(
-    payload: deps.WhatsAppLoopTestRequest, request: Request
-):
+async def whatsapp_loop_test(payload: deps.WhatsAppLoopTestRequest, request: Request):
     """
     Validate outbound loop path from Python -> WhatsApp bridge.
     Phase 4 will implement Baileys bridge. Currently returns 501.

@@ -8,10 +8,8 @@ for provider-level failover.
 
 import asyncio
 import logging
-import random
 import time
 from dataclasses import dataclass, field
-from enum import StrEnum
 
 from sci_fi_dashboard.llm_router import AuthProfileFailureReason
 
@@ -76,9 +74,7 @@ class AuthProfile:
         now = time.monotonic()
         if now < self.cooldown_until:
             return False
-        if model and now < self._model_cooldowns.get(model, 0.0):
-            return False
-        return True
+        return not (model and now < self._model_cooldowns.get(model, 0.0))
 
 
 class AuthProfileStore:
@@ -121,6 +117,7 @@ class AuthProfileStore:
         eligible = [p for p in self._profiles.values() if p.is_eligible(model)]
         if not eligible:
             return None
+
         # Sort by (error_count_for_model, last_used) for deterministic round-robin
         def _sort_key(p: AuthProfile) -> tuple[int, float]:
             model_errors = p.failure_counts.get(model, 0) if model else p.error_count

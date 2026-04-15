@@ -105,7 +105,7 @@ WRITABLE_ZONES: set[str] = {
 # Zone 2: adaptive paths that the AI can modify WITH user consent + snapshot.
 # Relative to data_root (~/.synapse/).  No trailing slashes.
 ZONE_2_PATHS: tuple[str, ...] = (
-    "skills",        # User-defined skill directories
+    "skills",  # User-defined skill directories
     "state/agents",  # Per-agent cron/session state
 )
 
@@ -141,8 +141,8 @@ ZONE_1_PATHS: frozenset[str] = frozenset(CRITICAL_FILES | CRITICAL_DIRECTORIES)
 # These are relative to data_root (~/.synapse/) — SnapshotEngine resolves them.
 # IMPORTANT: No trailing slashes. SnapshotEngine joins these with data_root directly.
 ZONE_2_PATHS: tuple[str, ...] = (
-    "skills",                    # User skill directories (Phase 1 output format)
-    "state/agents",              # CronStore per-agent cron.json files
+    "skills",  # User skill directories (Phase 1 output format)
+    "state/agents",  # CronStore per-agent cron.json files
 )
 
 # Human-readable descriptions for consent protocol explanations

@@ -11,33 +11,28 @@ Gap-filling tests for SBS subsystems not covered in test_sbs.py:
 - BatchProcessor linguistic drift detection
 """
 
-import json
 import os
 import sqlite3
 import sys
-from datetime import datetime, timedelta
-from pathlib import Path
-from unittest.mock import MagicMock, patch
+from datetime import datetime
 
 import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from sci_fi_dashboard.sbs.profile.manager import ProfileManager
+from sci_fi_dashboard.sbs.feedback.implicit import (
+    _DEFAULT_PATTERNS,
+    ImplicitFeedbackDetector,
+    _load_patterns,
+)
 from sci_fi_dashboard.sbs.ingestion.schema import RawMessage
-from sci_fi_dashboard.sbs.ingestion.logger import ConversationLogger
+from sci_fi_dashboard.sbs.injection.compiler import PromptCompiler
 from sci_fi_dashboard.sbs.processing.realtime import (
     COMPILED_BANGLISH,
     COMPILED_MOOD,
     RealtimeProcessor,
 )
-from sci_fi_dashboard.sbs.injection.compiler import PromptCompiler
-from sci_fi_dashboard.sbs.feedback.implicit import (
-    ImplicitFeedbackDetector,
-    _DEFAULT_PATTERNS,
-    _load_patterns,
-)
-
+from sci_fi_dashboard.sbs.profile.manager import ProfileManager
 
 # ---------------------------------------------------------------------------
 # ProfileManager Extended
@@ -97,7 +92,7 @@ class TestProfileManagerExtended:
         v1 = pm.snapshot_version()
 
         pm.save_layer("linguistic", {"state": "v2"})
-        v2 = pm.snapshot_version()
+        pm.snapshot_version()
 
         pm.save_layer("linguistic", {"state": "v3"})
 
@@ -166,7 +161,7 @@ class TestRealtimeProcessorExtended:
     @pytest.mark.unit
     def test_mood_history_limited_to_10(self, processor):
         """Mood history in emotional_state should be capped at 10 entries."""
-        for i in range(15):
+        for _i in range(15):
             msg = RawMessage(role="user", content="need to implement and build and code")
             processor.process(msg)
 
@@ -210,7 +205,15 @@ class TestPromptCompilerExtended:
         pm = ProfileManager(tmp_path / "profiles")
         comp = PromptCompiler(pm)
 
-        known_moods = ["stressed", "playful", "tired", "focused", "excited", "frustrated", "neutral"]
+        known_moods = [
+            "stressed",
+            "playful",
+            "tired",
+            "focused",
+            "excited",
+            "frustrated",
+            "neutral",
+        ]
         for mood in known_moods:
             emotional = pm.load_layer("emotional_state")
             emotional["current_dominant_mood"] = mood
@@ -310,15 +313,19 @@ class TestImplicitFeedbackExtended:
         patterns = _load_patterns()
         assert isinstance(patterns, dict)
         assert len(patterns) > 0
-        for key, value in patterns.items():
+        for _key, value in patterns.items():
             assert isinstance(value, list)
 
     @pytest.mark.unit
     def test_default_patterns_have_all_categories(self):
         """_DEFAULT_PATTERNS should have all expected categories."""
         expected = {
-            "correction_formal", "correction_casual", "correction_length",
-            "correction_short", "praise", "rejection",
+            "correction_formal",
+            "correction_casual",
+            "correction_length",
+            "correction_short",
+            "praise",
+            "rejection",
         }
         assert set(_DEFAULT_PATTERNS.keys()) == expected
 
@@ -467,27 +474,61 @@ class TestBatchProcessorExtended:
         # Simulate multiple batch style history entries
         linguistic = pm.load_layer("linguistic")
         linguistic["style_history"] = [
-            {"banglish_ratio": 0.1, "english_ratio": 0.8, "mixed_ratio": 0.1,
-             "avg_message_length": 15, "emoji_frequency": 0.05, "question_frequency": 0.2,
-             "sample_size": 50, "timestamp": "2025-01-01T00:00:00"},
-            {"banglish_ratio": 0.15, "english_ratio": 0.7, "mixed_ratio": 0.15,
-             "avg_message_length": 16, "emoji_frequency": 0.06, "question_frequency": 0.3,
-             "sample_size": 50, "timestamp": "2025-02-01T00:00:00"},
-            {"banglish_ratio": 0.4, "english_ratio": 0.5, "mixed_ratio": 0.1,
-             "avg_message_length": 18, "emoji_frequency": 0.08, "question_frequency": 0.25,
-             "sample_size": 50, "timestamp": "2025-03-01T00:00:00"},
-            {"banglish_ratio": 0.5, "english_ratio": 0.4, "mixed_ratio": 0.1,
-             "avg_message_length": 20, "emoji_frequency": 0.1, "question_frequency": 0.2,
-             "sample_size": 50, "timestamp": "2025-04-01T00:00:00"},
+            {
+                "banglish_ratio": 0.1,
+                "english_ratio": 0.8,
+                "mixed_ratio": 0.1,
+                "avg_message_length": 15,
+                "emoji_frequency": 0.05,
+                "question_frequency": 0.2,
+                "sample_size": 50,
+                "timestamp": "2025-01-01T00:00:00",
+            },
+            {
+                "banglish_ratio": 0.15,
+                "english_ratio": 0.7,
+                "mixed_ratio": 0.15,
+                "avg_message_length": 16,
+                "emoji_frequency": 0.06,
+                "question_frequency": 0.3,
+                "sample_size": 50,
+                "timestamp": "2025-02-01T00:00:00",
+            },
+            {
+                "banglish_ratio": 0.4,
+                "english_ratio": 0.5,
+                "mixed_ratio": 0.1,
+                "avg_message_length": 18,
+                "emoji_frequency": 0.08,
+                "question_frequency": 0.25,
+                "sample_size": 50,
+                "timestamp": "2025-03-01T00:00:00",
+            },
+            {
+                "banglish_ratio": 0.5,
+                "english_ratio": 0.4,
+                "mixed_ratio": 0.1,
+                "avg_message_length": 20,
+                "emoji_frequency": 0.1,
+                "question_frequency": 0.2,
+                "sample_size": 50,
+                "timestamp": "2025-04-01T00:00:00",
+            },
         ]
         pm.save_layer("linguistic", linguistic)
 
         # Feed messages with banglish
         now = datetime.now()
         messages = [
-            {"content": "arey bhai chai khaowa", "rt_language": "banglish",
-             "word_count": 4, "has_emoji": False, "is_question": False,
-             "role": "user", "timestamp": now.isoformat()},
+            {
+                "content": "arey bhai chai khaowa",
+                "rt_language": "banglish",
+                "word_count": 4,
+                "has_emoji": False,
+                "is_question": False,
+                "role": "user",
+                "timestamp": now.isoformat(),
+            },
         ]
         bp._update_linguistic_profile(messages)
 

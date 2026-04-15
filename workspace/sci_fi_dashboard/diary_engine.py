@@ -6,20 +6,21 @@ summarizing what happened, emotional state, key topics.
 Stored in the memory_diary table in memory.db.
 File copies stored in ~/.synapse/diary/YYYY-MM-DD.md.
 """
+
 import json
 import logging
 import os
-import time
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 logger = logging.getLogger("synapse.diary")
+
 
 def _get_diary_dir() -> Path:
     """Resolve diary directory from SynapseConfig.data_root."""
     try:
         from synapse_config import SynapseConfig
+
         return SynapseConfig.load().data_root / "diary"
     except Exception:
         return Path(os.path.expanduser("~/.synapse/diary"))
@@ -46,6 +47,7 @@ class DiaryEngine:
         """Create memory_diary table if missing (idempotent)."""
         try:
             from sci_fi_dashboard.db import DatabaseManager
+
             conn = DatabaseManager.get_connection()
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS memory_diary (
@@ -72,7 +74,7 @@ class DiaryEngine:
         user_id: str,
         messages: list[dict],
         cognitive_states: list = None,
-    ) -> Optional[str]:
+    ) -> str | None:
         """
         Generate a diary entry for a completed session.
 
@@ -99,7 +101,11 @@ class DiaryEngine:
         if cognitive_states:
             tensions = [c.tension_level for c in cognitive_states if hasattr(c, "tension_level")]
             peak_tension = max(tensions) if tensions else 0.0
-            tones = [c.suggested_tone for c in cognitive_states if hasattr(c, "suggested_tone") and c.suggested_tone]
+            tones = [
+                c.suggested_tone
+                for c in cognitive_states
+                if hasattr(c, "suggested_tone") and c.suggested_tone
+            ]
             if tones:
                 dominant_mood = max(set(tones), key=tones.count)
 
@@ -118,14 +124,23 @@ class DiaryEngine:
         topics_json = json.dumps(key_topics)
         try:
             from sci_fi_dashboard.db import DatabaseManager
+
             conn = DatabaseManager.get_connection()
             conn.execute(
                 """INSERT INTO memory_diary
                    (date, session_id, user_id, entry_text, message_count,
                     dominant_mood, peak_tension, key_topics)
                    VALUES (?,?,?,?,?,?,?,?)""",
-                (today, session_id, user_id, entry_text, len(user_msgs),
-                 dominant_mood, peak_tension, topics_json),
+                (
+                    today,
+                    session_id,
+                    user_id,
+                    entry_text,
+                    len(user_msgs),
+                    dominant_mood,
+                    peak_tension,
+                    topics_json,
+                ),
             )
             conn.commit()
             conn.close()
@@ -142,9 +157,7 @@ class DiaryEngine:
 
         return entry_text
 
-    async def _ai_summary(
-        self, user_id: str, user_msgs: list, asst_msgs: list, date: str
-    ) -> str:
+    async def _ai_summary(self, user_id: str, user_msgs: list, asst_msgs: list, date: str) -> str:
         """Generate AI summary of the session."""
         sample_msgs = user_msgs[:5]
         prompt = (
@@ -179,15 +192,16 @@ class DiaryEngine:
         return (
             f"Session with {user_id} — {msg_count} messages. "
             f"Peak tension: {peak_tension:.1f}. Dominant mood: {dominant_mood}. "
-            f"First message: \"{sample}...\""
+            f'First message: "{sample}..."'
         )
 
     def get_recent_entries(self, user_id: str, days: int = 7) -> list[dict]:
         """Retrieve recent diary entries for context injection."""
         try:
             from sci_fi_dashboard.db import DatabaseManager
+
             conn = DatabaseManager.get_connection()
-            cutoff = datetime.now().strftime("%Y-%m-%d")
+            datetime.now().strftime("%Y-%m-%d")
             rows = conn.execute(
                 """SELECT date, entry_text, dominant_mood, peak_tension
                    FROM memory_diary

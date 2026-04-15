@@ -516,9 +516,7 @@ async def test_translate_banglish_uses_router(monkeypatch):
     try:
         import sci_fi_dashboard.api_gateway as gw
     except (ImportError, Exception):
-        pytest.skip(
-            "api_gateway not importable in test environment (sqlite_vec/lancedb absent)"
-        )
+        pytest.skip("api_gateway not importable in test environment (sqlite_vec/lancedb absent)")
 
     calls = []
 
@@ -545,9 +543,7 @@ async def test_translate_banglish_graceful_degradation(monkeypatch):
     try:
         import sci_fi_dashboard.api_gateway as gw
     except (ImportError, Exception):
-        pytest.skip(
-            "api_gateway not importable in test environment (sqlite_vec/lancedb absent)"
-        )
+        pytest.skip("api_gateway not importable in test environment (sqlite_vec/lancedb absent)")
 
     async def _failing_call(role, messages, **kwargs):
         raise KeyError(f"Role {role!r} not found in model_mappings")

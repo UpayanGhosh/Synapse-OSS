@@ -92,17 +92,11 @@ class SkillWatcher:
                 # Only react to SKILL.md changes or directory events
                 src = getattr(event, "src_path", "")
                 dest = getattr(event, "dest_path", "")
-                if (
-                    "SKILL.md" in src
-                    or "SKILL.md" in dest
-                    or event.is_directory
-                ):
+                if "SKILL.md" in src or "SKILL.md" in dest or event.is_directory:
                     watcher._try_reload()
 
         self._observer = Observer()
-        self._observer.schedule(
-            _Handler(), str(self._skills_dir), recursive=True
-        )
+        self._observer.schedule(_Handler(), str(self._skills_dir), recursive=True)
         self._observer.start()
         logger.info("[Skills] Watchdog started on %s", self._skills_dir)
 
@@ -115,9 +109,7 @@ class SkillWatcher:
         interval = self._debounce * 5
 
         def _poll_loop():
-            logger.info(
-                "[Skills] Polling fallback: checking for changes every %.0fs", interval
-            )
+            logger.info("[Skills] Polling fallback: checking for changes every %.0fs", interval)
             while not self._stop_event.is_set():
                 self._stop_event.wait(timeout=interval)
                 if not self._stop_event.is_set():

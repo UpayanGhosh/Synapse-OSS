@@ -15,13 +15,10 @@ import logging
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
-
-from sci_fi_dashboard.skills.schema import SkillManifest
 from sci_fi_dashboard.skills.loader import SkillLoader
 from sci_fi_dashboard.skills.registry import SkillRegistry
-from sci_fi_dashboard.skills.runner import SkillRunner, SkillResult
-
+from sci_fi_dashboard.skills.runner import SkillRunner
+from sci_fi_dashboard.skills.schema import SkillManifest
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -78,6 +75,7 @@ def _make_skill_md(name: str, *, enabled: bool = True, cloud_safe: bool = True) 
 # SKILL-01, SKILL-02: Bundled skills exist
 # ---------------------------------------------------------------------------
 
+
 class TestBundledSkillsExist:
     """SKILL-01: 10 bundled skills at install. SKILL-02: Live in bundled/."""
 
@@ -103,23 +101,22 @@ class TestBundledSkillsExist:
             if not name.startswith("synapse."):
                 continue
             manifest = SkillLoader.load_skill(BUNDLED_DIR / name)
-            assert manifest.name.startswith("synapse."), (
-                f"{name} SKILL.md name '{manifest.name}' missing synapse. prefix"
-            )
+            assert manifest.name.startswith(
+                "synapse."
+            ), f"{name} SKILL.md name '{manifest.name}' missing synapse. prefix"
 
     def test_directory_name_matches_skill_name(self):
         for name in ALL_EXPECTED_SKILLS:
             if not name.startswith("synapse."):
                 continue
             manifest = SkillLoader.load_skill(BUNDLED_DIR / name)
-            assert manifest.name == name, (
-                f"Directory '{name}' vs SKILL.md name '{manifest.name}'"
-            )
+            assert manifest.name == name, f"Directory '{name}' vs SKILL.md name '{manifest.name}'"
 
 
 # ---------------------------------------------------------------------------
 # SKILL-03: cloud_safe metadata + Vault enforcement
 # ---------------------------------------------------------------------------
+
 
 class TestCloudSafeMetadata:
     """SKILL-03: cloud_safe metadata and Vault hemisphere enforcement."""
@@ -132,20 +129,19 @@ class TestCloudSafeMetadata:
     def test_cloud_safe_false_skills(self):
         for name in CLOUD_SAFE_FALSE_SKILLS:
             manifest = SkillLoader.load_skill(BUNDLED_DIR / name)
-            assert manifest.cloud_safe is False, (
-                f"{name} should be cloud_safe=False"
-            )
+            assert manifest.cloud_safe is False, f"{name} should be cloud_safe=False"
 
     def test_cloud_safe_true_skills(self):
         for name in CLOUD_SAFE_TRUE_SKILLS:
             manifest = SkillLoader.load_skill(BUNDLED_DIR / name)
-            assert manifest.cloud_safe is True, (
-                f"{name} should be cloud_safe=True"
-            )
+            assert manifest.cloud_safe is True, f"{name} should be cloud_safe=True"
 
     def test_vault_blocks_cloud_unsafe_skill(self):
         manifest = SkillManifest(
-            name="test-unsafe", description="t", version="1.0", cloud_safe=False,
+            name="test-unsafe",
+            description="t",
+            version="1.0",
+            cloud_safe=False,
         )
         mock_router = MagicMock()
         mock_router.call = AsyncMock(return_value="should not reach")
@@ -166,7 +162,10 @@ class TestCloudSafeMetadata:
 
     def test_vault_allows_cloud_safe_skill(self):
         manifest = SkillManifest(
-            name="test-safe", description="t", version="1.0", cloud_safe=True,
+            name="test-safe",
+            description="t",
+            version="1.0",
+            cloud_safe=True,
         )
         mock_router = MagicMock()
         mock_router.call = AsyncMock(return_value="test response")
@@ -186,7 +185,10 @@ class TestCloudSafeMetadata:
 
     def test_normal_session_allows_all_skills(self):
         manifest = SkillManifest(
-            name="test-unsafe", description="t", version="1.0", cloud_safe=False,
+            name="test-unsafe",
+            description="t",
+            version="1.0",
+            cloud_safe=False,
         )
         mock_router = MagicMock()
         mock_router.call = AsyncMock(return_value="allowed response")
@@ -208,6 +210,7 @@ class TestCloudSafeMetadata:
 # ---------------------------------------------------------------------------
 # SKILL-04: Skill disable
 # ---------------------------------------------------------------------------
+
 
 class TestSkillDisable:
     """SKILL-04: User can disable any bundled skill without affecting others."""
@@ -252,6 +255,7 @@ class TestSkillDisable:
 # Shadow warning (SKILL-01 supplement)
 # ---------------------------------------------------------------------------
 
+
 class TestShadowWarning:
     """Registry warns when user skill shadows bundled synapse.* skill."""
 
@@ -263,11 +267,11 @@ class TestShadowWarning:
             (d / "SKILL.md").write_text(_make_skill_md(name))
 
         with caplog.at_level(logging.WARNING):
-            reg = SkillRegistry(tmp_path)
+            SkillRegistry(tmp_path)
 
-        assert any("shadows" in r.message.lower() for r in caplog.records), (
-            "Expected shadow warning in logs"
-        )
+        assert any(
+            "shadows" in r.message.lower() for r in caplog.records
+        ), "Expected shadow warning in logs"
 
     def test_no_shadow_warning_without_conflict(self, tmp_path, caplog):
         d = tmp_path / "synapse.weather"
@@ -275,7 +279,7 @@ class TestShadowWarning:
         (d / "SKILL.md").write_text(_make_skill_md("synapse.weather"))
 
         with caplog.at_level(logging.WARNING):
-            reg = SkillRegistry(tmp_path)
+            SkillRegistry(tmp_path)
 
         assert not any("shadows" in r.message.lower() for r in caplog.records)
 
@@ -283,6 +287,7 @@ class TestShadowWarning:
 # ---------------------------------------------------------------------------
 # seed_bundled_skills (SKILL-01 supplement)
 # ---------------------------------------------------------------------------
+
 
 class TestSeedBundledSkills:
     """seed_bundled_skills copies bundled skills to user dir on first boot."""

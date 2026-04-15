@@ -15,9 +15,9 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-import pytest
 from unittest.mock import patch
 
+import pytest
 from sci_fi_dashboard.smart_entity import EntityGate
 
 
@@ -41,6 +41,7 @@ def gate(entities_file):
     with patch.object(EntityGate, "__init__", lambda self, **kw: None):
         g = EntityGate.__new__(EntityGate)
         from flashtext import KeywordProcessor
+
         g.keyword_processor = KeywordProcessor()
         g.entities_file = entities_file
         g.load_entities()
@@ -61,6 +62,7 @@ class TestEntityGateInit:
         with patch.object(EntityGate, "__init__", lambda self, **kw: None):
             g = EntityGate.__new__(EntityGate)
             from flashtext import KeywordProcessor
+
             g.keyword_processor = KeywordProcessor()
             g.entities_file = str(tmp_path / "nonexistent.json")
             g.load_entities()

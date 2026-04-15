@@ -1,7 +1,8 @@
 """Base utilities for Synapse MCP servers."""
+
 import logging
-import sys
 import os
+import sys
 
 _DIR = os.path.dirname(os.path.abspath(__file__))
 _DASHBOARD = os.path.abspath(os.path.join(_DIR, ".."))

@@ -8,6 +8,7 @@ Covers:
   - Extra keys preserved
   - Empty config produces valid defaults
 """
+
 from __future__ import annotations
 
 import sys
@@ -21,19 +22,15 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from config.schema import (
     AgentModelConfig,
     AuthProfileConfig,
-    ChannelConfig,
     CronRetentionConfig,
-    GatewayConfig,
     GroupPolicyConfig,
     GroupPolicyRule,
     ModelFallbackEntry,
-    ProviderConfig,
     SecretInput,
     SessionConfig,
     SynapseConfigSchema,
     ThinkingLevel,
 )
-
 
 # ---------------------------------------------------------------------------
 # Empty config → valid defaults
@@ -168,27 +165,27 @@ class TestBareModelNormalization:
 class TestInvalidTypes:
     def test_invalid_gateway_port_type(self):
         """Gateway port must be an int — passing a non-numeric string should fail."""
-        with pytest.raises(Exception):
+        with pytest.raises(Exception):  # noqa: B017
             SynapseConfigSchema(**{"gateway": {"port": "not-a-number"}})
 
     def test_invalid_thinking_mode(self):
         """ThinkingLevel mode must be one of the allowed literals."""
-        with pytest.raises(Exception):
+        with pytest.raises(Exception):  # noqa: B017
             ThinkingLevel(mode="ultra")  # type: ignore[arg-type]
 
     def test_invalid_group_policy_action(self):
         """GroupPolicyRule action must be 'allow' or 'deny'."""
-        with pytest.raises(Exception):
+        with pytest.raises(Exception):  # noqa: B017
             GroupPolicyRule(channel_id="wa", group_pattern="*", action="maybe")  # type: ignore[arg-type]
 
     def test_invalid_auth_profile_type(self):
         """AuthProfileConfig type must be one of the allowed literals."""
-        with pytest.raises(Exception):
+        with pytest.raises(Exception):  # noqa: B017
             AuthProfileConfig(id="x", type="biometric")  # type: ignore[arg-type]
 
     def test_invalid_provider_config_nested(self):
         """Provider with non-bool enabled should be rejected."""
-        with pytest.raises(Exception):
+        with pytest.raises(Exception):  # noqa: B017
             SynapseConfigSchema(**{"providers": {"bad": {"enabled": "yes-please"}}})
 
 

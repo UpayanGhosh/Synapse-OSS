@@ -38,6 +38,7 @@ Telegram-specific features:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import time
 from datetime import datetime
@@ -167,9 +168,7 @@ class TelegramChannel(BaseChannel):
         group_filter = filters.ChatType.GROUPS & filters.TEXT
         if self._require_mention:
             group_filter = group_filter & filters.Entity("mention")
-        self._app.add_handler(
-            MessageHandler(group_filter, self._on_group_message)
-        )
+        self._app.add_handler(MessageHandler(group_filter, self._on_group_message))
 
         # Sticker handler — extract emoji equivalent and dispatch as text
         self._app.add_handler(
@@ -211,12 +210,8 @@ class TelegramChannel(BaseChannel):
             # confirms (discards) all updates with id < offset, so the
             # subsequent start_polling picks up right where we left off.
             if self._last_offset > 0:
-                await self._app.bot.get_updates(
-                    offset=self._last_offset + 1, limit=1, timeout=0
-                )
-                logger.info(
-                    "[TEL] Seeded server offset=%d", self._last_offset + 1
-                )
+                await self._app.bot.get_updates(offset=self._last_offset + 1, limit=1, timeout=0)
+                logger.info("[TEL] Seeded server offset=%d", self._last_offset + 1)
                 await self._updater.start_polling(drop_pending_updates=False)
             else:
                 await self._updater.start_polling(drop_pending_updates=True)
@@ -355,7 +350,8 @@ class TelegramChannel(BaseChannel):
                 if is_safe_to_retry_send(exc):
                     logger.warning(
                         "[TEL] send() pre-connect failure for chat %s (retryable): %s",
-                        chat_id, exc,
+                        chat_id,
+                        exc,
                     )
                 else:
                     logger.error("[TEL] send() failed for chat %s: %s", chat_id, exc)
@@ -382,9 +378,7 @@ class TelegramChannel(BaseChannel):
         if time.time() < self._typing_suspended_until:
             return
         try:
-            await self._app.bot.send_chat_action(
-                chat_id=int(chat_id), action=ChatAction.TYPING
-            )
+            await self._app.bot.send_chat_action(chat_id=int(chat_id), action=ChatAction.TYPING)
             self._consecutive_typing_failures = 0
         except TelegramError as exc:
             self._consecutive_typing_failures += 1
@@ -393,12 +387,11 @@ class TelegramChannel(BaseChannel):
                 logger.warning(
                     "[TEL] Typing indicator suspended for 5 min after %d "
                     "consecutive failures (last: %s)",
-                    self._consecutive_typing_failures, exc,
+                    self._consecutive_typing_failures,
+                    exc,
                 )
 
-    async def send_typing_loop(
-        self, chat_id: str, cancel_event: asyncio.Event
-    ) -> None:
+    async def send_typing_loop(self, chat_id: str, cancel_event: asyncio.Event) -> None:
         """
         Send typing indicators every 4 seconds until *cancel_event* is set.
 
@@ -411,10 +404,8 @@ class TelegramChannel(BaseChannel):
         """
         while not cancel_event.is_set():
             await self.send_typing(chat_id)
-            try:
+            with contextlib.suppress(TimeoutError):
                 await asyncio.wait_for(cancel_event.wait(), timeout=4.0)
-            except TimeoutError:
-                pass  # event not set yet — loop again
 
     async def mark_read(self, chat_id: str, message_id: str) -> None:
         """
@@ -499,10 +490,7 @@ class TelegramChannel(BaseChannel):
         at least acknowledge the sticker.
         """
         sticker = update.message.sticker
-        if sticker and sticker.emoji:
-            text = f"[Sticker: {sticker.emoji}]"
-        else:
-            text = "[Sticker]"
+        text = f"[Sticker: {sticker.emoji}]" if sticker and sticker.emoji else "[Sticker]"
         await self._dispatch(update, text_override=text)
 
     async def _on_voice(self, update: Update, context) -> None:
@@ -639,21 +627,21 @@ class TelegramChannel(BaseChannel):
             cut = remaining.rfind("\n\n", 0, limit)
             if cut > 0:
                 chunks.append(remaining[:cut])
-                remaining = remaining[cut + 2:]  # skip the \n\n
+                remaining = remaining[cut + 2 :]  # skip the \n\n
                 continue
 
             # Try line boundary
             cut = remaining.rfind("\n", 0, limit)
             if cut > 0:
                 chunks.append(remaining[:cut])
-                remaining = remaining[cut + 1:]  # skip the \n
+                remaining = remaining[cut + 1 :]  # skip the \n
                 continue
 
             # Try space boundary
             cut = remaining.rfind(" ", 0, limit)
             if cut > 0:
                 chunks.append(remaining[:cut])
-                remaining = remaining[cut + 1:]  # skip the space
+                remaining = remaining[cut + 1 :]  # skip the space
                 continue
 
             # Hard cut — no natural boundary found

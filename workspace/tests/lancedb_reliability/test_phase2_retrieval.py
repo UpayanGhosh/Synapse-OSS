@@ -17,24 +17,25 @@ Tests cover:
 from __future__ import annotations
 
 import time
-import threading
 
 import numpy as np
 import pytest
 
-from .conftest import LanceDBDataGenerator, LatencyTracker, get_memory_mb
+from .conftest import LanceDBDataGenerator, LatencyTracker
 
 lancedb = pytest.importorskip("lancedb", reason="lancedb not installed")
 
 
 def _make_store(tmp_path, dims=768):
     from sci_fi_dashboard.vector_store.lancedb_store import LanceDBVectorStore
+
     return LanceDBVectorStore(db_path=tmp_path / "db", embedding_dimensions=dims)
 
 
 # ---------------------------------------------------------------------------
 # Phase 2a — Latency benchmarks
 # ---------------------------------------------------------------------------
+
 
 class TestSearchLatency:
 
@@ -99,14 +100,18 @@ class TestSearchLatency:
             (first_500 if i < 500 else last_500).record(ms)
         p95_first = first_500.percentile(95)
         p95_last = last_500.percentile(95)
-        print(f"\n[latency stability] first-500 p95={p95_first:.2f}ms, last-500 p95={p95_last:.2f}ms")
-        assert p95_last < p95_first * 2.5, \
-            f"Latency degraded: first p95={p95_first:.2f}ms → last p95={p95_last:.2f}ms"
+        print(
+            f"\n[latency stability] first-500 p95={p95_first:.2f}ms, last-500 p95={p95_last:.2f}ms"
+        )
+        assert (
+            p95_last < p95_first * 2.5
+        ), f"Latency degraded: first p95={p95_first:.2f}ms → last p95={p95_last:.2f}ms"
 
 
 # ---------------------------------------------------------------------------
 # Phase 2b — Score correctness
 # ---------------------------------------------------------------------------
+
 
 class TestSearchScoreCorrectness:
 
@@ -115,12 +120,17 @@ class TestSearchScoreCorrectness:
         store = _make_store(tmp_path)
         vec = [0.1] * 768
         # Normalise so cosine distance is well-defined
-        norm = sum(v ** 2 for v in vec) ** 0.5
+        norm = sum(v**2 for v in vec) ** 0.5
         vec = [v / norm for v in vec]
-        store.upsert_facts([{
-            "id": 1, "vector": vec,
-            "metadata": {"text": "exact match", "hemisphere_tag": "safe"},
-        }])
+        store.upsert_facts(
+            [
+                {
+                    "id": 1,
+                    "vector": vec,
+                    "metadata": {"text": "exact match", "hemisphere_tag": "safe"},
+                }
+            ]
+        )
         results = store.search(vec, limit=1)
         assert len(results) == 1
         assert results[0]["score"] > 0.98, f"Expected score ≈ 1.0, got {results[0]['score']:.4f}"
@@ -133,8 +143,7 @@ class TestSearchScoreCorrectness:
         for vec in query_vecs:
             results = store.search(vec.tolist(), limit=20)
             for r in results:
-                assert 0.0 <= r["score"] <= 1.0, \
-                    f"Score out of range: {r['score']}"
+                assert 0.0 <= r["score"] <= 1.0, f"Score out of range: {r['score']}"
 
     def test_score_threshold_excludes_low_scores(self, store_10k):
         """Results with score < threshold must not appear."""
@@ -144,8 +153,9 @@ class TestSearchScoreCorrectness:
         threshold = 0.5
         results = store.search(query_vec, limit=50, score_threshold=threshold)
         for r in results:
-            assert r["score"] >= threshold, \
-                f"Result with score {r['score']:.4f} slipped below threshold {threshold}"
+            assert (
+                r["score"] >= threshold
+            ), f"Result with score {r['score']:.4f} slipped below threshold {threshold}"
 
     def test_results_sorted_by_score_descending(self, store_10k):
         """Results must be returned in descending score order."""
@@ -154,8 +164,7 @@ class TestSearchScoreCorrectness:
         query_vec = gen.vectors_random(1, dims=768)[0].tolist()
         results = store.search(query_vec, limit=20)
         scores = [r["score"] for r in results]
-        assert scores == sorted(scores, reverse=True), \
-            f"Results not sorted by score: {scores}"
+        assert scores == sorted(scores, reverse=True), f"Results not sorted by score: {scores}"
 
     def test_orthogonal_vector_has_low_score(self, tmp_path):
         """Two orthogonal vectors should yield a score near 0."""
@@ -164,27 +173,41 @@ class TestSearchScoreCorrectness:
         vec_b = [0.0] * 768
         vec_a[0] = 1.0  # unit vector along dim 0
         vec_b[1] = 1.0  # unit vector along dim 1 — orthogonal to vec_a
-        store.upsert_facts([{
-            "id": 1, "vector": vec_b,
-            "metadata": {"text": "orthogonal", "hemisphere_tag": "safe"},
-        }])
+        store.upsert_facts(
+            [
+                {
+                    "id": 1,
+                    "vector": vec_b,
+                    "metadata": {"text": "orthogonal", "hemisphere_tag": "safe"},
+                }
+            ]
+        )
         results = store.search(vec_a, limit=1)
         assert len(results) == 1
         # Cosine similarity of orthogonal vectors = 0 → score ≈ 0
-        assert results[0]["score"] < 0.2, \
-            f"Orthogonal vectors yielded high score: {results[0]['score']:.4f}"
+        assert (
+            results[0]["score"] < 0.2
+        ), f"Orthogonal vectors yielded high score: {results[0]['score']:.4f}"
 
     def test_score_conversion_distance_zero_is_score_one(self, tmp_path):
         """Verify the 1 - distance formula: distance=0 → score=1."""
         store = _make_store(tmp_path)
         import unittest.mock as mock
+
         # Patch table.search to return a mock result with _distance=0
-        fake_result = [{
-            "id": 99, "_distance": 0.0,
-            "text": "perfect", "hemisphere_tag": "safe",
-            "unix_timestamp": 0, "importance": 5,
-            "source_id": 0, "entity": "", "category": "",
-        }]
+        fake_result = [
+            {
+                "id": 99,
+                "_distance": 0.0,
+                "text": "perfect",
+                "hemisphere_tag": "safe",
+                "unix_timestamp": 0,
+                "importance": 5,
+                "source_id": 0,
+                "entity": "",
+                "category": "",
+            }
+        ]
         vec = [0.1] * 768
         with mock.patch.object(store.table, "search") as mock_search:
             mock_searcher = mock.MagicMock()
@@ -199,6 +222,7 @@ class TestSearchScoreCorrectness:
 # ---------------------------------------------------------------------------
 # Phase 2c — Limit enforcement
 # ---------------------------------------------------------------------------
+
 
 class TestSearchLimit:
 
@@ -231,25 +255,30 @@ class TestSearchLimit:
 # Phase 2d — Hemisphere filtering
 # ---------------------------------------------------------------------------
 
+
 class TestHemisphereFiltering:
 
     def _populate_mixed(self, tmp_path):
         """Create a store with 500 safe + 500 spicy records."""
         from sci_fi_dashboard.vector_store.lancedb_store import LanceDBVectorStore
+
         store = LanceDBVectorStore(db_path=tmp_path / "db", embedding_dimensions=768)
         gen = LanceDBDataGenerator(seed=130)
         vecs = gen.vectors_random(1_000, dims=768)
         facts = []
         for i in range(1_000):
-            facts.append({
-                "id": i,
-                "vector": vecs[i].tolist(),
-                "metadata": {
-                    "text": f"item {i}",
-                    "hemisphere_tag": "safe" if i < 500 else "spicy",
-                    "unix_timestamp": 0, "importance": 5,
-                },
-            })
+            facts.append(
+                {
+                    "id": i,
+                    "vector": vecs[i].tolist(),
+                    "metadata": {
+                        "text": f"item {i}",
+                        "hemisphere_tag": "safe" if i < 500 else "spicy",
+                        "unix_timestamp": 0,
+                        "importance": 5,
+                    },
+                }
+            )
         store.upsert_facts(facts)
         return store, vecs
 
@@ -259,17 +288,15 @@ class TestHemisphereFiltering:
         vec = vecs[0].tolist()  # safe record
         results = store.search(vec, limit=50, query_filter="hemisphere_tag = 'safe'")
         for r in results:
-            assert r["metadata"]["hemisphere_tag"] == "safe", \
-                f"Spicy result leaked through safe filter: id={r['id']}"
+            assert (
+                r["metadata"]["hemisphere_tag"] == "safe"
+            ), f"Spicy result leaked through safe filter: id={r['id']}"
 
     def test_spicy_filter_includes_both_hemispheres(self, tmp_path):
         """IN ('safe', 'spicy') filter must return both hemispheres."""
         store, vecs = self._populate_mixed(tmp_path)
         vec = vecs[0].tolist()
-        results = store.search(
-            vec, limit=100,
-            query_filter="hemisphere_tag IN ('safe', 'spicy')"
-        )
+        results = store.search(vec, limit=100, query_filter="hemisphere_tag IN ('safe', 'spicy')")
         tags = {r["metadata"]["hemisphere_tag"] for r in results}
         assert "safe" in tags, "No safe results in spicy+safe query"
         assert "spicy" in tags, "No spicy results in spicy+safe query"
@@ -295,6 +322,7 @@ class TestHemisphereFiltering:
 # Phase 2e — Result format validation
 # ---------------------------------------------------------------------------
 
+
 class TestResultFormat:
 
     def test_result_has_all_required_keys(self, store_1k):
@@ -304,8 +332,15 @@ class TestResultFormat:
         vec = gen.vectors_random(1, dims=768)[0].tolist()
         results = store.search(vec, limit=5)
         assert len(results) > 0
-        required_meta = {"text", "hemisphere_tag", "unix_timestamp",
-                         "importance", "source_id", "entity", "category"}
+        required_meta = {
+            "text",
+            "hemisphere_tag",
+            "unix_timestamp",
+            "importance",
+            "source_id",
+            "entity",
+            "category",
+        }
         for r in results:
             assert "id" in r
             assert "score" in r
@@ -320,8 +355,7 @@ class TestResultFormat:
         vec = gen.vectors_random(1, dims=768)[0].tolist()
         results = store.search(vec, limit=5)
         for r in results:
-            assert isinstance(r["id"], (int, np.integer)), \
-                f"id is not int: {type(r['id'])}"
+            assert isinstance(r["id"], (int, np.integer)), f"id is not int: {type(r['id'])}"
 
     def test_score_is_float(self, store_1k):
         """score field must be a float."""
@@ -330,8 +364,7 @@ class TestResultFormat:
         vec = gen.vectors_random(1, dims=768)[0].tolist()
         results = store.search(vec, limit=5)
         for r in results:
-            assert isinstance(r["score"], float), \
-                f"score is not float: {type(r['score'])}"
+            assert isinstance(r["score"], float), f"score is not float: {type(r['score'])}"
 
     def test_text_is_string(self, store_1k):
         """metadata.text must be a str."""
@@ -340,19 +373,22 @@ class TestResultFormat:
         vec = gen.vectors_random(1, dims=768)[0].tolist()
         results = store.search(vec, limit=5)
         for r in results:
-            assert isinstance(r["metadata"]["text"], str), \
-                f"text is not str: {type(r['metadata']['text'])}"
+            assert isinstance(
+                r["metadata"]["text"], str
+            ), f"text is not str: {type(r['metadata']['text'])}"
 
 
 # ---------------------------------------------------------------------------
 # Phase 2f — ANN accuracy
 # ---------------------------------------------------------------------------
 
+
 class TestSearchAccuracy:
 
     def test_planted_vector_is_top1(self, tmp_path):
         """A known vector planted at id=999 must be top-1 when queried exactly."""
         from sci_fi_dashboard.vector_store.lancedb_store import LanceDBVectorStore
+
         gen = LanceDBDataGenerator(seed=150)
         store = LanceDBVectorStore(db_path=tmp_path / "db", embedding_dimensions=768)
 
@@ -362,18 +398,23 @@ class TestSearchAccuracy:
 
         # Plant a distinct vector
         anchor = gen.vectors_random(1, dims=768)[0].tolist()
-        store.upsert_facts([{
-            "id": 999_999,
-            "vector": anchor,
-            "metadata": {"text": "anchor", "hemisphere_tag": "safe"},
-        }])
+        store.upsert_facts(
+            [
+                {
+                    "id": 999_999,
+                    "vector": anchor,
+                    "metadata": {"text": "anchor", "hemisphere_tag": "safe"},
+                }
+            ]
+        )
         # More noise after
         store.upsert_facts(gen.facts(500, id_offset=1000))
 
         results = store.search(anchor, limit=1)
         assert len(results) > 0
-        assert results[0]["id"] == 999_999, \
-            f"Expected id=999999 as top-1, got id={results[0]['id']}"
+        assert (
+            results[0]["id"] == 999_999
+        ), f"Expected id=999999 as top-1, got id={results[0]['id']}"
 
     @pytest.mark.slow
     def test_top1_recall_at_100k(self, store_100k):
@@ -395,6 +436,7 @@ class TestSearchAccuracy:
 # ---------------------------------------------------------------------------
 # Phase 2g — Reliability: zero errors over many searches
 # ---------------------------------------------------------------------------
+
 
 class TestSearchReliability:
 
@@ -430,6 +472,7 @@ class TestSearchReliability:
 # Phase 2h — FastEmbed semantic retrieval
 # ---------------------------------------------------------------------------
 
+
 class TestFastEmbedSemanticRetrieval:
 
     @pytest.mark.fastembed
@@ -437,11 +480,12 @@ class TestFastEmbedSemanticRetrieval:
         """Query with a paraphrase should retrieve the original text in top-5."""
         pytest.importorskip("fastembed", reason="fastembed not installed")
         store, facts, texts, vectors = fastembed_store_10k
-        gen = LanceDBDataGenerator(seed=170)
+        LanceDBDataGenerator(seed=170)
 
         # Plant a very specific fact and query with a paraphrase
         specific_text = "I enjoy writing Python code every morning in my home office"
         from sci_fi_dashboard.embedding.factory import get_provider
+
         provider = get_provider()
         if provider is None:
             pytest.skip("No embedding provider available")
@@ -451,16 +495,21 @@ class TestFastEmbedSemanticRetrieval:
         paraphrase_vec = provider.embed_query("I like coding Python at home in the mornings")
 
         # Upsert the specific document
-        store.upsert_facts([{
-            "id": 999_998,
-            "vector": doc_vec,
-            "metadata": {"text": specific_text, "hemisphere_tag": "safe"},
-        }])
+        store.upsert_facts(
+            [
+                {
+                    "id": 999_998,
+                    "vector": doc_vec,
+                    "metadata": {"text": specific_text, "hemisphere_tag": "safe"},
+                }
+            ]
+        )
 
         results = store.search(paraphrase_vec, limit=10)
         top_ids = [r["id"] for r in results]
-        assert 999_998 in top_ids, \
-            f"Paraphrase did not retrieve original in top-10. Top IDs: {top_ids}"
+        assert (
+            999_998 in top_ids
+        ), f"Paraphrase did not retrieve original in top-10. Top IDs: {top_ids}"
 
     @pytest.mark.fastembed
     def test_dissimilar_query_low_score(self, fastembed_store_10k):
@@ -468,6 +517,7 @@ class TestFastEmbedSemanticRetrieval:
         pytest.importorskip("fastembed", reason="fastembed not installed")
         store, facts, texts, vectors = fastembed_store_10k
         from sci_fi_dashboard.embedding.factory import get_provider
+
         provider = get_provider()
         if provider is None:
             pytest.skip("No embedding provider available")
@@ -481,6 +531,8 @@ class TestFastEmbedSemanticRetrieval:
         related_top = related_results[0]["score"] if related_results else 0
         unrelated_top = unrelated_results[0]["score"] if unrelated_results else 0
 
-        print(f"\n[semantic] related top score={related_top:.4f}, unrelated top score={unrelated_top:.4f}")
+        print(
+            f"\n[semantic] related top score={related_top:.4f}, unrelated top score={unrelated_top:.4f}"
+        )
         # Related query should score higher in a corpus of everyday language
         assert related_top >= unrelated_top - 0.05, "Unrelated query scored suspiciously higher"

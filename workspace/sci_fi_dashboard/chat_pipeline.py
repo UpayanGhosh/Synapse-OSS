@@ -1,58 +1,52 @@
 """Core chat pipeline -- persona_chat() and tool execution helpers."""
+
 import asyncio
+import contextlib
 import json
 import logging
 import os
 import time
-import uuid
 
 from fastapi import BackgroundTasks
 
 from sci_fi_dashboard import _deps as deps
-from sci_fi_dashboard.schemas import ChatRequest
 from sci_fi_dashboard.dual_cognition import CognitiveMerge
 from sci_fi_dashboard.llm_router import LLMResult
 from sci_fi_dashboard.pipeline_emitter import get_emitter as _get_emitter
+from sci_fi_dashboard.schemas import ChatRequest
 
 logger = logging.getLogger(__name__)
 _tool_logger = logging.getLogger(__name__ + ".tools")
 
 # Conditional imports -- same pattern as original api_gateway.py
-try:
+with contextlib.suppress(ImportError):
     from sci_fi_dashboard.tool_registry import (
-        ToolRegistry,
         ToolContext,
         ToolResult,
-        SynapseTool,
     )
-except ImportError:
-    pass
 
-try:
+with contextlib.suppress(ImportError):
     from sci_fi_dashboard.tool_safety import (
+        ToolLoopDetector,
         apply_tool_policy_pipeline,
         build_policy_steps,
-        ToolLoopDetector,
     )
-except ImportError:
-    pass
 
-try:
+with contextlib.suppress(ImportError):
     from sci_fi_dashboard.tool_features import (
         format_tool_footer,
         get_model_override,
-        parse_command_shortcut,
     )
-except ImportError:
-    pass
 
-from sci_fi_dashboard.consent_protocol import (
+import contextlib  # noqa: E402
+from datetime import UTC  # noqa: E402
+
+from sci_fi_dashboard.consent_protocol import (  # noqa: E402
+    PendingConsent,
     detect_modification_intent,
     is_affirmative,
     is_negative,
-    PendingConsent,
 )
-
 
 # ---------------------------------------------------------------------------
 # Tool Execution Helpers (Phase 3)
@@ -105,10 +99,8 @@ async def persona_chat(
     print(f"[MAIL] [{target.upper()}] Inbound: {user_msg[:80]}...")
 
     _pipeline_start = time.time()
-    try:
+    with contextlib.suppress(Exception):
         _run_id = _get_emitter().start_run(text=user_msg[:120], target=target)
-    except Exception:
-        pass
 
     # --- Phase 2: Consent Protocol Interception ---
     # Check for pending consent first (user said "yes"/"no" to a previous proposal).
@@ -131,7 +123,8 @@ async def persona_chat(
             if _pending.sender_id != _sender_id:
                 logger.warning(
                     "[CONSENT] Sender mismatch: expected %s, got %s",
-                    _pending.sender_id, _sender_id,
+                    _pending.sender_id,
+                    _sender_id,
                 )
                 return {
                     "reply": "Sorry, only the person who requested the change can confirm it.",
@@ -146,7 +139,6 @@ async def persona_chat(
                 Satisfies MOD-02 (Synapse executes the modification).
                 Uses Phase 1 SKILL.md schema: name, description, version, author."""
                 import re as _re
-                from pathlib import Path as _Path
 
                 _data_root = deps._synapse_cfg.data_root
                 _skill_name = (
@@ -182,9 +174,7 @@ async def persona_chat(
                 # create_cron and other types: noop for now (Phase 3)
                 _executor = _noop_executor
 
-            result = await deps.consent_protocol.confirm_and_execute(
-                _pending.intent, _executor
-            )
+            result = await deps.consent_protocol.confirm_and_execute(_pending.intent, _executor)
             if result["status"] == "success":
                 reply_text = (
                     f"Done! I've made the change: {_pending.intent.description}\n"
@@ -249,6 +239,7 @@ async def persona_chat(
         _permanent_facts = []
         try:
             from sci_fi_dashboard.db import get_db_connection as _get_db
+
             _db = _get_db()
             # Relationship memories first (core knowledge, compact)
             _rel = _db.execute(
@@ -269,21 +260,22 @@ async def persona_chat(
         # Configure via synapse.json → session → selfEntityNames → <target>
         _self_names = deps._synapse_cfg.session.get("selfEntityNames", {})
         _seed = _self_names.get(target, []) if isinstance(_self_names, dict) else []
-        mem_response = deps.memory_engine.query(user_msg, limit=5, with_graph=True, seed_entities=_seed or None)
-        try:
-            _get_emitter().emit("memory.query_done", {
-                "tier": mem_response.get("tier", "unknown"),
-                "result_count": len(mem_response.get("results", [])),
-                "graph_context": bool(mem_response.get("graph_context")),
-            })
-        except Exception:
-            pass
+        mem_response = deps.memory_engine.query(
+            user_msg, limit=5, with_graph=True, seed_entities=_seed or None
+        )
+        with contextlib.suppress(Exception):
+            _get_emitter().emit(
+                "memory.query_done",
+                {
+                    "tier": mem_response.get("tier", "unknown"),
+                    "result_count": len(mem_response.get("results", [])),
+                    "graph_context": bool(mem_response.get("graph_context")),
+                },
+            )
 
         # Format results for the prompt — permanent profile first, then dynamic context
         results_list = mem_response.get("results", [])
-        dynamic_facts = "\n".join(
-            [f"* {r['content']}" for r in results_list]
-        )
+        dynamic_facts = "\n".join([f"* {r['content']}" for r in results_list])
         profile_block = "\n".join([f"* {f}" for f in _permanent_facts])
         graph_ctx = mem_response.get("graph_context", "")
 
@@ -300,13 +292,14 @@ async def persona_chat(
 
     # 2. Toxicity Check
     toxicity = deps.toxic_scorer.score(user_msg)
-    try:
-        _get_emitter().emit("toxicity.check", {
-            "score": round(float(toxicity), 3),
-            "passed": float(toxicity) < 0.8,
-        })
-    except Exception:
-        pass
+    with contextlib.suppress(Exception):
+        _get_emitter().emit(
+            "toxicity.check",
+            {
+                "score": round(float(toxicity), 3),
+                "passed": float(toxicity) < 0.8,
+            },
+        )
     if toxicity > 0.8 and session_mode == "safe":
         print(
             f"[WARN] High Toxicity ({toxicity:.2f}) detected in Safe Mode. "
@@ -332,36 +325,33 @@ async def persona_chat(
                 timeout=dc_timeout,
             )
 
-            cognitive_context = deps.dual_cognition.build_cognitive_context(
-                cognitive_merge
-            )
-            try:
-                _get_emitter().emit("cognition.merge_done", {
-                    "tension_level": round(cognitive_merge.tension_level, 3),
-                    "tension_type": cognitive_merge.tension_type,
-                    "response_strategy": cognitive_merge.response_strategy,
-                    "suggested_tone": cognitive_merge.suggested_tone,
-                    "inner_monologue": cognitive_merge.inner_monologue,
-                    "thought": cognitive_merge.thought,
-                    "contradictions": cognitive_merge.contradictions,
-                    "memory_insights": cognitive_merge.memory_insights,
-                    "complexity": getattr(cognitive_merge, "_complexity", "unknown"),
-                })
-            except Exception:
-                pass
+            cognitive_context = deps.dual_cognition.build_cognitive_context(cognitive_merge)
+            with contextlib.suppress(Exception):
+                _get_emitter().emit(
+                    "cognition.merge_done",
+                    {
+                        "tension_level": round(cognitive_merge.tension_level, 3),
+                        "tension_type": cognitive_merge.tension_type,
+                        "response_strategy": cognitive_merge.response_strategy,
+                        "suggested_tone": cognitive_merge.suggested_tone,
+                        "inner_monologue": cognitive_merge.inner_monologue,
+                        "thought": cognitive_merge.thought,
+                        "contradictions": cognitive_merge.contradictions,
+                        "memory_insights": cognitive_merge.memory_insights,
+                        "complexity": getattr(cognitive_merge, "_complexity", "unknown"),
+                    },
+                )
 
             print(
                 f"[MEM] Cognitive State: {cognitive_merge.tension_type} "
                 f"(tension={cognitive_merge.tension_level:.2f})"
             )
             _safe_thought = (
-                cognitive_merge.inner_monologue[:100]
-                .encode("ascii", errors="replace")
-                .decode()
+                cognitive_merge.inner_monologue[:100].encode("ascii", errors="replace").decode()
             )
             print(f"[THOUGHT] Inner thought: {_safe_thought}")
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             print(f"[WARN] Dual cognition timed out after {dc_timeout}s")
             cognitive_merge = CognitiveMerge()
             cognitive_context = ""
@@ -388,10 +378,11 @@ async def persona_chat(
     # Phase 1.1 — Situational Awareness Block
     # Inject current time, day, and last-seen gap so Synapse eases back in naturally.
     try:
-        from datetime import datetime, timezone, timedelta
+        from datetime import datetime, timezone
+
         # Use system local timezone (not hardcoded IST)
-        _local_offset = datetime.now(timezone.utc).astimezone().utcoffset()
-        _local_tz = timezone(_local_offset) if _local_offset else timezone.utc
+        _local_offset = datetime.now(UTC).astimezone().utcoffset()
+        _local_tz = timezone(_local_offset) if _local_offset else UTC
         _now = datetime.now(_local_tz)
         _weekday = _now.strftime("%A")
         _time_str = _now.strftime("%I:%M %p")
@@ -416,9 +407,7 @@ async def persona_chat(
     sbs_orchestrator = deps.get_sbs_for_target(target)
 
     # Log user message here via orchestrator
-    user_log = sbs_orchestrator.on_message(
-        "user", user_msg, request.user_id or "default"
-    )
+    user_log = sbs_orchestrator.on_message("user", user_msg, request.user_id or "default")
     user_msg_id = user_log.get("msg_id")
 
     base_instructions = (
@@ -427,16 +416,10 @@ async def persona_chat(
         "relevant replies. Only reference what is explicitly in the memories — never invent "
         "people, events, or details that are not there."
     )
-    _proactive_raw = (
-        deps._proactive_engine.get_prompt_injection()
-        if deps._proactive_engine
-        else ""
-    )
+    _proactive_raw = deps._proactive_engine.get_prompt_injection() if deps._proactive_engine else ""
     # Merge proactive context + situational awareness block
     proactive_block = "\n\n".join(p for p in [_proactive_raw, _situational_block] if p)
-    system_prompt = sbs_orchestrator.get_system_prompt(
-        base_instructions, proactive_block
-    )
+    system_prompt = sbs_orchestrator.get_system_prompt(base_instructions, proactive_block)
     messages = [
         {"role": "system", "content": system_prompt},
         {
@@ -472,13 +455,15 @@ async def persona_chat(
     # the user message gets ignored. Placing this last ensures it's read.
     if _permanent_facts:
         _profile_lines = "\n".join([f"- {f}" for f in _permanent_facts])
-        messages.append({
-            "role": "system",
-            "content": (
-                f"USER PROFILE (always true, use this to personalize your reply):\n"
-                f"{_profile_lines}"
-            ),
-        })
+        messages.append(
+            {
+                "role": "system",
+                "content": (
+                    f"USER PROFILE (always true, use this to personalize your reply):\n"
+                    f"{_profile_lines}"
+                ),
+            }
+        )
 
     messages.append({"role": "user", "content": user_msg})
 
@@ -488,11 +473,7 @@ async def persona_chat(
     # Check if message matches a skill BEFORE traffic cop routing.
     # Skills handle the message entirely — skip MoA pipeline if matched.
     # Skills are NEVER triggered in spicy hemisphere (T-01-14 privacy boundary).
-    if (
-        deps._SKILL_SYSTEM_AVAILABLE
-        and deps.skill_router is not None
-        and session_mode != "spicy"
-    ):
+    if deps._SKILL_SYSTEM_AVAILABLE and deps.skill_router is not None and session_mode != "spicy":
         matched_skill = deps.skill_router.match(user_msg)
         if matched_skill is not None:
             logger.info("[Skills] Message routed to skill '%s'", matched_skill.name)
@@ -511,16 +492,13 @@ async def persona_chat(
             sbs_orchestrator.on_message("assistant", reply, request.user_id or "default")
 
             # Store in memory (CRITICAL: method is add_memory, NOT store)
-            try:
+            with contextlib.suppress(Exception):
                 deps.memory_engine.add_memory(
                     content=(
-                        f"[Skill: {matched_skill.name}] "
-                        f"User: {user_msg}\nAssistant: {reply}"
+                        f"[Skill: {matched_skill.name}] " f"User: {user_msg}\nAssistant: {reply}"
                     ),
                     category="skill_execution",
                 )
-            except Exception:
-                pass
 
             return {
                 "reply": reply,
@@ -532,9 +510,7 @@ async def persona_chat(
 
     # --- Phase 3: Tool Context & Schema Resolution ---
     use_tools = (
-        session_mode != "spicy"
-        and deps.tool_registry is not None
-        and deps._TOOL_REGISTRY_AVAILABLE
+        session_mode != "spicy" and deps.tool_registry is not None and deps._TOOL_REGISTRY_AVAILABLE
     )
     session_tools: list = []
     tool_schemas: list | None = None
@@ -557,23 +533,15 @@ async def persona_chat(
                 for t in session_tools
             ]
             policy_steps = build_policy_steps(
-                deps._synapse_cfg.raw
-                if hasattr(deps._synapse_cfg, "raw")
-                else {},
+                deps._synapse_cfg.raw if hasattr(deps._synapse_cfg, "raw") else {},
                 channel_id="api",
             )
             surviving_names, _removal_log = apply_tool_policy_pipeline(
                 tool_infos, policy_steps, _is_owner_sender(request.user_id)
             )
-            session_tools = [
-                t for t in session_tools if t.name in surviving_names
-            ]
+            session_tools = [t for t in session_tools if t.name in surviving_names]
 
-        tool_schemas = (
-            deps.tool_registry.get_schemas(session_tools)
-            if session_tools
-            else None
-        )
+        tool_schemas = deps.tool_registry.get_schemas(session_tools) if session_tools else None
 
     # --- Phase 1 (v2.0): Skill Routing ---
     # Check if message matches a skill BEFORE traffic cop routing.
@@ -603,13 +571,11 @@ async def persona_chat(
             sbs_orchestrator.on_message("assistant", reply, request.user_id or "default")
 
             # Store in memory (method is add_memory, NOT store)
-            try:
+            with contextlib.suppress(Exception):
                 deps.memory_engine.add_memory(
                     content=f"[Skill: {matched_skill.name}] User: {user_msg}\nAssistant: {reply}",
                     category="skill_execution",
                 )
-            except Exception:
-                pass
 
             return {
                 "reply": reply,
@@ -623,35 +589,33 @@ async def persona_chat(
         # === THE VAULT (Local Stheno) ===
         # C-02: Vault air-gap -- NEVER fall back to cloud for spicy/vault content
         print("[HOT] Routing to THE VAULT (Local Stheno)")
-        try:
-            _get_emitter().emit("llm.route", {
-                "role": "vault",
-                "model": deps._synapse_cfg.model_mappings.get("vault", {}).get("model", "unknown"),
-            })
-        except Exception:
-            pass
+        with contextlib.suppress(Exception):
+            _get_emitter().emit(
+                "llm.route",
+                {
+                    "role": "vault",
+                    "model": deps._synapse_cfg.model_mappings.get("vault", {}).get(
+                        "model", "unknown"
+                    ),
+                },
+            )
         try:
             _llm_start = time.time()
-            try:
+            with contextlib.suppress(Exception):
                 _get_emitter().emit("llm.stream_start", {"role": "vault"})
-            except Exception:
-                pass
-            result = await deps.synapse_llm_router.call_with_metadata(
-                "vault", messages
-            )
-            try:
-                _get_emitter().emit("llm.stream_done", {
-                    "total_tokens": getattr(result, "total_tokens", 0),
-                    "model": getattr(result, "model", "unknown"),
-                    "latency_ms": round((time.time() - _llm_start) * 1000),
-                })
-            except Exception:
-                pass
+            result = await deps.synapse_llm_router.call_with_metadata("vault", messages)
+            with contextlib.suppress(Exception):
+                _get_emitter().emit(
+                    "llm.stream_done",
+                    {
+                        "total_tokens": getattr(result, "total_tokens", 0),
+                        "model": getattr(result, "model", "unknown"),
+                        "latency_ms": round((time.time() - _llm_start) * 1000),
+                    },
+                )
             reply = result.text
         except Exception as e:
-            print(
-                f"[ERROR] Vault failed: {e}. Cloud fallback BLOCKED (air-gap policy)."
-            )
+            print(f"[ERROR] Vault failed: {e}. Cloud fallback BLOCKED (air-gap policy).")
             reply = (
                 "I'm unable to process this request right now -- "
                 "the local Vault model is unavailable and cloud fallback "
@@ -668,8 +632,8 @@ async def persona_chat(
     else:
         # === SAFE HEMISPHERE (MoA Routing) ===
         from sci_fi_dashboard.llm_wrappers import (
-            route_traffic_cop,
             STRATEGY_TO_ROLE,
+            route_traffic_cop,
         )
 
         classification = None
@@ -679,30 +643,29 @@ async def persona_chat(
             if mapped:
                 classification = mapped
                 print(
-                    f"[SIGNAL] Traffic Cop SKIPPED -- strategy "
-                    f"'{strategy}' -> {classification}"
+                    f"[SIGNAL] Traffic Cop SKIPPED -- strategy " f"'{strategy}' -> {classification}"
                 )
-                try:
-                    _get_emitter().emit("traffic_cop.skip", {
-                        "strategy": cognitive_merge.response_strategy,
-                        "mapped_role": classification,
-                    })
-                except Exception:
-                    pass
+                with contextlib.suppress(Exception):
+                    _get_emitter().emit(
+                        "traffic_cop.skip",
+                        {
+                            "strategy": cognitive_merge.response_strategy,
+                            "mapped_role": classification,
+                        },
+                    )
         if classification is None:
-            try:
+            with contextlib.suppress(Exception):
                 _get_emitter().emit("traffic_cop.start", {})
-            except Exception:
-                pass
             classification = await route_traffic_cop(user_msg)
-            try:
-                _get_emitter().emit("traffic_cop.done", {
-                    "classification": classification,
-                    "role": classification,
-                    "skipped": False,
-                })
-            except Exception:
-                pass
+            with contextlib.suppress(Exception):
+                _get_emitter().emit(
+                    "traffic_cop.done",
+                    {
+                        "classification": classification,
+                        "role": classification,
+                        "skipped": False,
+                    },
+                )
 
         # Phase 5: Check model override before traffic cop
         override_role = None
@@ -764,9 +727,7 @@ async def persona_chat(
                     saved = await _asyncio.to_thread(
                         save_media_buffer, img_bytes, "image/png", "image_gen_outbound"
                     )
-                    img_url = (
-                        f"http://127.0.0.1:8000/media/image_gen_outbound/{saved.path.name}"
-                    )
+                    img_url = f"http://127.0.0.1:8000/media/image_gen_outbound/{saved.path.name}"
                     channel = deps.channel_registry.get(_channel_id)
                     if channel and hasattr(channel, "send_media"):
                         await channel.send_media(chat_id, img_url, media_type="image", caption="")
@@ -782,11 +743,13 @@ async def persona_chat(
             if background_tasks:
                 background_tasks.add_task(_generate_and_send_image, user_msg, _img_chat_id)
             else:
-                logger.warning("[IMG] No BackgroundTasks object available. Using asyncio.create_task.")
+                logger.warning(
+                    "[IMG] No BackgroundTasks object available. Using asyncio.create_task."
+                )
                 asyncio.create_task(_generate_and_send_image(user_msg, _img_chat_id))
 
             # 5. Return immediate acknowledgment — user gets text response instantly
-            print(f"[ROUTE] Classification=IMAGE -> role=image_gen (BackgroundTask dispatched)")
+            print("[ROUTE] Classification=IMAGE -> role=image_gen (BackgroundTask dispatched)")
             return {
                 "reply": "Generating your image — it'll be with you in a moment!",
                 "role": "image_gen",
@@ -798,13 +761,16 @@ async def persona_chat(
 
         print(f"[ROUTE] Classification={classification} -> role={role}")
 
-        try:
-            _get_emitter().emit("llm.route", {
-                "role": role,
-                "model": deps._synapse_cfg.model_mappings.get(role.lower(), {}).get("model", "unknown"),
-            })
-        except Exception:
-            pass
+        with contextlib.suppress(Exception):
+            _get_emitter().emit(
+                "llm.route",
+                {
+                    "role": role,
+                    "model": deps._synapse_cfg.model_mappings.get(role.lower(), {}).get(
+                        "model", "unknown"
+                    ),
+                },
+            )
 
         # --- Tool Execution Loop (Phase 3 + 4 + 5) ---
         reply = ""
@@ -812,20 +778,14 @@ async def persona_chat(
         total_tool_time = 0.0
         total_result_chars = 0
         result = None
-        loop_detector = (
-            ToolLoopDetector() if deps._TOOL_SAFETY_AVAILABLE else None
-        )
+        loop_detector = ToolLoopDetector() if deps._TOOL_SAFETY_AVAILABLE else None
 
         for round_num in range(deps.MAX_TOOL_ROUNDS):
             try:
                 _llm_start = time.time()
-                try:
+                with contextlib.suppress(Exception):
                     _get_emitter().emit("llm.stream_start", {"role": role})
-                except Exception:
-                    pass
-                if tool_schemas and hasattr(
-                    deps.synapse_llm_router, "call_with_tools"
-                ):
+                if tool_schemas and hasattr(deps.synapse_llm_router, "call_with_tools"):
                     result = await deps.synapse_llm_router.call_with_tools(
                         role,
                         messages,
@@ -833,28 +793,30 @@ async def persona_chat(
                         temperature=0.7 if role != "code" else 0.2,
                         max_tokens=1500,
                     )
-                    try:
-                        _get_emitter().emit("llm.stream_done", {
-                            "total_tokens": getattr(result, "total_tokens", 0),
-                            "model": getattr(result, "model", "unknown"),
-                            "latency_ms": round((time.time() - _llm_start) * 1000),
-                        })
-                    except Exception:
-                        pass
+                    with contextlib.suppress(Exception):
+                        _get_emitter().emit(
+                            "llm.stream_done",
+                            {
+                                "total_tokens": getattr(result, "total_tokens", 0),
+                                "model": getattr(result, "model", "unknown"),
+                                "latency_ms": round((time.time() - _llm_start) * 1000),
+                            },
+                        )
                 else:
                     temp = 0.2 if role == "code" else 0.85
                     max_tok = 1000 if role == "code" else 1500
                     result = await deps.synapse_llm_router.call_with_metadata(
                         role, messages, temperature=temp, max_tokens=max_tok
                     )
-                    try:
-                        _get_emitter().emit("llm.stream_done", {
-                            "total_tokens": getattr(result, "total_tokens", 0),
-                            "model": getattr(result, "model", "unknown"),
-                            "latency_ms": round((time.time() - _llm_start) * 1000),
-                        })
-                    except Exception:
-                        pass
+                    with contextlib.suppress(Exception):
+                        _get_emitter().emit(
+                            "llm.stream_done",
+                            {
+                                "total_tokens": getattr(result, "total_tokens", 0),
+                                "model": getattr(result, "model", "unknown"),
+                                "latency_ms": round((time.time() - _llm_start) * 1000),
+                            },
+                        )
                     reply = result.text
                     break
             except Exception as e:
@@ -867,19 +829,12 @@ async def persona_chat(
                     tool_schemas = None
                     continue
                 elif "rate" in error_str:
-                    _tool_logger.warning(
-                        "Rate limit in round %d -- waiting 2s", round_num
-                    )
+                    _tool_logger.warning("Rate limit in round %d -- waiting 2s", round_num)
                     await asyncio.sleep(2)
                     continue
                 else:
-                    _tool_logger.error(
-                        "LLM call failed in round %d: %s", round_num, e
-                    )
-                    reply = (
-                        "I encountered an error processing your request. "
-                        "Please try again."
-                    )
+                    _tool_logger.error("LLM call failed in round %d: %s", round_num, e)
+                    reply = "I encountered an error processing your request. " "Please try again."
                     break
 
             # If the result has no tool_calls we are done
@@ -923,14 +878,12 @@ async def persona_chat(
             serial_calls = [
                 tc
                 for tc in tool_calls
-                if _is_serial_tool(tc.name, session_tools)
-                and tc.id not in blocked_ids
+                if _is_serial_tool(tc.name, session_tools) and tc.id not in blocked_ids
             ]
             parallel_calls = [
                 tc
                 for tc in tool_calls
-                if not _is_serial_tool(tc.name, session_tools)
-                and tc.id not in blocked_ids
+                if not _is_serial_tool(tc.name, session_tools) and tc.id not in blocked_ids
             ]
 
             tool_results: dict = {}
@@ -939,21 +892,14 @@ async def persona_chat(
             for tc in tool_calls:
                 if tc.id in blocked_ids:
                     tool_results[tc.id] = ToolResult(
-                        content=loop_detector.get_warning_message(
-                            tc.name, "block"
-                        ),
+                        content=loop_detector.get_warning_message(tc.name, "block"),
                         is_error=True,
                     )
 
             if parallel_calls:
-                tasks = [
-                    _execute_tool_call(tc, deps.tool_registry)
-                    for tc in parallel_calls
-                ]
-                parallel_results = await asyncio.gather(
-                    *tasks, return_exceptions=True
-                )
-                for tc, res in zip(parallel_calls, parallel_results):
+                tasks = [_execute_tool_call(tc, deps.tool_registry) for tc in parallel_calls]
+                parallel_results = await asyncio.gather(*tasks, return_exceptions=True)
+                for tc, res in zip(parallel_calls, parallel_results, strict=False):
                     if isinstance(res, Exception):
                         tool_results[tc.id] = ToolResult(
                             content=json.dumps({"error": str(res)}),
@@ -964,9 +910,7 @@ async def persona_chat(
 
             for tc in serial_calls:
                 try:
-                    tool_results[tc.id] = await _execute_tool_call(
-                        tc, deps.tool_registry
-                    )
+                    tool_results[tc.id] = await _execute_tool_call(tc, deps.tool_registry)
                 except Exception as exc:
                     tool_results[tc.id] = ToolResult(
                         content=json.dumps({"error": str(exc)}),
@@ -979,10 +923,7 @@ async def persona_chat(
                 t_start = time.time()
                 content = tr.content
                 if len(content) > deps.TOOL_RESULT_MAX_CHARS:
-                    content = (
-                        content[: deps.TOOL_RESULT_MAX_CHARS]
-                        + "\n... [truncated]"
-                    )
+                    content = content[: deps.TOOL_RESULT_MAX_CHARS] + "\n... [truncated]"
                 total_result_chars += len(content)
                 total_tool_time += time.time() - t_start
                 tools_used.append(tc.name)
@@ -1015,9 +956,7 @@ async def persona_chat(
             reply = (
                 getattr(result, "text", "") if result is not None else ""
             ) or "I wasn't able to complete that request."
-            _tool_logger.warning(
-                "Tool loop exhausted after %d rounds", deps.MAX_TOOL_ROUNDS
-            )
+            _tool_logger.warning("Tool loop exhausted after %d rounds", deps.MAX_TOOL_ROUNDS)
 
         if tools_used:
             _tool_logger.info(
@@ -1079,12 +1018,8 @@ async def persona_chat(
     )
 
     final_reply = reply + stats_footer
-    _safe_preview = (
-        final_reply[:60].encode("ascii", errors="replace").decode()
-    )
-    print(
-        f"[SPARK] [{target.upper()}] Response via {model_used}: {_safe_preview}..."
-    )
+    _safe_preview = final_reply[:60].encode("ascii", errors="replace").decode()
+    print(f"[SPARK] [{target.upper()}] Response via {model_used}: {_safe_preview}...")
 
     # Log assistant message
     sbs_orchestrator = deps.get_sbs_for_target(target)
@@ -1103,16 +1038,10 @@ async def persona_chat(
         from sci_fi_dashboard.pipeline_helpers import continue_conversation
 
         if background_tasks:
-            background_tasks.add_task(
-                continue_conversation, request.user_id, messages, reply
-            )
+            background_tasks.add_task(continue_conversation, request.user_id, messages, reply)
         else:
-            print(
-                "[WARN] No BackgroundTasks object available. Using asyncio.create_task."
-            )
-            asyncio.create_task(
-                continue_conversation(request.user_id, messages, reply)
-            )
+            print("[WARN] No BackgroundTasks object available. Using asyncio.create_task.")
+            asyncio.create_task(continue_conversation(request.user_id, messages, reply))
 
     result_dict = {
         "reply": final_reply,
@@ -1126,10 +1055,6 @@ async def persona_chat(
             result_dict["tool_rounds"] = round_num + 1
     except NameError:
         pass
-    try:
-        _get_emitter().end_run(
-            total_latency_ms=round((time.time() - _pipeline_start) * 1000)
-        )
-    except Exception:
-        pass
+    with contextlib.suppress(Exception):
+        _get_emitter().end_run(total_latency_ms=round((time.time() - _pipeline_start) * 1000))
     return result_dict

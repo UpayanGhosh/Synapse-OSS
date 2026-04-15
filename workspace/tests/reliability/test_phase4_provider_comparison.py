@@ -26,7 +26,6 @@ import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
-from typing import List, Dict, Optional
 
 import pytest
 
@@ -34,8 +33,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from tests.reliability.conftest import (
     SKIP_NO_FASTEMBED,
-    ReliabilityDataGenerator,
     LatencyTracker,
+    ReliabilityDataGenerator,
     get_memory_mb,
 )
 
@@ -49,24 +48,24 @@ pytestmark = [pytest.mark.reliability, SKIP_NO_FASTEMBED]
 @dataclass
 class ProviderMetrics:
     name: str
-    cold_start_ms: Optional[float] = None
-    p50_1k_ms: Optional[float] = None
-    p95_1k_ms: Optional[float] = None
-    p99_1k_ms: Optional[float] = None
-    p50_5k_ms: Optional[float] = None
-    p95_5k_ms: Optional[float] = None
-    throughput_single: Optional[float] = None   # texts/sec
-    throughput_batch64: Optional[float] = None  # texts/sec (uniform-length texts)
-    throughput_batch256: Optional[float] = None
-    memory_mb: Optional[float] = None
-    error_rate_10k: Optional[float] = None
-    concurrency_4t_1k_ms: Optional[float] = None  # total wall time
+    cold_start_ms: float | None = None
+    p50_1k_ms: float | None = None
+    p95_1k_ms: float | None = None
+    p99_1k_ms: float | None = None
+    p50_5k_ms: float | None = None
+    p95_5k_ms: float | None = None
+    throughput_single: float | None = None  # texts/sec
+    throughput_batch64: float | None = None  # texts/sec (uniform-length texts)
+    throughput_batch256: float | None = None
+    memory_mb: float | None = None
+    error_rate_10k: float | None = None
+    concurrency_4t_1k_ms: float | None = None  # total wall time
     is_deterministic: bool = False
-    vector_drift: Optional[float] = None          # L2 diff between call 1 and call 10k
-    notes: List[str] = field(default_factory=list)
+    vector_drift: float | None = None  # L2 diff between call 1 and call 10k
+    notes: list[str] = field(default_factory=list)
 
 
-_REPORT: Dict[str, ProviderMetrics] = {}
+_REPORT: dict[str, ProviderMetrics] = {}
 
 
 def _get_metrics(name: str) -> ProviderMetrics:
@@ -98,10 +97,10 @@ def gen():
 
 
 def l2_dist(a: list, b: list) -> float:
-    return math.sqrt(sum((x - y) ** 2 for x, y in zip(a, b)))
+    return math.sqrt(sum((x - y) ** 2 for x, y in zip(a, b, strict=False)))
 
 
-def measure_latencies(provider, texts: List[str]) -> LatencyTracker:
+def measure_latencies(provider, texts: list[str]) -> LatencyTracker:
     tracker = LatencyTracker()
     for text in texts:
         t0 = time.perf_counter()
@@ -198,7 +197,7 @@ def test_throughput_fastembed(fastembed):
     m.throughput_batch64 = batch64_tps
     m.throughput_batch256 = batch256_tps
 
-    print(f"\n  FastEmbed throughput (uniform-length texts):")
+    print("\n  FastEmbed throughput (uniform-length texts):")
     print(f"    Single:    {single_tps:.0f} texts/sec")
     print(f"    Batch-64:  {batch64_tps:.0f} texts/sec")
     print(f"    Batch-256: {batch256_tps:.0f} texts/sec")
@@ -217,7 +216,9 @@ def test_memory_fastembed(fastembed):
 
     m = _get_metrics("FastEmbed")
     m.memory_mb = after - baseline
-    print(f"\n  FastEmbed memory delta after 100 embeds: {m.memory_mb:.1f} MB  (total RSS: {after:.0f} MB)")
+    print(
+        f"\n  FastEmbed memory delta after 100 embeds: {m.memory_mb:.1f} MB  (total RSS: {after:.0f} MB)"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -257,12 +258,14 @@ def test_concurrency_fastembed(fastembed, gen):
     with ThreadPoolExecutor(max_workers=4) as ex:
         futures = []
         for sl in slices:
+
             def worker(s=sl):
                 for t in s:
                     try:
                         fastembed.embed_query(t)
                     except Exception as e:
                         errors.append(str(e))
+
             futures.append(ex.submit(worker))
         for f in futures:
             f.result()
@@ -285,7 +288,7 @@ def test_determinism_fastembed(fastembed):
     all_match = True
     for _ in range(99):
         v = fastembed.embed_query(text)
-        if any(abs(a - b) > 1e-7 for a, b in zip(ref, v)):
+        if any(abs(a - b) > 1e-7 for a, b in zip(ref, v, strict=False)):
             all_match = False
             break
     m = _get_metrics("FastEmbed")
@@ -372,12 +375,12 @@ def test_batch_deep_dive_fastembed(fastembed):
 
     results = {}
     for label, texts, batch_size in [
-        ("uniform_short_single",  short, 1),
+        ("uniform_short_single", short, 1),
         ("uniform_short_batch64", short, 64),
-        ("uniform_long_single",   long,  1),
-        ("uniform_long_batch64",  long,  64),
-        ("mixed_single",          mixed, 1),
-        ("mixed_batch64",         mixed, 64),
+        ("uniform_long_single", long, 1),
+        ("uniform_long_batch64", long, 64),
+        ("mixed_single", mixed, 1),
+        ("mixed_batch64", mixed, 64),
     ]:
         t0 = time.perf_counter()
         if batch_size == 1:
@@ -389,15 +392,15 @@ def test_batch_deep_dive_fastembed(fastembed):
         tps = len(texts) / (time.perf_counter() - t0)
         results[label] = tps
 
-    print(f"\n  FastEmbed batch deep-dive:")
+    print("\n  FastEmbed batch deep-dive:")
     print(f"    Uniform short — single:   {results['uniform_short_single']:.0f} texts/sec")
     print(f"    Uniform short — batch-64: {results['uniform_short_batch64']:.0f} texts/sec")
     print(f"    Uniform long  — single:   {results['uniform_long_single']:.0f} texts/sec")
     print(f"    Uniform long  — batch-64: {results['uniform_long_batch64']:.0f} texts/sec")
     print(f"    Mixed         — single:   {results['mixed_single']:.0f} texts/sec")
     print(f"    Mixed         — batch-64: {results['mixed_batch64']:.0f} texts/sec")
-    print(f"\n  NOTE: batch > single for uniform texts = ONNX batch vectorization working.")
-    print(f"  NOTE: mixed batch < mixed single = padding overhead (expected for ONNX).")
+    print("\n  NOTE: batch > single for uniform texts = ONNX batch vectorization working.")
+    print("  NOTE: mixed batch < mixed single = padding overhead (expected for ONNX).")
 
 
 # ---------------------------------------------------------------------------
@@ -414,7 +417,7 @@ def test_zz_print_report():
     if not fe:
         pytest.skip("No FastEmbed metrics collected")
 
-    DIVIDER = "=" * 60
+    DIVIDER = "=" * 60  # noqa: N806
     print(f"\n\n{DIVIDER}")
     print("  FASTEMBED PROVIDER RELIABILITY REPORT")
     print(DIVIDER)
@@ -423,7 +426,7 @@ def test_zz_print_report():
         val_s = "N/A" if val is None else f"{val:{fmt}}{unit}"
         print(f"  {label:<36} {val_s:>14}")
 
-    print(f"\n  --- LATENCY ---")
+    print("\n  --- LATENCY ---")
     row("Cold start", fe.cold_start_ms)
     row("1k texts  p50", fe.p50_1k_ms)
     row("1k texts  p95", fe.p95_1k_ms)
@@ -431,26 +434,26 @@ def test_zz_print_report():
     row("5k texts  p50", fe.p50_5k_ms)
     row("5k texts  p95", fe.p95_5k_ms)
 
-    print(f"\n  --- THROUGHPUT ---")
+    print("\n  --- THROUGHPUT ---")
     row("Single (texts/sec)", fe.throughput_single, fmt=".0f", unit="")
     row("Batch-64 (texts/sec)", fe.throughput_batch64, fmt=".0f", unit="")
     row("Batch-256 (texts/sec)", fe.throughput_batch256, fmt=".0f", unit="")
 
-    print(f"\n  --- RELIABILITY ---")
+    print("\n  --- RELIABILITY ---")
     fe_err = fe.error_rate_10k * 100 if fe.error_rate_10k is not None else None
     row("Error rate", fe_err, fmt=".4f", unit="%")
     row("Concurrency wall time", fe.concurrency_4t_1k_ms)
 
-    print(f"\n  --- CORRECTNESS ---")
+    print("\n  --- CORRECTNESS ---")
     row("Vector drift (L2)", fe.vector_drift, fmt=".2e", unit="")
 
-    print(f"\n  --- SYSTEM ---")
+    print("\n  --- SYSTEM ---")
     row("Memory delta (MB)", fe.memory_mb)
     det = "yes" if fe.is_deterministic else "no"
     print(f"  {'Deterministic':<36} {det:>14}")
 
     if fe.notes:
-        print(f"\n  --- NOTES ---")
+        print("\n  --- NOTES ---")
         for n in fe.notes:
             print(f"  {n}")
 

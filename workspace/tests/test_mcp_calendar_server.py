@@ -1,12 +1,12 @@
 """
 Tests for sci_fi_dashboard.mcp_servers.calendar_server — Google Calendar integration.
 """
+
 from __future__ import annotations
 
 import json
 import os
 import sys
-from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -175,7 +175,7 @@ class TestCreateEvent:
 
         data = json.loads(_text(result))
         assert data["id"] == "evt_123"
-        assert "htmlLink" in data.get("link", "")  or "link" in data
+        assert "htmlLink" in data.get("link", "") or "link" in data
 
     @pytest.mark.asyncio
     async def test_create_event_with_attendees(self):
@@ -188,7 +188,7 @@ class TestCreateEvent:
         }
 
         with patch.object(cal_srv, "_get_calendar_service", return_value=mock_svc):
-            result = await cal_srv.call_tool(
+            await cal_srv.call_tool(
                 "create_event",
                 {
                     "summary": "Collab",

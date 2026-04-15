@@ -7,6 +7,7 @@ SSRF guard for safe remote downloads.
 
 from .audio_preflight import AudioPreflightResult, check_audio_preflight
 from .audio_transcriber import transcribe_audio
+from .chat_attachments import ParsedMessage, parse_message_with_attachments
 from .constants import (
     CLEANUP_THROTTLE_SECONDS,
     DEFAULT_TTL_MS,
@@ -23,7 +24,6 @@ from .constants import (
     media_kind_from_mime,
     model_supports_vision,
 )
-from .chat_attachments import ParsedMessage, parse_message_with_attachments
 from .delivery_queue import DeliveryQueue, QueuedDelivery
 from .fetch import MediaFetchError, fetch_media
 from .mime import detect_mime

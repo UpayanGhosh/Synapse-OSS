@@ -4,8 +4,10 @@ Cron Scheduler — JSON persistence.
 Stores the job list in a single JSON file per agent with atomic writes
 (write to tempfile then os.replace) so a crash never corrupts the store.
 """
+
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
@@ -70,19 +72,15 @@ class CronStore:
         self._path.parent.mkdir(parents=True, exist_ok=True)
 
         # Atomic write: tempfile in the same directory → os.replace
-        fd, tmp_path = tempfile.mkstemp(
-            dir=str(self._path.parent), suffix=".tmp", prefix="cron_"
-        )
+        fd, tmp_path = tempfile.mkstemp(dir=str(self._path.parent), suffix=".tmp", prefix="cron_")
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as f:
                 json.dump(payload, f, indent=2, default=str)
             os.replace(tmp_path, str(self._path))
         except BaseException:
             # Clean up the temp file on any error
-            try:
+            with contextlib.suppress(OSError):
                 os.unlink(tmp_path)
-            except OSError:
-                pass
             raise
 
     # ------------------------------------------------------------------

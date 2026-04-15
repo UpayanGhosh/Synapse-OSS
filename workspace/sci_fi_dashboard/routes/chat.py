@@ -1,8 +1,9 @@
 """Chat and OpenAI-compatible completion endpoints."""
+
 import logging
 import uuid
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Request
 
 from sci_fi_dashboard import _deps as deps
 

@@ -62,17 +62,11 @@ MIME_BY_EXT: dict[str, str] = {
     # Documents
     ".pdf": "application/pdf",
     ".doc": "application/msword",
-    ".docx": (
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-    ),
+    ".docx": ("application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
     ".xls": "application/vnd.ms-excel",
-    ".xlsx": (
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    ),
+    ".xlsx": ("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
     ".ppt": "application/vnd.ms-powerpoint",
-    ".pptx": (
-        "application/vnd.openxmlformats-officedocument.presentationml.presentation"
-    ),
+    ".pptx": ("application/vnd.openxmlformats-officedocument.presentationml.presentation"),
     ".csv": "text/csv",
     ".rtf": "application/rtf",
     ".epub": "application/epub+zip",
@@ -89,13 +83,15 @@ _FALLBACK = "application/octet-stream"
 # Generic container types where magic bytes may reveal a more specific type.
 # For example, .xlsx files are ZIP archives — magic returns ``application/zip``
 # but the extension-based result is more useful.
-_GENERIC_CONTAINER_MIMES: frozenset[str] = frozenset({
-    "application/zip",
-    "application/x-tar",
-    "application/gzip",
-    "application/x-rar-compressed",
-    "application/x-7z-compressed",
-})
+_GENERIC_CONTAINER_MIMES: frozenset[str] = frozenset(
+    {
+        "application/zip",
+        "application/x-tar",
+        "application/gzip",
+        "application/x-rar-compressed",
+        "application/x-7z-compressed",
+    }
+)
 
 
 # ---------------------------------------------------------------------------

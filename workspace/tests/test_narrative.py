@@ -12,7 +12,6 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-import pytest
 
 from sci_fi_dashboard.narrative import NARRATIVE_MAP, translate_log_to_narrative
 
@@ -114,6 +113,6 @@ class TestTranslateLogToNarrative:
             assert isinstance(options, list), f"Expected list for key={key}"
             assert len(options) > 0, f"Expected non-empty list for key={key}"
             for opt in options:
-                assert isinstance(opt, tuple) and len(opt) == 2, (
-                    f"Expected 2-tuple in options for key={key}, got {opt}"
-                )
+                assert (
+                    isinstance(opt, tuple) and len(opt) == 2
+                ), f"Expected 2-tuple in options for key={key}, got {opt}"

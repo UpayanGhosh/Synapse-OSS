@@ -6,6 +6,7 @@ Merge:              Detect tension, alignment, or contradiction.
 """
 
 import asyncio
+import contextlib
 import json
 import logging
 import re
@@ -121,27 +122,78 @@ class DualCognitionEngine:
 
         emotional_markers = [
             # English
-            "help", "stuck", "frustrated", "can't", "failed", "stressed",
-            "scared", "angry", "depressed", "crying", "lonely", "hurt",
-            "worried", "anxious", "miss", "confused", "upset", "sad",
+            "help",
+            "stuck",
+            "frustrated",
+            "can't",
+            "failed",
+            "stressed",
+            "scared",
+            "angry",
+            "depressed",
+            "crying",
+            "lonely",
+            "hurt",
+            "worried",
+            "anxious",
+            "miss",
+            "confused",
+            "upset",
+            "sad",
             # Banglish — emotional states
-            "miss korchi", "miss kori", "kharap", "dukkho", "kando",
-            "ekla", "bhoy", "bhoy pacchi", "jhogra", "problem",
-            "tension", "chinta", "kষti", "kষto", "tired",
-            "please", "ki korbo", "ki korbi", "bujhte parchhi na",
-            "mone hocche", "lagche", "kষমa", "sorry", "hurt korlo",
-            "raga", "rag", "bhalobashi", "darkar", "dorkar",
-            "thik nei", "thik nai", "valo nei", "bhalo nei", "valo na",
+            "miss korchi",
+            "miss kori",
+            "kharap",
+            "dukkho",
+            "kando",
+            "ekla",
+            "bhoy",
+            "bhoy pacchi",
+            "jhogra",
+            "problem",
+            "tension",
+            "chinta",
+            "kষti",
+            "kষto",
+            "tired",
+            "please",
+            "ki korbo",
+            "ki korbi",
+            "bujhte parchhi na",
+            "mone hocche",
+            "lagche",
+            "kষমa",
+            "sorry",
+            "hurt korlo",
+            "raga",
+            "rag",
+            "bhalobashi",
+            "darkar",
+            "dorkar",
+            "thik nei",
+            "thik nai",
+            "valo nei",
+            "bhalo nei",
+            "valo na",
         ]
         if any(m in msg_lower for m in emotional_markers):
             deep_signals += 1
 
         ambiguity_markers = [
             # English
-            "that thing", "what we", "you know", "remember when",
+            "that thing",
+            "what we",
+            "you know",
+            "remember when",
             # Banglish
-            "mone ache", "mone achhe", "shei din", "shei ghotona",
-            "oi kotha", "tui jantis", "tui janish", "bujhte parbi",
+            "mone ache",
+            "mone achhe",
+            "shei din",
+            "shei ghotona",
+            "oi kotha",
+            "tui jantis",
+            "tui janish",
+            "bujhte parbi",
         ]
         if any(m in msg_lower for m in ambiguity_markers):
             deep_signals += 1
@@ -168,17 +220,21 @@ class DualCognitionEngine:
         try:
             complexity = self.classify_complexity(user_message, conversation_history)
 
-            try: _get_emitter().emit("cognition.classify", {
-                "complexity": complexity,
-                "word_count": len(user_message.split()),
-                "signals": [],
-            })
-            except Exception: pass
+            with contextlib.suppress(Exception):
+
+                _get_emitter().emit(
+                    "cognition.classify",
+                    {
+                        "complexity": complexity,
+                        "word_count": len(user_message.split()),
+                        "signals": [],
+                    },
+                )
 
             # FAST PATH: 0 LLM calls -- return minimal merge immediately
             if complexity == "fast":
-                try: _get_emitter().emit("cognition.fast_path", {"reason": "simple_message"})
-                except Exception: pass
+                with contextlib.suppress(Exception):
+                    _get_emitter().emit("cognition.fast_path", {"reason": "simple_message"})
                 return CognitiveMerge(
                     tension_level=0.0,
                     tension_type="none",
@@ -189,29 +245,39 @@ class DualCognitionEngine:
 
             # STANDARD PATH: analyze + recall + merge (2 LLM calls)
             if complexity == "standard":
-                try: _get_emitter().emit("cognition.analyze_start", {})
-                except Exception: pass
-                try: _get_emitter().emit("cognition.recall_start", {"from_cache": pre_cached_memory is not None})
-                except Exception: pass
+                with contextlib.suppress(Exception):
+                    _get_emitter().emit("cognition.analyze_start", {})
+                with contextlib.suppress(Exception):
+                    _get_emitter().emit(
+                        "cognition.recall_start", {"from_cache": pre_cached_memory is not None}
+                    )
                 present, memory = await asyncio.gather(
                     self._analyze_present(user_message, conversation_history, llm_fn),
                     self._recall_memory(user_message, chat_id, target, pre_cached_memory),
                 )
-                try: _get_emitter().emit("cognition.analyze_done", {
-                    "sentiment": getattr(present, "sentiment", ""),
-                    "intent": getattr(present, "intent", ""),
-                    "emotional_state": getattr(present, "emotional_state", ""),
-                    "topics": getattr(present, "topics", []),
-                    "conversational_pattern": getattr(present, "conversational_pattern", ""),
-                })
-                except Exception: pass
-                try: _get_emitter().emit("cognition.recall_done", {
-                    "fact_count": len(getattr(memory, "relevant_facts", [])),
-                    "has_graph_context": bool(getattr(memory, "graph_connections", "")),
-                })
-                except Exception: pass
-                try: _get_emitter().emit("cognition.merge_start", {"use_cot": False})
-                except Exception: pass
+                with contextlib.suppress(Exception):
+                    _get_emitter().emit(
+                        "cognition.analyze_done",
+                        {
+                            "sentiment": getattr(present, "sentiment", ""),
+                            "intent": getattr(present, "intent", ""),
+                            "emotional_state": getattr(present, "emotional_state", ""),
+                            "topics": getattr(present, "topics", []),
+                            "conversational_pattern": getattr(
+                                present, "conversational_pattern", ""
+                            ),
+                        },
+                    )
+                with contextlib.suppress(Exception):
+                    _get_emitter().emit(
+                        "cognition.recall_done",
+                        {
+                            "fact_count": len(getattr(memory, "relevant_facts", [])),
+                            "has_graph_context": bool(getattr(memory, "graph_connections", "")),
+                        },
+                    )
+                with contextlib.suppress(Exception):
+                    _get_emitter().emit("cognition.merge_start", {"use_cot": False})
                 merge = await self._merge_streams(present, memory, target, llm_fn, use_cot=False)
                 if self.trajectory:
                     self.trajectory.record(merge, present.topics)
@@ -222,31 +288,39 @@ class DualCognitionEngine:
             # Run both operations in parallel to save latency:
             # - present analysis (LLM call)
             # - memory recall using original message with pre-cached results (no LLM, fast)
-            try: _get_emitter().emit("cognition.analyze_start", {})
-            except Exception: pass
-            try: _get_emitter().emit("cognition.recall_start", {"from_cache": pre_cached_memory is not None})
-            except Exception: pass
+            with contextlib.suppress(Exception):
+                _get_emitter().emit("cognition.analyze_start", {})
+            with contextlib.suppress(Exception):
+                _get_emitter().emit(
+                    "cognition.recall_start", {"from_cache": pre_cached_memory is not None}
+                )
             present, memory = await asyncio.gather(
                 self._analyze_present(user_message, conversation_history, llm_fn),
                 self._recall_memory(user_message, chat_id, target, pre_cached_memory),
             )
-            try: _get_emitter().emit("cognition.analyze_done", {
-                "sentiment": getattr(present, "sentiment", ""),
-                "intent": getattr(present, "intent", ""),
-                "emotional_state": getattr(present, "emotional_state", ""),
-                "topics": getattr(present, "topics", []),
-                "conversational_pattern": getattr(present, "conversational_pattern", ""),
-            })
-            except Exception: pass
-            try: _get_emitter().emit("cognition.recall_done", {
-                "fact_count": len(getattr(memory, "relevant_facts", [])),
-                "has_graph_context": bool(getattr(memory, "graph_connections", "")),
-            })
-            except Exception: pass
+            with contextlib.suppress(Exception):
+                _get_emitter().emit(
+                    "cognition.analyze_done",
+                    {
+                        "sentiment": getattr(present, "sentiment", ""),
+                        "intent": getattr(present, "intent", ""),
+                        "emotional_state": getattr(present, "emotional_state", ""),
+                        "topics": getattr(present, "topics", []),
+                        "conversational_pattern": getattr(present, "conversational_pattern", ""),
+                    },
+                )
+            with contextlib.suppress(Exception):
+                _get_emitter().emit(
+                    "cognition.recall_done",
+                    {
+                        "fact_count": len(getattr(memory, "relevant_facts", [])),
+                        "has_graph_context": bool(getattr(memory, "graph_connections", "")),
+                    },
+                )
 
             # Step 3: CoT merge
-            try: _get_emitter().emit("cognition.merge_start", {"use_cot": True})
-            except Exception: pass
+            with contextlib.suppress(Exception):
+                _get_emitter().emit("cognition.merge_start", {"use_cot": True})
             merge = await self._merge_streams(present, memory, target, llm_fn, use_cot=True)
             if self.trajectory:
                 self.trajectory.record(merge, present.topics)
@@ -274,12 +348,11 @@ class DualCognitionEngine:
         recent_context = ""
         if history and len(history) > 0:
             last_3 = [
-                m for m in (history or [])[-3:]
+                m
+                for m in (history or [])[-3:]
                 if isinstance(m, dict) and "role" in m and "content" in m
             ]
-            recent_context = "\n".join(
-                f"{m['role']}: {m['content'][:100]}" for m in last_3
-            )
+            recent_context = "\n".join(f"{m['role']}: {m['content'][:100]}" for m in last_3)
 
         prompt = f"""Analyze this message IN CONTEXT. Return JSON only.
 
@@ -341,8 +414,10 @@ JSON only:"""
         memory = MemoryStream()
 
         try:
-            results = pre_cached_memory if pre_cached_memory else self.memory.query(
-                message, limit=5, with_graph=True
+            results = (
+                pre_cached_memory
+                if pre_cached_memory
+                else self.memory.query(message, limit=5, with_graph=True)
             )
             memory.relevant_facts = [r["content"] for r in results.get("results", [])]
             memory.graph_connections = results.get("graph_context", "")
@@ -462,12 +537,11 @@ JSON only:"""
             return ""
 
         safe_history = [
-            m for m in (history or [])[-3:]
+            m
+            for m in (history or [])[-3:]
             if isinstance(m, dict) and "role" in m and "content" in m
         ]
-        recent = "\n".join(
-            f"{m['role']}: {m['content'][:80]}" for m in safe_history
-        )
+        recent = "\n".join(f"{m['role']}: {m['content'][:80]}" for m in safe_history)
         prompt = (
             "What specific topics/events is the user referring to?\n"
             f"Recent conversation:\n{recent}\n"

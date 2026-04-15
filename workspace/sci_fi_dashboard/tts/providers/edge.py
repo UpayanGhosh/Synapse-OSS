@@ -7,7 +7,6 @@ Default voice: en-US-AriaNeural (400+ voices available via edge-tts voice list).
 """
 
 import logging
-import os
 import tempfile
 from pathlib import Path
 
@@ -42,9 +41,7 @@ class EdgeTTSProvider:
             finally:
                 Path(tmp_path).unlink(missing_ok=True)
         except ImportError:
-            logger.error(
-                "edge-tts is not installed. Run: pip install edge-tts>=7.0.0"
-            )
+            logger.error("edge-tts is not installed. Run: pip install edge-tts>=7.0.0")
             return b""
         except Exception as exc:
             logger.error("EdgeTTSProvider.synthesize() failed: %s", exc)

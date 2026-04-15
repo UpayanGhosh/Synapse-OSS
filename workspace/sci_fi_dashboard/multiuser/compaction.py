@@ -27,8 +27,9 @@ import logging
 import os
 import tempfile
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from sci_fi_dashboard.multiuser.memory_manager import append_daily_note
 from sci_fi_dashboard.multiuser.session_store import SessionStore
@@ -161,9 +162,7 @@ _ADAPTIVE_MIN: float = 0.15
 _SAFETY_MARGIN: float = 1.2
 
 
-def compute_adaptive_chunk_ratio(
-    messages: list[dict], context_window: int
-) -> float:
+def compute_adaptive_chunk_ratio(messages: list[dict], context_window: int) -> float:
     """Compute a dynamic split ratio for compaction chunking.
 
     Returns a ratio in ``[_ADAPTIVE_MIN, _ADAPTIVE_BASE]`` that shrinks as the
@@ -232,13 +231,14 @@ async def summarize_with_fallback(
 
         # Filter out oversized messages (> 50% of context window).
         threshold = context_window * 0.5
-        filtered = [
-            m for m in messages if estimate_tokens([m]) <= threshold
-        ]
+        filtered = [m for m in messages if estimate_tokens([m]) <= threshold]
         if not filtered:
             # All messages are oversized — truncate the largest one.
             filtered = [
-                {**messages[0], "content": (messages[0].get("content", "") or "")[:context_window * 2]}
+                {
+                    **messages[0],
+                    "content": (messages[0].get("content", "") or "")[: context_window * 2],
+                }
             ]
         logger.info(
             "summarize_with_fallback: retrying after filtering %d oversized messages",

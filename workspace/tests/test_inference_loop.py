@@ -12,10 +12,7 @@ Covers:
 - tool_loop_cb observability callback invoked correctly
 """
 
-import asyncio
 import sys
-import time
-import unittest.mock
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -33,12 +30,10 @@ from litellm import (
 )
 from sci_fi_dashboard.auth_profiles import AuthProfile, AuthProfileStore
 from sci_fi_dashboard.llm_router import (
-    AuthProfileFailureReason,
     InferenceLoop,
     LLMResult,
     SynapseLLMRouter,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -142,14 +137,14 @@ class TestRateLimited:
     async def test_rate_limited_retries_with_backoff(self):
         """Rate limit error triggers retry with backoff, then succeeds."""
         router = _make_router_mock()
-        rate_err = RateLimitError(
-            message="rate limited", llm_provider="openai", model="gpt-4o"
-        )
+        rate_err = RateLimitError(message="rate limited", llm_provider="openai", model="gpt-4o")
         router._do_call.side_effect = [rate_err, _make_mock_response("ok")]
 
         loop = InferenceLoop(router, max_attempts=3)
 
-        with patch("sci_fi_dashboard.llm_router.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+        with patch(
+            "sci_fi_dashboard.llm_router.asyncio.sleep", new_callable=AsyncMock
+        ) as mock_sleep:
             result = await loop.run("casual", [{"role": "user", "content": "hi"}])
 
         assert result.text == "ok"
@@ -163,25 +158,23 @@ class TestRateLimited:
     async def test_rate_limited_all_attempts_exhausted(self):
         """Rate limit on all attempts raises the error."""
         router = _make_router_mock()
-        rate_err = RateLimitError(
-            message="rate limited", llm_provider="openai", model="gpt-4o"
-        )
+        rate_err = RateLimitError(message="rate limited", llm_provider="openai", model="gpt-4o")
         router._do_call.side_effect = rate_err
 
         loop = InferenceLoop(router, max_attempts=2)
 
-        with patch("sci_fi_dashboard.llm_router.asyncio.sleep", new_callable=AsyncMock):
-            with pytest.raises(RateLimitError):
-                await loop.run("casual", [{"role": "user", "content": "hi"}])
+        with (
+            patch("sci_fi_dashboard.llm_router.asyncio.sleep", new_callable=AsyncMock),
+            pytest.raises(RateLimitError),
+        ):
+            await loop.run("casual", [{"role": "user", "content": "hi"}])
 
         assert router._do_call.call_count == 2
 
     async def test_rate_limited_reports_failure_to_auth_store(self):
         """Rate limit error reports failure to AuthProfileStore if available."""
         router = _make_router_mock()
-        rate_err = RateLimitError(
-            message="rate limited", llm_provider="openai", model="gpt-4o"
-        )
+        rate_err = RateLimitError(message="rate limited", llm_provider="openai", model="gpt-4o")
         router._do_call.side_effect = [rate_err, _make_mock_response("ok")]
 
         store = _make_auth_store()
@@ -215,9 +208,7 @@ class TestContextOverflow:
         compact_fn = AsyncMock(return_value=compacted_messages)
 
         loop = InferenceLoop(router, max_attempts=3, compact_fn=compact_fn)
-        result = await loop.run(
-            "casual", [{"role": "user", "content": "very long message"}]
-        )
+        result = await loop.run("casual", [{"role": "user", "content": "very long message"}])
 
         assert result.text == "compacted"
         compact_fn.assert_called_once()
@@ -244,9 +235,7 @@ class TestContextOverflow:
     async def test_context_overflow_detected_by_various_messages(self):
         """Context overflow detection works for different error message formats."""
         router = _make_router_mock()
-        compact_fn = AsyncMock(
-            return_value=[{"role": "user", "content": "short"}]
-        )
+        compact_fn = AsyncMock(return_value=[{"role": "user", "content": "short"}])
 
         messages_to_test = [
             "maximum context length",
@@ -259,9 +248,7 @@ class TestContextOverflow:
         for msg_text in messages_to_test:
             router._do_call.reset_mock()
             router._do_call.side_effect = [
-                BadRequestError(
-                    message=msg_text, llm_provider="openai", model="gpt-4o"
-                ),
+                BadRequestError(message=msg_text, llm_provider="openai", model="gpt-4o"),
                 _make_mock_response("ok"),
             ]
             compact_fn.reset_mock()
@@ -320,12 +307,16 @@ class TestAuthFailed:
 
         # Store with one profile — after first failure it goes to cooldown,
         # select_best returns None on next attempt
-        store = _make_auth_store([
-            AuthProfile(
-                id="p1", type="api_key", provider="openai",
-                credentials={"api_key": "sk-1"},
-            ),
-        ])
+        store = _make_auth_store(
+            [
+                AuthProfile(
+                    id="p1",
+                    type="api_key",
+                    provider="openai",
+                    credentials={"api_key": "sk-1"},
+                ),
+            ]
+        )
 
         loop = InferenceLoop(router, max_attempts=3, auth_store=store)
 
@@ -401,7 +392,9 @@ class TestServerError:
 
         loop = InferenceLoop(router, max_attempts=3)
 
-        with patch("sci_fi_dashboard.llm_router.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+        with patch(
+            "sci_fi_dashboard.llm_router.asyncio.sleep", new_callable=AsyncMock
+        ) as mock_sleep:
             result = await loop.run("casual", [{"role": "user", "content": "hi"}])
 
         assert result.text == "ok"
@@ -421,9 +414,11 @@ class TestServerError:
 
         loop = InferenceLoop(router, max_attempts=5)
 
-        with patch("sci_fi_dashboard.llm_router.asyncio.sleep", new_callable=AsyncMock):
-            with pytest.raises(ServiceUnavailableError):
-                await loop.run("casual", [{"role": "user", "content": "hi"}])
+        with (
+            patch("sci_fi_dashboard.llm_router.asyncio.sleep", new_callable=AsyncMock),
+            pytest.raises(ServiceUnavailableError),
+        ):
+            await loop.run("casual", [{"role": "user", "content": "hi"}])
 
         # Should try exactly 2 times (original + 1 retry)
         assert router._do_call.call_count == 2
@@ -431,9 +426,7 @@ class TestServerError:
     async def test_timeout_retries_once(self):
         """Timeout error retries once like server error."""
         router = _make_router_mock()
-        timeout_err = Timeout(
-            message="request timed out", llm_provider="openai", model="gpt-4o"
-        )
+        timeout_err = Timeout(message="request timed out", llm_provider="openai", model="gpt-4o")
         router._do_call.side_effect = [timeout_err, _make_mock_response("ok")]
 
         loop = InferenceLoop(router, max_attempts=3)
@@ -456,25 +449,23 @@ class TestMaxAttempts:
     async def test_max_attempts_respected(self):
         """Loop does not exceed max_attempts."""
         router = _make_router_mock()
-        rate_err = RateLimitError(
-            message="rate limited", llm_provider="openai", model="gpt-4o"
-        )
+        rate_err = RateLimitError(message="rate limited", llm_provider="openai", model="gpt-4o")
         router._do_call.side_effect = rate_err
 
         loop = InferenceLoop(router, max_attempts=3)
 
-        with patch("sci_fi_dashboard.llm_router.asyncio.sleep", new_callable=AsyncMock):
-            with pytest.raises(RateLimitError):
-                await loop.run("casual", [{"role": "user", "content": "hi"}])
+        with (
+            patch("sci_fi_dashboard.llm_router.asyncio.sleep", new_callable=AsyncMock),
+            pytest.raises(RateLimitError),
+        ):
+            await loop.run("casual", [{"role": "user", "content": "hi"}])
 
         assert router._do_call.call_count == 3
 
     async def test_max_attempts_1_no_retry(self):
         """With max_attempts=1, no retries at all."""
         router = _make_router_mock()
-        rate_err = RateLimitError(
-            message="rate limited", llm_provider="openai", model="gpt-4o"
-        )
+        rate_err = RateLimitError(message="rate limited", llm_provider="openai", model="gpt-4o")
         router._do_call.side_effect = rate_err
 
         loop = InferenceLoop(router, max_attempts=1)
@@ -539,9 +530,7 @@ class TestToolLoopCallback:
     async def test_callback_invoked_on_failure_and_success(self):
         """tool_loop_cb called for each attempt (failure + success)."""
         router = _make_router_mock()
-        rate_err = RateLimitError(
-            message="rate limited", llm_provider="openai", model="gpt-4o"
-        )
+        rate_err = RateLimitError(message="rate limited", llm_provider="openai", model="gpt-4o")
         router._do_call.side_effect = [rate_err, _make_mock_response("ok")]
 
         cb = MagicMock()

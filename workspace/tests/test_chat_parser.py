@@ -17,34 +17,28 @@ Covers:
 import json
 import os
 import sys
-import tempfile
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import pytest
-
 from sci_fi_dashboard.chat_parser import (
-    Message,
-    Turn,
-    ConversationPair,
-    PersonaProfile,
-    TIMESTAMP_PATTERN,
-    NOISE_RE,
     EMOJI_RE,
-    BANGLISH_MARKERS,
-    TECH_JARGON,
-    parse_messages,
-    is_noise,
-    group_into_turns,
+    TIMESTAMP_PATTERN,
+    ConversationPair,
+    Message,
+    PersonaProfile,
+    Turn,
+    analyze_style,
+    build_persona_profile,
+    detect_topic,
     extract_conversation_pairs,
     extract_synapse_messages,
-    analyze_style,
-    detect_topic,
-    select_best_examples,
-    build_persona_profile,
+    group_into_turns,
+    is_noise,
+    parse_messages,
     save_profile,
+    select_best_examples,
 )
-
 
 # --- Fixtures ---
 
@@ -85,7 +79,11 @@ def sample_messages():
         Message(timestamp="2024-10-25 14:00", speaker="primary_user", text="Hey Synapse"),
         Message(timestamp="2024-10-25 14:01", speaker="Synapse", text="Hey bro! All good."),
         Message(timestamp="2024-10-25 14:02", speaker="primary_user", text="Help with code?"),
-        Message(timestamp="2024-10-25 14:03", speaker="Synapse", text="Of course! Let me look at the fastapi code for you."),
+        Message(
+            timestamp="2024-10-25 14:03",
+            speaker="Synapse",
+            text="Of course! Let me look at the fastapi code for you.",
+        ),
     ]
 
 
@@ -93,10 +91,26 @@ def sample_messages():
 def sample_turns():
     """Pre-built turns."""
     return [
-        Turn(speaker="primary_user", messages=["Hey Synapse, how are you?"], timestamp="2024-10-25 14:00"),
-        Turn(speaker="Synapse", messages=["Hey bro! All good here. Working on python stuff."], timestamp="2024-10-25 14:01"),
-        Turn(speaker="primary_user", messages=["Can you help me fix the fastapi server?"], timestamp="2024-10-25 14:02"),
-        Turn(speaker="Synapse", messages=["Of course! Let me take a look at the code."], timestamp="2024-10-25 14:03"),
+        Turn(
+            speaker="primary_user",
+            messages=["Hey Synapse, how are you?"],
+            timestamp="2024-10-25 14:00",
+        ),
+        Turn(
+            speaker="Synapse",
+            messages=["Hey bro! All good here. Working on python stuff."],
+            timestamp="2024-10-25 14:01",
+        ),
+        Turn(
+            speaker="primary_user",
+            messages=["Can you help me fix the fastapi server?"],
+            timestamp="2024-10-25 14:02",
+        ),
+        Turn(
+            speaker="Synapse",
+            messages=["Of course! Let me take a look at the code."],
+            timestamp="2024-10-25 14:03",
+        ),
     ]
 
 
@@ -513,6 +527,7 @@ class TestSelectBestExamples:
         examples = select_best_examples(pairs, n=12)
         topics = [e["topic"] for e in examples]
         from collections import Counter
+
         counts = Counter(topics)
         for topic, count in counts.items():
             assert count <= 3, f"Topic '{topic}' has {count} examples, max is 3"

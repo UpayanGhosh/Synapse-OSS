@@ -13,12 +13,9 @@ Covers:
   - Multiple score calls reuse loaded model
 """
 
-import gc
 import os
 import sys
-import threading
-import time
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -71,9 +68,12 @@ def mock_transformers():
 
 class TestLazyToxicScorer:
     def _make_scorer(self, mock_transformers, idle_timeout=30.0):
-        with patch.dict(sys.modules, {"torch": mock_torch}), \
-             patch("sci_fi_dashboard.toxic_scorer_lazy.torch", mock_torch):
+        with (
+            patch.dict(sys.modules, {"torch": mock_torch}),
+            patch("sci_fi_dashboard.toxic_scorer_lazy.torch", mock_torch),
+        ):
             from sci_fi_dashboard.toxic_scorer_lazy import LazyToxicScorer
+
             scorer = LazyToxicScorer(idle_timeout=idle_timeout)
 
         # Patch the _load method to use our mocks
@@ -93,8 +93,10 @@ class TestLazyToxicScorer:
     def test_score_triggers_load(self, mock_transformers):
         scorer = self._make_scorer(mock_transformers)
 
-        with patch.dict(sys.modules, {"torch": mock_torch}), \
-             patch("sci_fi_dashboard.toxic_scorer_lazy.torch", mock_torch):
+        with (
+            patch.dict(sys.modules, {"torch": mock_torch}),
+            patch("sci_fi_dashboard.toxic_scorer_lazy.torch", mock_torch),
+        ):
             result = scorer.score("test text")
 
         assert scorer.is_loaded() is True
@@ -103,8 +105,10 @@ class TestLazyToxicScorer:
     def test_score_returns_float(self, mock_transformers):
         scorer = self._make_scorer(mock_transformers)
 
-        with patch.dict(sys.modules, {"torch": mock_torch}), \
-             patch("sci_fi_dashboard.toxic_scorer_lazy.torch", mock_torch):
+        with (
+            patch.dict(sys.modules, {"torch": mock_torch}),
+            patch("sci_fi_dashboard.toxic_scorer_lazy.torch", mock_torch),
+        ):
             result = scorer.score("hello world")
             assert isinstance(result, float)
             assert 0.0 <= result <= 1.0
@@ -112,8 +116,10 @@ class TestLazyToxicScorer:
     def test_multiple_scores_reuse_model(self, mock_transformers):
         scorer = self._make_scorer(mock_transformers)
 
-        with patch.dict(sys.modules, {"torch": mock_torch}), \
-             patch("sci_fi_dashboard.toxic_scorer_lazy.torch", mock_torch):
+        with (
+            patch.dict(sys.modules, {"torch": mock_torch}),
+            patch("sci_fi_dashboard.toxic_scorer_lazy.torch", mock_torch),
+        ):
             scorer.score("text 1")
             scorer.score("text 2")
             assert scorer.is_loaded() is True
@@ -122,8 +128,10 @@ class TestLazyToxicScorer:
         scorer = self._make_scorer(mock_transformers)
         mock_transformers["tokenizer"].side_effect = RuntimeError("tokenizer error")
 
-        with patch.dict(sys.modules, {"torch": mock_torch}), \
-             patch("sci_fi_dashboard.toxic_scorer_lazy.torch", mock_torch):
+        with (
+            patch.dict(sys.modules, {"torch": mock_torch}),
+            patch("sci_fi_dashboard.toxic_scorer_lazy.torch", mock_torch),
+        ):
             result = scorer.score("test")
             assert result == 0.0
 
@@ -142,8 +150,10 @@ class TestLazyToxicScorer:
     def test_unload(self, mock_transformers):
         scorer = self._make_scorer(mock_transformers)
 
-        with patch.dict(sys.modules, {"torch": mock_torch}), \
-             patch("sci_fi_dashboard.toxic_scorer_lazy.torch", mock_torch):
+        with (
+            patch.dict(sys.modules, {"torch": mock_torch}),
+            patch("sci_fi_dashboard.toxic_scorer_lazy.torch", mock_torch),
+        ):
             scorer.score("trigger load")
             assert scorer.is_loaded() is True
             scorer._unload()
@@ -152,7 +162,9 @@ class TestLazyToxicScorer:
     def test_unload_when_not_loaded(self, mock_transformers):
         scorer = self._make_scorer(mock_transformers)
 
-        with patch.dict(sys.modules, {"torch": mock_torch}), \
-             patch("sci_fi_dashboard.toxic_scorer_lazy.torch", mock_torch):
+        with (
+            patch.dict(sys.modules, {"torch": mock_torch}),
+            patch("sci_fi_dashboard.toxic_scorer_lazy.torch", mock_torch),
+        ):
             scorer._unload()  # should not raise
             assert scorer.is_loaded() is False

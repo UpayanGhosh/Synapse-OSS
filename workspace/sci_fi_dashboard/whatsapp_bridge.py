@@ -1,4 +1,5 @@
 """WhatsApp bridge SQLite store for inbound message tracking."""
+
 import logging
 import sqlite3
 from pathlib import Path

@@ -10,7 +10,7 @@ Covers:
 import os
 import sys
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -50,8 +50,10 @@ class TestParseMessageWithAttachments:
         """Images <= 2MB are base64-inlined."""
         small_image = b"\x89PNG" + b"x" * 1000  # small PNG-like data
 
-        with patch("sci_fi_dashboard.media.chat_attachments.fetch_media", return_value=small_image), \
-             patch("sci_fi_dashboard.media.chat_attachments.detect_mime", return_value="image/png"):
+        with (
+            patch("sci_fi_dashboard.media.chat_attachments.fetch_media", return_value=small_image),
+            patch("sci_fi_dashboard.media.chat_attachments.detect_mime", return_value="image/png"),
+        ):
             result = await parse_message_with_attachments(
                 "check this",
                 [{"url": "https://example.com/img.png"}],
@@ -65,11 +67,17 @@ class TestParseMessageWithAttachments:
         """Images > 2MB are offloaded to disk."""
         large_data = b"x" * (3 * 1024 * 1024)  # 3 MB
 
-        mock_saved = SavedMedia(id="abc123", path=Path("/tmp/test.jpg"), size=len(large_data), content_type="image/jpeg")
+        mock_saved = SavedMedia(
+            id="abc123", path=Path("/tmp/test.jpg"), size=len(large_data), content_type="image/jpeg"
+        )
 
-        with patch("sci_fi_dashboard.media.chat_attachments.fetch_media", return_value=large_data), \
-             patch("sci_fi_dashboard.media.chat_attachments.detect_mime", return_value="image/jpeg"), \
-             patch("sci_fi_dashboard.media.chat_attachments.save_media_buffer", return_value=mock_saved):
+        with (
+            patch("sci_fi_dashboard.media.chat_attachments.fetch_media", return_value=large_data),
+            patch("sci_fi_dashboard.media.chat_attachments.detect_mime", return_value="image/jpeg"),
+            patch(
+                "sci_fi_dashboard.media.chat_attachments.save_media_buffer", return_value=mock_saved
+            ),
+        ):
             result = await parse_message_with_attachments(
                 "big image",
                 [{"url": "https://example.com/big.jpg"}],
@@ -83,11 +91,17 @@ class TestParseMessageWithAttachments:
         """Audio files are always offloaded (not inlined)."""
         audio_data = b"x" * 500
 
-        mock_saved = SavedMedia(id="aud123", path=Path("/tmp/test.ogg"), size=500, content_type="audio/ogg")
+        mock_saved = SavedMedia(
+            id="aud123", path=Path("/tmp/test.ogg"), size=500, content_type="audio/ogg"
+        )
 
-        with patch("sci_fi_dashboard.media.chat_attachments.fetch_media", return_value=audio_data), \
-             patch("sci_fi_dashboard.media.chat_attachments.detect_mime", return_value="audio/ogg"), \
-             patch("sci_fi_dashboard.media.chat_attachments.save_media_buffer", return_value=mock_saved):
+        with (
+            patch("sci_fi_dashboard.media.chat_attachments.fetch_media", return_value=audio_data),
+            patch("sci_fi_dashboard.media.chat_attachments.detect_mime", return_value="audio/ogg"),
+            patch(
+                "sci_fi_dashboard.media.chat_attachments.save_media_buffer", return_value=mock_saved
+            ),
+        ):
             result = await parse_message_with_attachments(
                 "voice msg",
                 [{"url": "https://example.com/audio.ogg"}],
@@ -98,14 +112,19 @@ class TestParseMessageWithAttachments:
     @pytest.mark.asyncio
     async def test_undetectable_mime_skipped(self):
         """Attachment with undetectable MIME (octet-stream, no hint) is skipped."""
-        with patch("sci_fi_dashboard.media.chat_attachments.fetch_media", return_value=b"binary"):
-            with patch("sci_fi_dashboard.media.chat_attachments.detect_mime", return_value="application/octet-stream"):
-                result = await parse_message_with_attachments(
-                    "mystery file",
-                    [{"url": "https://example.com/unknown"}],
-                )
-                assert result.inline_images == []
-                assert result.offloaded_refs == []
+        with (
+            patch("sci_fi_dashboard.media.chat_attachments.fetch_media", return_value=b"binary"),
+            patch(
+                "sci_fi_dashboard.media.chat_attachments.detect_mime",
+                return_value="application/octet-stream",
+            ),
+        ):
+            result = await parse_message_with_attachments(
+                "mystery file",
+                [{"url": "https://example.com/unknown"}],
+            )
+            assert result.inline_images == []
+            assert result.offloaded_refs == []
 
     @pytest.mark.asyncio
     async def test_fetch_failure_triggers_rollback(self):
@@ -121,14 +140,20 @@ class TestParseMessageWithAttachments:
                 return b"x" * 100  # first attachment succeeds
             raise MediaFetchError("connection failed")
 
-        mock_saved = SavedMedia(id="s1", path=Path("/tmp/s1.jpg"), size=100, content_type="image/jpeg")
+        mock_saved = SavedMedia(
+            id="s1", path=Path("/tmp/s1.jpg"), size=100, content_type="image/jpeg"
+        )
 
-        with patch("sci_fi_dashboard.media.chat_attachments.fetch_media", side_effect=mock_fetch), \
-             patch("sci_fi_dashboard.media.chat_attachments.detect_mime", return_value="audio/ogg"), \
-             patch("sci_fi_dashboard.media.chat_attachments.save_media_buffer", return_value=mock_saved), \
-             patch.object(Path, "unlink") as mock_unlink:
-            with pytest.raises(MediaFetchError):
-                await parse_message_with_attachments(
-                    "multi",
-                    [{"url": "https://example.com/a"}, {"url": "https://example.com/b"}],
-                )
+        with (
+            patch("sci_fi_dashboard.media.chat_attachments.fetch_media", side_effect=mock_fetch),
+            patch("sci_fi_dashboard.media.chat_attachments.detect_mime", return_value="audio/ogg"),
+            patch(
+                "sci_fi_dashboard.media.chat_attachments.save_media_buffer", return_value=mock_saved
+            ),
+            patch.object(Path, "unlink"),
+            pytest.raises(MediaFetchError),
+        ):
+            await parse_message_with_attachments(
+                "multi",
+                [{"url": "https://example.com/a"}, {"url": "https://example.com/b"}],
+            )

@@ -22,6 +22,7 @@ Safety:
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
@@ -76,8 +77,9 @@ class TelegramOffsetStore:
         try:
             data = json.loads(self._path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError) as exc:
-            logger.warning("[TEL-OFFSET] Corrupt offset file %s: %s — starting from 0",
-                           self._path, exc)
+            logger.warning(
+                "[TEL-OFFSET] Corrupt offset file %s: %s — starting from 0", self._path, exc
+            )
             return 0
 
         if not isinstance(data, dict):
@@ -88,7 +90,8 @@ class TelegramOffsetStore:
         if stored_bot_id != current_bot_id:
             logger.info(
                 "[TEL-OFFSET] Bot-ID mismatch (stored=%s, current=%s) — resetting to 0",
-                stored_bot_id, current_bot_id,
+                stored_bot_id,
+                current_bot_id,
             )
             return 0
 
@@ -96,7 +99,8 @@ class TelegramOffsetStore:
         if not isinstance(update_id, int) or update_id < 0:
             logger.warning(
                 "[TEL-OFFSET] Invalid update_id=%r in %s — starting from 0",
-                update_id, self._path,
+                update_id,
+                self._path,
             )
             return 0
 
@@ -126,9 +130,7 @@ class TelegramOffsetStore:
         )
 
         # Write to temp file in the same directory, then atomic replace
-        fd, tmp_path = tempfile.mkstemp(
-            dir=str(self._path.parent), suffix=".tmp", prefix="offset-"
-        )
+        fd, tmp_path = tempfile.mkstemp(dir=str(self._path.parent), suffix=".tmp", prefix="offset-")
         closed = False
         try:
             os.write(fd, payload.encode("utf-8"))
@@ -137,14 +139,10 @@ class TelegramOffsetStore:
             os.replace(tmp_path, str(self._path))
         except Exception:
             if not closed:
-                try:
+                with contextlib.suppress(OSError):
                     os.close(fd)
-                except OSError:
-                    pass
-            try:
+            with contextlib.suppress(OSError):
                 os.unlink(tmp_path)
-            except OSError:
-                pass
             raise
 
         logger.debug("[TEL-OFFSET] Saved update_id=%d for bot_id=%s", update_id, bot_id)

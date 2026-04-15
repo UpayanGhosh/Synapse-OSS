@@ -21,23 +21,21 @@ _sys_path = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _sys_path not in sys.path:
     sys.path.insert(0, _sys_path)
 
-from synapse_config import SynapseConfig  # noqa: E402
 from sci_fi_dashboard.conv_kg_extractor import (  # noqa: E402
     ConvKGExtractor,
+    _get_last_kg_timestamp,
     fetch_messages_since,
     run_batch_extraction,
-    _get_last_kg_timestamp,
 )
 from sci_fi_dashboard.llm_router import SynapseLLMRouter  # noqa: E402
 from sci_fi_dashboard.sqlite_graph import SQLiteGraph  # noqa: E402
+from synapse_config import SynapseConfig  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
 _cfg = SynapseConfig.load()
-ENTITIES_JSON = os.path.join(
-    os.path.dirname(__file__), "..", "sci_fi_dashboard", "entities.json"
-)
+ENTITIES_JSON = os.path.join(os.path.dirname(__file__), "..", "sci_fi_dashboard", "entities.json")
 ENTITIES_JSON = os.path.normpath(ENTITIES_JSON)
 
 
@@ -122,9 +120,7 @@ async def _run_extraction(
     graph.close()
 
 
-def process_documents(
-    force: bool = False, limit: int = 200, dry_run: bool = False
-) -> None:
+def process_documents(force: bool = False, limit: int = 200, dry_run: bool = False) -> None:
     """Backward-compatible entry point (wraps the async extraction)."""
     asyncio.run(_run_extraction(force=force, limit=limit, dry_run=dry_run))
 

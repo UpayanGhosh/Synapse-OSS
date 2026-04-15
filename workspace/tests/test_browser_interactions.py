@@ -3,17 +3,20 @@ Tests for sci_fi_dashboard.browser.interactions — page interaction implementat
 
 All functions are tested with fully mocked playwright Page objects.
 """
+
 from __future__ import annotations
 
 import os
 import sys
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from sci_fi_dashboard.browser.interactions import (
+    _BLOCKED_JS_PATTERNS,
+    _MAX_SNAPSHOT_CHARS,
     click,
     evaluate_js,
     fill_form,
@@ -24,10 +27,7 @@ from sci_fi_dashboard.browser.interactions import (
     take_snapshot,
     type_text,
     wait_for,
-    _BLOCKED_JS_PATTERNS,
-    _MAX_SNAPSHOT_CHARS,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -75,13 +75,13 @@ class TestTakeScreenshot:
     @pytest.mark.asyncio
     async def test_full_page_screenshot(self):
         page = _mock_page()
-        result = await take_screenshot(page, full_page=True)
+        await take_screenshot(page, full_page=True)
         page.screenshot.assert_awaited_once_with(full_page=True)
 
     @pytest.mark.asyncio
     async def test_element_screenshot(self):
         page = _mock_page()
-        result = await take_screenshot(page, element_selector="#header")
+        await take_screenshot(page, element_selector="#header")
         page.locator.assert_called_with("#header")
 
     @pytest.mark.asyncio
@@ -89,9 +89,7 @@ class TestTakeScreenshot:
         page = _mock_page()
         page.viewport_size = {"width": 3000, "height": 3000}
         await take_screenshot(page, full_page=False)
-        page.set_viewport_size.assert_awaited_once_with(
-            {"width": 2000, "height": 2000}
-        )
+        page.set_viewport_size.assert_awaited_once_with({"width": 2000, "height": 2000})
 
 
 # ---------------------------------------------------------------------------
@@ -163,7 +161,7 @@ class TestTypeText:
     @pytest.mark.asyncio
     async def test_type_text_with_submit(self):
         page = _mock_page()
-        result = await type_text(page, selector="#input", text="hello", submit=True)
+        await type_text(page, selector="#input", text="hello", submit=True)
         page.keyboard.press.assert_awaited_once_with("Enter")
 
 
@@ -343,10 +341,17 @@ class TestEvaluateJs:
 class TestJsBlocklistPatterns:
     def test_all_dangerous_patterns_covered(self):
         dangerous = [
-            "fetch(", "XMLHttpRequest", "document.cookie",
-            "localStorage", "sessionStorage", "indexedDB",
-            "navigator.sendBeacon", "importScripts",
-            "WebSocket", "eval(", "Function(",
+            "fetch(",
+            "XMLHttpRequest",
+            "document.cookie",
+            "localStorage",
+            "sessionStorage",
+            "indexedDB",
+            "navigator.sendBeacon",
+            "importScripts",
+            "WebSocket",
+            "eval(",
+            "Function(",
         ]
         for expr in dangerous:
             blocked = any(p.search(expr) for p in _BLOCKED_JS_PATTERNS)

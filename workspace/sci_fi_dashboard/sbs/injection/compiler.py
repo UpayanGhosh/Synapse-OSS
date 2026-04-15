@@ -192,7 +192,9 @@ Tailor technical depth accordingly."""
         if peak:
             peak_str = ", ".join(f"{h}:00" for h in peak[:3])
             parts.append(f"User's peak active hours: {peak_str}.")
-            parts.append(f"Preferred response length: ~{int(interaction.get('avg_response_length', 50))} words.")
+            parts.append(
+                f"Preferred response length: ~{int(interaction.get('avg_response_length', 50))} words."
+            )
 
         # privacy_sensitivity written by setup wizard via sbs_profile_init
         privacy = interaction.get("privacy_sensitivity", "")

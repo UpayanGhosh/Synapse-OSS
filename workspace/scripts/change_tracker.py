@@ -22,17 +22,18 @@ Usage:
   python3 change_tracker.py --resume        # Remove .pause_tracking (kill-switch OFF)
 """
 
+import argparse
 import logging
 import os
+import signal
+import subprocess
 import sys
 import time
-import signal
-import argparse
-import subprocess
 from datetime import datetime
-from threading import Timer, Lock
-from watchdog.observers import Observer
+from threading import Lock, Timer
+
 from watchdog.events import RegexMatchingEventHandler
+from watchdog.observers import Observer
 
 # ═══════════════════════════════════════════
 #  CONFIGURATION
@@ -62,7 +63,6 @@ IGNORE_REGEXES = [
     # Git internals
     r".*[/\\]\.git[/\\].*",
     r".*[/\\]\.git$",
-
     # Binary / large files
     r".*\.db$",
     r".*\.db-shm$",
@@ -70,52 +70,59 @@ IGNORE_REGEXES = [
     r".*\.sqlite$",
     r".*\.gz$",
     r".*\.jsonl$",
-
     # Logs
     r".*\.log$",
     r".*[/\\]logs[/\\].*",
-
     # Backups
     r".*\.bak$",
     r".*\.bak\.\d+$",
-
     # Python
     r".*[/\\]__pycache__[/\\].*",
     r".*\.pyc$",
     r".*[/\\]\.venv[/\\].*",
-
     # Windows
     r".*[/\\]\.DS_Store$",
     r".*Thumbs\.db$",
-
     # Synapse internals
-    r".*[/\\]lancedb[/\\].*",        # LanceDB vector storage
-    r".*[/\\]sessions[/\\].*",       # Session files
-    r".*[/\\]media[/\\].*",          # Media files
-    r".*[/\\]backups[/\\].*",        # Backups
-    r".*[/\\]node_modules[/\\].*",   # Node modules
-    r".*\.swp$",                     # Vim swap files
-    r".*~$",                         # Editor backup files
-    r".*\.pause_tracking$",          # Kill-switch file itself
+    r".*[/\\]lancedb[/\\].*",  # LanceDB vector storage
+    r".*[/\\]sessions[/\\].*",  # Session files
+    r".*[/\\]media[/\\].*",  # Media files
+    r".*[/\\]backups[/\\].*",  # Backups
+    r".*[/\\]node_modules[/\\].*",  # Node modules
+    r".*\.swp$",  # Vim swap files
+    r".*~$",  # Editor backup files
+    r".*\.pause_tracking$",  # Kill-switch file itself
 ]
 
 # File categories for commit messages
 CATEGORY_MAP = {
-    "identity": ["SOUL.md", "CORE.md", "IDENTITY.md", "USER.md", "AGENTS.md",
-                 "MEMORY.md", "HEARTBEAT.md"],
-    "persona": ["persona.py", "chat_parser.py", "build_persona.py"],  # *_profile.json matched by suffix
+    "identity": [
+        "SOUL.md",
+        "CORE.md",
+        "IDENTITY.md",
+        "USER.md",
+        "AGENTS.md",
+        "MEMORY.md",
+        "HEARTBEAT.md",
+    ],
+    "persona": [
+        "persona.py",
+        "chat_parser.py",
+        "build_persona.py",
+    ],  # *_profile.json matched by suffix
     "gateway": ["api_gateway.py", "chat_pipeline.py", "retriever.py", "memory_engine.py"],
     "config": ["synapse.json", "synapse_config.py", ".gitignore"],
     "monitor": ["change_tracker.py", "gentle_worker.py"],
-    "skills": [],   # Anything under skills/
-    "memory": [],   # Anything under memory/ or diary/
-    "cron": [],     # Anything under cron/
+    "skills": [],  # Anything under skills/
+    "memory": [],  # Anything under memory/ or diary/
+    "cron": [],  # Anything under cron/
 }
 
 
 # ═══════════════════════════════════════════
 #  UTILITIES
 # ═══════════════════════════════════════════
+
 
 def git(*args, cwd=WORKSPACE) -> tuple[int, str]:
     """Run a git command, return (returncode, output)."""
@@ -218,6 +225,7 @@ def build_commit_message(changes: dict[str, set[str]]) -> str:
 # ═══════════════════════════════════════════
 #  WATCHDOG HANDLER
 # ═══════════════════════════════════════════
+
 
 class BotChangeHandler(RegexMatchingEventHandler):
     """Watches for file changes with a sliding debounce window."""
@@ -332,6 +340,7 @@ class BotChangeHandler(RegexMatchingEventHandler):
 # ═══════════════════════════════════════════
 #  MAIN
 # ═══════════════════════════════════════════
+
 
 def ensure_branch():
     rc, current = git("branch", "--show-current")

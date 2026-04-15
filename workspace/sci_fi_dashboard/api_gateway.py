@@ -18,13 +18,13 @@ import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager, suppress
+from pathlib import Path as _Path
 
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from pathlib import Path as _Path
 
 from sci_fi_dashboard import _deps as deps
 from sci_fi_dashboard.channel_setup import register_optional_channels
@@ -33,20 +33,24 @@ from sci_fi_dashboard.pipeline_helpers import (
     gentle_worker_loop,
     process_message_pipeline,
 )
-from sci_fi_dashboard.whatsapp_bridge import ensure_bridge_db
 
 # Route modules
 from sci_fi_dashboard.routes import (
     agents as agents_routes,
+)
+from sci_fi_dashboard.routes import (
     chat,
     health,
     knowledge,
     persona,
-    pipeline as pipeline_routes,
     sessions,
     websocket,
     whatsapp,
 )
+from sci_fi_dashboard.routes import (
+    pipeline as pipeline_routes,
+)
+from sci_fi_dashboard.whatsapp_bridge import ensure_bridge_db
 
 logger = logging.getLogger(__name__)
 
@@ -87,8 +91,8 @@ async def lifespan(app: FastAPI):
     await deps.channel_registry.start_all()
 
     # Wire retry queue into WhatsApp channel
-    from gateway.retry_queue import RetryQueue
     from channels.whatsapp import WhatsAppChannel
+    from gateway.retry_queue import RetryQueue
 
     wa_ch = deps.channel_registry.get("whatsapp")
     if isinstance(wa_ch, WhatsAppChannel):
@@ -118,26 +122,20 @@ async def lifespan(app: FastAPI):
             )
 
             deps.tool_registry = ToolRegistry()
-            register_builtin_tools(
-                deps.tool_registry, deps.memory_engine, deps.WORKSPACE_ROOT
-            )
+            register_builtin_tools(deps.tool_registry, deps.memory_engine, deps.WORKSPACE_ROOT)
             deps._tool_logger.info("ToolRegistry initialized")
         except Exception as exc:
-            deps._tool_logger.warning(
-                "ToolRegistry init failed (non-fatal): %s", exc
-            )
+            deps._tool_logger.warning("ToolRegistry init failed (non-fatal): %s", exc)
             deps.tool_registry = None
     else:
-        deps._tool_logger.info(
-            "tool_registry module not available -- tool execution loop disabled"
-        )
+        deps._tool_logger.info("tool_registry module not available -- tool execution loop disabled")
 
     # Phase 4: Initialize safety pipeline
     if deps._TOOL_SAFETY_AVAILABLE:
         try:
             from sci_fi_dashboard.tool_safety import (
-                ToolHookRunner,
                 ToolAuditLogger,
+                ToolHookRunner,
             )
 
             deps.hook_runner = ToolHookRunner()
@@ -159,13 +157,9 @@ async def lifespan(app: FastAPI):
             deps.hook_runner.register_after(_audit_hook)
             deps._tool_logger.info("Tool safety pipeline initialized")
         except Exception as exc:
-            deps._tool_logger.warning(
-                "Tool safety init failed (non-fatal): %s", exc
-            )
+            deps._tool_logger.warning("Tool safety init failed (non-fatal): %s", exc)
     else:
-        deps._tool_logger.info(
-            "tool_safety module not available -- safety pipeline disabled"
-        )
+        deps._tool_logger.info("tool_safety module not available -- safety pipeline disabled")
 
     # Initialize SessionActorQueue
     from gateway.session_actor import SessionActorQueue
@@ -201,8 +195,8 @@ async def lifespan(app: FastAPI):
     )
 
     # MCP Client Initialization
-    from mcp_config import load_mcp_config
     from mcp_client import SynapseMCPClient
+    from mcp_config import load_mcp_config
 
     _mcp_config = load_mcp_config(deps._synapse_cfg.mcp)
     app.state.mcp_client = None
@@ -219,11 +213,7 @@ async def lifespan(app: FastAPI):
     from proactive_engine import ProactiveAwarenessEngine
 
     app.state.proactive_engine = None
-    if (
-        _mcp_config.enabled
-        and _mcp_config.proactive.enabled
-        and app.state.mcp_client
-    ):
+    if _mcp_config.enabled and _mcp_config.proactive.enabled and app.state.mcp_client:
         app.state.proactive_engine = ProactiveAwarenessEngine(
             app.state.mcp_client, _mcp_config.proactive
         )
@@ -234,9 +224,9 @@ async def lifespan(app: FastAPI):
     # CronService — proactive scheduled messages (wired to persona_chat via execute_fn)
     app.state.cron_service = None
     try:
+        from sci_fi_dashboard.chat_pipeline import persona_chat
         from sci_fi_dashboard.cron import CronService
         from sci_fi_dashboard.schemas import ChatRequest
-        from sci_fi_dashboard.chat_pipeline import persona_chat
 
         async def _cron_execute_fn(message: str, session_key: str, **kwargs) -> str:
             """Adapter: CronService execute_fn -> persona_chat()."""
@@ -251,10 +241,11 @@ async def lifespan(app: FastAPI):
                     persona_chat(req, "the_creator"),
                     timeout=timeout_s,
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 logger.warning(
                     "[Cron] Job timed out (session=%s, timeout=%ss)",
-                    session_key, timeout_s,
+                    session_key,
+                    timeout_s,
                 )
                 raise
             return result.get("reply", "") if isinstance(result, dict) else str(result or "")
@@ -328,10 +319,8 @@ async def lifespan(app: FastAPI):
 
     # Stop skill watcher
     if deps.skill_watcher is not None:
-        try:
+        with suppress(Exception):
             deps.skill_watcher.stop()
-        except Exception:
-            pass
 
     deps.brain.save_graph()
 

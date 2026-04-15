@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import logging
 import re
 from datetime import datetime
@@ -79,6 +80,7 @@ class SBSOrchestrator:
         except RuntimeError:
             # No running event loop — fall back to a daemon thread
             import threading
+
             threading.Thread(target=self._run_batch_safe, daemon=True).start()
 
     def _check_startup_batch(self):
@@ -125,13 +127,16 @@ class SBSOrchestrator:
 
         # C4+M5: Run realtime processing FIRST, copy results into message, THEN log
         rt_results = self.realtime.process(message)
-        try: _get_emitter().emit("sbs.layer_read", {
-            "layer_name": "emotional_state",
-            "mood": rt_results.get("rt_mood_signal", ""),
-            "sentiment": rt_results.get("rt_sentiment", ""),
-            "language": rt_results.get("rt_language", ""),
-        })
-        except Exception: pass
+        with contextlib.suppress(Exception):
+            _get_emitter().emit(
+                "sbs.layer_read",
+                {
+                    "layer_name": "emotional_state",
+                    "mood": rt_results.get("rt_mood_signal", ""),
+                    "sentiment": rt_results.get("rt_sentiment", ""),
+                    "language": rt_results.get("rt_language", ""),
+                },
+            )
         message.rt_sentiment = rt_results.get("rt_sentiment")
         message.rt_language = rt_results.get("rt_language")
         message.rt_mood_signal = rt_results.get("rt_mood_signal")
@@ -168,15 +173,18 @@ class SBSOrchestrator:
         Returns the complete system prompt with injected persona profile.
         Optionally appends a proactive awareness block from the ProactiveAwarenessEngine.
         """
-        try: _get_emitter().emit("sbs.read_start", {"target": getattr(self, "_target", "unknown")})
-        except Exception: pass
+        with contextlib.suppress(Exception):
+            _get_emitter().emit("sbs.read_start", {"target": getattr(self, "_target", "unknown")})
         persona_block = self.compiler.compile()
-        try: _get_emitter().emit("sbs.compile_done", {
-            "total_chars": len(persona_block),
-            "token_estimate": len(persona_block) // 4,
-            "layers_included": 7,
-        })
-        except Exception: pass
+        with contextlib.suppress(Exception):
+            _get_emitter().emit(
+                "sbs.compile_done",
+                {
+                    "total_chars": len(persona_block),
+                    "token_estimate": len(persona_block) // 4,
+                    "layers_included": 7,
+                },
+            )
         parts = []
         if base_instructions:
             parts.append(base_instructions)
@@ -197,9 +205,7 @@ class SBSOrchestrator:
         return {
             "current_mood": profile["emotional_state"]["current_dominant_mood"],
             "sentiment": profile["emotional_state"]["current_sentiment_avg"],
-            "banglish_ratio": profile["linguistic"]
-            .get("current_style", {})
-            .get("banglish_ratio"),
+            "banglish_ratio": profile["linguistic"].get("current_style", {}).get("banglish_ratio"),
             "vocab_size": profile["vocabulary"].get("total_unique_words", 0),
             "profile_version": profile["meta"].get("current_version", 0),
             "total_messages": profile["meta"].get("total_messages_processed", 0),

@@ -15,9 +15,9 @@ import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-import pytest
 from unittest.mock import MagicMock
 
+import pytest
 from sci_fi_dashboard.emotional_trajectory import EmotionalTrajectory
 
 
@@ -56,12 +56,13 @@ class TestEmotionalTrajectoryInit:
     def test_creates_db_file(self, tmp_path):
         """Should create the database file."""
         db_path = str(tmp_path / "test_emo.db")
-        et = EmotionalTrajectory(db_path=db_path)
+        EmotionalTrajectory(db_path=db_path)
         assert os.path.exists(db_path)
 
     def test_creates_table(self, trajectory):
         """Should create the trajectory table."""
         import sqlite3
+
         conn = sqlite3.connect(trajectory.db_path)
         cursor = conn.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name='trajectory'"
@@ -72,14 +73,14 @@ class TestEmotionalTrajectoryInit:
     def test_idempotent_init(self, tmp_path):
         """Calling init twice should not fail."""
         db_path = str(tmp_path / "test_emo.db")
-        et1 = EmotionalTrajectory(db_path=db_path)
-        et2 = EmotionalTrajectory(db_path=db_path)
+        EmotionalTrajectory(db_path=db_path)
+        EmotionalTrajectory(db_path=db_path)
         # Should not raise
 
     def test_creates_parent_directory(self, tmp_path):
         """Should create parent directories if they don't exist."""
         db_path = str(tmp_path / "deep" / "nested" / "emo.db")
-        et = EmotionalTrajectory(db_path=db_path)
+        EmotionalTrajectory(db_path=db_path)
         assert os.path.exists(db_path)
 
 
@@ -96,6 +97,7 @@ class TestRecord:
         """Should store the correct field values."""
         trajectory.record(mock_merge, topics=["tech"])
         import sqlite3
+
         conn = sqlite3.connect(trajectory.db_path)
         row = conn.execute("SELECT * FROM trajectory ORDER BY id DESC LIMIT 1").fetchone()
         conn.close()
@@ -111,6 +113,7 @@ class TestRecord:
         """High tension (>0.6) should be flagged as peak."""
         trajectory.record(high_tension_merge)
         import sqlite3
+
         conn = sqlite3.connect(trajectory.db_path)
         row = conn.execute("SELECT is_peak FROM trajectory ORDER BY id DESC LIMIT 1").fetchone()
         conn.close()
@@ -126,6 +129,7 @@ class TestRecord:
         """Topics should be truncated to first 3."""
         trajectory.record(mock_merge, topics=["a", "b", "c", "d", "e"])
         import sqlite3
+
         conn = sqlite3.connect(trajectory.db_path)
         row = conn.execute("SELECT topics FROM trajectory ORDER BY id DESC LIMIT 1").fetchone()
         conn.close()
@@ -154,6 +158,7 @@ class TestGetTrajectory:
         trajectory.record(mock_merge, topics=["recent"])
         # Manually insert an old record
         import sqlite3
+
         conn = sqlite3.connect(trajectory.db_path)
         old_ts = time.time() - (100 * 3600)  # 100 hours ago
         conn.execute(

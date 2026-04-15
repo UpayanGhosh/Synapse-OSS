@@ -7,6 +7,7 @@ Covers:
   - Session override file read/write
   - Missing layer skipped gracefully
 """
+
 from __future__ import annotations
 
 import json
@@ -20,7 +21,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from config.layered_resolution import ConfigResolver
 from config.schema import AgentModelConfig, SynapseConfigSchema
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -227,16 +227,12 @@ class TestEdgeCases:
 
     def test_none_cli_overrides(self, resolver):
         """Passing None for cli_overrides should be equivalent to no override."""
-        result = resolver.resolve_model_for_session(
-            "sess-1", agent_id="casual", cli_overrides=None
-        )
+        result = resolver.resolve_model_for_session("sess-1", agent_id="casual", cli_overrides=None)
         assert result.model == "gemini/flash"
 
     def test_empty_cli_overrides(self, resolver):
         """Passing {} for cli_overrides should be equivalent to no override."""
-        result = resolver.resolve_model_for_session(
-            "sess-1", agent_id="casual", cli_overrides={}
-        )
+        result = resolver.resolve_model_for_session("sess-1", agent_id="casual", cli_overrides={})
         assert result.model == "gemini/flash"
 
     def test_result_is_agent_model_config(self, resolver):

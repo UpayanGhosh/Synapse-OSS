@@ -8,12 +8,13 @@ Ports the OpenClaw paging model to Python:
   CHARS_PER_TOKEN          = 4
   MAX_PAGES                = 8
 """
+
 import base64
 import os
 
-DEFAULT_PAGE_MAX_BYTES = 50 * 1024      # 50 KB
-MAX_ADAPTIVE_PAGE_BYTES = 512 * 1024    # 512 KB
-ADAPTIVE_CONTEXT_SHARE = 0.2            # 20% of context window
+DEFAULT_PAGE_MAX_BYTES = 50 * 1024  # 50 KB
+MAX_ADAPTIVE_PAGE_BYTES = 512 * 1024  # 512 KB
+ADAPTIVE_CONTEXT_SHARE = 0.2  # 20% of context window
 CHARS_PER_TOKEN = 4
 MAX_PAGES = 8
 
@@ -21,11 +22,13 @@ MAX_PAGES = 8
 def _load_detect_mime():
     try:
         from ..media.mime import detect_mime
+
         return detect_mime
     except ImportError:
         pass
     try:
         from media.mime import detect_mime
+
         return detect_mime
     except ImportError:
         return None

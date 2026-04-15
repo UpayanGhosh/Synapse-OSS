@@ -1,5 +1,7 @@
 """Session management endpoints — reads from multiuser/SessionStore (file-based)."""
+
 import logging
+from datetime import UTC
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -19,8 +21,9 @@ async def get_sessions():
     a combined list sorted by updatedAt descending.
     """
     from synapse_config import SynapseConfig
-    from sci_fi_dashboard.multiuser.session_store import SessionStore
+
     from sci_fi_dashboard import _deps as deps
+    from sci_fi_dashboard.multiuser.session_store import SessionStore
 
     cfg = SynapseConfig.load()
     data_root: Path = cfg.data_root
@@ -32,19 +35,23 @@ async def get_sessions():
             sessions = await store.load()
             for key, entry in sessions.items():
                 # updated_at is a float (Unix epoch) — convert to ISO string for JSON
-                from datetime import datetime, timezone
+                from datetime import datetime
+
                 updated_iso = (
-                    datetime.fromtimestamp(entry.updated_at, tz=timezone.utc).isoformat()
-                    if entry.updated_at else None
+                    datetime.fromtimestamp(entry.updated_at, tz=UTC).isoformat()
+                    if entry.updated_at
+                    else None
                 )
-                results.append({
-                    "sessionKey": key,
-                    "agentId": agent_id,
-                    "sessionId": entry.session_id,
-                    "updatedAt": updated_iso,
-                    "updatedAtEpoch": entry.updated_at,  # raw float for sorting
-                    "compactionCount": entry.compaction_count,
-                })
+                results.append(
+                    {
+                        "sessionKey": key,
+                        "agentId": agent_id,
+                        "sessionId": entry.session_id,
+                        "updatedAt": updated_iso,
+                        "updatedAtEpoch": entry.updated_at,  # raw float for sorting
+                        "compactionCount": entry.compaction_count,
+                    }
+                )
         except Exception as exc:
             logger.warning("Failed to load sessions for agent %s: %s", agent_id, exc)
 
@@ -64,9 +71,10 @@ async def reset_session(session_key: str):
     a fresh transcript.
     """
     from synapse_config import SynapseConfig
-    from sci_fi_dashboard.multiuser.session_store import SessionStore
-    from sci_fi_dashboard.multiuser.transcript import transcript_path, archive_transcript
+
     from sci_fi_dashboard import _deps as deps
+    from sci_fi_dashboard.multiuser.session_store import SessionStore
+    from sci_fi_dashboard.multiuser.transcript import archive_transcript, transcript_path
 
     cfg = SynapseConfig.load()
     data_root: Path = cfg.data_root

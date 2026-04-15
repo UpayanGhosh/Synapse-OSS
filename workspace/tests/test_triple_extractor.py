@@ -23,7 +23,7 @@ def _make_torch_stub(cuda: bool = False, mps: bool = False):
     torch_mod.cuda.is_available = MagicMock(return_value=cuda)
     if cuda:
         props = MagicMock()
-        props.total_memory = 8 * (1024 ** 3)  # 8 GB
+        props.total_memory = 8 * (1024**3)  # 8 GB
         torch_mod.cuda.get_device_properties = MagicMock(return_value=props)
 
     backends = types.ModuleType("torch.backends")
@@ -32,8 +32,11 @@ def _make_torch_stub(cuda: bool = False, mps: bool = False):
     backends.mps = mps_mod
     torch_mod.backends = backends
 
-    torch_mod.no_grad = MagicMock(return_value=MagicMock(__enter__=MagicMock(return_value=None),
-                                                          __exit__=MagicMock(return_value=False)))
+    torch_mod.no_grad = MagicMock(
+        return_value=MagicMock(
+            __enter__=MagicMock(return_value=None), __exit__=MagicMock(return_value=False)
+        )
+    )
     return torch_mod
 
 
@@ -51,13 +54,16 @@ class TestParsing(unittest.TestCase):
         sys.modules.setdefault("torch.backends.mps", self.torch_stub.backends.mps)
 
         from sci_fi_dashboard.triple_extractor import _parse_llm_output
+
         self._parse = _parse_llm_output
 
     def test_valid_json(self):
-        raw = json.dumps({
-            "facts": [{"entity": "user", "content": "likes coffee", "category": "Preference"}],
-            "triples": [["user", "likes", "coffee"]],
-        })
+        raw = json.dumps(
+            {
+                "facts": [{"entity": "user", "content": "likes coffee", "category": "Preference"}],
+                "triples": [["user", "likes", "coffee"]],
+            }
+        )
         result = self._parse(raw)
         self.assertEqual(len(result["facts"]), 1)
         self.assertEqual(result["triples"], [["user", "likes", "coffee"]])
@@ -97,48 +103,77 @@ class TestNormalization(unittest.TestCase):
         self.torch_stub = _make_torch_stub()
         sys.modules.setdefault("torch", self.torch_stub)
         from sci_fi_dashboard.triple_extractor import _normalize_result
+
         self._normalize = _normalize_result
 
     def test_lowercase_entities(self):
-        result = self._normalize({"facts": [
-            {"entity": "Alice", "content": "Is a developer", "category": "Work"}
-        ], "triples": []})
+        result = self._normalize(
+            {
+                "facts": [{"entity": "Alice", "content": "Is a developer", "category": "Work"}],
+                "triples": [],
+            }
+        )
         self.assertEqual(result["facts"][0]["entity"], "alice")
 
     def test_whitespace_collapse(self):
-        result = self._normalize({"facts": [
-            {"entity": "  user  ", "content": "likes  coffee  a lot  ", "category": ""}
-        ], "triples": []})
+        result = self._normalize(
+            {
+                "facts": [
+                    {"entity": "  user  ", "content": "likes  coffee  a lot  ", "category": ""}
+                ],
+                "triples": [],
+            }
+        )
         self.assertEqual(result["facts"][0]["content"], "likes coffee a lot")
 
     def test_dedup_facts(self):
-        result = self._normalize({"facts": [
-            {"entity": "user", "content": "likes coffee", "category": "Preference"},
-            {"entity": "user", "content": "likes coffee", "category": "Preference"},
-        ], "triples": []})
+        result = self._normalize(
+            {
+                "facts": [
+                    {"entity": "user", "content": "likes coffee", "category": "Preference"},
+                    {"entity": "user", "content": "likes coffee", "category": "Preference"},
+                ],
+                "triples": [],
+            }
+        )
         self.assertEqual(len(result["facts"]), 1)
 
     def test_dedup_triples(self):
-        result = self._normalize({"facts": [], "triples": [
-            ["a", "b", "c"],
-            ["a", "b", "c"],
-            ["A", "B", "C"],  # same after lowercase
-        ]})
+        result = self._normalize(
+            {
+                "facts": [],
+                "triples": [
+                    ["a", "b", "c"],
+                    ["a", "b", "c"],
+                    ["A", "B", "C"],  # same after lowercase
+                ],
+            }
+        )
         self.assertEqual(len(result["triples"]), 1)
 
     def test_skip_empty_triple_parts(self):
-        result = self._normalize({"facts": [], "triples": [
-            ["", "rel", "obj"],
-            ["subj", "", "obj"],
-            ["subj", "rel", ""],
-        ]})
+        result = self._normalize(
+            {
+                "facts": [],
+                "triples": [
+                    ["", "rel", "obj"],
+                    ["subj", "", "obj"],
+                    ["subj", "rel", ""],
+                ],
+            }
+        )
         self.assertEqual(result["triples"], [])
 
     def test_skip_malformed_triples(self):
-        result = self._normalize({"facts": [], "triples": [
-            ["only_two_items", "rel"],
-            "not a list",
-        ]})
+        result = self._normalize(
+            {
+                "facts": [],
+                "triples": [
+                    ["only_two_items", "rel"],
+                    "not a list",
+                ],
+            }
+        )
         self.assertEqual(result["triples"], [])
 
 
@@ -150,12 +185,19 @@ class TestNormalization(unittest.TestCase):
 class TestDeviceDetection(unittest.TestCase):
     def _run(self, cuda: bool, mps: bool) -> str:
         stub = _make_torch_stub(cuda=cuda, mps=mps)
-        with patch.dict(sys.modules, {"torch": stub,
-                                       "torch.backends": stub.backends,
-                                       "torch.backends.mps": stub.backends.mps}):
+        with patch.dict(
+            sys.modules,
+            {
+                "torch": stub,
+                "torch.backends": stub.backends,
+                "torch.backends.mps": stub.backends.mps,
+            },
+        ):
             # Re-import with patched modules
             import importlib
+
             import sci_fi_dashboard.triple_extractor as mod
+
             importlib.reload(mod)
             return mod._detect_device()
 
@@ -182,6 +224,7 @@ class TestChunking(unittest.TestCase):
         self.torch_stub = _make_torch_stub()
         sys.modules.setdefault("torch", self.torch_stub)
         from sci_fi_dashboard.triple_extractor import _chunk_text
+
         self._chunk = _chunk_text
 
     def test_short_text_no_split(self):
@@ -223,24 +266,33 @@ class TestExtraction(unittest.TestCase):
         transformers_stub.AutoModelForCausalLM = MagicMock()
         transformers_stub.AutoTokenizer = MagicMock()
 
-        with patch.dict(sys.modules, {
-            "torch": torch_stub,
-            "torch.backends": torch_stub.backends,
-            "torch.backends.mps": torch_stub.backends.mps,
-            "transformers": transformers_stub,
-        }):
+        with patch.dict(
+            sys.modules,
+            {
+                "torch": torch_stub,
+                "torch.backends": torch_stub.backends,
+                "torch.backends.mps": torch_stub.backends.mps,
+                "transformers": transformers_stub,
+            },
+        ):
             import importlib
+
             import sci_fi_dashboard.triple_extractor as mod
+
             importlib.reload(mod)
             extractor = mod.TripleExtractor()
             extractor._run_inference = MagicMock(return_value=model_output)
             return extractor
 
     def test_extract_returns_facts_and_triples(self):
-        payload = json.dumps({
-            "facts": [{"entity": "user", "content": "has reflux esophagitis", "category": "Health"}],
-            "triples": [["user", "diagnosed_with", "reflux esophagitis"]],
-        })
+        payload = json.dumps(
+            {
+                "facts": [
+                    {"entity": "user", "content": "has reflux esophagitis", "category": "Health"}
+                ],
+                "triples": [["user", "diagnosed_with", "reflux esophagitis"]],
+            }
+        )
         ext = self._make_extractor_with_mock_model(payload)
         result = ext.extract("At 13 I was diagnosed with reflux esophagitis.")
         self.assertEqual(len(result["facts"]), 1)
@@ -253,13 +305,15 @@ class TestExtraction(unittest.TestCase):
         self.assertEqual(result, {"facts": [], "triples": []})
 
     def test_extract_deduplicates_across_chunks(self):
-        payload = json.dumps({
-            "facts": [{"entity": "user", "content": "likes coffee", "category": "Preference"}],
-            "triples": [["user", "likes", "coffee"]],
-        })
+        payload = json.dumps(
+            {
+                "facts": [{"entity": "user", "content": "likes coffee", "category": "Preference"}],
+                "triples": [["user", "likes", "coffee"]],
+            }
+        )
         ext = self._make_extractor_with_mock_model(payload)
         # Long enough to produce 2 chunks
-        text = ("Sentence one. " * 110)  # ~1540 chars
+        text = "Sentence one. " * 110  # ~1540 chars
         result = ext.extract(text)
         # Despite 2 chunks returning the same fact, dedup keeps one
         contents = [f["content"] for f in result["facts"]]
@@ -268,10 +322,16 @@ class TestExtraction(unittest.TestCase):
     def test_prompt_contains_text(self):
         """Verify the extraction prompt embeds the input text."""
         torch_stub = _make_torch_stub()
-        with patch.dict(sys.modules, {"torch": torch_stub,
-                                       "torch.backends": torch_stub.backends,
-                                       "torch.backends.mps": torch_stub.backends.mps}):
+        with patch.dict(
+            sys.modules,
+            {
+                "torch": torch_stub,
+                "torch.backends": torch_stub.backends,
+                "torch.backends.mps": torch_stub.backends.mps,
+            },
+        ):
             from sci_fi_dashboard.triple_extractor import _EXTRACTION_PROMPT
+
             sample = "some unique content 12345"
             rendered = _EXTRACTION_PROMPT.format(content=sample)
             self.assertIn(sample, rendered)

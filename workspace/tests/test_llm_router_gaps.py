@@ -17,8 +17,7 @@ Covers areas NOT in test_llm_router.py:
 
 import os
 import sys
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -40,7 +39,6 @@ from sci_fi_dashboard.llm_router import (
     resolve_env_var,
 )
 
-
 # ---------------------------------------------------------------------------
 # Dataclasses
 # ---------------------------------------------------------------------------
@@ -49,8 +47,11 @@ from sci_fi_dashboard.llm_router import (
 class TestLLMResult:
     def test_construction(self):
         r = LLMResult(
-            text="Hello", model="gemini/flash",
-            prompt_tokens=10, completion_tokens=20, total_tokens=30,
+            text="Hello",
+            model="gemini/flash",
+            prompt_tokens=10,
+            completion_tokens=20,
+            total_tokens=30,
             finish_reason="stop",
         )
         assert r.text == "Hello"
@@ -74,8 +75,12 @@ class TestToolCall:
 class TestLLMToolResult:
     def test_construction(self):
         r = LLMToolResult(
-            text="result", tool_calls=[], model="m",
-            prompt_tokens=0, completion_tokens=0, total_tokens=0,
+            text="result",
+            tool_calls=[],
+            model="m",
+            prompt_tokens=0,
+            completion_tokens=0,
+            total_tokens=0,
         )
         assert r.text == "result"
         assert r.tool_calls == []
@@ -91,21 +96,23 @@ class TestNormalizeToolSchemas:
         assert normalize_tool_schemas([], "gemini") == []
 
     def test_gemini_strips_forbidden_keys(self):
-        tools = [{
-            "type": "function",
-            "function": {
-                "name": "test",
-                "parameters": {
-                    "$schema": "http://json-schema.org/draft-07",
-                    "$id": "test",
-                    "examples": ["x"],
-                    "default": "y",
-                    "$defs": {},
-                    "type": "object",
-                    "properties": {"q": {"type": "string", "default": "hi"}},
+        tools = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "test",
+                    "parameters": {
+                        "$schema": "http://json-schema.org/draft-07",
+                        "$id": "test",
+                        "examples": ["x"],
+                        "default": "y",
+                        "$defs": {},
+                        "type": "object",
+                        "properties": {"q": {"type": "string", "default": "hi"}},
+                    },
                 },
-            },
-        }]
+            }
+        ]
         result = normalize_tool_schemas(tools, "gemini")
         params = result[0]["function"]["parameters"]
         assert "$schema" not in params
@@ -117,19 +124,21 @@ class TestNormalizeToolSchemas:
         assert "default" not in params["properties"]["q"]
 
     def test_xai_strips_numeric_keys(self):
-        tools = [{
-            "type": "function",
-            "function": {
-                "name": "test",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "count": {"type": "integer", "minimum": 0, "maximum": 100},
-                        "name": {"type": "string", "minLength": 1, "maxLength": 50},
+        tools = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "test",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "count": {"type": "integer", "minimum": 0, "maximum": 100},
+                            "name": {"type": "string", "minLength": 1, "maxLength": 50},
+                        },
                     },
                 },
-            },
-        }]
+            }
+        ]
         result = normalize_tool_schemas(tools, "xai")
         count_props = result[0]["function"]["parameters"]["properties"]["count"]
         assert "minimum" not in count_props
@@ -139,36 +148,46 @@ class TestNormalizeToolSchemas:
         assert "maxLength" not in name_props
 
     def test_openai_adds_additional_properties(self):
-        tools = [{
-            "type": "function",
-            "function": {
-                "name": "test",
-                "parameters": {"type": "object", "properties": {}},
-            },
-        }]
+        tools = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "test",
+                    "parameters": {"type": "object", "properties": {}},
+                },
+            }
+        ]
         result = normalize_tool_schemas(tools, "openai")
         params = result[0]["function"]["parameters"]
         assert params["additionalProperties"] is False
 
     def test_openai_preserves_existing_additional_properties(self):
-        tools = [{
-            "type": "function",
-            "function": {
-                "name": "test",
-                "parameters": {"type": "object", "properties": {}, "additionalProperties": True},
-            },
-        }]
+        tools = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "test",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {},
+                        "additionalProperties": True,
+                    },
+                },
+            }
+        ]
         result = normalize_tool_schemas(tools, "openai")
         assert result[0]["function"]["parameters"]["additionalProperties"] is True
 
     def test_does_not_mutate_original(self):
-        original = [{
-            "type": "function",
-            "function": {
-                "name": "test",
-                "parameters": {"$schema": "x", "type": "object"},
-            },
-        }]
+        original = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "test",
+                    "parameters": {"$schema": "x", "type": "object"},
+                },
+            }
+        ]
         normalize_tool_schemas(original, "gemini")
         assert "$schema" in original[0]["function"]["parameters"]
 
@@ -245,11 +264,13 @@ class TestAttemptJsonRepair:
     def test_missing_closing_brace(self):
         result = _attempt_json_repair('{"key": "value"')
         import json
+
         assert json.loads(result)  # should be valid JSON
 
     def test_multiple_missing_braces(self):
         result = _attempt_json_repair('{"a": {"b": "c"')
         import json
+
         assert json.loads(result)
 
     def test_unrepairable_returns_empty(self):
@@ -337,31 +358,37 @@ class TestResolveEnvVar:
 class TestClassifyLlmError:
     def test_rate_limit(self):
         from litellm import RateLimitError
+
         err = RateLimitError(message="rate limited", llm_provider="test", model="test")
         assert classify_llm_error(err) == AuthProfileFailureReason.RATE_LIMIT
 
     def test_auth_error(self):
         from litellm import AuthenticationError
+
         err = AuthenticationError(message="bad key", llm_provider="test", model="test")
         assert classify_llm_error(err) == AuthProfileFailureReason.AUTH
 
     def test_bad_request(self):
         from litellm import BadRequestError
+
         err = BadRequestError(message="bad", llm_provider="test", model="test")
         assert classify_llm_error(err) == AuthProfileFailureReason.FORMAT
 
     def test_timeout(self):
         from litellm import Timeout
+
         err = Timeout(message="timeout", llm_provider="test", model="test")
         assert classify_llm_error(err) == AuthProfileFailureReason.TIMEOUT
 
     def test_service_unavailable(self):
         from litellm import ServiceUnavailableError
+
         err = ServiceUnavailableError(message="down", llm_provider="test", model="test")
         assert classify_llm_error(err) == AuthProfileFailureReason.OVERLOADED
 
     def test_connection_error(self):
         from litellm import APIConnectionError
+
         err = APIConnectionError(message="conn failed", llm_provider="test", model="test")
         assert classify_llm_error(err) == AuthProfileFailureReason.TIMEOUT
 
@@ -516,7 +543,12 @@ class TestBuildRouter:
 
     def test_copilot_model(self):
         with patch("sci_fi_dashboard.llm_router._copilot_litellm_params") as mock:
-            mock.return_value = {"model": "openai/gpt-4o", "api_key": "x", "timeout": 60, "stream": False}
+            mock.return_value = {
+                "model": "openai/gpt-4o",
+                "api_key": "x",
+                "timeout": 60,
+                "stream": False,
+            }
             router = build_router(
                 {"copilot": {"model": "github_copilot/gpt-4o"}},
                 {},

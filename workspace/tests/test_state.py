@@ -18,10 +18,9 @@ import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
-from sci_fi_dashboard.state import DashboardState, Process, LogEntry, Activity
+from sci_fi_dashboard.state import Activity, DashboardState, LogEntry, Process
 
 
 class TestProcess:
@@ -163,7 +162,7 @@ class TestDashboardState:
         """update_stats should use psutil when available."""
         mock_psutil.cpu_percent.return_value = 55.0
         mock_vm = MagicMock()
-        mock_vm.used = 4 * (1024 ** 3)  # 4 GB
+        mock_vm.used = 4 * (1024**3)  # 4 GB
         mock_psutil.virtual_memory.return_value = mock_vm
         mock_psutil.ImportError = ImportError  # ensure the except block works
 

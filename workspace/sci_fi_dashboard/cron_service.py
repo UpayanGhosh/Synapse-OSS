@@ -26,11 +26,12 @@ Schedule format:
 Timezone: uses system local time by default. Override via
   synapse.json -> session.timezone_offset_hours (e.g. 5.5 for IST).
 """
+
 import asyncio
 import json
 import logging
 import os
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 
 logger = logging.getLogger("synapse.cron")
@@ -40,6 +41,7 @@ def _get_local_tz() -> timezone:
     """Return the user's configured timezone or system local timezone."""
     try:
         from synapse_config import SynapseConfig
+
         cfg = SynapseConfig.load()
         tz_offset = cfg.session.get("timezone_offset_hours")
         if tz_offset is not None:
@@ -47,14 +49,15 @@ def _get_local_tz() -> timezone:
     except Exception:
         pass
     # Fallback: system local timezone
-    local_offset = datetime.now(timezone.utc).astimezone().utcoffset()
-    return timezone(local_offset) if local_offset else timezone.utc
+    local_offset = datetime.now(UTC).astimezone().utcoffset()
+    return timezone(local_offset) if local_offset else UTC
 
 
 def _get_cron_dir() -> Path:
     """Resolve cron directory from SynapseConfig.data_root."""
     try:
         from synapse_config import SynapseConfig
+
         return SynapseConfig.load().data_root / "cron"
     except Exception:
         return Path(os.path.expanduser("~/.synapse/cron"))
@@ -205,7 +208,7 @@ class CronService:
         try:
             await self._fire_job(job)
             return {"status": "ok", "job_id": job_id}
-        except Exception as exc:
+        except Exception:
             logger.exception("[Cron] Force-run failed for job %s", job_id)
             raise
 

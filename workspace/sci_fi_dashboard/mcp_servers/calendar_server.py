@@ -2,15 +2,17 @@
 MCP Server: Google Calendar
 Run standalone: python -m sci_fi_dashboard.mcp_servers.calendar_server
 """
+
 import asyncio
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
-from mcp.types import Tool, TextContent
-from .base import setup_logging, logger, check_mcp_auth
+from mcp.types import TextContent, Tool
+
+from .base import check_mcp_auth, logger, setup_logging
 
 _cal_service = None
 
@@ -20,18 +22,22 @@ def _get_calendar_service():
     if _cal_service is None:
         from google.oauth2.credentials import Credentials
         from googleapiclient.discovery import build
-        from synapse_config import SynapseConfig
         from mcp_config import load_mcp_config
+        from synapse_config import SynapseConfig
+
         cfg = SynapseConfig.load()
         mcp_cfg = load_mcp_config(cfg.mcp)
         cal_cfg = mcp_cfg.builtin_servers.get("calendar")
         if not cal_cfg:
             raise RuntimeError("Calendar not configured in synapse.json")
         token_path = str(Path(cal_cfg.token_path).expanduser())
-        creds = Credentials.from_authorized_user_file(token_path, [
-            "https://www.googleapis.com/auth/calendar.readonly",
-            "https://www.googleapis.com/auth/calendar.events",
-        ])
+        creds = Credentials.from_authorized_user_file(
+            token_path,
+            [
+                "https://www.googleapis.com/auth/calendar.readonly",
+                "https://www.googleapis.com/auth/calendar.events",
+            ],
+        )
         _cal_service = build("calendar", "v3", credentials=creds)
     return _cal_service
 
@@ -80,15 +86,20 @@ async def list_tools() -> list[Tool]:
 
 
 def _get_upcoming(svc, arguments: dict) -> list[TextContent]:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     end = now + timedelta(minutes=arguments.get("minutes", 30))
-    events = svc.events().list(
-        calendarId="primary",
-        timeMin=now.isoformat(),
-        timeMax=end.isoformat(),
-        singleEvents=True,
-        orderBy="startTime",
-    ).execute().get("items", [])
+    events = (
+        svc.events()
+        .list(
+            calendarId="primary",
+            timeMin=now.isoformat(),
+            timeMax=end.isoformat(),
+            singleEvents=True,
+            orderBy="startTime",
+        )
+        .execute()
+        .get("items", [])
+    )
     result = [
         {
             "summary": e.get("summary", "No title"),
@@ -103,15 +114,20 @@ def _get_upcoming(svc, arguments: dict) -> list[TextContent]:
 
 def _list_events(svc, arguments: dict) -> list[TextContent]:
     date_str = arguments.get("date", datetime.now().strftime("%Y-%m-%d"))
-    day_start = datetime.fromisoformat(f"{date_str}T00:00:00").replace(tzinfo=timezone.utc)
-    events = svc.events().list(
-        calendarId="primary",
-        timeMin=day_start.isoformat(),
-        timeMax=(day_start + timedelta(days=1)).isoformat(),
-        singleEvents=True,
-        orderBy="startTime",
-        maxResults=arguments.get("max_results", 10),
-    ).execute().get("items", [])
+    day_start = datetime.fromisoformat(f"{date_str}T00:00:00").replace(tzinfo=UTC)
+    events = (
+        svc.events()
+        .list(
+            calendarId="primary",
+            timeMin=day_start.isoformat(),
+            timeMax=(day_start + timedelta(days=1)).isoformat(),
+            singleEvents=True,
+            orderBy="startTime",
+            maxResults=arguments.get("max_results", 10),
+        )
+        .execute()
+        .get("items", [])
+    )
     result = [
         {
             "summary": e.get("summary"),
@@ -132,10 +148,12 @@ def _create_event(svc, arguments: dict) -> list[TextContent]:
     if arguments.get("attendees"):
         body["attendees"] = [{"email": a} for a in arguments["attendees"]]
     created = svc.events().insert(calendarId="primary", body=body).execute()
-    return [TextContent(
-        type="text",
-        text=json.dumps({"id": created["id"], "link": created.get("htmlLink", "")}),
-    )]
+    return [
+        TextContent(
+            type="text",
+            text=json.dumps({"id": created["id"], "link": created.get("htmlLink", "")}),
+        )
+    ]
 
 
 @server.call_tool()
@@ -146,7 +164,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
 
     try:
         svc = _get_calendar_service()
-        _HANDLERS = {
+        _HANDLERS = {  # noqa: N806
             "get_upcoming": _get_upcoming,
             "list_events": _list_events,
             "create_event": _create_event,

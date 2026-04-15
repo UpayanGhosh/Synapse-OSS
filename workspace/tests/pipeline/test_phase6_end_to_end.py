@@ -32,14 +32,13 @@ for _p in (_WORKSPACE, os.path.dirname(_WORKSPACE)):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch  # noqa: E402
 
-from sci_fi_dashboard.chat_pipeline import persona_chat
-from sci_fi_dashboard.schemas import ChatRequest
-from sci_fi_dashboard.dual_cognition import CognitiveMerge
-from sci_fi_dashboard.llm_router import LLMResult
-
+import pytest  # noqa: E402
+from sci_fi_dashboard.chat_pipeline import persona_chat  # noqa: E402
+from sci_fi_dashboard.dual_cognition import CognitiveMerge  # noqa: E402
+from sci_fi_dashboard.llm_router import LLMResult  # noqa: E402
+from sci_fi_dashboard.schemas import ChatRequest  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -95,9 +94,7 @@ def _make_mock_deps(memory_engine, dual_cognition) -> MagicMock:
     deps._synapse_cfg.raw = {}
 
     # LLM router — no real API calls
-    deps.synapse_llm_router.call_with_metadata = AsyncMock(
-        return_value=_make_llm_result()
-    )
+    deps.synapse_llm_router.call_with_metadata = AsyncMock(return_value=_make_llm_result())
     # call_with_tools is not exposed by default so the pipeline falls back to
     # call_with_metadata — ensure hasattr() returns False for this attribute.
     del deps.synapse_llm_router.call_with_tools
@@ -136,13 +133,15 @@ async def test_persona_chat_returns_dict_with_reply(
     request = _make_request("Hello!")
     mock_deps = _make_mock_deps(pipeline_memory_engine, pipeline_dual_cognition)
 
-    with patch("sci_fi_dashboard.chat_pipeline.deps", mock_deps):
-        with patch(
+    with (
+        patch("sci_fi_dashboard.chat_pipeline.deps", mock_deps),
+        patch(
             "sci_fi_dashboard.llm_wrappers.route_traffic_cop",
             new_callable=AsyncMock,
             return_value="CASUAL",
-        ):
-            result = await persona_chat(request, target="the_creator")
+        ),
+    ):
+        result = await persona_chat(request, target="the_creator")
 
     assert isinstance(result, dict), f"persona_chat() must return a dict, got {type(result)}"
     assert "reply" in result, f"Result dict must contain 'reply', got keys: {list(result.keys())}"
@@ -156,20 +155,20 @@ async def test_persona_chat_returns_dict_with_reply(
 
 
 @pytest.mark.asyncio
-async def test_persona_chat_fast_path_greeting(
-    pipeline_memory_engine, pipeline_dual_cognition
-):
+async def test_persona_chat_fast_path_greeting(pipeline_memory_engine, pipeline_dual_cognition):
     """Short greeting 'hi' should complete with exactly one call to call_with_metadata."""
     request = _make_request("hi")
     mock_deps = _make_mock_deps(pipeline_memory_engine, pipeline_dual_cognition)
 
-    with patch("sci_fi_dashboard.chat_pipeline.deps", mock_deps):
-        with patch(
+    with (
+        patch("sci_fi_dashboard.chat_pipeline.deps", mock_deps),
+        patch(
             "sci_fi_dashboard.llm_wrappers.route_traffic_cop",
             new_callable=AsyncMock,
             return_value="CASUAL",
-        ):
-            result = await persona_chat(request, target="the_creator")
+        ),
+    ):
+        result = await persona_chat(request, target="the_creator")
 
     assert isinstance(result, dict)
     assert "reply" in result
@@ -186,15 +185,12 @@ async def test_persona_chat_fast_path_greeting(
 
 
 @pytest.mark.asyncio
-async def test_persona_chat_memory_queried_once(
-    pipeline_memory_engine, pipeline_dual_cognition
-):
+async def test_persona_chat_memory_queried_once(pipeline_memory_engine, pipeline_dual_cognition):
     """memory_engine.query() must be called exactly once — shared with dual cognition."""
     request = _make_request("Tell me about technology")
     mock_deps = _make_mock_deps(pipeline_memory_engine, pipeline_dual_cognition)
 
     # Wrap the real memory engine in a spy so we can count calls
-    from unittest.mock import patch as _patch
 
     real_query = pipeline_memory_engine.query
     call_count = []
@@ -205,13 +201,15 @@ async def test_persona_chat_memory_queried_once(
 
     mock_deps.memory_engine.query = _spy_query
 
-    with patch("sci_fi_dashboard.chat_pipeline.deps", mock_deps):
-        with patch(
+    with (
+        patch("sci_fi_dashboard.chat_pipeline.deps", mock_deps),
+        patch(
             "sci_fi_dashboard.llm_wrappers.route_traffic_cop",
             new_callable=AsyncMock,
             return_value="CASUAL",
-        ):
-            result = await persona_chat(request, target="the_creator")
+        ),
+    ):
+        result = await persona_chat(request, target="the_creator")
 
     assert isinstance(result, dict)
     assert len(call_count) == 1, (
@@ -240,19 +238,21 @@ async def test_persona_chat_traffic_cop_casual_uses_llm_router(
     mock_dc.build_cognitive_context.return_value = ""
     mock_deps.dual_cognition = mock_dc
 
-    with patch("sci_fi_dashboard.chat_pipeline.deps", mock_deps):
-        with patch(
+    with (
+        patch("sci_fi_dashboard.chat_pipeline.deps", mock_deps),
+        patch(
             "sci_fi_dashboard.llm_wrappers.route_traffic_cop",
             new_callable=AsyncMock,
             return_value="CASUAL",
-        ) as mock_cop:
-            result = await persona_chat(request, target="the_creator")
+        ) as mock_cop,
+    ):
+        result = await persona_chat(request, target="the_creator")
 
     assert isinstance(result, dict)
     assert "reply" in result
-    assert mock_deps.synapse_llm_router.call_with_metadata.called, (
-        "call_with_metadata must be invoked after CASUAL classification"
-    )
+    assert (
+        mock_deps.synapse_llm_router.call_with_metadata.called
+    ), "call_with_metadata must be invoked after CASUAL classification"
     mock_cop.assert_called_once()
 
 
@@ -284,12 +284,14 @@ async def test_persona_chat_strategy_shortcut_skips_traffic_cop(
     mock_dc.build_cognitive_context.return_value = "Acknowledge mode."
     mock_deps.dual_cognition = mock_dc
 
-    with patch("sci_fi_dashboard.chat_pipeline.deps", mock_deps):
-        with patch(
+    with (
+        patch("sci_fi_dashboard.chat_pipeline.deps", mock_deps),
+        patch(
             "sci_fi_dashboard.llm_wrappers.route_traffic_cop",
             new_callable=AsyncMock,
-        ) as mock_cop:
-            result = await persona_chat(request, target="the_creator")
+        ) as mock_cop,
+    ):
+        result = await persona_chat(request, target="the_creator")
 
     assert isinstance(result, dict)
     mock_cop.assert_not_called(), (
@@ -303,9 +305,7 @@ async def test_persona_chat_strategy_shortcut_skips_traffic_cop(
 
 
 @pytest.mark.asyncio
-async def test_persona_chat_spicy_routes_to_vault(
-    pipeline_memory_engine, pipeline_dual_cognition
-):
+async def test_persona_chat_spicy_routes_to_vault(pipeline_memory_engine, pipeline_dual_cognition):
     """A request with session_type='spicy' must call call_with_metadata with role='vault'."""
     request = _make_request("Tell me something private", session_type="spicy")
     mock_deps = _make_mock_deps(pipeline_memory_engine, pipeline_dual_cognition)
@@ -319,9 +319,9 @@ async def test_persona_chat_spicy_routes_to_vault(
 
     # First positional argument to call_with_metadata is the role
     roles_used = [call.args[0] if call.args else call.kwargs.get("role") for call in calls]
-    assert "vault" in roles_used, (
-        f"spicy session_type must route to 'vault' role. Roles seen: {roles_used}"
-    )
+    assert (
+        "vault" in roles_used
+    ), f"spicy session_type must route to 'vault' role. Roles seen: {roles_used}"
 
 
 # ===========================================================================
@@ -347,13 +347,15 @@ async def test_persona_chat_dual_cognition_disabled(
     mock_dc.build_cognitive_context.return_value = ""
     mock_deps.dual_cognition = mock_dc
 
-    with patch("sci_fi_dashboard.chat_pipeline.deps", mock_deps):
-        with patch(
+    with (
+        patch("sci_fi_dashboard.chat_pipeline.deps", mock_deps),
+        patch(
             "sci_fi_dashboard.llm_wrappers.route_traffic_cop",
             new_callable=AsyncMock,
             return_value="CASUAL",
-        ):
-            result = await persona_chat(request, target="the_creator")
+        ),
+    ):
+        result = await persona_chat(request, target="the_creator")
 
     assert isinstance(result, dict)
     mock_dc.think.assert_not_called(), (
@@ -387,19 +389,21 @@ async def test_persona_chat_cognition_timeout_handled(
 
     mock_deps.dual_cognition.think = slow_think
 
-    with patch("sci_fi_dashboard.chat_pipeline.deps", mock_deps):
-        with patch(
+    with (
+        patch("sci_fi_dashboard.chat_pipeline.deps", mock_deps),
+        patch(
             "sci_fi_dashboard.llm_wrappers.route_traffic_cop",
             new_callable=AsyncMock,
             return_value="CASUAL",
-        ):
-            result = await persona_chat(request, target="the_creator")
+        ),
+    ):
+        result = await persona_chat(request, target="the_creator")
 
     assert isinstance(result, dict), "persona_chat() must return a dict even on cognition timeout"
     assert "reply" in result
-    assert isinstance(result["reply"], str) and len(result["reply"]) > 0, (
-        "reply must be a non-empty string even when cognition times out"
-    )
+    assert (
+        isinstance(result["reply"], str) and len(result["reply"]) > 0
+    ), "reply must be a non-empty string even when cognition times out"
 
 
 # ===========================================================================
@@ -408,37 +412,35 @@ async def test_persona_chat_cognition_timeout_handled(
 
 
 @pytest.mark.asyncio
-async def test_10_turn_conversation_no_crash(
-    pipeline_memory_engine, pipeline_dual_cognition
-):
+async def test_10_turn_conversation_no_crash(pipeline_memory_engine, pipeline_dual_cognition):
     """A 10-turn simulated conversation must not raise any exception."""
     mock_deps = _make_mock_deps(pipeline_memory_engine, pipeline_dual_cognition)
     history: list[dict] = []
 
-    with patch("sci_fi_dashboard.chat_pipeline.deps", mock_deps):
-        with patch(
+    with (
+        patch("sci_fi_dashboard.chat_pipeline.deps", mock_deps),
+        patch(
             "sci_fi_dashboard.llm_wrappers.route_traffic_cop",
             new_callable=AsyncMock,
             return_value="CASUAL",
-        ):
-            for i in range(10):
-                request = _make_request(
-                    f"Message {i}: What do you think?",
-                    history=list(history),  # pass a copy
-                )
-                result = await persona_chat(request, target="the_creator")
+        ),
+    ):
+        for i in range(10):
+            request = _make_request(
+                f"Message {i}: What do you think?",
+                history=list(history),  # pass a copy
+            )
+            result = await persona_chat(request, target="the_creator")
 
-                assert isinstance(result, dict), (
-                    f"Turn {i}: persona_chat() must return a dict"
-                )
-                assert "reply" in result, f"Turn {i}: result must contain 'reply'"
-                assert isinstance(result["reply"], str) and len(result["reply"]) > 0, (
-                    f"Turn {i}: reply must be a non-empty string"
-                )
+            assert isinstance(result, dict), f"Turn {i}: persona_chat() must return a dict"
+            assert "reply" in result, f"Turn {i}: result must contain 'reply'"
+            assert (
+                isinstance(result["reply"], str) and len(result["reply"]) > 0
+            ), f"Turn {i}: reply must be a non-empty string"
 
-                # Extend history as a real client would
-                history.append({"role": "user", "content": f"Message {i}: What do you think?"})
-                history.append({"role": "assistant", "content": result["reply"]})
+            # Extend history as a real client would
+            history.append({"role": "user", "content": f"Message {i}: What do you think?"})
+            history.append({"role": "assistant", "content": result["reply"]})
 
 
 # ===========================================================================
@@ -458,26 +460,26 @@ async def test_persona_chat_memory_error_handled_gracefully(
     request = _make_request("Hello!")
     mock_deps = _make_mock_deps(pipeline_memory_engine, pipeline_dual_cognition)
     # Force the memory engine to raise on every query() call
-    mock_deps.memory_engine.query = MagicMock(
-        side_effect=RuntimeError("DB connection failed")
-    )
+    mock_deps.memory_engine.query = MagicMock(side_effect=RuntimeError("DB connection failed"))
 
-    with patch("sci_fi_dashboard.chat_pipeline.deps", mock_deps):
-        with patch(
+    with (
+        patch("sci_fi_dashboard.chat_pipeline.deps", mock_deps),
+        patch(
             "sci_fi_dashboard.llm_wrappers.route_traffic_cop",
             new_callable=AsyncMock,
             return_value="CASUAL",
-        ):
-            result = await persona_chat(request, target="the_creator")
+        ),
+    ):
+        result = await persona_chat(request, target="the_creator")
 
-    assert isinstance(result, dict), (
-        "persona_chat() must return a dict even when memory engine raises"
-    )
+    assert isinstance(
+        result, dict
+    ), "persona_chat() must return a dict even when memory engine raises"
     assert "reply" in result
-    assert isinstance(result["reply"], str) and len(result["reply"]) > 0, (
-        "reply must be non-empty even when memory retrieval fails"
-    )
+    assert (
+        isinstance(result["reply"], str) and len(result["reply"]) > 0
+    ), "reply must be non-empty even when memory retrieval fails"
     # The LLM router must still have been called (pipeline continued after memory failure)
-    assert mock_deps.synapse_llm_router.call_with_metadata.called, (
-        "LLM router must still be invoked even when memory engine raises"
-    )
+    assert (
+        mock_deps.synapse_llm_router.call_with_metadata.called
+    ), "LLM router must still be invoked even when memory engine raises"

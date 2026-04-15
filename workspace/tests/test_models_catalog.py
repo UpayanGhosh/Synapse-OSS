@@ -12,7 +12,6 @@ Covers:
 import json
 import os
 import sys
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -28,7 +27,6 @@ from sci_fi_dashboard.models_catalog import (
     discover_ollama_models,
     ensure_models_catalog,
 )
-
 
 # ---------------------------------------------------------------------------
 # Dataclasses
@@ -113,9 +111,7 @@ class TestDiscoverOllamaModels:
         mock_tags_resp.raise_for_status = MagicMock()
 
         mock_show_resp = MagicMock()
-        mock_show_resp.json.return_value = {
-            "model_info": {"general.context_length": 32768}
-        }
+        mock_show_resp.json.return_value = {"model_info": {"general.context_length": 32768}}
         mock_show_resp.raise_for_status = MagicMock()
 
         mock_client = AsyncMock()
@@ -213,9 +209,7 @@ class TestDiscoverOllamaModels:
     @pytest.mark.asyncio
     async def test_caps_at_200_models(self):
         mock_tags_resp = MagicMock()
-        mock_tags_resp.json.return_value = {
-            "models": [{"name": f"model-{i}"} for i in range(250)]
-        }
+        mock_tags_resp.json.return_value = {"models": [{"name": f"model-{i}"} for i in range(250)]}
         mock_tags_resp.raise_for_status = MagicMock()
 
         mock_show_resp = MagicMock()

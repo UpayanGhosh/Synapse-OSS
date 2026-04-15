@@ -31,9 +31,7 @@ import pytest
 # ---------------------------------------------------------------------------
 _HERE = os.path.dirname(__file__)
 _WORKTREE_WORKSPACE = os.path.abspath(os.path.join(_HERE, "..", ".."))
-_MAIN_WORKSPACE = os.path.abspath(
-    os.path.join(_HERE, "..", "..", "..", "..", "workspace")
-)
+_MAIN_WORKSPACE = os.path.abspath(os.path.join(_HERE, "..", "..", "..", "..", "workspace"))
 for _p in (_WORKTREE_WORKSPACE, _MAIN_WORKSPACE):
     if _p not in sys.path:
         sys.path.insert(0, _p)
@@ -183,7 +181,7 @@ def pipeline_graph(tmp_path_factory):
     graph = SQLiteGraph(db_path=db_path)
 
     facts = _load_pipeline_facts(50)
-    PATTERNS = [
+    PATTERNS = [  # noqa: N806
         (r"\b(sports?|sport)\b", "is_about", "sports"),
         (r"\b(tech|software|computer)\b", "is_about", "technology"),
         (r"\b(business|company|market)\b", "is_about", "business"),

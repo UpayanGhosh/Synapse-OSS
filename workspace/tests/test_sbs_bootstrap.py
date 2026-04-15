@@ -9,12 +9,10 @@ Covers:
 
 import os
 import sys
-from datetime import datetime
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-import pytest
-from unittest.mock import patch, MagicMock, call
+from unittest.mock import MagicMock, patch
 
 
 class TestBootstrapSbs:
@@ -22,16 +20,19 @@ class TestBootstrapSbs:
 
     def test_skips_missing_files(self, tmp_path, capsys):
         """Should skip files that don't exist in archive dir."""
-        with patch("sci_fi_dashboard.sbs_bootstrap.WORKSPACE_ROOT", str(tmp_path)):
-            with patch("sci_fi_dashboard.sbs_bootstrap.CURRENT_DIR", str(tmp_path / "sci_fi_dashboard")):
-                os.makedirs(tmp_path / "_archived_memories", exist_ok=True)
-                # Don't create the chat files
-                mock_sbs = MagicMock()
-                with patch("sci_fi_dashboard.sbs_bootstrap.SBSOrchestrator", return_value=mock_sbs):
-                    from sci_fi_dashboard.sbs_bootstrap import bootstrap_sbs
-                    bootstrap_sbs()
-                    captured = capsys.readouterr()
-                    assert "Skipping" in captured.out or "WARN" in captured.out
+        with (
+            patch("sci_fi_dashboard.sbs_bootstrap.WORKSPACE_ROOT", str(tmp_path)),
+            patch("sci_fi_dashboard.sbs_bootstrap.CURRENT_DIR", str(tmp_path / "sci_fi_dashboard")),
+        ):
+            os.makedirs(tmp_path / "_archived_memories", exist_ok=True)
+            # Don't create the chat files
+            mock_sbs = MagicMock()
+            with patch("sci_fi_dashboard.sbs_bootstrap.SBSOrchestrator", return_value=mock_sbs):
+                from sci_fi_dashboard.sbs_bootstrap import bootstrap_sbs
+
+                bootstrap_sbs()
+                captured = capsys.readouterr()
+                assert "Skipping" in captured.out or "WARN" in captured.out
 
     def test_processes_existing_file(self, tmp_path, capsys):
         """Should process chat files that exist."""
@@ -50,25 +51,31 @@ Hey bro! I'm doing great. Working on some python stuff.
         mock_sbs.logger = MagicMock()
         mock_sbs.force_batch = MagicMock()
 
-        with patch("sci_fi_dashboard.sbs_bootstrap.WORKSPACE_ROOT", str(tmp_path)):
-            with patch("sci_fi_dashboard.sbs_bootstrap.CURRENT_DIR", str(tmp_path / "sci_fi_dashboard")):
-                with patch("sci_fi_dashboard.sbs_bootstrap.SBSOrchestrator", return_value=mock_sbs):
-                    from sci_fi_dashboard.sbs_bootstrap import bootstrap_sbs
-                    bootstrap_sbs()
+        with (
+            patch("sci_fi_dashboard.sbs_bootstrap.WORKSPACE_ROOT", str(tmp_path)),
+            patch("sci_fi_dashboard.sbs_bootstrap.CURRENT_DIR", str(tmp_path / "sci_fi_dashboard")),
+            patch("sci_fi_dashboard.sbs_bootstrap.SBSOrchestrator", return_value=mock_sbs),
+        ):
+            from sci_fi_dashboard.sbs_bootstrap import bootstrap_sbs
 
-                    # Should have logged messages
-                    assert mock_sbs.logger.log.call_count >= 1
-                    # Should have triggered force_batch
-                    mock_sbs.force_batch.assert_called()
+            bootstrap_sbs()
+
+            # Should have logged messages
+            assert mock_sbs.logger.log.call_count >= 1
+            # Should have triggered force_batch
+            mock_sbs.force_batch.assert_called()
 
     def test_bootstrap_prints_completion(self, tmp_path, capsys):
         """Should print completion message."""
-        with patch("sci_fi_dashboard.sbs_bootstrap.WORKSPACE_ROOT", str(tmp_path)):
-            with patch("sci_fi_dashboard.sbs_bootstrap.CURRENT_DIR", str(tmp_path / "sci_fi_dashboard")):
-                os.makedirs(tmp_path / "_archived_memories", exist_ok=True)
-                mock_sbs = MagicMock()
-                with patch("sci_fi_dashboard.sbs_bootstrap.SBSOrchestrator", return_value=mock_sbs):
-                    from sci_fi_dashboard.sbs_bootstrap import bootstrap_sbs
-                    bootstrap_sbs()
-                    captured = capsys.readouterr()
-                    assert "Bootstrap Complete" in captured.out or "Complete" in captured.out
+        with (
+            patch("sci_fi_dashboard.sbs_bootstrap.WORKSPACE_ROOT", str(tmp_path)),
+            patch("sci_fi_dashboard.sbs_bootstrap.CURRENT_DIR", str(tmp_path / "sci_fi_dashboard")),
+        ):
+            os.makedirs(tmp_path / "_archived_memories", exist_ok=True)
+            mock_sbs = MagicMock()
+            with patch("sci_fi_dashboard.sbs_bootstrap.SBSOrchestrator", return_value=mock_sbs):
+                from sci_fi_dashboard.sbs_bootstrap import bootstrap_sbs
+
+                bootstrap_sbs()
+                captured = capsys.readouterr()
+                assert "Bootstrap Complete" in captured.out or "Complete" in captured.out

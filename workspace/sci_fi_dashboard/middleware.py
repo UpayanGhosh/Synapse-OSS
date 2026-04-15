@@ -69,10 +69,7 @@ def _require_gateway_auth(request: Request) -> None:
     from synapse_config import SynapseConfig  # noqa: PLC0415
 
     _cfg = SynapseConfig.load()
-    expected = (
-        _cfg.gateway.get("token", "")
-        or os.environ.get("SYNAPSE_GATEWAY_TOKEN", "")
-    )
+    expected = _cfg.gateway.get("token", "") or os.environ.get("SYNAPSE_GATEWAY_TOKEN", "")
     if not expected:
         return  # No token configured — skip auth (dev mode)
     provided = ""

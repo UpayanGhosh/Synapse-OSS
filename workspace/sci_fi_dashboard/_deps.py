@@ -3,7 +3,6 @@
 import logging
 import os
 import sys
-import uuid
 from pathlib import Path
 
 from rich import print
@@ -25,20 +24,15 @@ if WORKSPACE_ROOT not in sys.path:
 # ---------------------------------------------------------------------------
 from sci_fi_dashboard.conflict_resolver import ConflictManager  # noqa: E402
 from sci_fi_dashboard.dual_cognition import (  # noqa: E402
-    CognitiveMerge,
     DualCognitionEngine,
 )
 from sci_fi_dashboard.emotional_trajectory import EmotionalTrajectory  # noqa: E402
 from sci_fi_dashboard.memory_engine import MemoryEngine  # noqa: E402
-from sci_fi_dashboard.retriever import (  # noqa: E402
-    get_db_stats,
-    query_memories,
-)
+from sci_fi_dashboard.multiuser.conversation_cache import ConversationCache  # noqa: E402
 from sci_fi_dashboard.sbs.orchestrator import SBSOrchestrator  # noqa: E402
 from sci_fi_dashboard.smart_entity import EntityGate  # noqa: E402
 from sci_fi_dashboard.sqlite_graph import SQLiteGraph  # noqa: E402
 from sci_fi_dashboard.toxic_scorer_lazy import LazyToxicScorer  # noqa: E402
-from sci_fi_dashboard.multiuser.conversation_cache import ConversationCache  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Phase 3: Tool Execution Loop (optional)
@@ -46,10 +40,6 @@ from sci_fi_dashboard.multiuser.conversation_cache import ConversationCache  # n
 try:
     from sci_fi_dashboard.tool_registry import (  # noqa: E402
         ToolRegistry,
-        ToolContext,
-        ToolResult,
-        SynapseTool,
-        register_builtin_tools,
     )
 
     _TOOL_REGISTRY_AVAILABLE = True
@@ -61,11 +51,8 @@ except ImportError:
 # ---------------------------------------------------------------------------
 try:
     from sci_fi_dashboard.tool_safety import (  # noqa: E402
-        apply_tool_policy_pipeline,
-        build_policy_steps,
-        ToolHookRunner,
-        ToolLoopDetector,
         ToolAuditLogger,
+        ToolHookRunner,
     )
 
     _TOOL_SAFETY_AVAILABLE = True
@@ -77,9 +64,7 @@ except ImportError:
 # ---------------------------------------------------------------------------
 try:
     from sci_fi_dashboard.tool_features import (  # noqa: E402
-        format_tool_footer,
-        get_model_override,
-        parse_command_shortcut,
+        parse_command_shortcut,  # noqa: F401
     )
 
     _TOOL_FEATURES_AVAILABLE = True
@@ -93,7 +78,6 @@ try:
     from sci_fi_dashboard.skills.registry import SkillRegistry as _SkillRegistry  # noqa: E402
     from sci_fi_dashboard.skills.router import SkillRouter as _SkillRouter  # noqa: E402
     from sci_fi_dashboard.skills.watcher import SkillWatcher as _SkillWatcher  # noqa: E402
-    from sci_fi_dashboard.skills.runner import SkillRunner as _SkillRunner  # noqa: E402
 
     _SKILL_SYSTEM_AVAILABLE = True
 except ImportError:
@@ -136,14 +120,12 @@ conversation_cache = ConversationCache(max_entries=200, ttl_s=300)
 # ---------------------------------------------------------------------------
 # Async Gateway Components
 # ---------------------------------------------------------------------------
-from channels.base import ChannelMessage  # noqa: E402
 from channels.registry import ChannelRegistry  # noqa: E402
 from channels.stub import StubChannel  # noqa: E402
 from channels.whatsapp import WhatsAppChannel  # noqa: E402
 from gateway.dedup import MessageDeduplicator  # noqa: E402
 from gateway.flood import FloodGate  # noqa: E402
-from gateway.queue import MessageTask, TaskQueue  # noqa: E402
-from gateway.worker import MessageWorker  # noqa: E402
+from gateway.queue import TaskQueue  # noqa: E402
 
 task_queue = TaskQueue(max_size=100)
 dedup = MessageDeduplicator(window_seconds=300)
@@ -253,18 +235,7 @@ load_env_file(anchor=Path(__file__))
 
 from synapse_config import SynapseConfig  # noqa: E402
 
-from sci_fi_dashboard.llm_router import LLMResult, SynapseLLMRouter  # noqa: E402
-from sci_fi_dashboard.schemas import ChatRequest, WhatsAppLoopTestRequest  # noqa: E402
-from sci_fi_dashboard.middleware import (  # noqa: E402
-    _require_gateway_auth,
-    validate_api_key,
-    validate_bridge_token,
-)
-from sci_fi_dashboard.whatsapp_bridge import (  # noqa: E402
-    get_inbound_message,
-    normalize_phone,
-)
-from sci_fi_dashboard.chat_pipeline import persona_chat  # noqa: E402
+from sci_fi_dashboard.llm_router import SynapseLLMRouter  # noqa: E402
 
 _synapse_cfg = SynapseConfig.load()
 synapse_llm_router = SynapseLLMRouter(_synapse_cfg)

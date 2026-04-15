@@ -7,7 +7,6 @@ Fills gaps not covered in test_multiuser.py:
 
 import os
 import sys
-from unittest.mock import MagicMock
 
 import pytest
 

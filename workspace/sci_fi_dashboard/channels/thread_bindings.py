@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import os
@@ -130,9 +131,7 @@ class ThreadBindingManager:
         for key, entry in data.items():
             created_at = entry.get("created_at", 0)
             last_activity = entry.get("last_activity", 0)
-            if (now - last_activity) > self._idle_timeout:
-                to_remove.append(key)
-            elif (now - created_at) > self._max_age:
+            if (now - last_activity) > self._idle_timeout or (now - created_at) > self._max_age:
                 to_remove.append(key)
 
         for key in to_remove:
@@ -169,10 +168,8 @@ class ThreadBindingManager:
             os.replace(tmp_path, str(self._store_path))
         except OSError:
             # Clean up temp file on failure
-            try:
+            with contextlib.suppress(OSError):
                 os.unlink(tmp_path)
-            except OSError:
-                pass
             raise
 
     async def sweep_loop(self, interval: float = 300.0) -> None:

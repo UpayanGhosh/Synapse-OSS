@@ -10,11 +10,9 @@ Tests the full TTS stack:
   - Pipeline integration: TTS dispatch in process_message_pipeline
 """
 
-import asyncio
 import os
 import sys
-import unittest.mock
-from unittest.mock import AsyncMock, MagicMock, patch, PropertyMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -45,16 +43,19 @@ class TestTTSConfig:
 
     def test_tts_default_is_empty_dict(self):
         """When synapse.json has no 'tts' key, cfg.tts is {} (not None or missing)."""
-        from synapse_config import SynapseConfig
         import dataclasses
+
+        from synapse_config import SynapseConfig
 
         # Find the tts field in the dataclass
         fields = {f.name: f for f in dataclasses.fields(SynapseConfig)}
         assert "tts" in fields, "SynapseConfig must have a 'tts' dataclass field"
         # Default factory should produce an empty dict
-        default = fields["tts"].default_factory() if callable(
-            getattr(fields["tts"], "default_factory", None)
-        ) else fields["tts"].default
+        default = (
+            fields["tts"].default_factory()
+            if callable(getattr(fields["tts"], "default_factory", None))
+            else fields["tts"].default
+        )
         assert default == {}, f"tts field default should be {{}} but got {default!r}"
 
 
@@ -76,6 +77,7 @@ class TestEdgeTTSProvider:
         # Mock edge_tts.Communicate.save() to write fake MP3 to the temp file
         async def _fake_save(path):
             import pathlib
+
             pathlib.Path(path).write_bytes(fake_mp3)
 
         mock_communicate = MagicMock()
@@ -83,6 +85,7 @@ class TestEdgeTTSProvider:
 
         with patch.dict("sys.modules", {"edge_tts": MagicMock()}):
             import edge_tts
+
             edge_tts.Communicate.return_value = mock_communicate
 
             result = await EdgeTTSProvider().synthesize("hello world")
@@ -102,6 +105,7 @@ class TestEdgeTTSProvider:
 
         with patch.dict("sys.modules", {"edge_tts": MagicMock()}):
             import edge_tts
+
             edge_tts.Communicate.return_value = mock_communicate
 
             result = await EdgeTTSProvider().synthesize("hello world")
@@ -113,9 +117,10 @@ class TestEdgeTTSProvider:
         from sci_fi_dashboard.tts.providers.edge import EdgeTTSProvider
 
         # Force ImportError inside the method by patching builtins.__import__
-        original_import = __builtins__.__import__ if hasattr(__builtins__, "__import__") else __import__
+        __builtins__.__import__ if hasattr(__builtins__, "__import__") else __import__
 
         import builtins
+
         original = builtins.__import__
 
         def mock_import(name, *args, **kwargs):
@@ -179,10 +184,13 @@ class TestElevenLabsProvider:
         mock_elevenlabs = MagicMock()
         mock_elevenlabs.client.AsyncElevenLabs.return_value = mock_client
 
-        with patch.dict("sys.modules", {
-            "elevenlabs": mock_elevenlabs,
-            "elevenlabs.client": mock_elevenlabs.client,
-        }):
+        with patch.dict(
+            "sys.modules",
+            {
+                "elevenlabs": mock_elevenlabs,
+                "elevenlabs.client": mock_elevenlabs.client,
+            },
+        ):
             result = await ElevenLabsProvider().synthesize(
                 text="hello world",
                 voice="Rachel",
@@ -197,17 +205,18 @@ class TestElevenLabsProvider:
         from sci_fi_dashboard.tts.providers.elevenlabs import ElevenLabsProvider
 
         mock_client = AsyncMock()
-        mock_client.text_to_speech.convert = AsyncMock(
-            side_effect=Exception("API error 401")
-        )
+        mock_client.text_to_speech.convert = AsyncMock(side_effect=Exception("API error 401"))
 
         mock_elevenlabs = MagicMock()
         mock_elevenlabs.client.AsyncElevenLabs.return_value = mock_client
 
-        with patch.dict("sys.modules", {
-            "elevenlabs": mock_elevenlabs,
-            "elevenlabs.client": mock_elevenlabs.client,
-        }):
+        with patch.dict(
+            "sys.modules",
+            {
+                "elevenlabs": mock_elevenlabs,
+                "elevenlabs.client": mock_elevenlabs.client,
+            },
+        ):
             result = await ElevenLabsProvider().synthesize(
                 text="hello world",
                 voice="Rachel",
@@ -257,6 +266,7 @@ class TestMP3ToOGGOpus:
     async def test_convert_returns_bytes_when_ffmpeg_succeeds(self, tmp_path):
         """mp3_to_ogg_opus() returns non-empty bytes when ffmpeg succeeds."""
         import pathlib
+
         from sci_fi_dashboard.tts.convert import mp3_to_ogg_opus
 
         fake_mp3 = b"\xff\xfb\x90\x00" + b"\x00" * 100
@@ -296,7 +306,7 @@ class TestTTSEngine:
     @pytest.mark.asyncio
     async def test_synthesize_returns_none_for_long_text(self):
         """TTSEngine.synthesize() returns None for text longer than MAX_TTS_CHARS."""
-        from sci_fi_dashboard.tts.engine import TTSEngine, MAX_TTS_CHARS
+        from sci_fi_dashboard.tts.engine import MAX_TTS_CHARS, TTSEngine
 
         engine = TTSEngine()
         long_text = "x" * (MAX_TTS_CHARS + 1)
@@ -328,9 +338,13 @@ class TestTTSEngine:
         fake_mp3 = b"\xff\xfb\x90\x00" + b"\x00" * 50
         fake_ogg = b"OggS" + b"\x00" * 30
 
-        with patch("synapse_config.SynapseConfig.load", return_value=cfg), \
-             patch("sci_fi_dashboard.tts.engine.EdgeTTSProvider") as mock_edge_cls, \
-             patch("sci_fi_dashboard.tts.engine.mp3_to_ogg_opus", new=AsyncMock(return_value=fake_ogg)):
+        with (
+            patch("synapse_config.SynapseConfig.load", return_value=cfg),
+            patch("sci_fi_dashboard.tts.engine.EdgeTTSProvider") as mock_edge_cls,
+            patch(
+                "sci_fi_dashboard.tts.engine.mp3_to_ogg_opus", new=AsyncMock(return_value=fake_ogg)
+            ),
+        ):
             mock_edge = AsyncMock()
             mock_edge.synthesize = AsyncMock(return_value=fake_mp3)
             mock_edge_cls.return_value = mock_edge
@@ -351,9 +365,13 @@ class TestTTSEngine:
         fake_mp3 = b"\xff\xfb\x90\x00" + b"\x00" * 50
         fake_ogg = b"OggS" + b"\x00" * 30
 
-        with patch("synapse_config.SynapseConfig.load", return_value=cfg), \
-             patch("sci_fi_dashboard.tts.engine.EdgeTTSProvider") as mock_edge_cls, \
-             patch("sci_fi_dashboard.tts.engine.mp3_to_ogg_opus", new=AsyncMock(return_value=fake_ogg)):
+        with (
+            patch("synapse_config.SynapseConfig.load", return_value=cfg),
+            patch("sci_fi_dashboard.tts.engine.EdgeTTSProvider") as mock_edge_cls,
+            patch(
+                "sci_fi_dashboard.tts.engine.mp3_to_ogg_opus", new=AsyncMock(return_value=fake_ogg)
+            ),
+        ):
             mock_edge = AsyncMock()
             mock_edge.synthesize = AsyncMock(return_value=fake_mp3)
             mock_edge_cls.return_value = mock_edge
@@ -377,9 +395,13 @@ class TestTTSEngine:
         fake_mp3 = b"\xff\xfb\x90\x00" + b"\x00" * 50
         fake_ogg = b"OggS" + b"\x00" * 30
 
-        with patch("synapse_config.SynapseConfig.load", return_value=cfg), \
-             patch("sci_fi_dashboard.tts.engine.ElevenLabsProvider") as mock_el_cls, \
-             patch("sci_fi_dashboard.tts.engine.mp3_to_ogg_opus", new=AsyncMock(return_value=fake_ogg)):
+        with (
+            patch("synapse_config.SynapseConfig.load", return_value=cfg),
+            patch("sci_fi_dashboard.tts.engine.ElevenLabsProvider") as mock_el_cls,
+            patch(
+                "sci_fi_dashboard.tts.engine.mp3_to_ogg_opus", new=AsyncMock(return_value=fake_ogg)
+            ),
+        ):
             mock_el = AsyncMock()
             mock_el.synthesize = AsyncMock(return_value=fake_mp3)
             mock_el_cls.return_value = mock_el
@@ -412,8 +434,10 @@ class TestTTSEngine:
         engine = TTSEngine()
         cfg = self._make_cfg(tts={})
 
-        with patch("synapse_config.SynapseConfig.load", return_value=cfg), \
-             patch("sci_fi_dashboard.tts.engine.EdgeTTSProvider") as mock_edge_cls:
+        with (
+            patch("synapse_config.SynapseConfig.load", return_value=cfg),
+            patch("sci_fi_dashboard.tts.engine.EdgeTTSProvider") as mock_edge_cls,
+        ):
             mock_edge = AsyncMock()
             mock_edge.synthesize = AsyncMock(return_value=b"")  # Empty = failure
             mock_edge_cls.return_value = mock_edge
@@ -430,9 +454,11 @@ class TestTTSEngine:
         cfg = self._make_cfg(tts={})
         fake_mp3 = b"\xff\xfb\x90\x00" + b"\x00" * 50
 
-        with patch("synapse_config.SynapseConfig.load", return_value=cfg), \
-             patch("sci_fi_dashboard.tts.engine.EdgeTTSProvider") as mock_edge_cls, \
-             patch("sci_fi_dashboard.tts.engine.mp3_to_ogg_opus", new=AsyncMock(return_value=b"")):
+        with (
+            patch("synapse_config.SynapseConfig.load", return_value=cfg),
+            patch("sci_fi_dashboard.tts.engine.EdgeTTSProvider") as mock_edge_cls,
+            patch("sci_fi_dashboard.tts.engine.mp3_to_ogg_opus", new=AsyncMock(return_value=b"")),
+        ):
             mock_edge = AsyncMock()
             mock_edge.synthesize = AsyncMock(return_value=fake_mp3)
             mock_edge_cls.return_value = mock_edge
@@ -466,27 +492,21 @@ class TestPipelineTTSIntegration:
     def test_tts_fires_for_terminal_period(self):
         """Step 7 gate fires TTS when reply ends with '.'."""
         reply = "The answer is 42."
-        should_dispatch, ends_terminal, enabled = self._get_pipeline_step7_conditions(
-            reply, {}
-        )
+        should_dispatch, ends_terminal, enabled = self._get_pipeline_step7_conditions(reply, {})
         assert ends_terminal is True
         assert should_dispatch is True
 
     def test_tts_fires_for_terminal_exclamation(self):
         """Step 7 gate fires TTS when reply ends with '!'."""
         reply = "Great news!"
-        should_dispatch, ends_terminal, enabled = self._get_pipeline_step7_conditions(
-            reply, {}
-        )
+        should_dispatch, ends_terminal, enabled = self._get_pipeline_step7_conditions(reply, {})
         assert ends_terminal is True
         assert should_dispatch is True
 
     def test_tts_fires_for_terminal_question(self):
         """Step 7 gate fires TTS when reply ends with '?'."""
         reply = "Are you sure?"
-        should_dispatch, ends_terminal, enabled = self._get_pipeline_step7_conditions(
-            reply, {}
-        )
+        should_dispatch, ends_terminal, enabled = self._get_pipeline_step7_conditions(reply, {})
         assert ends_terminal is True
         assert should_dispatch is True
 
@@ -497,9 +517,7 @@ class TestPipelineTTSIntegration:
         TTS and auto-continue are mutually exclusive.
         """
         reply = "I was about to say something interesting"
-        should_dispatch, ends_terminal, enabled = self._get_pipeline_step7_conditions(
-            reply, {}
-        )
+        should_dispatch, ends_terminal, enabled = self._get_pipeline_step7_conditions(reply, {})
         assert ends_terminal is False
         assert should_dispatch is False
 
@@ -515,17 +533,13 @@ class TestPipelineTTSIntegration:
     def test_tts_skipped_for_empty_reply(self):
         """Step 7 gate skips TTS when reply is empty."""
         reply = ""
-        should_dispatch, ends_terminal, enabled = self._get_pipeline_step7_conditions(
-            reply, {}
-        )
+        should_dispatch, ends_terminal, enabled = self._get_pipeline_step7_conditions(reply, {})
         assert should_dispatch is False
 
     def test_tts_fires_for_closing_paren(self):
         """Step 7 gate fires TTS when reply ends with ')'."""
         reply = "Good morning (from Synapse)"
-        should_dispatch, ends_terminal, enabled = self._get_pipeline_step7_conditions(
-            reply, {}
-        )
+        should_dispatch, ends_terminal, enabled = self._get_pipeline_step7_conditions(reply, {})
         assert ends_terminal is True
         assert should_dispatch is True
 
@@ -550,7 +564,6 @@ class TestPipelineTTSIntegration:
         mock_wa_channel.send_voice_note = AsyncMock(return_value=True)
 
         # Stub out heavy deps so pipeline_helpers can be imported
-        import types
         mock_deps_module = MagicMock()
         mock_deps_module.channel_registry.get.return_value = mock_wa_channel
         mock_deps_module.diary_engine = None
@@ -565,6 +578,7 @@ class TestPipelineTTSIntegration:
         }
 
         import sys
+
         original_modules = {}
         for mod_name, stub in stub_modules.items():
             original_modules[mod_name] = sys.modules.get(mod_name)
@@ -580,13 +594,16 @@ class TestPipelineTTSIntegration:
                 del sys.modules["sci_fi_dashboard.pipeline_helpers"]
 
             from sci_fi_dashboard import pipeline_helpers as ph
+
             ph.deps = mock_deps_module  # patch the module-level deps reference
 
-            with patch("sci_fi_dashboard.tts.TTSEngine", return_value=mock_engine), \
-                 patch(
-                     "sci_fi_dashboard.media.store.save_media_buffer",
-                     return_value=fake_saved,
-                 ):
+            with (
+                patch("sci_fi_dashboard.tts.TTSEngine", return_value=mock_engine),
+                patch(
+                    "sci_fi_dashboard.media.store.save_media_buffer",
+                    return_value=fake_saved,
+                ),
+            ):
                 await ph._send_voice_note("Hello world.", "1234567890@s.whatsapp.net")
 
             # Engine was called
@@ -638,6 +655,7 @@ class TestPipelineTTSIntegration:
             sys.modules.pop("sci_fi_dashboard.pipeline_helpers", None)
 
             from sci_fi_dashboard import pipeline_helpers as ph
+
             ph.deps = mock_deps_module
 
             with patch("sci_fi_dashboard.tts.TTSEngine", return_value=mock_engine):
@@ -679,6 +697,7 @@ class TestPipelineTTSIntegration:
             sys.modules.pop("sci_fi_dashboard.pipeline_helpers", None)
 
             from sci_fi_dashboard import pipeline_helpers as ph
+
             ph.deps = mock_deps_module
 
             with patch("sci_fi_dashboard.tts.TTSEngine") as mock_engine_cls:

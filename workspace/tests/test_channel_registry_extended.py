@@ -14,11 +14,9 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from sci_fi_dashboard.channels.base import BaseChannel
 from sci_fi_dashboard.channels.plugin import ChannelCapabilities
 from sci_fi_dashboard.channels.registry import ChannelRegistry
 from sci_fi_dashboard.channels.stub import StubChannel
-
 
 # ===========================================================================
 # Alias resolution via get()

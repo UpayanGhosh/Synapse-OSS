@@ -1,4 +1,5 @@
 """Knowledge graph and memory endpoints."""
+
 import ast
 import json
 import logging
@@ -8,8 +9,8 @@ from fastapi import APIRouter, BackgroundTasks, Request
 
 from sci_fi_dashboard import _deps as deps
 from sci_fi_dashboard.middleware import validate_api_key
-from sci_fi_dashboard.schemas import MemoryItem, QueryItem
 from sci_fi_dashboard.retriever import query_memories
+from sci_fi_dashboard.schemas import MemoryItem, QueryItem
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -46,7 +47,7 @@ async def add_memory(item: MemoryItem, background_tasks: BackgroundTasks, reques
             {
                 "role": "system",
                 "content": (
-                    'Extract the core fact as a triple. JSON format: '
+                    "Extract the core fact as a triple. JSON format: "
                     '{"s": "Subject", "r": "Relation", "o": "Object"}. No other text.'
                 ),
             },

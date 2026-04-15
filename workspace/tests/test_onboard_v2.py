@@ -14,16 +14,15 @@ Coverage targets:
   - ONBOARD2-05: --verify validates providers and channels
 """
 
-import sys
 import os
+import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import json
-import types
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from pathlib import Path
-from unittest.mock import patch, MagicMock, AsyncMock, call
 
 # ---------------------------------------------------------------------------
 # Availability guard — skip entire module if CLI not installed
@@ -96,7 +95,7 @@ class TestSetupEntrypoint:
         monkeypatch.setenv("SYNAPSE_HOME", str(tmp_path))
 
         with patch("cli.onboard.run_wizard") as mock_wizard:
-            result = runner.invoke(
+            runner.invoke(
                 app,
                 ["setup"],
                 env={"SYNAPSE_HOME": str(tmp_path)},
@@ -148,20 +147,30 @@ class TestSBSProfileInit:
     def test_initialize_sbs_writes_linguistic_layer(self, tmp_path):
         """ONBOARD2-02: linguistic layer is saved with preferred_style set."""
         mock_mgr = self._call_with_mock_mgr(
-            {"communication_style": "formal_and_precise", "energy_level": "calm_and_steady",
-             "interests": [], "privacy_level": "selective"},
+            {
+                "communication_style": "formal_and_precise",
+                "energy_level": "calm_and_steady",
+                "interests": [],
+                "privacy_level": "selective",
+            },
             tmp_path,
         )
         save_calls = {c.args[0]: c.args[1] for c in mock_mgr.save_layer.call_args_list}
         assert "linguistic" in save_calls, "save_layer('linguistic', ...) must be called"
         linguistic_data = save_calls["linguistic"]
-        assert linguistic_data.get("current_style", {}).get("preferred_style") == "formal_and_precise"
+        assert (
+            linguistic_data.get("current_style", {}).get("preferred_style") == "formal_and_precise"
+        )
 
     def test_initialize_sbs_writes_emotional_state_layer(self, tmp_path):
         """ONBOARD2-02: high_energy maps to current_dominant_mood='energetic'."""
         mock_mgr = self._call_with_mock_mgr(
-            {"communication_style": "casual_and_witty", "energy_level": "high_energy",
-             "interests": [], "privacy_level": "selective"},
+            {
+                "communication_style": "casual_and_witty",
+                "energy_level": "high_energy",
+                "interests": [],
+                "privacy_level": "selective",
+            },
             tmp_path,
         )
         save_calls = {c.args[0]: c.args[1] for c in mock_mgr.save_layer.call_args_list}
@@ -171,8 +180,12 @@ class TestSBSProfileInit:
     def test_initialize_sbs_writes_emotional_state_calm(self, tmp_path):
         """ONBOARD2-02: calm_and_steady maps to current_dominant_mood='calm'."""
         mock_mgr = self._call_with_mock_mgr(
-            {"communication_style": "casual_and_witty", "energy_level": "calm_and_steady",
-             "interests": [], "privacy_level": "selective"},
+            {
+                "communication_style": "casual_and_witty",
+                "energy_level": "calm_and_steady",
+                "interests": [],
+                "privacy_level": "selective",
+            },
             tmp_path,
         )
         save_calls = {c.args[0]: c.args[1] for c in mock_mgr.save_layer.call_args_list}
@@ -181,8 +194,12 @@ class TestSBSProfileInit:
     def test_initialize_sbs_writes_emotional_state_adaptive(self, tmp_path):
         """ONBOARD2-02: adaptive maps to current_dominant_mood='neutral'."""
         mock_mgr = self._call_with_mock_mgr(
-            {"communication_style": "casual_and_witty", "energy_level": "adaptive",
-             "interests": [], "privacy_level": "selective"},
+            {
+                "communication_style": "casual_and_witty",
+                "energy_level": "adaptive",
+                "interests": [],
+                "privacy_level": "selective",
+            },
             tmp_path,
         )
         save_calls = {c.args[0]: c.args[1] for c in mock_mgr.save_layer.call_args_list}
@@ -191,8 +208,12 @@ class TestSBSProfileInit:
     def test_initialize_sbs_writes_domain_layer_with_active_domains(self, tmp_path):
         """ONBOARD2-02: domain layer contains BOTH interests dict AND active_domains list."""
         mock_mgr = self._call_with_mock_mgr(
-            {"communication_style": "casual_and_witty", "energy_level": "calm_and_steady",
-             "interests": ["technology", "music"], "privacy_level": "selective"},
+            {
+                "communication_style": "casual_and_witty",
+                "energy_level": "calm_and_steady",
+                "interests": ["technology", "music"],
+                "privacy_level": "selective",
+            },
             tmp_path,
         )
         save_calls = {c.args[0]: c.args[1] for c in mock_mgr.save_layer.call_args_list}
@@ -207,8 +228,12 @@ class TestSBSProfileInit:
     def test_initialize_sbs_writes_interaction_layer(self, tmp_path):
         """ONBOARD2-02: interaction layer has privacy_sensitivity='private'."""
         mock_mgr = self._call_with_mock_mgr(
-            {"communication_style": "casual_and_witty", "energy_level": "calm_and_steady",
-             "interests": [], "privacy_level": "private"},
+            {
+                "communication_style": "casual_and_witty",
+                "energy_level": "calm_and_steady",
+                "interests": [],
+                "privacy_level": "private",
+            },
             tmp_path,
         )
         save_calls = {c.args[0]: c.args[1] for c in mock_mgr.save_layer.call_args_list}
@@ -218,8 +243,12 @@ class TestSBSProfileInit:
     def test_initialize_sbs_never_writes_core_identity(self, tmp_path):
         """ONBOARD2-02: core_identity is never written (raises PermissionError by contract)."""
         mock_mgr = self._call_with_mock_mgr(
-            {"communication_style": "casual_and_witty", "energy_level": "calm_and_steady",
-             "interests": [], "privacy_level": "selective"},
+            {
+                "communication_style": "casual_and_witty",
+                "energy_level": "calm_and_steady",
+                "interests": [],
+                "privacy_level": "selective",
+            },
             tmp_path,
         )
         save_layer_names = [c.args[0] for c in mock_mgr.save_layer.call_args_list]
@@ -255,8 +284,12 @@ class TestSBSProfileInit:
             mock_cfg_cls.load.return_value = mock_config
             # Should not raise
             initialize_sbs_from_wizard(
-                {"communication_style": "casual_and_witty", "energy_level": "high_energy",
-                 "interests": ["technology"], "privacy_level": "open"},
+                {
+                    "communication_style": "casual_and_witty",
+                    "energy_level": "high_energy",
+                    "interests": ["technology"],
+                    "privacy_level": "open",
+                },
                 tmp_path,
             )
 
@@ -285,9 +318,9 @@ class TestCompilerConsumption:
             {"current_style": {"preferred_style": "casual_and_witty", "banglish_ratio": 0.3}}
         )
         result_lower = result.lower()
-        assert any(kw in result_lower for kw in ("casual", "warm", "witty")), (
-            f"Expected casual/warm/witty in output, got: {result!r}"
-        )
+        assert any(
+            kw in result_lower for kw in ("casual", "warm", "witty")
+        ), f"Expected casual/warm/witty in output, got: {result!r}"
 
     def test_compile_style_reads_preferred_style_formal(self):
         """Compiler emits professional/precise directive for formal_and_precise."""
@@ -296,9 +329,9 @@ class TestCompilerConsumption:
             {"current_style": {"preferred_style": "formal_and_precise", "banglish_ratio": 0.1}}
         )
         result_lower = result.lower()
-        assert any(kw in result_lower for kw in ("professional", "precise")), (
-            f"Expected professional/precise in output, got: {result!r}"
-        )
+        assert any(
+            kw in result_lower for kw in ("professional", "precise")
+        ), f"Expected professional/precise in output, got: {result!r}"
 
     def test_compile_style_reads_preferred_style_technical(self):
         """Compiler emits technical/depth/thorough directive for technical_depth."""
@@ -307,9 +340,9 @@ class TestCompilerConsumption:
             {"current_style": {"preferred_style": "technical_depth", "banglish_ratio": 0.1}}
         )
         result_lower = result.lower()
-        assert any(kw in result_lower for kw in ("technical", "depth", "thorough")), (
-            f"Expected technical/depth/thorough in output, got: {result!r}"
-        )
+        assert any(
+            kw in result_lower for kw in ("technical", "depth", "thorough")
+        ), f"Expected technical/depth/thorough in output, got: {result!r}"
 
     def test_compile_style_reads_preferred_style_creative(self):
         """Compiler emits creative/playful/metaphor directive for creative_and_playful."""
@@ -318,16 +351,14 @@ class TestCompilerConsumption:
             {"current_style": {"preferred_style": "creative_and_playful", "banglish_ratio": 0.2}}
         )
         result_lower = result.lower()
-        assert any(kw in result_lower for kw in ("creative", "playful", "metaphor")), (
-            f"Expected creative/playful/metaphor in output, got: {result!r}"
-        )
+        assert any(
+            kw in result_lower for kw in ("creative", "playful", "metaphor")
+        ), f"Expected creative/playful/metaphor in output, got: {result!r}"
 
     def test_compile_style_no_preferred_style_unchanged(self):
         """Backward compatibility: no preferred_style → no tone directive keywords emitted."""
         compiler = self._get_compiler()
-        result = compiler._compile_style(
-            {"current_style": {"banglish_ratio": 0.3}}
-        )
+        result = compiler._compile_style({"current_style": {"banglish_ratio": 0.3}})
         result_lower = result.lower()
         # None of the tone directive keywords should appear
         assert "casual, warm" not in result_lower
@@ -343,9 +374,9 @@ class TestCompilerConsumption:
         result = compiler._compile_interaction({"privacy_sensitivity": "open"})
         result_lower = result.lower()
         assert result, "open privacy must produce non-empty output"
-        assert any(kw in result_lower for kw in ("open", "freely", "remember")), (
-            f"Expected open/freely/remember in output, got: {result!r}"
-        )
+        assert any(
+            kw in result_lower for kw in ("open", "freely", "remember")
+        ), f"Expected open/freely/remember in output, got: {result!r}"
 
     def test_compile_interaction_reads_privacy_selective(self):
         """Compiler emits selective-memory directive for privacy_sensitivity='selective'."""
@@ -353,9 +384,9 @@ class TestCompilerConsumption:
         result = compiler._compile_interaction({"privacy_sensitivity": "selective"})
         result_lower = result.lower()
         assert result, "selective privacy must produce non-empty output"
-        assert any(kw in result_lower for kw in ("selective", "key preferences", "sensitive")), (
-            f"Expected selective/key preferences/sensitive in output, got: {result!r}"
-        )
+        assert any(
+            kw in result_lower for kw in ("selective", "key preferences", "sensitive")
+        ), f"Expected selective/key preferences/sensitive in output, got: {result!r}"
 
     def test_compile_interaction_reads_privacy_private(self):
         """Compiler emits minimal-retention directive for privacy_sensitivity='private'."""
@@ -363,9 +394,9 @@ class TestCompilerConsumption:
         result = compiler._compile_interaction({"privacy_sensitivity": "private"})
         result_lower = result.lower()
         assert result, "private privacy must produce non-empty output"
-        assert any(kw in result_lower for kw in ("privacy", "minimize", "do not reference")), (
-            f"Expected privacy/minimize/do not reference in output, got: {result!r}"
-        )
+        assert any(
+            kw in result_lower for kw in ("privacy", "minimize", "do not reference")
+        ), f"Expected privacy/minimize/do not reference in output, got: {result!r}"
 
     def test_compile_interaction_no_privacy_unchanged(self):
         """Backward compatibility: interaction dict without privacy_sensitivity → no privacy keywords."""
@@ -382,16 +413,14 @@ class TestCompilerConsumption:
         compiler = self._get_compiler()
         result = compiler._compile_interaction({"privacy_sensitivity": "selective"})
         # Must produce output — not return empty string
-        assert result, (
-            "privacy_sensitivity alone must produce non-empty output even without peak_hours"
-        )
+        assert (
+            result
+        ), "privacy_sensitivity alone must produce non-empty output even without peak_hours"
 
     def test_compile_domain_reads_active_domains(self):
         """Compiler emits active domains from active_domains list (wizard write path)."""
         compiler = self._get_compiler()
-        result = compiler._compile_domain(
-            {"active_domains": ["technology", "music"]}
-        )
+        result = compiler._compile_domain({"active_domains": ["technology", "music"]})
         assert "technology" in result.lower()
         assert "music" in result.lower()
 
@@ -399,31 +428,31 @@ class TestCompilerConsumption:
         """energetic mood → compiler does NOT emit neutral fallback."""
         compiler = self._get_compiler()
         result = compiler._compile_emotional({"current_dominant_mood": "energetic"})
-        assert "normal mode" not in result.lower(), (
-            "energetic mood must not emit neutral 'Normal mode' fallback"
-        )
-        assert "be your usual self" not in result.lower(), (
-            "energetic mood must not emit neutral 'Be your usual self' fallback"
-        )
+        assert (
+            "normal mode" not in result.lower()
+        ), "energetic mood must not emit neutral 'Normal mode' fallback"
+        assert (
+            "be your usual self" not in result.lower()
+        ), "energetic mood must not emit neutral 'Be your usual self' fallback"
         result_lower = result.lower()
-        assert any(kw in result_lower for kw in ("enthusiasm", "pace", "energy", "high-energy")), (
-            f"energetic mood must emit energy-specific instruction, got: {result!r}"
-        )
+        assert any(
+            kw in result_lower for kw in ("enthusiasm", "pace", "energy", "high-energy")
+        ), f"energetic mood must emit energy-specific instruction, got: {result!r}"
 
     def test_compile_emotional_calm_has_non_neutral_instruction(self):
         """calm mood → compiler does NOT emit neutral fallback."""
         compiler = self._get_compiler()
         result = compiler._compile_emotional({"current_dominant_mood": "calm"})
-        assert "normal mode" not in result.lower(), (
-            "calm mood must not emit neutral 'Normal mode' fallback"
-        )
-        assert "be your usual self" not in result.lower(), (
-            "calm mood must not emit neutral 'Be your usual self' fallback"
-        )
+        assert (
+            "normal mode" not in result.lower()
+        ), "calm mood must not emit neutral 'Normal mode' fallback"
+        assert (
+            "be your usual self" not in result.lower()
+        ), "calm mood must not emit neutral 'Be your usual self' fallback"
         result_lower = result.lower()
-        assert any(kw in result_lower for kw in ("measured", "thoughtful", "calm", "steady")), (
-            f"calm mood must emit calm-specific instruction, got: {result!r}"
-        )
+        assert any(
+            kw in result_lower for kw in ("measured", "thoughtful", "calm", "steady")
+        ), f"calm mood must emit calm-specific instruction, got: {result!r}"
 
 
 # ===========================================================================
@@ -441,7 +470,10 @@ class TestSBSQuestions:
         answers = {
             "How should Synapse communicate with you by default?": "Casual and witty",
             "How would you describe your typical energy level?": "Calm and steady",
-            "What topics are you most interested in? (select all that apply)": ["Technology", "Music"],
+            "What topics are you most interested in? (select all that apply)": [
+                "Technology",
+                "Music",
+            ],
             "How sensitive are you about personal data in conversations?": "Selective - use judgment",
             "Would you like to import existing WhatsApp chat history?": False,
         }
@@ -472,21 +504,22 @@ class TestSBSQuestions:
 
     def test_run_sbs_questions_whatsapp_import_offered_and_accepted(self, tmp_path):
         """ONBOARD2-03: accepting WhatsApp import runs subprocess with correct args."""
-        import subprocess
         from cli.onboard import _run_sbs_questions
         from cli.wizard_prompter import StubPrompter
 
         fake_wa_path = str(tmp_path / "history.txt")
         (tmp_path / "history.txt").write_text("chat", encoding="utf-8")
 
-        stub = StubPrompter({
-            "How should Synapse communicate with you by default?": "Casual and witty",
-            "How would you describe your typical energy level?": "Calm and steady",
-            "What topics are you most interested in? (select all that apply)": [],
-            "How sensitive are you about personal data in conversations?": "Selective - use judgment",
-            "Would you like to import existing WhatsApp chat history?": True,
-            "Path to WhatsApp export (.txt file)": fake_wa_path,
-        })
+        stub = StubPrompter(
+            {
+                "How should Synapse communicate with you by default?": "Casual and witty",
+                "How would you describe your typical energy level?": "Calm and steady",
+                "What topics are you most interested in? (select all that apply)": [],
+                "How sensitive are you about personal data in conversations?": "Selective - use judgment",
+                "Would you like to import existing WhatsApp chat history?": True,
+                "Path to WhatsApp export (.txt file)": fake_wa_path,
+            }
+        )
 
         with (
             patch("cli.sbs_profile_init.initialize_sbs_from_wizard"),
@@ -518,7 +551,9 @@ class TestSBSQuestions:
 
         stub = self._make_stub()
 
-        with patch("cli.sbs_profile_init.initialize_sbs_from_wizard", side_effect=Exception("DB error")):
+        with patch(
+            "cli.sbs_profile_init.initialize_sbs_from_wizard", side_effect=Exception("DB error")
+        ):
             # Should NOT raise
             _run_sbs_questions(stub, tmp_path)
 
@@ -557,8 +592,10 @@ class TestNonInteractiveSBS:
             patch("litellm.acompletion", new_callable=AsyncMock) as mock_acomp,
             patch("cli.sbs_profile_init.initialize_sbs_from_wizard") as mock_init,
             patch("cli.onboard._validate_environment"),
-            patch("cli.gateway_steps.configure_gateway",
-                  return_value={"port": 8000, "bind": "loopback", "token": "a" * 48}),
+            patch(
+                "cli.gateway_steps.configure_gateway",
+                return_value={"port": 8000, "bind": "loopback", "token": "a" * 48},
+            ),
         ):
             mock_acomp.return_value = MagicMock(
                 choices=[MagicMock(message=MagicMock(role="assistant", content="hi"))]
@@ -581,16 +618,22 @@ class TestNonInteractiveSBS:
         for k, v in env.items():
             monkeypatch.setenv(k, v)
         # Ensure SBS env vars are absent
-        for sbs_var in ("SYNAPSE_COMMUNICATION_STYLE", "SYNAPSE_ENERGY_LEVEL",
-                        "SYNAPSE_INTERESTS", "SYNAPSE_PRIVACY_LEVEL"):
+        for sbs_var in (
+            "SYNAPSE_COMMUNICATION_STYLE",
+            "SYNAPSE_ENERGY_LEVEL",
+            "SYNAPSE_INTERESTS",
+            "SYNAPSE_PRIVACY_LEVEL",
+        ):
             monkeypatch.delenv(sbs_var, raising=False)
 
         with (
             patch("litellm.acompletion", new_callable=AsyncMock) as mock_acomp,
             patch("cli.sbs_profile_init.initialize_sbs_from_wizard") as mock_init,
             patch("cli.onboard._validate_environment"),
-            patch("cli.gateway_steps.configure_gateway",
-                  return_value={"port": 8000, "bind": "loopback", "token": "a" * 48}),
+            patch(
+                "cli.gateway_steps.configure_gateway",
+                return_value={"port": 8000, "bind": "loopback", "token": "a" * 48},
+            ),
         ):
             mock_acomp.return_value = MagicMock(
                 choices=[MagicMock(message=MagicMock(role="assistant", content="hi"))]
@@ -619,8 +662,10 @@ class TestNonInteractiveSBS:
             patch("litellm.acompletion", new_callable=AsyncMock) as mock_acomp,
             patch("cli.sbs_profile_init.initialize_sbs_from_wizard", side_effect=capture_init),
             patch("cli.onboard._validate_environment"),
-            patch("cli.gateway_steps.configure_gateway",
-                  return_value={"port": 8000, "bind": "loopback", "token": "a" * 48}),
+            patch(
+                "cli.gateway_steps.configure_gateway",
+                return_value={"port": 8000, "bind": "loopback", "token": "a" * 48},
+            ),
         ):
             mock_acomp.return_value = MagicMock(
                 choices=[MagicMock(message=MagicMock(role="assistant", content="hi"))]
@@ -652,8 +697,10 @@ class TestNonInteractiveSBS:
             patch("litellm.acompletion", new_callable=AsyncMock) as mock_acomp,
             patch("cli.sbs_profile_init.initialize_sbs_from_wizard", side_effect=capture),
             patch("cli.onboard._validate_environment"),
-            patch("cli.gateway_steps.configure_gateway",
-                  return_value={"port": 8000, "bind": "loopback", "token": "a" * 48}),
+            patch(
+                "cli.gateway_steps.configure_gateway",
+                return_value={"port": 8000, "bind": "loopback", "token": "a" * 48},
+            ),
         ):
             mock_acomp.return_value = MagicMock(
                 choices=[MagicMock(message=MagicMock(role="assistant", content="hi"))]
@@ -683,8 +730,10 @@ class TestNonInteractiveSBS:
             patch("litellm.acompletion", new_callable=AsyncMock) as mock_acomp,
             patch("cli.sbs_profile_init.initialize_sbs_from_wizard", side_effect=capture),
             patch("cli.onboard._validate_environment"),
-            patch("cli.gateway_steps.configure_gateway",
-                  return_value={"port": 8000, "bind": "loopback", "token": "a" * 48}),
+            patch(
+                "cli.gateway_steps.configure_gateway",
+                return_value={"port": 8000, "bind": "loopback", "token": "a" * 48},
+            ),
         ):
             mock_acomp.return_value = MagicMock(
                 choices=[MagicMock(message=MagicMock(role="assistant", content="hi"))]
@@ -714,8 +763,10 @@ class TestNonInteractiveSBS:
             patch("litellm.acompletion", new_callable=AsyncMock) as mock_acomp,
             patch("cli.sbs_profile_init.initialize_sbs_from_wizard", side_effect=capture),
             patch("cli.onboard._validate_environment"),
-            patch("cli.gateway_steps.configure_gateway",
-                  return_value={"port": 8000, "bind": "loopback", "token": "a" * 48}),
+            patch(
+                "cli.gateway_steps.configure_gateway",
+                return_value={"port": 8000, "bind": "loopback", "token": "a" * 48},
+            ),
         ):
             mock_acomp.return_value = MagicMock(
                 choices=[MagicMock(message=MagicMock(role="assistant", content="hi"))]
@@ -757,15 +808,13 @@ class TestVerifySubcommand:
     def test_run_verify_returns_0_on_all_pass(self, tmp_path, monkeypatch):
         """ONBOARD2-05: All providers pass → returns 0."""
         from cli.verify_steps import run_verify
-        from cli.provider_steps import ValidationResult
 
         monkeypatch.setenv("SYNAPSE_HOME", str(tmp_path))
         mock_cfg = self._make_synapse_config(tmp_path, providers={"gemini": {"api_key": "fk"}})
 
         with (
             patch("cli.verify_steps.SynapseConfig") as mock_cfg_cls,
-            patch("cli.verify_steps._validate_provider_async",
-                  return_value=("gemini", True, "")),
+            patch("cli.verify_steps._validate_provider_async", return_value=("gemini", True, "")),
             patch("asyncio.gather", return_value=[("gemini", True, "")]),
         ):
             mock_cfg_cls.load.return_value = mock_cfg
@@ -827,7 +876,7 @@ class TestVerifySubcommand:
 
     def test_run_verify_parallel_providers(self, tmp_path, monkeypatch):
         """ONBOARD2-05: Multiple providers validated in parallel via asyncio.gather."""
-        from cli.verify_steps import run_verify, _validate_all_providers
+        from cli.verify_steps import run_verify
 
         monkeypatch.setenv("SYNAPSE_HOME", str(tmp_path))
         mock_cfg = self._make_synapse_config(
@@ -842,7 +891,7 @@ class TestVerifySubcommand:
         with (
             patch("cli.verify_steps.SynapseConfig") as mock_cfg_cls,
             patch("asyncio.run") as mock_run,
-            patch("asyncio.gather") as mock_gather,
+            patch("asyncio.gather"),
         ):
             mock_cfg_cls.load.return_value = mock_cfg
             # asyncio.run wraps _validate_all_providers which uses asyncio.gather
@@ -864,8 +913,8 @@ class TestVerifySubcommand:
         ValidationResult(ok=False) would still pass (dataclass is always truthy).
         This test verifies that the FAIL case is correctly detected.
         """
-        from cli.verify_steps import run_verify
         from cli.provider_steps import ValidationResult
+        from cli.verify_steps import run_verify
 
         monkeypatch.setenv("SYNAPSE_HOME", str(tmp_path))
         self._make_synapse_config(tmp_path, providers={"gemini": {"api_key": "bad"}})

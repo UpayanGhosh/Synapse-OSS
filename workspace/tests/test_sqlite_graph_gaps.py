@@ -56,6 +56,7 @@ class TestNodeOperations:
         conn.close()
 
         import json
+
         props = json.loads(row[0])
         assert props["age"] == 30
 

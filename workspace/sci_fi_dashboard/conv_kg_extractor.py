@@ -37,7 +37,15 @@ logger = logging.getLogger(__name__)
 
 # Common prefixes/suffixes stripped during normalization.
 _STRIP_TOKENS: set[str] = {
-    "mr", "mrs", "ms", "dr", "prof", "sir", "the", "a", "an",
+    "mr",
+    "mrs",
+    "ms",
+    "dr",
+    "prof",
+    "sir",
+    "the",
+    "a",
+    "an",
 }
 
 # Punctuation translation table (remove all punctuation).
@@ -76,6 +84,7 @@ def _normalize_entity(raw: str) -> str:
     # Remove stray punctuation at edges (e.g. trailing comma from LLM output).
     text = text.strip(string.punctuation + " ")
     return text
+
 
 # ---------------------------------------------------------------------------
 # Extraction prompt — anti-hallucination variant with standardized relations
@@ -132,9 +141,7 @@ def _entity_appears_in_text(entity: str, source_lower: str) -> bool:
         return True
     # Word-level fallback: every word in the entity must appear somewhere in source.
     words = entity.split()
-    if len(words) > 1 and all(w in source_lower for w in words):
-        return True
-    return False
+    return bool(len(words) > 1 and all(w in source_lower for w in words))
 
 
 def _validate_triples(
@@ -182,13 +189,17 @@ def _validate_triples(
             accepted.append(([subj, rel, obj], 0.5))
             logger.debug(
                 "[KG] Partial grounding for triple: [%s, %s, %s] — weight 0.5",
-                subj, rel, obj,
+                subj,
+                rel,
+                obj,
             )
         else:
             logger.warning(
                 "[KG] REJECTED hallucinated triple: [%s, %s, %s] — "
                 "neither entity found in source text",
-                subj, rel, obj,
+                subj,
+                rel,
+                obj,
             )
 
     return accepted
@@ -199,7 +210,14 @@ def _validate_triples(
 # ---------------------------------------------------------------------------
 
 # Providers known to support response_format={"type": "json_object"}.
-_JSON_FORMAT_PROVIDERS: set[str] = {"openai", "gemini", "groq", "mistral", "together", "together_ai"}
+_JSON_FORMAT_PROVIDERS: set[str] = {
+    "openai",
+    "gemini",
+    "groq",
+    "mistral",
+    "together",
+    "together_ai",
+}
 
 
 def _get_safe_call_kwargs(model_string: str) -> dict:
@@ -234,8 +252,14 @@ def _get_safe_call_kwargs(model_string: str) -> dict:
 # If a new extraction contradicts an existing edge with one of these relations,
 # the old edge should be UPDATED rather than a second edge appended.
 _SINGLE_VALUED_RELATIONS: set[str] = {
-    "works_at", "lives_in", "married_to", "born_in", "age_is",
-    "employed_as", "located_in", "diagnosed_with",
+    "works_at",
+    "lives_in",
+    "married_to",
+    "born_in",
+    "age_is",
+    "employed_as",
+    "located_in",
+    "diagnosed_with",
 }
 
 
@@ -254,6 +278,7 @@ def _get_persona_lock(persona_id: str) -> asyncio.Lock:
     if persona_id not in _persona_locks:
         _persona_locks[persona_id] = asyncio.Lock()
     return _persona_locks[persona_id]
+
 
 # ---------------------------------------------------------------------------
 # Text chunking — copied verbatim from triple_extractor.py
@@ -324,9 +349,7 @@ def _parse_llm_output(raw: str) -> dict:
             pass
 
     # Tier 3 — extract triple patterns
-    triples = re.findall(
-        r'\[\s*"([^"]+)"\s*,\s*"([^"]+)"\s*,\s*"([^"]+)"\s*\]', raw
-    )
+    triples = re.findall(r'\[\s*"([^"]+)"\s*,\s*"([^"]+)"\s*,\s*"([^"]+)"\s*\]', raw)
     if triples:
         logger.warning("[KG] LLM output not valid JSON — regex fallback used")
         return {"facts": [], "triples": [[s, r, o] for s, r, o in triples]}
@@ -353,11 +376,13 @@ def _normalize_result(result: dict) -> dict:
         content = re.sub(r"\s+", " ", (f.get("content") or "").strip())
         if content and content not in seen_facts:
             seen_facts.add(content)
-            facts.append({
-                "entity": entity,
-                "content": content,
-                "category": f.get("category", ""),
-            })
+            facts.append(
+                {
+                    "entity": entity,
+                    "content": content,
+                    "category": f.get("category", ""),
+                }
+            )
 
     triples: list[list[str]] = []
     seen_triples: set[tuple] = set()
@@ -492,7 +517,10 @@ def _write_triple_to_graph(
             old_obj = existing["target"]
             logger.info(
                 "[KG] Contradiction: updating '%s %s' from '%s' to '%s'",
-                subj, rel, old_obj, obj,
+                subj,
+                rel,
+                old_obj,
+                obj,
             )
             # Atomic DELETE + INSERT in one transaction on the same connection.
             # Bypasses add_edge to guarantee both ops share a single commit.
@@ -551,9 +579,7 @@ def _set_last_kg_timestamp(sbs_data_dir: str, ts: str) -> None:
         json.dump({"kg_last_extracted_at": ts}, f)
 
 
-async def fetch_messages_since(
-    db_path: str, since_iso: str, limit: int = 200
-) -> list[dict]:
+async def fetch_messages_since(db_path: str, since_iso: str, limit: int = 200) -> list[dict]:
     """Fetch conversation messages newer than *since_iso* from messages.db.
 
     Uses asyncio.to_thread with a thread-local connection (justified: read
@@ -601,14 +627,13 @@ class ConvKGExtractor:
             fallback = "casual"
             logger.debug(
                 "[KG] Role '%s' not in model_mappings — falling back to '%s'",
-                role, fallback,
+                role,
+                fallback,
             )
             role = fallback
         self._role = role
         # Determine provider-safe kwargs once (avoids per-chunk lookups).
-        model_str = (
-            llm_router._config.model_mappings.get(role, {}).get("model", "")
-        )
+        model_str = llm_router._config.model_mappings.get(role, {}).get("model", "")
         self._extra_kwargs = _get_safe_call_kwargs(model_str)
 
     async def extract(self, text: str) -> dict:
@@ -738,9 +763,7 @@ async def run_batch_extraction(
             return {"skipped": True, "pending": 0}
 
         # (f) Build text
-        text = "\n".join(
-            f"[{m['role']}]: {m['content']}" for m in msgs
-        )
+        text = "\n".join(f"[{m['role']}]: {m['content']}" for m in msgs)
 
         # (g) LLM extraction with KG role (falls back to casual internally)
         extractor = ConvKGExtractor(llm_router, role=kg_role)
@@ -778,7 +801,12 @@ async def run_batch_extraction(
                         continue
                     subj, rel, obj = triple[0], triple[1], triple[2]
                     _write_triple_to_entity_links(
-                        conn, subj, rel, obj, fact_id=0, confidence=confidence,
+                        conn,
+                        subj,
+                        rel,
+                        obj,
+                        fact_id=0,
+                        confidence=confidence,
                     )
                 conn.commit()
             finally:
@@ -798,13 +826,17 @@ async def run_batch_extraction(
         except Exception as write_err:
             logger.error(
                 "KG write failed for %s, watermark NOT advanced: %s",
-                persona_id, write_err,
+                persona_id,
+                write_err,
             )
             return {"error": str(write_err), "extracted": 0}
 
         logger.info(
             "[KG] Extracted %d validated triples (%d rejected), %d facts for %s",
-            len(validated_triples), rejected_count, len(facts), persona_id,
+            len(validated_triples),
+            rejected_count,
+            len(facts),
+            persona_id,
         )
         return {
             "extracted": len(validated_triples),

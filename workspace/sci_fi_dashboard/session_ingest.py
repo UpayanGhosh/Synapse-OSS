@@ -10,17 +10,18 @@ Per batch of conversation turns:
 Batched with BATCH_SLEEP_S between batches to avoid rate limits.
 Never blocks the chat pipeline.
 """
+
 from __future__ import annotations
 
 import asyncio
 import logging
 import sqlite3
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 log = logging.getLogger(__name__)
 
-BATCH_SIZE = 5       # conversation turns per batch (1 turn = 1 user + 1 assistant)
+BATCH_SIZE = 5  # conversation turns per batch (1 turn = 1 user + 1 assistant)
 BATCH_SLEEP_S = 1.0  # seconds between batches (rate-limit safety)
 
 
@@ -63,14 +64,15 @@ async def _ingest_session_background(
         hemisphere:     "safe" or "spicy" — controls memory hemisphere
     """
     # Late imports to avoid circular deps at module load time
+    from synapse_config import SynapseConfig
+
     from sci_fi_dashboard import _deps as deps
-    from sci_fi_dashboard.multiuser.transcript import load_messages
     from sci_fi_dashboard.conv_kg_extractor import (
         ConvKGExtractor,
-        _write_triple_to_entity_links,
         _ensure_entity_links,
+        _write_triple_to_entity_links,
     )
-    from synapse_config import SynapseConfig
+    from sci_fi_dashboard.multiuser.transcript import load_messages
 
     cfg = SynapseConfig.load()
 
@@ -94,7 +96,7 @@ async def _ingest_session_background(
         return
 
     # Group into batches of BATCH_SIZE turns (1 turn = user msg + assistant reply)
-    date_str = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d")
+    date_str = datetime.now(tz=UTC).strftime("%Y-%m-%d")
     batches: list[list[dict]] = []
     current: list[dict] = []
     turn_count = 0
@@ -117,16 +119,16 @@ async def _ingest_session_background(
     kg_enabled = cfg.kg_extraction.enabled
     kg_role = cfg.kg_extraction.kg_role if kg_enabled else None
     extractor = (
-        ConvKGExtractor(deps.synapse_llm_router, role=kg_role or "casual")
-        if kg_enabled
-        else None
+        ConvKGExtractor(deps.synapse_llm_router, role=kg_role or "casual") if kg_enabled else None
     )
 
     memory_db_path = str(cfg.db_dir / "memory.db")
 
     log.info(
         "[session_ingest] starting: %d batches, kg=%s, session=%s",
-        len(batches), kg_enabled, session_key,
+        len(batches),
+        kg_enabled,
+        session_key,
     )
 
     ingested_vec = 0
@@ -168,8 +170,12 @@ async def _ingest_session_background(
                             deps.brain.add_relation(subj, rel, obj, weight=confidence)
                             # Write to entity_links table in memory.db
                             _write_triple_to_entity_links(
-                                conn, subj, rel, obj,
-                                fact_id=0, confidence=confidence,
+                                conn,
+                                subj,
+                                rel,
+                                obj,
+                                fact_id=0,
+                                confidence=confidence,
                             )
                         conn.commit()
                     finally:
@@ -191,5 +197,8 @@ async def _ingest_session_background(
 
     log.info(
         "[session_ingest] done: %d/%d vec batches, %d KG triples — session %s",
-        ingested_vec, len(batches), ingested_kg, session_key,
+        ingested_vec,
+        len(batches),
+        ingested_kg,
+        session_key,
     )

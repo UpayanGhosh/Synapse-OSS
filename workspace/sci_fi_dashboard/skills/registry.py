@@ -67,10 +67,7 @@ class SkillRegistry:
 
             added = new_names - old_names
             removed = old_names - new_names
-            updated = {
-                n for n in old_names & new_names
-                if new_by_name[n] != self._skills[n]
-            }
+            updated = {n for n in old_names & new_names if new_by_name[n] != self._skills[n]}
 
             self._skills = new_by_name
 

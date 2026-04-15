@@ -140,10 +140,7 @@ class DiscordChannel(BaseChannel):
                 return
 
             # PluralKit proxy dedup — skip messages from PluralKit bot webhooks
-            if (
-                message.webhook_id is not None
-                and message.application_id == self._PLURALKIT_BOT_ID
-            ):
+            if message.webhook_id is not None and message.application_id == self._PLURALKIT_BOT_ID:
                 logger.debug("[DIS] Skipping PluralKit proxy message %s", message.id)
                 return
 
@@ -328,7 +325,9 @@ class DiscordChannel(BaseChannel):
             jitter = random.uniform(0.1, 0.5)
             logger.warning(
                 "[DIS] Rate-limited (429). Retrying after %.2fs (retry_after=%.2f + jitter=%.2f)",
-                retry_after + jitter, retry_after, jitter,
+                retry_after + jitter,
+                retry_after,
+                jitter,
             )
             await asyncio.sleep(retry_after + jitter)
             retry_result = await self._try_send(channel, text)
@@ -342,7 +341,9 @@ class DiscordChannel(BaseChannel):
             for attempt, backoff in enumerate((1.0, 2.0), start=1):
                 logger.warning(
                     "[DIS] Server error (%d). Retry %d/2 after %.1fs",
-                    exc.status, attempt, backoff,
+                    exc.status,
+                    attempt,
+                    backoff,
                 )
                 await asyncio.sleep(backoff)
                 retry_result = await self._try_send(channel, text)
@@ -360,9 +361,7 @@ class DiscordChannel(BaseChannel):
         return None
 
     @staticmethod
-    async def _try_send(
-        channel, text: str
-    ) -> discord.Message | bool | discord.HTTPException:
+    async def _try_send(channel, text: str) -> discord.Message | bool | discord.HTTPException:
         """Attempt a single channel.send().
 
         Returns:
@@ -401,21 +400,21 @@ class DiscordChannel(BaseChannel):
             cut = text.rfind("\n\n", 0, limit)
             if cut > 0:
                 chunks.append(text[:cut])
-                text = text[cut + 2:]  # skip the \n\n separator
+                text = text[cut + 2 :]  # skip the \n\n separator
                 continue
 
             # Try line boundary
             cut = text.rfind("\n", 0, limit)
             if cut > 0:
                 chunks.append(text[:cut])
-                text = text[cut + 1:]  # skip the \n separator
+                text = text[cut + 1 :]  # skip the \n separator
                 continue
 
             # Try space boundary
             cut = text.rfind(" ", 0, limit)
             if cut > 0:
                 chunks.append(text[:cut])
-                text = text[cut + 1:]  # skip the space
+                text = text[cut + 1 :]  # skip the space
                 continue
 
             # Hard cut — no natural boundary found
@@ -473,7 +472,7 @@ class DiscordChannel(BaseChannel):
             try:
                 await asyncio.wait_for(cancel_event.wait(), timeout=8.0)
                 break
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 continue
 
     async def mark_read(self, chat_id: str, message_id: str) -> None:
@@ -512,9 +511,7 @@ class DiscordChannel(BaseChannel):
             logger.error("[DIS] send_voice() failed: %s", exc)
             return False
 
-    async def send_in_thread(
-        self, channel_id: str, thread_name: str, text: str
-    ) -> str | None:
+    async def send_in_thread(self, channel_id: str, thread_name: str, text: str) -> str | None:
         """Create a thread on a channel and send text in it.
 
         Looks up the channel, creates a public thread with the given name, sends

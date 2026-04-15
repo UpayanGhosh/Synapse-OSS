@@ -117,9 +117,7 @@ class GatewayWebSocket:
         self._config = config
         self._task_queue = task_queue
         self._channel_registry = channel_registry
-        self._models_catalog_path = (
-            Path(models_catalog_path) if models_catalog_path else None
-        )
+        self._models_catalog_path = Path(models_catalog_path) if models_catalog_path else None
         self._gateway_token: str | None = os.environ.get("SYNAPSE_GATEWAY_TOKEN")
         # Maps conn_id -> VoiceSession for active voice connections
         self._voice_sessions: dict[str, VoiceSession] = {}
@@ -137,9 +135,7 @@ class GatewayWebSocket:
         try:
             # ---- 1. Wait for first frame -- must be "connect" --------
             try:
-                raw = await asyncio.wait_for(
-                    websocket.receive_text(), timeout=CONNECT_TIMEOUT_S
-                )
+                raw = await asyncio.wait_for(websocket.receive_text(), timeout=CONNECT_TIMEOUT_S)
             except TimeoutError:
                 logger.warning("WS %s: connect timeout after %.0fs", conn_id, CONNECT_TIMEOUT_S)
                 await websocket.close(code=4000, reason="Connect timeout")
@@ -152,9 +148,7 @@ class GatewayWebSocket:
                 return
 
             if not isinstance(frame, dict) or frame.get("type") != "connect":
-                await websocket.close(
-                    code=4000, reason="First frame must be connect"
-                )
+                await websocket.close(code=4000, reason="First frame must be connect")
                 return
 
             # ---- 2. Validate auth token if SYNAPSE_GATEWAY_TOKEN set -
@@ -193,9 +187,7 @@ class GatewayWebSocket:
             logger.info("WS %s: connected", conn_id)
 
             # ---- 4. Start tick loop in background --------------------
-            tick_task = asyncio.create_task(
-                self._tick_loop(websocket, seq, conn_id)
-            )
+            tick_task = asyncio.create_task(self._tick_loop(websocket, seq, conn_id))
 
             # ---- 5. Handle subsequent frames (text JSON or binary audio) ----
             try:
@@ -245,9 +237,7 @@ class GatewayWebSocket:
                             conn_id,
                             MAX_PAYLOAD_BYTES,
                         )
-                        await websocket.close(
-                            code=4002, reason="Payload exceeds max size"
-                        )
+                        await websocket.close(code=4002, reason="Payload exceeds max size")
                         return
 
                     req = parse_frame(raw_text)
@@ -404,7 +394,9 @@ class GatewayWebSocket:
         session = self._voice_sessions.get(conn_id)
         if session:
             session.request_cancel()
-            logger.info("WS %s: barge-in requested (is_ai_speaking=%s)", conn_id, session.is_ai_speaking)
+            logger.info(
+                "WS %s: barge-in requested (is_ai_speaking=%s)", conn_id, session.is_ai_speaking
+            )
         return make_response(request_id, ok=True, payload={"status": "barge_in_acknowledged"})
 
     # ------------------------------------------------------------------
@@ -462,9 +454,7 @@ class GatewayWebSocket:
 
         # --- Emit transcription event ---
         seq[0] += 1
-        await websocket.send_json(
-            make_event("voice.transcription", {"text": text}, seq[0])
-        )
+        await websocket.send_json(make_event("voice.transcription", {"text": text}, seq[0]))
         logger.info("WS %s: transcribed %d chars", conn_id, len(text))
 
         # --- Route through persona pipeline ---
@@ -492,9 +482,7 @@ class GatewayWebSocket:
             return
 
         # --- Stream TTS as background task ---
-        tts_task = asyncio.create_task(
-            self._stream_tts_to_ws(websocket, reply_text, session, seq)
-        )
+        tts_task = asyncio.create_task(self._stream_tts_to_ws(websocket, reply_text, session, seq))
         session.active_tts_task = tts_task
 
     # ------------------------------------------------------------------
@@ -672,11 +660,13 @@ class GatewayWebSocket:
             models = []
             for role, mapping in mappings.items():
                 if isinstance(mapping, dict):
-                    models.append({
-                        "role": role,
-                        "model": mapping.get("model", ""),
-                        "fallback": mapping.get("fallback"),
-                    })
+                    models.append(
+                        {
+                            "role": role,
+                            "model": mapping.get("model", ""),
+                            "fallback": mapping.get("fallback"),
+                        }
+                    )
             return {"models": models}
 
         return {"models": []}

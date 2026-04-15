@@ -15,24 +15,26 @@ No real API calls are made — all LLM interactions are mocked.
 
 import os
 import sys
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from sci_fi_dashboard.llm_router import (
-    BudgetExceededError,
-    _KEY_MAP as router_KEY_MAP,
-    get_provider_spend,
+from cli.provider_steps import (
+    _KEY_MAP as ps_KEY_MAP,  # noqa: N811
 )
 from cli.provider_steps import (
-    _KEY_MAP as ps_KEY_MAP,
     PROVIDER_GROUPS,
-    PROVIDER_LIST,
     VALIDATION_MODELS,
 )
-
+from sci_fi_dashboard.llm_router import (
+    _KEY_MAP as router_KEY_MAP,  # noqa: N811
+)
+from sci_fi_dashboard.llm_router import (
+    BudgetExceededError,
+    get_provider_spend,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -98,41 +100,37 @@ class TestProviderMaps:
                     "router": router_KEY_MAP[key],
                     "provider_steps": ps_KEY_MAP[key],
                 }
-        assert not mismatches, (
-            f"Env var name mismatch between _KEY_MAPs for providers: {mismatches}"
-        )
+        assert (
+            not mismatches
+        ), f"Env var name mismatch between _KEY_MAPs for providers: {mismatches}"
 
     @pytest.mark.unit
     def test_deepseek_in_llm_router_key_map(self):
         """PROV-04: DeepSeek must be present in llm_router._KEY_MAP with the correct env var."""
-        assert "deepseek" in router_KEY_MAP, (
-            "deepseek is missing from llm_router._KEY_MAP — Phase 6 regression"
-        )
-        assert router_KEY_MAP["deepseek"] == "DEEPSEEK_API_KEY", (
-            f"Expected DEEPSEEK_API_KEY, got {router_KEY_MAP['deepseek']}"
-        )
+        assert (
+            "deepseek" in router_KEY_MAP
+        ), "deepseek is missing from llm_router._KEY_MAP — Phase 6 regression"
+        assert (
+            router_KEY_MAP["deepseek"] == "DEEPSEEK_API_KEY"
+        ), f"Expected DEEPSEEK_API_KEY, got {router_KEY_MAP['deepseek']}"
 
     @pytest.mark.unit
     def test_deepseek_in_provider_steps(self):
         """PROV-04: DeepSeek must appear in provider_steps._KEY_MAP, VALIDATION_MODELS, and PROVIDER_GROUPS."""
         # _KEY_MAP presence
-        assert "deepseek" in ps_KEY_MAP, (
-            "deepseek missing from provider_steps._KEY_MAP"
-        )
+        assert "deepseek" in ps_KEY_MAP, "deepseek missing from provider_steps._KEY_MAP"
 
         # VALIDATION_MODELS presence and correct model string
-        assert "deepseek" in VALIDATION_MODELS, (
-            "deepseek missing from VALIDATION_MODELS"
-        )
-        assert VALIDATION_MODELS["deepseek"] == "deepseek/deepseek-chat", (
-            f"Expected deepseek/deepseek-chat, got {VALIDATION_MODELS['deepseek']}"
-        )
+        assert "deepseek" in VALIDATION_MODELS, "deepseek missing from VALIDATION_MODELS"
+        assert (
+            VALIDATION_MODELS["deepseek"] == "deepseek/deepseek-chat"
+        ), f"Expected deepseek/deepseek-chat, got {VALIDATION_MODELS['deepseek']}"
 
         # PROVIDER_GROUPS (flat) presence
         flat_keys = _flat_provider_keys_from_groups()
-        assert "deepseek" in flat_keys, (
-            "deepseek missing from PROVIDER_GROUPS — won't appear in onboarding wizard"
-        )
+        assert (
+            "deepseek" in flat_keys
+        ), "deepseek missing from PROVIDER_GROUPS — won't appear in onboarding wizard"
 
     @pytest.mark.unit
     def test_provider_groups_all_have_validation_models(self):
@@ -143,15 +141,14 @@ class TestProviderMaps:
         Exceptions: ollama (uses validate_ollama()), github_copilot (OAuth device flow),
         vllm (httpx health check) — none of these do litellm validation pings.
         """
-        _NO_VALIDATION_NEEDED = {"ollama", "github_copilot", "vllm"}
+        _NO_VALIDATION_NEEDED = {"ollama", "github_copilot", "vllm"}  # noqa: N806
 
         missing = []
         for group in PROVIDER_GROUPS:
             for provider in group.get("providers", []):
                 key = provider["key"]
-                if key not in _NO_VALIDATION_NEEDED:
-                    if key not in VALIDATION_MODELS:
-                        missing.append(key)
+                if key not in _NO_VALIDATION_NEEDED and key not in VALIDATION_MODELS:
+                    missing.append(key)
 
         assert not missing, (
             f"Providers in PROVIDER_GROUPS without a VALIDATION_MODELS entry: {missing}. "
@@ -169,9 +166,9 @@ class TestBudgetFallback:
     @pytest.mark.unit
     def test_budget_exceeded_error_importable(self):
         """PROV-02/03: BudgetExceededError must be importable and be an Exception subclass."""
-        assert issubclass(BudgetExceededError, Exception), (
-            "BudgetExceededError is not a subclass of Exception"
-        )
+        assert issubclass(
+            BudgetExceededError, Exception
+        ), "BudgetExceededError is not a subclass of Exception"
 
     @pytest.mark.unit
     async def test_budget_exceeded_triggers_fallback(self):
@@ -220,9 +217,9 @@ class TestBudgetFallback:
         result = await router._do_call("casual", [{"role": "user", "content": "hi"}])
 
         # The fallback role must have been called
-        assert "casual_fallback" in call_log, (
-            f"Expected fallback role 'casual_fallback' to be called, got: {call_log}"
-        )
+        assert (
+            "casual_fallback" in call_log
+        ), f"Expected fallback role 'casual_fallback' to be called, got: {call_log}"
         assert result is mock_response
 
     @pytest.mark.unit
@@ -285,9 +282,9 @@ class TestBudgetEnforcement:
         """
         for duration in ("daily", "weekly", "monthly"):
             result = get_provider_spend("openai", duration)
-            assert isinstance(result, dict), (
-                f"get_provider_spend returned non-dict for duration={duration}"
-            )
+            assert isinstance(
+                result, dict
+            ), f"get_provider_spend returned non-dict for duration={duration}"
             assert "total_tokens" in result
             assert "call_count" in result
 
@@ -332,12 +329,14 @@ class TestBudgetEnforcement:
         router._uses_copilot = False
 
         # Patch get_provider_spend to simulate 2M tokens spent (~$2 >> $0.001 cap)
-        with patch(
-            "sci_fi_dashboard.llm_router.get_provider_spend",
-            return_value={"total_tokens": 2_000_000, "call_count": 100},
+        with (
+            patch(
+                "sci_fi_dashboard.llm_router.get_provider_spend",
+                return_value={"total_tokens": 2_000_000, "call_count": 100},
+            ),
+            pytest.raises(BudgetExceededError),
         ):
-            with pytest.raises(BudgetExceededError):
-                await router._do_call("casual", [{"role": "user", "content": "hi"}])
+            await router._do_call("casual", [{"role": "user", "content": "hi"}])
 
         assert not acompletion_called, (
             "acompletion was called despite budget being exceeded — "

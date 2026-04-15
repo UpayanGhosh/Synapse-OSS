@@ -11,6 +11,7 @@ Storage layout::
 No background retry loop is included here — that is Phase 5.
 This module is storage-only.
 """
+
 from __future__ import annotations
 
 import json
@@ -32,7 +33,7 @@ class QueuedDelivery:
 
     channel_id: str
     to: str
-    payloads: list[dict]                             # ReplyPayload dicts
+    payloads: list[dict]  # ReplyPayload dicts
     id: str = field(default_factory=lambda: uuid.uuid4().hex)
     created_at: float = field(default_factory=time.time)
     attempts: int = 0
@@ -113,13 +114,18 @@ class DeliveryQueue:
             self._write(delivery, failed=True)
             logger.warning(
                 "DeliveryQueue: %s permanently failed after %d attempts: %s",
-                delivery_id, delivery.attempts, error,
+                delivery_id,
+                delivery.attempts,
+                error,
             )
         else:
             self._write(delivery, failed=False)
             logger.debug(
                 "DeliveryQueue: %s attempt %d/%d failed: %s",
-                delivery_id, delivery.attempts, _MAX_ATTEMPTS, error,
+                delivery_id,
+                delivery.attempts,
+                _MAX_ATTEMPTS,
+                error,
             )
 
     def mark_done(self, delivery_id: str) -> None:

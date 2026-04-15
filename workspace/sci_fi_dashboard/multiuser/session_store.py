@@ -119,9 +119,7 @@ class SynapseFileLock:
         except filelock.Timeout:
             # Contention — check if the current holder is dead or stale.
             if self._is_stale():
-                logger.info(
-                    "SynapseFileLock: reclaiming stale lock at %s", self._lock_path
-                )
+                logger.info("SynapseFileLock: reclaiming stale lock at %s", self._lock_path)
                 self._force_release()
                 self._fl.acquire(timeout=self._timeout)
             else:
@@ -320,7 +318,7 @@ async def _watchdog_loop(sessions_dir: Path) -> None:
                     if not meta_file.exists():
                         continue
                     with open(meta_file, encoding="utf-8") as fh:
-                        data = json.load(fh)
+                        json.load(fh)
                     # Use file mtime for age since monotonic is per-process.
                     age = time.time() - lock_file.stat().st_mtime
                     if age > SynapseFileLock._WATCHDOG_FORCE_RELEASE_S:
@@ -342,10 +340,8 @@ async def _watchdog_loop(sessions_dir: Path) -> None:
 def _atexit_release_all() -> None:
     """Release all SynapseFileLock instances on interpreter exit."""
     for lock in _ACTIVE_LOCKS:
-        try:
+        with contextlib.suppress(Exception):
             lock.release()
-        except Exception:
-            pass
     _ACTIVE_LOCKS.clear()
 
 
@@ -529,9 +525,7 @@ class SessionStore:
 
         try:
             async with lock:
-                entry = await asyncio.to_thread(
-                    self._update_sync, norm_key, patch
-                )
+                entry = await asyncio.to_thread(self._update_sync, norm_key, patch)
             _cache_invalidate(norm_key)
             _cache_put(norm_key, entry)
             return entry

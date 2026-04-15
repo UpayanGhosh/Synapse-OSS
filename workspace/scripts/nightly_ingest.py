@@ -8,9 +8,9 @@ import sqlite3
 import time
 from datetime import datetime
 
-from synapse_config import SynapseConfig
 from sci_fi_dashboard.embedding import get_provider
 from sci_fi_dashboard.vector_store import LanceDBVectorStore
+from synapse_config import SynapseConfig
 
 # --- CONFIGURATION ---
 DB_PATH = str(SynapseConfig.load().db_dir / "memory.db")
@@ -81,15 +81,17 @@ def ingest_nightly():
             )
             fact_id = cursor.lastrowid
 
-            facts_batch.append({
-                "id": fact_id,
-                "vector": list(vec),
-                "metadata": {
-                    "text": fact,
-                    "source_id": doc_id,
-                    "unix_timestamp": ts or int(time.time()),
-                },
-            })
+            facts_batch.append(
+                {
+                    "id": fact_id,
+                    "vector": list(vec),
+                    "metadata": {
+                        "text": fact,
+                        "source_id": doc_id,
+                        "unix_timestamp": ts or int(time.time()),
+                    },
+                }
+            )
 
         if facts_batch:
             lance_store.upsert_facts(facts_batch)

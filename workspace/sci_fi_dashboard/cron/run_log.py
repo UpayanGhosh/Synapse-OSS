@@ -4,11 +4,12 @@ Cron Scheduler — append-only run log.
 Each job gets its own JSONL file at ``log_dir/cron-log/{job_id}.jsonl``.
 Old entries are pruned based on retention days and a per-job max-runs cap.
 """
+
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
-import os
 import time
 from pathlib import Path
 from typing import Any
@@ -96,16 +97,14 @@ class RunLog:
             # Apply max_runs cap (keep the newest)
             if len(kept) > self._max_runs:
                 total_removed += len(kept) - self._max_runs
-                kept = kept[-self._max_runs:]
+                kept = kept[-self._max_runs :]
 
             if len(kept) < len(lines):
                 logfile.write_text("\n".join(kept) + "\n" if kept else "", encoding="utf-8")
 
             # Remove empty files
             if not kept:
-                try:
+                with contextlib.suppress(OSError):
                     logfile.unlink()
-                except OSError:
-                    pass
 
         return total_removed

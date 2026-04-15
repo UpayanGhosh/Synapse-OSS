@@ -8,8 +8,8 @@ Covers:
 
 from __future__ import annotations
 
-import sys
 import os
+import sys
 
 # Ensure workspace is on path when running from workspace/
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -18,15 +18,13 @@ import textwrap
 from pathlib import Path
 
 import pytest
-
+from sci_fi_dashboard.skills.loader import SkillLoader
 from sci_fi_dashboard.skills.schema import (
     OPTIONAL_SUBDIRS,
     REQUIRED_FIELDS,
     SkillManifest,
     SkillValidationError,
 )
-from sci_fi_dashboard.skills.loader import SkillLoader
-
 
 # ---------------------------------------------------------------------------
 # Helpers

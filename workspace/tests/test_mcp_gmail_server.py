@@ -1,6 +1,7 @@
 """
 Tests for sci_fi_dashboard.mcp_servers.gmail_server — Gmail integration.
 """
+
 from __future__ import annotations
 
 import base64
@@ -64,9 +65,7 @@ class TestSearchEmails:
 
         mock_svc = MagicMock()
         # messages().list().execute()
-        mock_svc.users().messages().list().execute.return_value = {
-            "messages": [{"id": "msg_1"}]
-        }
+        mock_svc.users().messages().list().execute.return_value = {"messages": [{"id": "msg_1"}]}
         # messages().get().execute()
         mock_svc.users().messages().get().execute.return_value = {
             "payload": {

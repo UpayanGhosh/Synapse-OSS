@@ -410,19 +410,15 @@ def run_whatsapp_qr_flow(
             )
         _print("[green]Node.js installed successfully.[/green]")
 
-    result = subprocess.run(
-        [node_path, "--version"], capture_output=True, text=True, timeout=5
-    )
+    result = subprocess.run([node_path, "--version"], capture_output=True, text=True, timeout=5)
     version_str = result.stdout.strip().lstrip("v")  # e.g. "22.14.0"
     try:
         major = int(version_str.split(".")[0])
-    except (ValueError, IndexError):
-        raise NodeJsMissingError(f"Could not parse Node.js version: {version_str!r}")
+    except (ValueError, IndexError) as exc:
+        raise NodeJsMissingError(f"Could not parse Node.js version: {version_str!r}") from exc
 
     if major < 18:
-        _print(
-            f"[yellow]Node.js {version_str} found — upgrading to LTS (18+ required)...[/yellow]"
-        )
+        _print(f"[yellow]Node.js {version_str} found — upgrading to LTS (18+ required)...[/yellow]")
         upgraded = _try_auto_upgrade_nodejs(_print)
         if not upgraded:
             raise NodeJsMissingError(
@@ -432,9 +428,7 @@ def run_whatsapp_qr_flow(
             )
         # Re-resolve node path after upgrade
         node_path = _refresh_node_path() or node_path
-        result = subprocess.run(
-            [node_path, "--version"], capture_output=True, text=True, timeout=5
-        )
+        result = subprocess.run([node_path, "--version"], capture_output=True, text=True, timeout=5)
         version_str = result.stdout.strip().lstrip("v")
         try:
             major = int(version_str.split(".")[0])
@@ -472,6 +466,7 @@ def run_whatsapp_qr_flow(
     # previous attempt, Baileys will try to restore the old session instead of emitting
     # a QR event — the terminal stays blank. Wipe it unconditionally before pairing.
     import shutil as _shutil  # noqa: PLC0415
+
     auth_state_dir = bridge_dir / "auth_state"
     if auth_state_dir.exists():
         _shutil.rmtree(auth_state_dir, ignore_errors=True)
@@ -499,7 +494,7 @@ def run_whatsapp_qr_flow(
                 "BRIDGE_PORT": str(BRIDGE_PORT),
                 "PYTHON_WEBHOOK_URL": "http://127.0.0.1:8000/channels/whatsapp/webhook",
             },
-            stdout=None,   # inherit — QR prints itself to terminal via qrcode-terminal
+            stdout=None,  # inherit — QR prints itself to terminal via qrcode-terminal
             stderr=subprocess.PIPE,
         )
         bridge_was_started_by_wizard = True
@@ -517,14 +512,13 @@ def run_whatsapp_qr_flow(
             except httpx.RequestError:
                 time.sleep(0.5)
 
-        if not bridge_ready:
-            if proc.poll() is not None:
-                stderr_out = proc.stderr.read().decode(errors="replace").strip()
-                _print(
-                    "[red]Baileys bridge crashed on startup.[/red]\n"
-                    + (stderr_out if stderr_out else "(no output captured)")
-                )
-                return False
+        if not bridge_ready and proc.poll() is not None:
+            stderr_out = proc.stderr.read().decode(errors="replace").strip()
+            _print(
+                "[red]Baileys bridge crashed on startup.[/red]\n"
+                + (stderr_out if stderr_out else "(no output captured)")
+            )
+            return False
             # Bridge is slow to start but still running — continue to QR wait
 
     try:
@@ -545,9 +539,7 @@ def run_whatsapp_qr_flow(
                 return False
 
             try:
-                health_resp = httpx.get(
-                    f"http://127.0.0.1:{BRIDGE_PORT}/health", timeout=5.0
-                )
+                health_resp = httpx.get(f"http://127.0.0.1:{BRIDGE_PORT}/health", timeout=5.0)
                 if health_resp.status_code == 200:
                     state = health_resp.json().get("connectionState", "")
                     if state == "awaiting_qr":
@@ -588,9 +580,7 @@ def run_whatsapp_qr_flow(
         scan_deadline = time.monotonic() + SCAN_TIMEOUT
         while time.monotonic() < scan_deadline:
             try:
-                health_resp = httpx.get(
-                    f"http://127.0.0.1:{BRIDGE_PORT}/health", timeout=5.0
-                )
+                health_resp = httpx.get(f"http://127.0.0.1:{BRIDGE_PORT}/health", timeout=5.0)
                 if health_resp.status_code == 200:
                     state = health_resp.json().get("connectionState", "")
                     if state == "connected":

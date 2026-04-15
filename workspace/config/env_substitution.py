@@ -4,6 +4,7 @@ config/env_substitution.py — Expand ``${VAR_NAME}`` references in config value
 Only string values are examined.  Missing env vars are left as-is (the
 ``${VAR}`` literal remains in the output) to avoid silent data loss.
 """
+
 from __future__ import annotations
 
 import os

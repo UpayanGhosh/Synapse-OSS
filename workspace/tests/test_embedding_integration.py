@@ -7,7 +7,6 @@ calling ollama or sentence_transformers directly.
 """
 
 import sys
-import types
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -137,7 +136,7 @@ class TestIngestUsesEmbedDocuments(unittest.TestCase):
 
         import sci_fi_dashboard.ingest as ingest_mod
 
-        original_walk = __import__("os").walk
+        # __import__("os").walk  # removed useless expression
 
         def _fake_walk(path):
             # Yield a single .txt file

@@ -17,8 +17,6 @@ beyond what pytest-asyncio provides automatically (asyncio_mode = auto).
 import asyncio
 import os
 import sys
-import time
-from datetime import datetime
 from unittest.mock import AsyncMock
 
 import pytest
@@ -29,7 +27,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 from sci_fi_dashboard.gateway.dedup import MessageDeduplicator
 from sci_fi_dashboard.gateway.flood import FloodGate
 from sci_fi_dashboard.gateway.queue import MessageTask, TaskQueue, TaskStatus
-
 
 # ---------------------------------------------------------------------------
 # Section 1: FloodGate — debounce-batching
@@ -258,9 +255,7 @@ class TestTaskQueue:
         queue = TaskQueue()
 
         for i in range(3):
-            await queue.enqueue(
-                MessageTask(task_id=f"s{i}", chat_id="c", user_message="m")
-            )
+            await queue.enqueue(MessageTask(task_id=f"s{i}", chat_id="c", user_message="m"))
 
         stats = queue.get_stats()
 

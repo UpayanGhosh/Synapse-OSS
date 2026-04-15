@@ -11,11 +11,10 @@ Covers:
   - download_to_file SSRF check, size limit, symlink rejection
 """
 
+import ipaddress
 import os
 import sys
-import ipaddress
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 

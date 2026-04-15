@@ -8,15 +8,12 @@ Verifies the full system working end-to-end:
 - Self-contained snapshot restore
 - Concurrent consent session isolation
 """
+
 from __future__ import annotations
 
 import time
-from pathlib import Path
-from unittest.mock import AsyncMock
 
 import pytest
-
-from sci_fi_dashboard.snapshot_engine import SnapshotEngine
 from sci_fi_dashboard.consent_protocol import (
     ConsentProtocol,
     ModificationIntent,
@@ -27,8 +24,7 @@ from sci_fi_dashboard.consent_protocol import (
 )
 from sci_fi_dashboard.rollback import RollbackResolver
 from sci_fi_dashboard.sbs.sentinel.gateway import Sentinel, SentinelError
-from sci_fi_dashboard.sbs.sentinel.manifest import ZONE_1_PATHS
-
+from sci_fi_dashboard.snapshot_engine import SnapshotEngine
 
 # ---------------------------------------------------------------------------
 # Shared fixture
@@ -40,9 +36,7 @@ def selfmod_system(tmp_path):
     """Wire together the full self-modification system for integration testing."""
     skills_dir = tmp_path / "skills" / "greeting-skill"
     skills_dir.mkdir(parents=True)
-    (skills_dir / "SKILL.md").write_text(
-        "---\nname: greeting\ndescription: Says hello\n---\n"
-    )
+    (skills_dir / "SKILL.md").write_text("---\nname: greeting\ndescription: Says hello\n---\n")
 
     engine = SnapshotEngine(data_root=tmp_path, zone2_paths=("skills",), max_snapshots=20)
     consent = ConsentProtocol(snapshot_engine=engine)
@@ -205,7 +199,7 @@ def test_zone1_sentinel_directory_write_rejected(tmp_path):
 async def test_snapshot_self_contained_restore(selfmod_system, skill_intent):
     """Snapshot A can be restored even when a later snapshot B is deleted."""
     engine = selfmod_system["engine"]
-    consent = selfmod_system["consent"]
+    selfmod_system["consent"]
     data_root = selfmod_system["data_root"]
 
     # Create snapshot A (baseline)

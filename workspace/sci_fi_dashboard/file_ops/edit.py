@@ -1,6 +1,8 @@
 """
 file_ops/edit.py — Apply text patches to files with atomic writes.
 """
+
+import contextlib
 import os
 from pathlib import Path
 
@@ -21,7 +23,7 @@ def apply_edit(
         {"ok": True, "bytes_written": int, "replacements": int}
         {"ok": False, "error": str}
     """
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         content = f.read()
 
     count = content.count(old_text)
@@ -33,8 +35,7 @@ def apply_edit(
         return {
             "ok": False,
             "error": (
-                f"old_text found {count} times, expected {expected_count}. "
-                "Provide more context."
+                f"old_text found {count} times, expected {expected_count}. " "Provide more context."
             ),
         }
 
@@ -45,7 +46,7 @@ def apply_edit(
         idx = new_content.find(old_text)
         if idx == -1:
             break
-        new_content = new_content[:idx] + new_text + new_content[idx + len(old_text):]
+        new_content = new_content[:idx] + new_text + new_content[idx + len(old_text) :]
         count_replaced += 1
 
     # Atomic write: temp file + os.replace()
@@ -56,10 +57,8 @@ def apply_edit(
             f.write(new_content)
         os.replace(str(tmp), path)
     except Exception:
-        try:
+        with contextlib.suppress(OSError):
             os.unlink(str(tmp))
-        except OSError:
-            pass
         raise
 
     return {
