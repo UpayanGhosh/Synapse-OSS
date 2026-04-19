@@ -707,7 +707,7 @@ A lightweight intent classifier routes each message to the best-fit model throug
 
 The `MemoryEngine` combines a SQLite knowledge graph (subject-predicate-object triples) with sqlite-vec embeddings and LanceDB vector search. A temporal scoring function blends semantic similarity with recency. High-confidence results (>0.80) skip the FlashRank reranker (ms-marco-TinyBERT) for speed; lower-confidence candidates pass through for precision. Result: **<350ms P95 retrieval** across 37,868+ vocabulary terms.
 
-Embeddings are produced through a pluggable provider layer (`sci_fi_dashboard.embedding.get_provider()`). The default uses Ollama (`nomic-embed-text`), but the interface is vendor-neutral -- swap in sentence-transformers, an OpenAI-compatible endpoint, or any embedding service without touching the ingestion code. Vector dimensions are detected from the provider at runtime, so the schema adapts to whichever model is configured.
+Embeddings are produced through a pluggable provider layer (`sci_fi_dashboard.embedding.get_provider()`) with an auto-cascade: **FastEmbed** (ONNX, local, `nomic-ai/nomic-embed-text-v1.5-Q`) is the primary provider — zero external services required. It falls back to the **Gemini API** if `GEMINI_API_KEY` is set, and an explicit provider can be pinned via `embedding.provider` in `synapse.json`. Vector dimensions are detected from the provider at runtime, so the schema adapts to whichever model is configured.
 
 ### Soul-Brain Sync (Continuous Behavioral Profiling)
 
