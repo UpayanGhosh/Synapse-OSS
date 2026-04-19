@@ -811,6 +811,8 @@ workspace/
 │   ├── channels/                  #   Multi-channel abstraction layer
 │   │   ├── base.py                #     BaseChannel ABC + ChannelMessage DTO
 │   │   ├── registry.py            #     ChannelRegistry lifecycle manager
+│   │   ├── plugin.py              #     Channel plugin discovery
+│   │   ├── security.py            #     DM access control (pairing/allowlist/open/disabled)
 │   │   ├── whatsapp.py            #     Baileys bridge supervisor + HTTP client
 │   │   ├── telegram.py            #     python-telegram-bot v22+ adapter
 │   │   ├── discord_channel.py     #     discord.py v2.x adapter
@@ -820,7 +822,27 @@ workspace/
 │   │   ├── worker.py              #     Concurrent message workers (x2)
 │   │   ├── sender.py              #     Outbound message dispatch
 │   │   ├── dedup.py               #     5-minute deduplication window
-│   │   └── flood.py               #     3-second batch aggregator
+│   │   ├── flood.py               #     3-second batch aggregator
+│   │   ├── retry_queue.py         #     Durable outbound retry queue
+│   │   └── ws_server.py           #     WebSocket gateway (chat.send, sessions.*)
+│   ├── routes/                    #   FastAPI route modules (split out of api_gateway.py)
+│   │   ├── chat.py                #     Persona chat + OpenAI-compatible proxy
+│   │   ├── knowledge.py           #     /ingest, /add, /query
+│   │   ├── persona.py             #     /persona/rebuild, /persona/status
+│   │   ├── whatsapp.py            #     QR, relink, logout, job status
+│   │   ├── websocket.py           #     WebSocket endpoint (/ws)
+│   │   └── health.py, pipeline.py, sessions.py, snapshots.py, skills.py, agents.py, cron.py
+│   ├── embedding/                 #   Pluggable embedding providers
+│   │   ├── base.py                #     Provider interface
+│   │   ├── factory.py             #     get_provider() dispatcher
+│   │   ├── fastembed_provider.py  #     Local fastembed (no Ollama required)
+│   │   └── gemini_provider.py     #     Gemini cloud embeddings
+│   ├── media/                     #   Audio, images, SSRF guard
+│   │   ├── audio_transcriber.py   #     Groq Whisper transcription
+│   │   ├── audio_preflight.py     #     Audio sanity check before transcribe
+│   │   ├── ssrf.py                #     Blocks private/loopback/link-local URLs
+│   │   └── mime.py                #     MIME detection (magic bytes → header → ext)
+│   ├── mcp_servers/               #   MCP server processes (tools, memory, etc.)
 │   └── sbs/                       #   Soul-Brain Sync persona engine
 │       ├── orchestrator.py        #     SBS lifecycle manager
 │       ├── ingestion/             #     Raw log → JSONL pipeline
@@ -830,13 +852,9 @@ workspace/
 │       ├── feedback/              #     Implicit feedback detection
 │       └── sentinel/              #     File governance guardrails
 ├── synapse_config.py              # Config root (~/.synapse/), path contract
-├── db/                            # Database tools & ingestion
-│   ├── tools.py                   #   Platform-aware browser (Crawl4AI/Playwright)
-│   ├── model_orchestrator.py      #   3-tier local model routing
-│   ├── audio_processor.py         #   Groq Whisper transcription
-│   └── ingest.py                  #   Bulk file ingestion pipeline
+├── db/                            # Legacy database tools folder
+│   └── tools.py                   #   Platform-aware browser (Crawl4AI/Playwright) + SSRF guard
 ├── scripts/                       # Maintenance & utilities
-├── tests/                         # 3,000+ tests across 170+ files
 ├── monitor.py                     # Real-time observability dashboard
 ├── main.py                        # CLI interface (chat, verify, ingest, vacuum)
 └── change_tracker.py              # Auto git commit tracker
@@ -852,18 +870,19 @@ baileys-bridge/                    # Node.js WhatsApp bridge (Baileys)
 | --- | --- | --- |
 | `POST` | `/chat/<persona_id>` | Chat as a specific persona -- routes are dynamic, defined in `personas.yaml` |
 | `POST` | `/chat` | Generic fallback chat |
-| `POST` | `/channels/whatsapp/webhook` | Inbound webhook from Baileys bridge |
-| `POST` | `/channels/telegram/webhook` | Inbound webhook (if webhook mode used instead of polling) |
-| `GET` | `/whatsapp/status/{id}` | Poll status of enqueued message |
-| `GET` | `/qr` | Fetch WhatsApp QR code for pairing |
+| `POST` | `/channels/{channel_id}/webhook` | Generic inbound webhook (Baileys, Telegram webhook mode, etc.) |
+| `POST` | `/channels/whatsapp/relink` | Re-pair the WhatsApp bridge |
+| `POST` | `/channels/whatsapp/logout` | Log the WhatsApp session out |
+| `GET` | `/whatsapp/jobs/{message_id}` | Poll the status of an enqueued WhatsApp message |
+| `GET` | `/qr` | Fetch the WhatsApp QR code for pairing |
 | `POST` | `/persona/rebuild` | Rebuild persona profiles from logs |
 | `GET` | `/persona/status` | Profile statistics |
-| `POST` | `/ingest` | Ingest structured fact into knowledge graph |
+| `POST` | `/ingest` | Ingest a structured fact into the knowledge graph |
 | `POST` | `/add` | Unstructured memory -- triple extraction |
 | `POST` | `/query` | Query the knowledge graph |
 | `GET` | `/health` | System health check |
-| `GET` | `/v1/models` | OpenAI-compatible model list |
 | `POST` | `/v1/chat/completions` | OpenAI-compatible chat proxy |
+| `WS` | `/ws` | WebSocket gateway -- `chat.send`, `channels.status`, `sessions.list`, heartbeat every 30s |
 
 ---
 
