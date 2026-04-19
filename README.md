@@ -324,7 +324,7 @@ It is personalization at the level of behavioral continuity.
 | **Message Pipeline** | Synchronous (webhook timeout) | **Async queue** (202 Accepted) | FloodGate batching (3s window) + deduplication (5-min window) + bounded TaskQueue (max 100) + 2 concurrent MessageWorkers. **Zero dropped messages** under single-user load. |
 | **Behavioral Profile** | None (static system prompt) | **2KB, rebuilt every 50 messages** | Soul-Brain Sync: 3-stage pipeline (realtime -> batch -> injection). 8 profile layers distilled from conversation patterns. |
 | **Cognitive Overhead (TTFT)** | N/A | **2-5s** | Dual Cognition pipeline: inner monologue generation + tension scoring before response. Quality-for-speed trade-off. |
-| **Test Coverage** | Manual | **302 tests across 24 files** | Unit, integration, smoke, performance, end-to-end, and acceptance tests. Async-native (`asyncio_mode = auto`). |
+| **Test Coverage** | Manual | **3,000+ tests across 170+ files** | Unit, integration, smoke, performance, end-to-end, and acceptance tests. Async-native (`asyncio_mode = auto`). |
 | **Channel Support** | WhatsApp only | **4 channels** | WhatsApp, Telegram, Discord, Slack -- all normalized to a single DTO through `BaseChannel` ABC. |
 | **Bridge Recovery** | Manual restart | **5s auto-restart** | Exponential backoff (up to 5 attempts) on Baileys bridge crash. |
 
@@ -756,7 +756,7 @@ A background worker that prunes stale knowledge graph triples and optimizes data
 | **ML Pipeline Orchestration** | Multi-model intent router dispatching to 6 providers through `litellm.Router` with per-role fallback configuration. Vendor-agnostic -- swap providers via JSON config. |
 | **Performance Optimization** | Lazy-loading patterns (Toxic-BERT on-demand, 30s idle unload), model eviction (`keep_alive: 0`), FlashRank fast-gate bypass for high-confidence queries, thermal-aware workers. |
 | **Privacy Engineering** | Hemisphere-enforced memory separation with zero cross-contamination. Air-gapped local inference. Automated integrity verification. |
-| **Testing** | 302 tests across 24 files: unit, integration, smoke, performance, end-to-end, and acceptance. Async-native with `asyncio_mode = auto`. |
+| **Testing** | 3,000+ tests across 170+ files: unit, integration, smoke, performance, end-to-end, and acceptance. Async-native with `asyncio_mode = auto`. Tests live on the `develop` branch; `main` stays production-only. |
 | **DevOps** | `launchd`-managed boot sequence, idempotent service control, 5-second auto-restart with exponential backoff, 12-hour backup rotation, real-time observability dashboard. |
 | **Continuous Profiling** | Soul-Brain Sync: autonomous ingestion, batch distillation, prompt injection pipeline. 8-layer behavioral profile rebuilt every 50 messages. |
 | **API Design** | OpenAI-compatible endpoints (`/v1/chat/completions`, `/v1/models`), channel-specific webhooks, dynamic persona routes from `personas.yaml`. |
@@ -798,7 +798,7 @@ on gateway startup -- it is not a manually started service.
 ```
 workspace/
 ├── sci_fi_dashboard/              # Core application
-│   ├── api_gateway.py             #   Central FastAPI gateway (~1,200 lines)
+│   ├── api_gateway.py             #   Central FastAPI gateway (~420 lines, trimmed from ~1,200 after extracting subsystems)
 │   ├── memory_engine.py           #   Hybrid RAG engine (Phoenix v3)
 │   ├── sqlite_graph.py            #   SQLite knowledge graph
 │   ├── dual_cognition.py          #   Inner monologue + tension engine
@@ -836,7 +836,7 @@ workspace/
 │   ├── audio_processor.py         #   Groq Whisper transcription
 │   └── ingest.py                  #   Bulk file ingestion pipeline
 ├── scripts/                       # Maintenance & utilities
-├── tests/                         # 302 tests across 24 files
+├── tests/                         # 3,000+ tests across 170+ files
 ├── monitor.py                     # Real-time observability dashboard
 ├── main.py                        # CLI interface (chat, verify, ingest, vacuum)
 └── change_tracker.py              # Auto git commit tracker
@@ -900,7 +900,7 @@ Deep respect and gratitude to the OpenClaw creators. The spirit of "run your own
 
 ## Built By
 
-**Upayan Ghosh** -- Software engineer who built a 15,000+ line production AI system from scratch, on evenings and weekends, on consumer hardware.
+**Upayan Ghosh** -- Software engineer who built a 50,000+ line production AI system from scratch, on evenings and weekends, on consumer hardware.
 
 This project was built using AI coding tools (Claude, ChatGPT, Gemini) for implementation, with architecture design, system integration, performance profiling, and debugging done by hand. The architectural decisions -- replacing NetworkX with SQLite after profiling RAM pressure, designing the channel abstraction layer, building hemisphere-enforced memory isolation, engineering the SBS pipeline -- those came from staring at real problems and solving them.
 
