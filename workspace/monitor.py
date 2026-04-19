@@ -404,12 +404,12 @@ class BrainDashboard:
                     msg_part = data.get("1", "")
                     if isinstance(msg_part, dict):
                         if msg_part.get("isBoom"):
-                            # Hapi/Boom HTTP error from OpenClaw gateway layer
+                            # Hapi/Boom HTTP error from gateway layer
                             output = msg_part.get("output", {})
                             status = output.get("statusCode", "?")
                             payload = output.get("payload", {})
                             err_msg = payload.get("message") or payload.get("error") or "unknown"
-                            msg_part = f"OpenClaw HTTP {status}: {err_msg}"
+                            msg_part = f"Synapse HTTP {status}: {err_msg}"
                         else:
                             # Auto-reply messages contain the actual text
                             text = msg_part.get("text", "")

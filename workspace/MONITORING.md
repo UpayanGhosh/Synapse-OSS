@@ -1,4 +1,4 @@
-# Monitoring OpenClaw in Real-Time
+# Monitoring Synapse in Real-Time
 
 To see what the bot is doing in real-time, you can run the `monitor.py` script. It tails the system logs and formats them to show:
 
@@ -13,7 +13,7 @@ To see what the bot is doing in real-time, you can run the `monitor.py` script. 
 Open a new terminal and run:
 
 ```bash
-~/.openclaw/.venv/bin/python ~/.openclaw/workspace/scripts/monitor.py
+~/.synapse/.venv/bin/python ~/.synapse/workspace/scripts/monitor.py
 ```
 
 ## Icons used in the monitor:

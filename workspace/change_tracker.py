@@ -2,7 +2,7 @@
 """
 Change Tracker v2.0 -- Hardened Git Auto-Commit Daemon
 
-Watches the OpenClaw workspace for file changes and auto-commits them
+Watches the Synapse workspace for file changes and auto-commits them
 to the `synapse-auto-updates` branch with descriptive messages.
 
 Safety features:
@@ -83,7 +83,7 @@ IGNORE_REGEXES = [
     r".*[/\\]\.venv[/\\].*",  # Virtual environment
     # -- macOS --
     r".*[/\\]\.DS_Store$",  # macOS metadata
-    # -- OpenClaw internals (not workspace content) --
+    # -- Synapse internals (not workspace content) --
     r".*[/\\]agents[/\\].*[/\\]sessions[/\\].*",  # Agent session files
     r".*[/\\]browser[/\\].*",  # Browser automation data
     r".*[/\\]media[/\\].*",  # Media files
@@ -97,7 +97,7 @@ IGNORE_REGEXES = [
     r".*[/\\]\.vscode[/\\].*",  # VS Code settings
     r".*[/\\]models[/\\].*",  # Model data
     # -- Workspace exclusions --
-    r".*[/\\]qdrant[/\\]storage[/\\].*",  # Qdrant vector storage
+    r".*[/\\]lancedb[/\\].*",  # LanceDB vector storage
     r".*[/\\]_archived_memories[/\\].*",  # Archived memories
     r".*[/\\]node_modules[/\\].*",  # Node modules
     # -- Editor / misc --
@@ -493,7 +493,7 @@ def main():
     log.info(f"[INFO] Auto-push: {'ON' if args.push else 'OFF'}")
     log.info(f"[PAUSED]  Paused:    {'YES [WARN]' if paused else 'NO'}")
     log.info(f"[LOG] Log file: {LOG_FILE}")
-    log.info("[GUARD]  Excluded:  .git/, .db, .log, __pycache__, qdrant/")
+    log.info("[GUARD]  Excluded:  .git/, .db, .log, __pycache__, lancedb/")
     log.info("=" * 56)
 
     if paused:
@@ -538,8 +538,8 @@ def main():
         # would cause the next start to be on 'main', and auto-commits
         # would go to the wrong branch. Stay on synapse-auto-updates.
 
-    log.info("[BYE] Tracker stopped (staying on synapse-auto-updates).")
-    sys.exit(0)
+        log.info("[BYE] Tracker stopped (staying on synapse-auto-updates).")
+        sys.exit(0)
 
     signal.signal(signal.SIGINT, shutdown)
     signal.signal(signal.SIGTERM, shutdown)
