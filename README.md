@@ -5,7 +5,7 @@
 ![Python](https://img.shields.io/badge/Python-3.11-3776AB?style=for-the-badge&logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white)
 ![SQLite](https://img.shields.io/badge/SQLite-003B57?style=for-the-badge&logo=sqlite&logoColor=white)
-![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?style=for-the-badge&logo=docker&logoColor=white)
+![LanceDB](https://img.shields.io/badge/LanceDB-Embedded-5C2D91?style=for-the-badge)
 ![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
 ![CI](https://img.shields.io/github/actions/workflow/status/UpayanGhosh/Synapse-OSS/tests.yml?branch=main&style=for-the-badge&logo=github&label=CI)
 
@@ -596,18 +596,36 @@ git clone https://github.com/UpayanGhosh/Synapse-OSS.git
 cd Synapse-OSS
 ```
 
-### 2. Create a virtual environment
+### 2. Create a virtual environment and install dependencies
+
+Dependencies are split into focused groups — install only what you need. A `uv.lock` is also committed for reproducible installs via [uv](https://github.com/astral-sh/uv).
 
 ```bash
 # macOS / Linux
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
 
 # Windows
 python -m venv .venv
 .venv\Scripts\activate.bat
+
+# Core (required)
 pip install -r requirements.txt
+
+# Channels (pick the ones you'll use)
+pip install -r requirements-channels.txt
+
+# ML / NLP (embeddings, reranker, toxicity scorer)
+pip install -r requirements-ml.txt
+
+# Optional extras (OCR, scheduling, etc.)
+pip install -r requirements-optional.txt
+```
+
+Alternatively, with `uv` for a fully-locked install:
+
+```bash
+uv sync
 ```
 
 ### 3. Run onboarding
@@ -687,7 +705,9 @@ A lightweight intent classifier routes each message to the best-fit model throug
 
 ### Hybrid Memory Retrieval (RAG)
 
-The `MemoryEngine` combines a SQLite knowledge graph (subject-predicate-object triples) with sqlite-vec embeddings and LanceDB vector search (`nomic-embed-text`). A temporal scoring function blends semantic similarity with recency. High-confidence results (>0.80) skip the FlashRank reranker (ms-marco-TinyBERT) for speed; lower-confidence candidates pass through for precision. Result: **<350ms P95 retrieval** across 37,868+ vocabulary terms.
+The `MemoryEngine` combines a SQLite knowledge graph (subject-predicate-object triples) with sqlite-vec embeddings and LanceDB vector search. A temporal scoring function blends semantic similarity with recency. High-confidence results (>0.80) skip the FlashRank reranker (ms-marco-TinyBERT) for speed; lower-confidence candidates pass through for precision. Result: **<350ms P95 retrieval** across 37,868+ vocabulary terms.
+
+Embeddings are produced through a pluggable provider layer (`sci_fi_dashboard.embedding.get_provider()`). The default uses Ollama (`nomic-embed-text`), but the interface is vendor-neutral -- swap in sentence-transformers, an OpenAI-compatible endpoint, or any embedding service without touching the ingestion code. Vector dimensions are detected from the provider at runtime, so the schema adapts to whichever model is configured.
 
 ### Soul-Brain Sync (Continuous Behavioral Profiling)
 
@@ -714,7 +734,7 @@ Voice notes are transcribed using the Groq API (Whisper-Large-v3). Cloud-based t
 
 ### Web Browsing (Platform-Aware)
 
-The `ToolRegistry` dispatches headless browser sessions for real-time data (weather, news, live scores), extracts clean text, and feeds results back to the LLM. Content is truncated to 3,000 characters to protect context window limits. Platform-aware: **Crawl4AI** on Mac/Linux, **Playwright** on Windows -- the `search_web(url)` interface is identical on both.
+The `ToolRegistry` dispatches headless browser sessions for real-time data (weather, news, live scores), extracts clean text, and feeds results back to the LLM. Content is truncated to 3,000 characters to protect context window limits. Platform-aware: **Crawl4AI** on Mac/Linux, **Playwright** on Windows -- the `search_web(url)` interface is identical on both. An SSRF guard rejects private/loopback/link-local addresses before the browser is ever launched -- the AI cannot be tricked into scraping the host's internal network.
 
 ### Sentinel File Governance
 
