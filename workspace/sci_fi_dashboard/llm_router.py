@@ -205,6 +205,8 @@ def _attempt_json_repair(raw: str) -> str:
 
 # Maps synapse.json provider name → litellm-expected env var name.
 # Bedrock handled separately (uses AWS_* env vars, not a single api_key).
+# Vertex AI handled separately (uses GCP project_id + location + SA JSON path,
+# not a single api_key).
 _KEY_MAP: dict[str, str] = {
     "anthropic": "ANTHROPIC_API_KEY",
     "openai": "OPENAI_API_KEY",
@@ -228,6 +230,12 @@ _BEDROCK_MAP: dict[str, str] = {
     "aws_access_key_id": "AWS_ACCESS_KEY_ID",
     "aws_secret_access_key": "AWS_SECRET_ACCESS_KEY",
     "aws_region_name": "AWS_REGION_NAME",
+}
+
+_VERTEX_MAP: dict[str, str] = {
+    "project_id": "VERTEXAI_PROJECT",
+    "location": "VERTEXAI_LOCATION",
+    "credentials_path": "GOOGLE_APPLICATION_CREDENTIALS",
 }
 
 
@@ -254,6 +262,15 @@ def _inject_provider_keys(providers: dict) -> None:
     if isinstance(bedrock_cfg, dict):
         for aws_key, env_key in _BEDROCK_MAP.items():
             val = bedrock_cfg.get(aws_key)
+            if val and env_key not in os.environ:
+                os.environ[env_key] = val
+
+    # Vertex AI: GCP project_id + location + service-account-JSON path
+    # (no single api_key — auth is via GOOGLE_APPLICATION_CREDENTIALS / ADC).
+    vertex_cfg = providers.get("vertex_ai", {})
+    if isinstance(vertex_cfg, dict):
+        for vertex_key, env_key in _VERTEX_MAP.items():
+            val = vertex_cfg.get(vertex_key)
             if val and env_key not in os.environ:
                 os.environ[env_key] = val
 

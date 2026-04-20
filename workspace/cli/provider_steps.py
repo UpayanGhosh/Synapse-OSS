@@ -71,6 +71,7 @@ VALIDATION_MODELS: dict[str, str] = {
     "zai": "zai/glm-4-flash",
     "volcengine": "volcengine/doubao-lite-4k",
     "bedrock": "bedrock/anthropic.claude-3-haiku-20240307-v1:0",
+    "vertex_ai": "vertex_ai/gemini-2.0-flash-001",
     "huggingface": "huggingface/microsoft/DialoGPT-medium",
     "nvidia_nim": "nvidia_nim/meta/llama-3.1-8b-instruct",
     "qianfan": "qianfan/ERNIE-Speed-128K",
@@ -140,6 +141,7 @@ PROVIDER_GROUPS: list[dict] = [
             {"key": "ollama", "label": "Ollama (local models)"},
             {"key": "vllm", "label": "vLLM (self-hosted)"},
             {"key": "bedrock", "label": "AWS Bedrock"},
+            {"key": "vertex_ai", "label": "Google Vertex AI"},
             {"key": "huggingface", "label": "HuggingFace Inference Endpoints"},
             {"key": "nvidia_nim", "label": "NVIDIA NIM"},
             {"key": "github_copilot", "label": "GitHub Copilot (OAuth device flow)"},
@@ -209,7 +211,15 @@ def validate_provider(provider: str, api_key: str) -> ValidationResult:
 
     Special case: RateLimitError → ok=True, error="quota_exceeded".
     The key is accepted with a warning; the user can still configure the provider.
+
+    Vertex AI is handled specially: it uses GCP ADC / service-account JSON credentials
+    already set in the environment by the caller (VERTEXAI_PROJECT, VERTEXAI_LOCATION,
+    GOOGLE_APPLICATION_CREDENTIALS). The api_key arg is ignored (the caller may pass
+    the project_id for logging purposes).
     """
+    if provider == "vertex_ai":
+        # Vertex AI uses GCP ADC / SA creds already injected into env by the caller.
+        return asyncio.run(_validate_async(provider, api_key))
     env_var = _KEY_MAP[provider]
     old = os.environ.get(env_var)
     os.environ[env_var] = api_key
