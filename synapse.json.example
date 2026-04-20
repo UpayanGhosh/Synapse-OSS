@@ -1,5 +1,5 @@
 {
-  "_comment": "Copy this file to ~/.synapse/synapse.json and fill in your keys.",
+  "_comment": "Copy this file to ~/.synapse/synapse.json and fill in the providers you actually plan to use. The onboarding wizard (python workspace/synapse_cli.py onboard) will populate this for you.",
 
   "providers": {
     "anthropic": {"api_key": "YOUR_ANTHROPIC_API_KEY"},
@@ -15,7 +15,35 @@
     "togetherai": {"api_key": "YOUR_TOGETHER_AI_API_KEY"},
     "xai": {"api_key": "YOUR_XAI_API_KEY"},
     "cohere": {"api_key": "YOUR_COHERE_API_KEY"},
-    "deepseek": {"api_key": "YOUR_DEEPSEEK_API_KEY"}
+    "deepseek": {"api_key": "YOUR_DEEPSEEK_API_KEY"},
+
+    "minimax": {"api_key": "YOUR_MINIMAX_API_KEY"},
+    "moonshot": {"api_key": "YOUR_MOONSHOT_API_KEY"},
+    "zai": {"api_key": "YOUR_ZAI_API_KEY"},
+    "volcengine": {"api_key": "YOUR_VOLCENGINE_API_KEY"},
+    "qianfan": {"api_key": "YOUR_QIANFAN_AK"},
+
+    "huggingface": {"api_key": "YOUR_HF_API_KEY"},
+    "nvidia_nim": {"api_key": "YOUR_NVIDIA_NIM_API_KEY"},
+
+    "bedrock": {
+      "aws_access_key_id": "YOUR_AWS_ACCESS_KEY_ID",
+      "aws_secret_access_key": "YOUR_AWS_SECRET_ACCESS_KEY",
+      "aws_region_name": "us-east-1"
+    },
+
+    "vertex_ai": {
+      "project_id": "your-gcp-project-id",
+      "location": "us-central1",
+      "credentials_path": "/absolute/path/to/service-account.json"
+    },
+
+    "ollama": {
+      "api_base": "http://localhost:11434"
+    },
+    "vllm": {
+      "api_base": "http://localhost:8001/v1"
+    }
   },
 
   "channels": {

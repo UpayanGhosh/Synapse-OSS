@@ -6,9 +6,14 @@ REM Synapse Onboard Script for Windows
 REM Run this ONCE on first setup. For daily use, run synapse_start.bat instead.
 REM
 REM This script is a thin bootstrap launcher:
-REM   1. Checks prerequisites (Python, Docker, Ollama)
+REM   1. Checks prerequisites (Python required; Ollama optional — for local models only)
 REM   2. Creates .venv and installs dependencies
-REM   3. Hands off to the Python wizard (synapse_cli.py onboard)
+REM   3. Hands off to the Python wizard (synapse_cli.py onboard) which supports
+REM      19 LLM providers incl. Gemini / Anthropic / OpenAI / Groq / OpenRouter /
+REM      Mistral / xAI / Cohere / DeepSeek / Together AI, Chinese providers
+REM      (MiniMax / Moonshot / Z.AI / Volcengine / Qianfan), self-hosted
+REM      (Ollama / vLLM), and special providers (AWS Bedrock, Google Vertex AI,
+REM      NVIDIA NIM, HuggingFace, GitHub Copilot OAuth).
 REM   4. Starts all services
 REM   5. Pulls the required embedding model
 
@@ -43,13 +48,7 @@ if %ERRORLEVEL% NEQ 0 (
     echo    [OK] Python !PY_VER!
 )
 
-where docker >nul 2>&1
-if %ERRORLEVEL% NEQ 0 (
-    echo    [X] Docker not found. Install from https://docker.com
-    set "MISSING=1"
-) else (
-    echo    [OK] Docker
-)
+REM Docker is NOT required — LanceDB vector store is embedded (no containers).
 
 REM Ollama is OPTIONAL — enables local models (The Vault, privacy mode)
 set "OLLAMA_EXE="
@@ -144,6 +143,12 @@ REM Step 4: Python wizard — provider + channel setup
 REM ============================================================
 echo.
 echo Step 4: Running Synapse setup wizard...
+echo.
+echo The wizard will ask which LLM provider(s) you want to use.
+echo Supported: Gemini, Anthropic, OpenAI, Groq, OpenRouter, Mistral, xAI,
+echo   Cohere, Together AI, DeepSeek, MiniMax, Moonshot, Z.AI, Volcengine,
+echo   Qianfan, Ollama, vLLM, AWS Bedrock, Google Vertex AI, NVIDIA NIM,
+echo   HuggingFace, and GitHub Copilot (OAuth device flow).
 echo.
 echo A new PowerShell window will open for the interactive wizard.
 echo Complete the wizard there, then return to this window.
