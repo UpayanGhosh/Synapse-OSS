@@ -327,6 +327,60 @@ class TestInjectProviderKeys:
         _inject_provider_keys(providers)
         assert "GEMINI_API_KEY" not in os.environ
 
+    def test_vertex_ai_credentials(self, monkeypatch):
+        monkeypatch.delenv("VERTEXAI_PROJECT", raising=False)
+        monkeypatch.delenv("VERTEXAI_LOCATION", raising=False)
+        monkeypatch.delenv("GOOGLE_APPLICATION_CREDENTIALS", raising=False)
+        providers = {
+            "vertex_ai": {
+                "project_id": "my-gcp-proj",
+                "location": "us-central1",
+                "credentials_path": "/fake/path/sa.json",
+            }
+        }
+        _inject_provider_keys(providers)
+        assert os.environ.get("VERTEXAI_PROJECT") == "my-gcp-proj"
+        assert os.environ.get("VERTEXAI_LOCATION") == "us-central1"
+        assert os.environ.get("GOOGLE_APPLICATION_CREDENTIALS") == "/fake/path/sa.json"
+        monkeypatch.delenv("VERTEXAI_PROJECT", raising=False)
+        monkeypatch.delenv("VERTEXAI_LOCATION", raising=False)
+        monkeypatch.delenv("GOOGLE_APPLICATION_CREDENTIALS", raising=False)
+
+    def test_vertex_ai_does_not_overwrite_existing(self, monkeypatch):
+        monkeypatch.setenv("VERTEXAI_PROJECT", "existing-proj")
+        monkeypatch.setenv("VERTEXAI_LOCATION", "existing-loc")
+        monkeypatch.setenv("GOOGLE_APPLICATION_CREDENTIALS", "/existing/sa.json")
+        providers = {
+            "vertex_ai": {
+                "project_id": "new-proj",
+                "location": "us-east1",
+                "credentials_path": "/new/sa.json",
+            }
+        }
+        _inject_provider_keys(providers)
+        assert os.environ["VERTEXAI_PROJECT"] == "existing-proj"
+        assert os.environ["VERTEXAI_LOCATION"] == "existing-loc"
+        assert os.environ["GOOGLE_APPLICATION_CREDENTIALS"] == "/existing/sa.json"
+
+    def test_vertex_ai_partial_config(self, monkeypatch):
+        """Only project_id present — location/credentials_path missing shouldn't crash."""
+        monkeypatch.delenv("VERTEXAI_PROJECT", raising=False)
+        monkeypatch.delenv("VERTEXAI_LOCATION", raising=False)
+        monkeypatch.delenv("GOOGLE_APPLICATION_CREDENTIALS", raising=False)
+        providers = {"vertex_ai": {"project_id": "only-proj"}}
+        _inject_provider_keys(providers)
+        assert os.environ.get("VERTEXAI_PROJECT") == "only-proj"
+        assert "VERTEXAI_LOCATION" not in os.environ
+        assert "GOOGLE_APPLICATION_CREDENTIALS" not in os.environ
+        monkeypatch.delenv("VERTEXAI_PROJECT", raising=False)
+
+    def test_vertex_ai_string_config_ignored(self, monkeypatch):
+        """Non-dict vertex_ai config is ignored gracefully, matching Bedrock behavior."""
+        monkeypatch.delenv("VERTEXAI_PROJECT", raising=False)
+        providers = {"vertex_ai": "not-a-dict"}
+        _inject_provider_keys(providers)  # must not raise
+        assert "VERTEXAI_PROJECT" not in os.environ
+
 
 # ---------------------------------------------------------------------------
 # resolve_env_var

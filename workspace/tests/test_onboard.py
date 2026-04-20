@@ -277,6 +277,41 @@ def test_validate_provider_restores_env(tmp_path):
     del os.environ["GEMINI_API_KEY"]
 
 
+def test_validate_provider_vertex_ai_uses_existing_env(monkeypatch):
+    """Vertex AI has no single api_key — validate_provider must not touch _KEY_MAP.
+
+    Creds (VERTEXAI_PROJECT, VERTEXAI_LOCATION, GOOGLE_APPLICATION_CREDENTIALS)
+    are pre-set by the caller; validate_provider reads them via litellm directly.
+    The api_key arg is a logging label only (typically the project_id).
+    """
+    from cli.provider_steps import validate_provider
+
+    monkeypatch.setenv("VERTEXAI_PROJECT", "test-proj")
+    monkeypatch.setenv("VERTEXAI_LOCATION", "us-central1")
+    monkeypatch.setenv("GOOGLE_APPLICATION_CREDENTIALS", "/fake/sa.json")
+
+    with patch("litellm.acompletion", new_callable=AsyncMock) as mock_acomp:
+        mock_acomp.return_value = MagicMock(choices=[MagicMock()])
+        result = validate_provider("vertex_ai", "test-proj")
+
+    assert result.ok is True
+    # Env vars still set by the caller — validate_provider did not restore or pop them.
+    assert os.environ.get("VERTEXAI_PROJECT") == "test-proj"
+    assert os.environ.get("VERTEXAI_LOCATION") == "us-central1"
+    assert os.environ.get("GOOGLE_APPLICATION_CREDENTIALS") == "/fake/sa.json"
+
+
+def test_validate_provider_vertex_ai_does_not_raise_keyerror(monkeypatch):
+    """Regression: validate_provider('vertex_ai', ...) must not KeyError on _KEY_MAP."""
+    from cli.provider_steps import validate_provider
+
+    with patch("litellm.acompletion", new_callable=AsyncMock) as mock_acomp:
+        mock_acomp.return_value = MagicMock(choices=[MagicMock()])
+        # Should complete without raising KeyError (vertex_ai not in _KEY_MAP).
+        result = validate_provider("vertex_ai", "any-project-id")
+    assert result.ok is True
+
+
 # ===========================================================================
 # ONB-02: All 19 providers in PROVIDER_LIST
 # ===========================================================================
@@ -301,6 +336,7 @@ def test_provider_list_completeness():
         "volcengine",
         "ollama",
         "bedrock",
+        "vertex_ai",
         "huggingface",
         "nvidia_nim",
         "github_copilot",

@@ -829,6 +829,73 @@ def _collect_provider_keys(
                 _print(f"  [red]Bedrock validation failed: {result.error}[/]")
             continue
 
+        # Google Vertex AI — GCP project_id + location + service-account JSON path
+        # (no single api_key — auth is via GOOGLE_APPLICATION_CREDENTIALS / ADC).
+        if provider == "vertex_ai":
+            # Try to detect ADC first (implicit detection — matches openclaw behavior).
+            existing_creds = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+            if os.name == "nt" and "APPDATA" in os.environ:
+                default_adc = (
+                    Path(os.environ["APPDATA"]) / "gcloud" / "application_default_credentials.json"
+                )
+            else:
+                default_adc = (
+                    Path.home() / ".config" / "gcloud" / "application_default_credentials.json"
+                )
+            detected_path: str | None = None
+            if existing_creds and Path(existing_creds).is_file():
+                detected_path = existing_creds
+                _print(f"  [green]Detected GOOGLE_APPLICATION_CREDENTIALS → {existing_creds}[/]")
+            elif default_adc.is_file():
+                detected_path = str(default_adc)
+                _print(f"  [green]Detected gcloud ADC → {default_adc}[/]")
+
+            if detected_path:
+                use_detected = prompter.confirm(  # type: ignore[attr-defined]
+                    "Use detected credentials?", default=True
+                )
+                if use_detected:
+                    creds_path = detected_path
+                else:
+                    creds_path = prompter.text(  # type: ignore[attr-defined]
+                        "Path to service-account JSON (or gcloud ADC):"
+                    )
+            else:
+                creds_path = prompter.text(  # type: ignore[attr-defined]
+                    "Path to service-account JSON (or gcloud ADC):"
+                )
+
+            project_id = prompter.text("GCP project_id:")  # type: ignore[attr-defined]
+            location = prompter.text(  # type: ignore[attr-defined]
+                "GCP location:", default="us-central1"
+            )
+
+            if not all([creds_path, project_id, location]):
+                continue
+            if not Path(creds_path).is_file():
+                _print(f"  [red]Credentials file not found: {creds_path}[/]")
+                continue
+
+            os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = creds_path
+            os.environ["VERTEXAI_PROJECT"] = project_id
+            os.environ["VERTEXAI_LOCATION"] = location
+            if _RICH_AVAILABLE and console is not None:
+                with console.status("[yellow]Validating Vertex AI credentials...[/]"):
+                    result = validate_provider("vertex_ai", project_id)
+            else:
+                result = validate_provider("vertex_ai", project_id)
+            if result.ok or result.error == "quota_exceeded":
+                quota_note = " (quota exceeded — key accepted)" if result.error else ""
+                _print(f"  [green]Vertex AI credentials valid[/]{quota_note}")
+                config["providers"]["vertex_ai"] = {
+                    "project_id": project_id,
+                    "location": location,
+                    "credentials_path": creds_path,
+                }
+            else:
+                _print(f"  [red]Vertex AI validation failed: {result.error}[/]")
+            continue
+
         # Standard cloud provider: password prompt + validate_provider()
         env_var = _KEY_MAP.get(provider, f"{provider.upper()}_API_KEY")
 
