@@ -12,11 +12,12 @@ from fastapi import BackgroundTasks
 from sci_fi_dashboard import _deps as deps
 from sci_fi_dashboard.dual_cognition import CognitiveMerge
 from sci_fi_dashboard.llm_router import LLMResult
+from sci_fi_dashboard.observability import get_child_logger
 from sci_fi_dashboard.pipeline_emitter import get_emitter as _get_emitter
 from sci_fi_dashboard.schemas import ChatRequest
 
 logger = logging.getLogger(__name__)
-_tool_logger = logging.getLogger(__name__ + ".tools")
+_log = get_child_logger("pipeline.chat")  # OBS-01 structured logger carrying runId
 
 # Conditional imports -- same pattern as original api_gateway.py
 with contextlib.suppress(ImportError):
@@ -96,7 +97,14 @@ async def persona_chat(
     mcp_context: str = "",
 ):
     user_msg = request.message
-    print(f"[MAIL] [{target.upper()}] Inbound: {user_msg[:80]}...")
+    _log.info(
+        "inbound_message",
+        extra={
+            "target": target,
+            "msg_preview": user_msg[:40],
+            "chat_id": request.user_id or "default",
+        },
+    )
 
     _pipeline_start = time.time()
     with contextlib.suppress(Exception):
@@ -114,17 +122,16 @@ async def persona_chat(
         if _pending.is_expired:
             # Expired consent — silently clear and continue normal pipeline
             deps.pending_consents.pop(_consent_key, None)
-            logger.info("[CONSENT] Expired pending consent cleared for %s", _consent_key)
+            _log.info("consent_expired", extra={"consent_key": str(_consent_key)})
         elif is_affirmative(user_msg):
             # User confirmed — execute the modification
             deps.pending_consents.pop(_consent_key, None)
-            logger.info("[CONSENT] User confirmed modification: %s", _pending.intent.description)
+            _log.info("consent_confirmed", extra={"description": _pending.intent.description})
             # T-02-02: Validate sender_id matches
             if _pending.sender_id != _sender_id:
-                logger.warning(
-                    "[CONSENT] Sender mismatch: expected %s, got %s",
-                    _pending.sender_id,
-                    _sender_id,
+                _log.warning(
+                    "consent_sender_mismatch",
+                    extra={"expected_sender": _pending.sender_id, "actual_sender": _sender_id},
                 )
                 return {
                     "reply": "Sorry, only the person who requested the change can confirm it.",
@@ -195,7 +202,7 @@ async def persona_chat(
         elif is_negative(user_msg):
             # User declined
             deps.pending_consents.pop(_consent_key, None)
-            logger.info("[CONSENT] User declined modification")
+            _log.info("consent_declined")
             return {
                 "reply": "Got it, I won't make that change.",
                 "persona": f"synapse_{target}",
@@ -216,7 +223,7 @@ async def persona_chat(
                 explanation=_explanation,
                 created_at=time.time(),
             )
-            logger.info("[CONSENT] Modification intent detected, awaiting confirmation")
+            _log.info("consent_pending")
             return {
                 "reply": _explanation,
                 "persona": f"synapse_{target}",
@@ -286,7 +293,7 @@ async def persona_chat(
         ).strip()
         retrieval_method = mem_response.get("tier", "standard")
     except Exception as e:
-        print(f"[WARN] Memory Engine Error: {e}")
+        _log.warning("memory_engine_error", extra={"error": str(e)})
         memory_context = "(Memory retrieval unavailable)"
         retrieval_method = "failed"
 
@@ -301,10 +308,7 @@ async def persona_chat(
             },
         )
     if toxicity > 0.8 and session_mode == "safe":
-        print(
-            f"[WARN] High Toxicity ({toxicity:.2f}) detected in Safe Mode. "
-            "Remaining Safe (Architectural Decision)."
-        )
+        _log.warning("toxicity_high_safe_mode", extra={"toxicity": round(float(toxicity), 3)})
 
     # 2.5 DUAL COGNITION: Think before speaking
     cognitive_merge = None
@@ -342,21 +346,24 @@ async def persona_chat(
                     },
                 )
 
-            print(
-                f"[MEM] Cognitive State: {cognitive_merge.tension_type} "
-                f"(tension={cognitive_merge.tension_level:.2f})"
+            _log.info(
+                "cognitive_state",
+                extra={
+                    "tension_type": cognitive_merge.tension_type,
+                    "tension_level": round(cognitive_merge.tension_level, 3),
+                },
             )
-            _safe_thought = (
-                cognitive_merge.inner_monologue[:100].encode("ascii", errors="replace").decode()
+            _log.info(
+                "inner_thought",
+                extra={"thought_preview": cognitive_merge.inner_monologue[:100]},
             )
-            print(f"[THOUGHT] Inner thought: {_safe_thought}")
 
         except TimeoutError:
-            print(f"[WARN] Dual cognition timed out after {dc_timeout}s")
+            _log.warning("dual_cognition_timeout", extra={"timeout_s": dc_timeout})
             cognitive_merge = CognitiveMerge()
             cognitive_context = ""
         except Exception as e:
-            print(f"[WARN] Dual cognition failed: {e}")
+            _log.warning("dual_cognition_failed", extra={"error": str(e)})
             cognitive_merge = CognitiveMerge()
             cognitive_context = ""
     else:
@@ -476,7 +483,7 @@ async def persona_chat(
     if deps._SKILL_SYSTEM_AVAILABLE and deps.skill_router is not None and session_mode != "spicy":
         matched_skill = deps.skill_router.match(user_msg)
         if matched_skill is not None:
-            logger.info("[Skills] Message routed to skill '%s'", matched_skill.name)
+            _log.info("skill_routed", extra={"skill_name": matched_skill.name})
             from sci_fi_dashboard.skills.runner import SkillRunner
 
             skill_result = await SkillRunner.execute(
@@ -554,7 +561,7 @@ async def persona_chat(
     ):
         matched_skill = deps.skill_router.match(user_msg)
         if matched_skill is not None:
-            logger.info("[Skills] Message routed to skill '%s'", matched_skill.name)
+            _log.info("skill_routed", extra={"skill_name": matched_skill.name})
             from sci_fi_dashboard.skills.runner import SkillRunner
 
             skill_result = await SkillRunner.execute(
@@ -588,7 +595,7 @@ async def persona_chat(
     if session_mode == "spicy":
         # === THE VAULT (Local Stheno) ===
         # C-02: Vault air-gap -- NEVER fall back to cloud for spicy/vault content
-        print("[HOT] Routing to THE VAULT (Local Stheno)")
+        _log.info("vault_route", extra={"hemisphere": "spicy"})
         with contextlib.suppress(Exception):
             _get_emitter().emit(
                 "llm.route",
@@ -615,7 +622,7 @@ async def persona_chat(
                 )
             reply = result.text
         except Exception as e:
-            print(f"[ERROR] Vault failed: {e}. Cloud fallback BLOCKED (air-gap policy).")
+            _log.error("vault_failed", extra={"error": str(e), "cloud_fallback": "blocked"})
             reply = (
                 "I'm unable to process this request right now -- "
                 "the local Vault model is unavailable and cloud fallback "
@@ -642,8 +649,9 @@ async def persona_chat(
             mapped = STRATEGY_TO_ROLE.get(strategy)
             if mapped:
                 classification = mapped
-                print(
-                    f"[SIGNAL] Traffic Cop SKIPPED -- strategy " f"'{strategy}' -> {classification}"
+                _log.info(
+                    "traffic_cop_skip",
+                    extra={"strategy": strategy, "mapped_role": classification},
                 )
                 with contextlib.suppress(Exception):
                     _get_emitter().emit(
@@ -674,7 +682,7 @@ async def persona_chat(
 
         if override_role:
             role = override_role
-            print(f"[ROUTE] Model override active: role={role}")
+            _log.info("model_override", extra={"role": role})
         elif "CODING" in classification:
             role = "code"
         elif "ANALYSIS" in classification:
@@ -688,7 +696,7 @@ async def persona_chat(
 
             # 1. Enabled check (image_gen.enabled in synapse.json)
             if not deps._synapse_cfg.image_gen.get("enabled", True):
-                logger.info("[IMG] Image generation disabled via config")
+                _log.info("image_gen_disabled")
                 return {
                     "reply": "Image generation is currently disabled.",
                     "role": "image_gen_disabled",
@@ -698,7 +706,7 @@ async def persona_chat(
 
             # 2. Vault hemisphere block — NEVER make cloud API calls for spicy sessions
             if session_mode == "spicy":
-                logger.info("[IMG] Vault block: image generation declined for spicy session")
+                _log.info("image_gen_vault_blocked")
                 return {
                     "reply": "Image generation isn't available in private mode.",
                     "role": "image_blocked",
@@ -722,7 +730,7 @@ async def persona_chat(
                     engine = ImageGenEngine()
                     img_bytes = await engine.generate(prompt)
                     if img_bytes is None:
-                        logger.warning("[IMG] Generation returned None for: %.80s", prompt)
+                        _log.warning("image_gen_empty", extra={"prompt_preview": prompt[:80]})
                         return
                     saved = await _asyncio.to_thread(
                         save_media_buffer, img_bytes, "image/png", "image_gen_outbound"
@@ -732,24 +740,26 @@ async def persona_chat(
                     if channel and hasattr(channel, "send_media"):
                         await channel.send_media(chat_id, img_url, media_type="image", caption="")
                     else:
-                        logger.warning(
-                            "[IMG] Cannot deliver — channel %r has no send_media()", _channel_id
+                        _log.warning(
+                            "image_gen_channel_missing_send_media",
+                            extra={"channel_id": _channel_id},
                         )
                 except Exception:
-                    logger.exception("[IMG] Background image generation failed — not crashing")
+                    _log.error("image_gen_background_failed", exc_info=True)
 
             # 4. Dispatch BackgroundTask
             _img_chat_id = request.user_id or "default"
             if background_tasks:
                 background_tasks.add_task(_generate_and_send_image, user_msg, _img_chat_id)
             else:
-                logger.warning(
-                    "[IMG] No BackgroundTasks object available. Using asyncio.create_task."
-                )
+                _log.warning("image_gen_no_background_tasks")
                 asyncio.create_task(_generate_and_send_image(user_msg, _img_chat_id))
 
             # 5. Return immediate acknowledgment — user gets text response instantly
-            print("[ROUTE] Classification=IMAGE -> role=image_gen (BackgroundTask dispatched)")
+            _log.info(
+                "route_classified",
+                extra={"classification": "IMAGE", "role": "image_gen", "dispatched": True},
+            )
             return {
                 "reply": "Generating your image — it'll be with you in a moment!",
                 "role": "image_gen",
@@ -759,7 +769,7 @@ async def persona_chat(
         else:
             role = "casual"
 
-        print(f"[ROUTE] Classification={classification} -> role={role}")
+        _log.info("route_classified", extra={"classification": classification, "role": role})
 
         with contextlib.suppress(Exception):
             _get_emitter().emit(
@@ -822,18 +832,18 @@ async def persona_chat(
             except Exception as e:
                 error_str = str(e).lower()
                 if "context" in error_str or "token" in error_str:
-                    _tool_logger.warning(
-                        "Context overflow in round %d -- retrying without tools",
-                        round_num,
+                    _log.warning(
+                        "tool_loop_context_overflow",
+                        extra={"round": round_num},
                     )
                     tool_schemas = None
                     continue
                 elif "rate" in error_str:
-                    _tool_logger.warning("Rate limit in round %d -- waiting 2s", round_num)
+                    _log.warning("tool_loop_rate_limited", extra={"round": round_num})
                     await asyncio.sleep(2)
                     continue
                 else:
-                    _tool_logger.error("LLM call failed in round %d: %s", round_num, e)
+                    _log.error("tool_loop_llm_error", extra={"round": round_num, "error": str(e)})
                     reply = "I encountered an error processing your request. " "Please try again."
                     break
 
@@ -937,9 +947,9 @@ async def persona_chat(
 
             # Context overflow guard
             if total_result_chars > deps.MAX_TOTAL_TOOL_RESULT_CHARS:
-                _tool_logger.warning(
-                    "Tool result limit reached (%d chars) -- disabling tools",
-                    total_result_chars,
+                _log.warning(
+                    "tool_result_limit",
+                    extra={"total_chars": total_result_chars},
                 )
                 tool_schemas = None
                 messages.append(
@@ -956,14 +966,16 @@ async def persona_chat(
             reply = (
                 getattr(result, "text", "") if result is not None else ""
             ) or "I wasn't able to complete that request."
-            _tool_logger.warning("Tool loop exhausted after %d rounds", deps.MAX_TOOL_ROUNDS)
+            _log.warning("tool_loop_exhausted", extra={"max_rounds": deps.MAX_TOOL_ROUNDS})
 
         if tools_used:
-            _tool_logger.info(
-                "Tool loop completed: %d tools in %.2fs -- %s",
-                len(tools_used),
-                total_tool_time,
-                ", ".join(tools_used),
+            _log.info(
+                "tool_loop_done",
+                extra={
+                    "tool_count": len(tools_used),
+                    "total_time_s": round(total_tool_time, 2),
+                    "tools": tools_used,
+                },
             )
 
     # --- Programmatic Footer Injection ---
@@ -1018,8 +1030,10 @@ async def persona_chat(
     )
 
     final_reply = reply + stats_footer
-    _safe_preview = final_reply[:60].encode("ascii", errors="replace").decode()
-    print(f"[SPARK] [{target.upper()}] Response via {model_used}: {_safe_preview}...")
+    _log.info(
+        "response_generated",
+        extra={"target": target, "model": model_used, "reply_preview": final_reply[:60]},
+    )
 
     # Log assistant message
     sbs_orchestrator = deps.get_sbs_for_target(target)
@@ -1034,13 +1048,13 @@ async def persona_chat(
     ends_with_terminal = any(cleaned_reply.endswith(t) for t in terminals)
 
     if is_long and not ends_with_terminal:
-        print("[CUT] DETECTED CUT-OFF! Triggering Auto-Continue...")
+        _log.info("auto_continue_triggered")
         from sci_fi_dashboard.pipeline_helpers import continue_conversation
 
         if background_tasks:
             background_tasks.add_task(continue_conversation, request.user_id, messages, reply)
         else:
-            print("[WARN] No BackgroundTasks object available. Using asyncio.create_task.")
+            _log.warning("auto_continue_no_background_tasks")
             asyncio.create_task(continue_conversation(request.user_id, messages, reply))
 
     result_dict = {
