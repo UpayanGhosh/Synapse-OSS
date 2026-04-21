@@ -6,6 +6,7 @@ import uuid
 from fastapi import APIRouter, BackgroundTasks, Depends, Request
 
 from sci_fi_dashboard import _deps as deps
+from sci_fi_dashboard.observability import mint_run_id
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -14,6 +15,7 @@ router = APIRouter()
 @router.post("/chat", dependencies=[Depends(deps._check_rate_limit)])
 @router.post("/v1/chat/completions", dependencies=[Depends(deps._check_rate_limit)])
 async def chat_webhook(request: Request):
+    mint_run_id()
     deps.validate_api_key(request)
     try:
         body = await request.json()

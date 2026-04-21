@@ -37,6 +37,8 @@ from pathlib import Path
 
 import httpx
 
+from sci_fi_dashboard.observability import get_child_logger
+
 from .base import BaseChannel, ChannelMessage
 from .network_errors import is_safe_to_retry_send
 from .security import ChannelSecurityConfig, PairingStore, resolve_dm_access
@@ -48,6 +50,7 @@ if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 logger = logging.getLogger(__name__)
+_log = get_child_logger("channel.whatsapp")
 
 # Path: workspace/sci_fi_dashboard/channels/whatsapp.py → repo_root/baileys-bridge
 _BRIDGE_DIR = Path(__file__).resolve().parent.parent.parent.parent / "baileys-bridge"
@@ -567,7 +570,10 @@ class WhatsAppChannel(BaseChannel):
         if self.security_config and self._pairing_store and not cm.is_group:
             access = resolve_dm_access(cm.user_id, self.security_config, self._pairing_store)
             if access != "allow":
-                logger.info("[WA] DM from %s blocked (%s)", cm.user_id, access)
+                _log.info(
+                    "dm_blocked",
+                    extra={"user_id": cm.user_id, "access": access},
+                )
                 return None
 
         # --- Audio / voice message transcription ---
@@ -671,6 +677,9 @@ class WhatsAppChannel(BaseChannel):
             return
         try:
             async for line in stderr:
-                logger.debug("[WA-BRIDGE] %s", line.decode(errors="replace").rstrip())
+                _log.debug(
+                    "bridge_stderr",
+                    extra={"text": line.decode(errors="replace").rstrip()},
+                )
         except asyncio.CancelledError:
             pass

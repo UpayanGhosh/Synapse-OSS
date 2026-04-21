@@ -8,8 +8,14 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sci_fi_dashboard import _deps as deps
 from sci_fi_dashboard.channels.base import ChannelMessage
 from sci_fi_dashboard.channels.whatsapp import WhatsAppChannel
+from sci_fi_dashboard.observability import (  # noqa: F401
+    get_child_logger,
+    mint_run_id,
+    redact_identifier,
+)
 
 logger = logging.getLogger(__name__)
+_log = get_child_logger("route.whatsapp")
 router = APIRouter()
 
 
@@ -25,6 +31,7 @@ async def unified_webhook(channel_id: str, request: Request):
     Validates channel is registered, normalizes payload to ChannelMessage,
     feeds FloodGate pipeline with channel_id in metadata.
     """
+    run_id = mint_run_id()
     channel = deps.channel_registry.get(channel_id)
     if channel is None:
         raise HTTPException(status_code=404, detail=f"Channel '{channel_id}' not registered")
@@ -58,6 +65,7 @@ async def unified_webhook(channel_id: str, request: Request):
             "message_id": msg.message_id,
             "sender_name": msg.sender_name,
             "channel_id": msg.channel_id,  # CRITICAL: must be in metadata for on_batch_ready
+            "run_id": run_id,
         },
     )
     return {"status": "queued", "accepted": True, "task_queue_depth": deps.task_queue.pending_count}

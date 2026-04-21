@@ -5,12 +5,16 @@ import logging
 import time
 from collections.abc import Awaitable, Callable
 
+from sci_fi_dashboard.observability import get_child_logger
+from sci_fi_dashboard.observability.context import _run_id_ctx, set_run_id
+
 from .queue import MessageTask, TaskQueue
 from .sender import (
     WhatsAppSender,  # kept for backwards-compat constructor param; Phase 4 removes it
 )
 
 logger = logging.getLogger(__name__)
+_log = get_child_logger("gateway.worker")
 
 # ChannelRegistry imported lazily to avoid circular imports at module load time
 
@@ -111,136 +115,149 @@ class MessageWorker:
                 await asyncio.sleep(1)
 
     async def _handle_task(self, task: MessageTask, worker_id: int):
-        chat_id = task.chat_id
-        start_time = time.time()
-
-        async with self._gen_lock:
-            current = self._chat_generations.get(chat_id, 0)
-            new_gen = current + 1
-            self._chat_generations[chat_id] = new_gen
-            task.generation = new_gen
-
-        logger.info(
-            'Worker-%d gen=%d Processing: "%.60s..." from %s',
-            worker_id,
-            task.generation,
-            task.user_message,
-            task.sender_name,
-        )
-
-        channel = self._get_channel(task)
-
+        _ctx_token = set_run_id(task.run_id) if task.run_id else None
         try:
-            # STEP 1: Mark read (blue ticks)
-            if task.message_id and channel:
-                await channel.mark_read(chat_id, task.message_id)
-            elif task.message_id and self.sender:
-                await self.sender.send_seen(chat_id, task.message_id)
+            chat_id = task.chat_id
+            start_time = time.time()
 
-            # STEP 2: Typing indicator
-            typing_task = asyncio.create_task(self._keep_typing(chat_id, channel))
-
-            # STEP 4: The actual pipeline (SBS + RAG + LLM)
-            # Note: mcp_context populated here by external MCP tool calls (not memory —
-            # persona_chat queries memory directly via the singleton MemoryEngine).
-            if self._process_fn_accepts_mcp:
-                response = await self.process_fn(task.user_message, chat_id, task.mcp_context)
-            else:
-                response = await self.process_fn(task.user_message, chat_id)
-
-            # STEP 5: Stop typing
-            typing_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await typing_task
-
-            # STEP 6: Check if still the latest generation before sending
             async with self._gen_lock:
-                latest_gen = self._chat_generations.get(chat_id, task.generation)
+                current = self._chat_generations.get(chat_id, 0)
+                new_gen = current + 1
+                self._chat_generations[chat_id] = new_gen
+                task.generation = new_gen
 
-            if task.generation != latest_gen:
-                self.queue.supersede(task)
-                logger.info(
-                    "Worker-%d gen=%d superseded by gen=%d for chat %s, dropping",
-                    worker_id,
-                    task.generation,
-                    latest_gen,
-                    chat_id,
-                )
-                return
+            _log.info(
+                "worker_processing",
+                extra={
+                    "worker_id": worker_id,
+                    "generation": task.generation,
+                    "chat_id": chat_id,
+                    "sender_name": task.sender_name,
+                    "msg_preview": task.user_message[:40],
+                },
+            )
 
-            # STEP 6: Send response via ChannelRegistry (CHAN-07: no WA-specific branching)
-            if response and response.strip():
-                if channel:
-                    # Split long messages — channels may have their own limits; 4000 chars is safe
-                    chunks = _split_long_message(response, chunk_size=4000)
-                    success = True
-                    for i, chunk in enumerate(chunks):
-                        ok = await channel.send(chat_id, chunk)
-                        if not ok:
-                            logger.warning(
-                                "Worker-%d channel.send() failed on chunk %d",
-                                worker_id,
-                                i + 1,
-                            )
-                            success = False
-                            # Enqueue failed chunk into retry queue if available
-                            retry_queue = getattr(channel, "_retry_queue", None)
-                            if retry_queue is not None:
-                                await retry_queue.enqueue(
-                                    channel_id=channel.channel_id,
-                                    chat_id=chat_id,
-                                    text=chunk,
-                                    error="send() returned False",
-                                )
-                            break
-                        if i < len(chunks) - 1:
-                            await asyncio.sleep(0.8)
-                elif self.sender:
-                    success = await self.sender.send_long_message(target=chat_id, message=response)
+            channel = self._get_channel(task)
+
+            try:
+                # STEP 1: Mark read (blue ticks)
+                if task.message_id and channel:
+                    await channel.mark_read(chat_id, task.message_id)
+                elif task.message_id and self.sender:
+                    await self.sender.send_seen(chat_id, task.message_id)
+
+                # STEP 2: Typing indicator
+                typing_task = asyncio.create_task(self._keep_typing(chat_id, channel))
+
+                # STEP 4: The actual pipeline (SBS + RAG + LLM)
+                # Note: mcp_context populated here by external MCP tool calls (not memory —
+                # persona_chat queries memory directly via the singleton MemoryEngine).
+                if self._process_fn_accepts_mcp:
+                    response = await self.process_fn(task.user_message, chat_id, task.mcp_context)
                 else:
-                    logger.warning("Worker-%d no channel or sender -- dropping response", worker_id)
-                    success = False
+                    response = await self.process_fn(task.user_message, chat_id)
 
-                processing_time_ms = int((time.time() - start_time) * 1000)
-                if success:
-                    self.queue.complete(task, response)
+                # STEP 5: Stop typing
+                typing_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await typing_task
+
+                # STEP 6: Check if still the latest generation before sending
+                async with self._gen_lock:
+                    latest_gen = self._chat_generations.get(chat_id, task.generation)
+
+                if task.generation != latest_gen:
+                    self.queue.supersede(task)
                     logger.info(
-                        "Worker-%d gen=%d delivered in %dms",
+                        "Worker-%d gen=%d superseded by gen=%d for chat %s, dropping",
                         worker_id,
                         task.generation,
-                        processing_time_ms,
+                        latest_gen,
+                        chat_id,
                     )
+                    return
+
+                # STEP 6: Send response via ChannelRegistry (CHAN-07: no WA-specific branching)
+                if response and response.strip():
+                    if channel:
+                        # Split long messages — channels may have their own limits; 4000 chars is safe
+                        chunks = _split_long_message(response, chunk_size=4000)
+                        success = True
+                        for i, chunk in enumerate(chunks):
+                            ok = await channel.send(chat_id, chunk)
+                            if not ok:
+                                logger.warning(
+                                    "Worker-%d channel.send() failed on chunk %d",
+                                    worker_id,
+                                    i + 1,
+                                )
+                                success = False
+                                # Enqueue failed chunk into retry queue if available
+                                retry_queue = getattr(channel, "_retry_queue", None)
+                                if retry_queue is not None:
+                                    await retry_queue.enqueue(
+                                        channel_id=channel.channel_id,
+                                        chat_id=chat_id,
+                                        text=chunk,
+                                        error="send() returned False",
+                                    )
+                                break
+                            if i < len(chunks) - 1:
+                                await asyncio.sleep(0.8)
+                    elif self.sender:
+                        success = await self.sender.send_long_message(
+                            target=chat_id, message=response
+                        )
+                    else:
+                        logger.warning(
+                            "Worker-%d no channel or sender -- dropping response", worker_id
+                        )
+                        success = False
+
+                    processing_time_ms = int((time.time() - start_time) * 1000)
+                    if success:
+                        self.queue.complete(task, response)
+                        logger.info(
+                            "Worker-%d gen=%d delivered in %dms",
+                            worker_id,
+                            task.generation,
+                            processing_time_ms,
+                        )
+                    else:
+                        self.queue.fail(task, "Send failed")
                 else:
-                    self.queue.fail(task, "Send failed")
-            else:
-                self.queue.fail(task, "Empty LLM response")
+                    self.queue.fail(task, "Empty LLM response")
 
-        except Exception as e:
-            error_msg = str(e)
+            except Exception as e:
+                error_msg = str(e)
 
-            async with self._gen_lock:
-                latest_gen = self._chat_generations.get(chat_id, task.generation)
+                async with self._gen_lock:
+                    latest_gen = self._chat_generations.get(chat_id, task.generation)
 
-            if task.generation != latest_gen:
-                self.queue.supersede(task)
-                logger.info(
-                    "Worker-%d gen=%d error after superseded by gen=%d for %s, dropping",
-                    worker_id,
-                    task.generation,
-                    latest_gen,
-                    chat_id,
-                )
-                return
+                if task.generation != latest_gen:
+                    self.queue.supersede(task)
+                    logger.info(
+                        "Worker-%d gen=%d error after superseded by gen=%d for %s, dropping",
+                        worker_id,
+                        task.generation,
+                        latest_gen,
+                        chat_id,
+                    )
+                    return
 
-            self.queue.fail(task, error_msg)
-            logger.error("Worker-%d task failed: %s", worker_id, error_msg, exc_info=True)
+                self.queue.fail(task, error_msg)
+                logger.error("Worker-%d task failed: %s", worker_id, error_msg, exc_info=True)
 
-            # Notify user of error (ASCII-safe for Windows cp1252)
-            warn_msg = "[WARN] A technical glitch occurred. Please try again."
-            if channel:
-                await channel.send(chat_id, warn_msg)
-            elif self.sender:
-                await self.sender.send_text(chat_id, warn_msg)
+                # Notify user of error (ASCII-safe for Windows cp1252)
+                warn_msg = "[WARN] A technical glitch occurred. Please try again."
+                if channel:
+                    await channel.send(chat_id, warn_msg)
+                elif self.sender:
+                    await self.sender.send_text(chat_id, warn_msg)
+
+        finally:
+            if _ctx_token is not None:
+                _run_id_ctx.reset(_ctx_token)
 
     async def _keep_typing(self, chat_id: str, channel=None):
         """Resend typing indicator every 4s to keep it alive."""

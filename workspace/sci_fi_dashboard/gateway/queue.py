@@ -35,6 +35,7 @@ class MessageTask:
     generation: int = 0
     processing_time_ms: int = 0
     mcp_context: str = ""  # MCP memory enrichment, set by MessageWorker before pipeline
+    run_id: str | None = None  # OBS-01: correlation ID minted at webhook entry
 
 
 class TaskQueue:
