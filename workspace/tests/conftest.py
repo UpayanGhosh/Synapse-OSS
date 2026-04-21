@@ -153,3 +153,24 @@ def pytest_collection_modifyitems(config, items):
         for item in items:
             if "slow" in item.keywords:
                 item.add_marker(skip_slow)
+
+
+# ---------------------------------------------------------------------------
+# Phase 13 observability: clear run_id ContextVar between tests
+# ---------------------------------------------------------------------------
+import contextlib
+
+
+@pytest.fixture(autouse=True)
+def clear_run_id_between_tests():
+    """OBS-01: Prevent run_id ContextVar leakage across tests.
+
+    Plan 13-02 creates sci_fi_dashboard.observability.context; until then this
+    fixture is a no-op (silently suppresses ImportError).
+    """
+    yield
+    with contextlib.suppress(ImportError):
+        from sci_fi_dashboard.observability.context import _run_id_ctx
+
+        # Reset to module default (None) -- no Token needed for post-test cleanup
+        _run_id_ctx.set(None)
