@@ -1,4 +1,5 @@
 """OBS-02: redact_identifier() tests. Wave 0 scaffold — will turn green in Plan 13-01."""
+
 import re
 
 import pytest
@@ -45,6 +46,7 @@ def test_salt_sourced_correctly(tmp_path, monkeypatch):
 def test_fuzz_no_digit_leak():
     """OBS-02: 1000 random 10-15 digit JIDs — zero outputs contain any 10-digit run."""
     import random
+
     random.seed(42)
     digit_run = re.compile(r"\d{10,}")
     for _ in range(1000):
@@ -69,22 +71,22 @@ def test_bracketed_placeholders_passthrough():
       redact_identifier("<unknown>") == "<unknown>"
     """
     # Checker fix — exact assertions
-    assert redact_identifier("<none>") == "<none>", (
-        "bracketed sentinel <none> must pass through unchanged"
-    )
-    assert redact_identifier("<empty>") == "<empty>", (
-        "bracketed sentinel <empty> must pass through unchanged"
-    )
+    assert (
+        redact_identifier("<none>") == "<none>"
+    ), "bracketed sentinel <none> must pass through unchanged"
+    assert (
+        redact_identifier("<empty>") == "<empty>"
+    ), "bracketed sentinel <empty> must pass through unchanged"
     # Additional sentinels to lock the contract
-    assert redact_identifier("<no-run>") == "<no-run>", (
-        "bracketed sentinel <no-run> must pass through unchanged"
-    )
-    assert redact_identifier("<unknown>") == "<unknown>", (
-        "bracketed sentinel <unknown> must pass through unchanged"
-    )
+    assert (
+        redact_identifier("<no-run>") == "<no-run>"
+    ), "bracketed sentinel <no-run> must pass through unchanged"
+    assert (
+        redact_identifier("<unknown>") == "<unknown>"
+    ), "bracketed sentinel <unknown> must pass through unchanged"
     # Must NOT be hashed — output should NOT match id_<8hex> shape
     for sentinel in ("<none>", "<empty>", "<no-run>", "<unknown>"):
         out = redact_identifier(sentinel)
-        assert not re.fullmatch(r"id_[0-9a-f]{8}", out), (
-            f"sentinel {sentinel!r} was hashed instead of passed through: {out!r}"
-        )
+        assert not re.fullmatch(
+            r"id_[0-9a-f]{8}", out
+        ), f"sentinel {sentinel!r} was hashed instead of passed through: {out!r}"

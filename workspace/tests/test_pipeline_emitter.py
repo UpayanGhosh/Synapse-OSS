@@ -1,4 +1,5 @@
 """OBS-01: pipeline_emitter.start_run() must honor ContextVar (fix for singleton race)."""
+
 from __future__ import annotations
 
 import asyncio

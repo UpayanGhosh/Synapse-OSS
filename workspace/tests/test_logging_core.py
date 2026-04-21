@@ -1,4 +1,5 @@
 """OBS-01 + OBS-03: JSON formatter + child logger + ContextVar tests. Wave 0 scaffold."""
+
 from __future__ import annotations
 
 import asyncio
@@ -55,8 +56,7 @@ def test_formatter_ascii_safe():
     line = buf.getvalue().strip().splitlines()[-1]
     # Must be pure ASCII bytes (json.dumps with ensure_ascii=True)
     line.encode("ascii")  # would raise UnicodeEncodeError if non-ASCII present
-    payload = json.loads(line)
-    assert "\\u" in line or payload["msg"]  # escape sequence present when emoji logged
+    assert "\\u" in line  # escape sequence present when emoji logged (ensure_ascii=True)
 
 
 @pytest.mark.unit

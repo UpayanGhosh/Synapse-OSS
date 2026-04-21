@@ -1,4 +1,5 @@
 """OBS-01 integration tests — runId across FloodGate -> Queue -> Worker -> Pipeline -> LLM -> Channel."""
+
 from __future__ import annotations
 
 import asyncio
@@ -98,9 +99,9 @@ async def test_worker_inherits_task_run_id():
         observed.append(get_run_id())
 
     await worker_body(task)
-    assert observed == ["rid-worker-inherit-01"], (
-        f"worker did not inherit task.run_id into ContextVar: {observed}"
-    )
+    assert observed == [
+        "rid-worker-inherit-01"
+    ], f"worker did not inherit task.run_id into ContextVar: {observed}"
 
 
 @pytest.mark.asyncio

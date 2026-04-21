@@ -1,4 +1,5 @@
 """OBS-04: per-module log level config from synapse.json. Wave 0 scaffold."""
+
 from __future__ import annotations
 
 import logging
@@ -14,6 +15,7 @@ from sci_fi_dashboard.observability.config import apply_logging_config  # noqa: 
 
 def _make_cfg(logging_section: dict):
     """Return a duck-typed cfg with a `logging` attribute (matches SynapseConfig shape)."""
+
     class _Cfg:
         pass
 
@@ -33,14 +35,16 @@ def test_per_module_levels_applied():
 @pytest.mark.integration
 def test_third_party_loggers_quieted():
     """OBS-04: litellm, httpx, uvicorn.access are tamed via config (not hard-coded)."""
-    cfg = _make_cfg({
-        "level": "INFO",
-        "modules": {
-            "litellm": "WARNING",
-            "httpx": "WARNING",
-            "uvicorn.access": "WARNING",
-        },
-    })
+    cfg = _make_cfg(
+        {
+            "level": "INFO",
+            "modules": {
+                "litellm": "WARNING",
+                "httpx": "WARNING",
+                "uvicorn.access": "WARNING",
+            },
+        }
+    )
     apply_logging_config(cfg)
     assert logging.getLogger("litellm").level == logging.WARNING
     assert logging.getLogger("httpx").level == logging.WARNING
@@ -62,10 +66,14 @@ def test_dual_cognition_logger_configurable():
 @pytest.mark.unit
 def test_missing_section_defaults():
     """OBS-04: cfg.logging absent -> defaults applied without crash."""
+
     class _Cfg:
         pass
 
     c = _Cfg()  # no .logging attr
     apply_logging_config(c)  # must not raise
-    assert logging.getLogger().level in (logging.INFO, logging.WARNING, logging.DEBUG), \
-        "root level must default to a valid level"
+    assert logging.getLogger().level in (
+        logging.INFO,
+        logging.WARNING,
+        logging.DEBUG,
+    ), "root level must default to a valid level"
