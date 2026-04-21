@@ -108,3 +108,9 @@ Last session: 2026-04-09 (Phase 10 Plan 04 execution)
 Stopped at: Completed 10-04-PLAN.md — 29 tests for all Phase 10 requirements (CRON-01-04, DASH-01, DASH-02, DASH-04, DASH-05)
 Resume file: None
 Next step: Phase 11 — Realtime Voice Streaming
+
+### Phase 13 Worktree Progress (feature/phase-13-structured-observability)
+
+Last session: 2026-04-22 (Phase 13 Plan 04 execution)
+Stopped at: Completed 13-04-PLAN.md — pipeline_emitter singleton race fix + chat_pipeline/llm_router structured logger migration (OBS-01, OBS-02)
+Next step: 13-05-PLAN.md — apply_logging_config() + per-module log levels (OBS-04)
