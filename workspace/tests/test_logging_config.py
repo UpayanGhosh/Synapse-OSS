@@ -29,21 +29,18 @@ def test_per_module_levels_applied():
 
 @pytest.mark.integration
 def test_third_party_loggers_quieted():
-    """OBS-04: litellm, httpx, uvicorn.access are tamed via config (not hard-coded)."""
-    cfg = _make_cfg(
-        {
-            "level": "INFO",
-            "modules": {
-                "litellm": "WARNING",
-                "httpx": "WARNING",
-                "uvicorn.access": "WARNING",
-            },
-        }
-    )
+    """OBS-04: _DEFAULT_THIRD_PARTY_LEVELS quiets noisy libs even with empty modules dict.
+
+    The operator may omit `modules` entirely; litellm/httpx/urllib3 must still be WARNING
+    because apply_logging_config() seeds from _DEFAULT_THIRD_PARTY_LEVELS before merging
+    any operator overrides.
+    """
+    # No 'modules' key — relies solely on _DEFAULT_THIRD_PARTY_LEVELS
+    cfg = _make_cfg({"level": "INFO"})
     apply_logging_config(cfg)
     assert logging.getLogger("litellm").level == logging.WARNING
     assert logging.getLogger("httpx").level == logging.WARNING
-    assert logging.getLogger("uvicorn.access").level == logging.WARNING
+    assert logging.getLogger("urllib3").level == logging.WARNING
 
 
 @pytest.mark.integration
