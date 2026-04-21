@@ -14,8 +14,9 @@ import asyncio
 import contextlib
 import json
 import time
-import uuid
 from typing import Any
+
+from sci_fi_dashboard.observability import get_run_id, mint_run_id
 
 
 class PipelineEventEmitter:
@@ -76,9 +77,18 @@ class PipelineEventEmitter:
     # ------------------------------------------------------------------
 
     def start_run(self, run_id: str | None = None, **kwargs: Any) -> str:
-        """Mark start of a new pipeline run. Returns the run_id."""
-        rid = run_id or uuid.uuid4().hex[:12]
-        self._current_run_id = rid
+        """Mark start of a new pipeline run. Returns the run_id.
+
+        OBS-01: if caller does not supply run_id, reuse the ContextVar
+        value set at webhook entry (see routes/whatsapp.py::unified_webhook
+        and routes/chat.py::chat_webhook). Falling back to mint_run_id only
+        when no upstream context is established (e.g. a raw test call).
+        Previous behaviour (fresh uuid4 on every call) caused two concurrent
+        persona_chat invocations to trample each other's run_id in the
+        singleton; reading from ContextVar makes the identity task-local.
+        """
+        rid = run_id or get_run_id() or mint_run_id()
+        self._current_run_id = rid  # kept for emit() payloads that read self._current_run_id
         self.emit("pipeline.start", {"run_id": rid, **kwargs})
         return rid
 
