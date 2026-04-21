@@ -8,17 +8,12 @@ import json
 import logging
 
 import pytest
-
-pytest.importorskip(
-    "sci_fi_dashboard.observability.formatter",
-    reason="Plan 13-02 creates this",
-)
-from sci_fi_dashboard.observability.context import (  # noqa: E402
+from sci_fi_dashboard.observability.context import (
     get_run_id,
     mint_run_id,
 )
-from sci_fi_dashboard.observability.formatter import JsonFormatter  # noqa: E402
-from sci_fi_dashboard.observability.logger_factory import get_child_logger  # noqa: E402
+from sci_fi_dashboard.observability.formatter import JsonFormatter
+from sci_fi_dashboard.observability.logger_factory import get_child_logger
 
 
 def _capture(logger: logging.Logger, formatter: logging.Formatter) -> io.StringIO:
