@@ -10,6 +10,7 @@ Public API:
     RunIdFilter                                # Attaches runId to every LogRecord (OBS-01)
 """
 
+from sci_fi_dashboard.observability.config import apply_logging_config
 from sci_fi_dashboard.observability.context import (
     get_run_id,
     mint_run_id,
@@ -23,6 +24,7 @@ from sci_fi_dashboard.observability.redact import redact_identifier
 __all__ = [
     "JsonFormatter",
     "RunIdFilter",
+    "apply_logging_config",
     "get_child_logger",
     "get_run_id",
     "mint_run_id",

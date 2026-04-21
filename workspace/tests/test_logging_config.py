@@ -5,12 +5,7 @@ from __future__ import annotations
 import logging
 
 import pytest
-
-pytest.importorskip(
-    "sci_fi_dashboard.observability.config",
-    reason="Plan 13-05 creates this",
-)
-from sci_fi_dashboard.observability.config import apply_logging_config  # noqa: E402
+from sci_fi_dashboard.observability.config import apply_logging_config
 
 
 def _make_cfg(logging_section: dict):
