@@ -3,10 +3,7 @@
 import re
 
 import pytest
-
-# Import from module Plan 13-01 will create. Raises ImportError on Wave 0 — expected.
-pytest.importorskip("sci_fi_dashboard.observability.redact", reason="Plan 13-01 creates this")
-from sci_fi_dashboard.observability.redact import redact_identifier  # noqa: E402
+from sci_fi_dashboard.observability.redact import redact_identifier
 
 
 @pytest.mark.unit
