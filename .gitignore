@@ -156,3 +156,4 @@ GEMINI.md
 .gstack/
 .code-review-graph/
 landing/
+.worktrees/
