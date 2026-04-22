@@ -2,17 +2,14 @@
 const test = require('node:test');
 const assert = require('node:assert');
 
-// In Wave 0, index.js has no extractPayload export.
-// Plan 05 (15-05) Task 1 adds:
-//   if (require.main !== module) module.exports = { extractPayload };
-// wrapped in a require.main !== module guard so index.js still runs standalone.
-// Until then, extractPayload is undefined and every test fails RED.
+// Wave 0: extractPayload is undefined — Plan 05 Task 1 exports it AND adds a
+// `require.main !== module` guard so index.js can be safely imported without
+// starting Express/Baileys. Until then, skip the require entirely (importing
+// index.js at module level would boot the server and crash the test runner).
+// Every test below throws NOT_IMPLEMENTED, establishing the RED baseline.
 let extractPayload;
-try {
-  ({ extractPayload } = require('../index.js'));
-} catch {
-  // index.js may throw on startup (missing env, Baileys connect attempt) — RED state
-}
+// extractPayload intentionally left undefined in Wave 0 — Plan 05 sets it via:
+//   if (require.main !== module) module.exports = { extractPayload };
 
 test('PN sender leaves user_id_alt null on DM (BAIL-04 6.x shape)', async () => {
   if (!extractPayload) throw new Error('NOT_IMPLEMENTED: extractPayload not exported from index.js (Wave 0 RED)');
