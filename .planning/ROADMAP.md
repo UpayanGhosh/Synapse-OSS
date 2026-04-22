@@ -147,7 +147,11 @@ Plans:
   3. `GET /channels/whatsapp/status` returns one of `connected / logged-out / conflict / reconnecting / stopped` for `healthState` at all times — including during a live reconnect loop where the field transitions `connected -> reconnecting -> connected`
   4. A WhatsApp 440 (conflict) or logged-out close code stops the reconnect loop and surfaces an operator-facing message — `healthState` transitions to `conflict` or `logged-out` and reconnect attempts cease until operator intervention
   5. The bot sends a reply that echoes back via WhatsApp's own inbound feed — the echo is dropped with a `reason: self-echo` log entry and the pipeline is never invoked, confirmed by asserting the outbound tracker matched the inbound text within its N-message window
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+- [ ] 14-01-PLAN.md — Wave 0: failing test stubs for SUPV-01..04 (test_supervisor_watchdog.py) + ACL-01..02 (test_echo_tracker.py) + conftest reset_run_id fixture + flip 14-VALIDATION.md nyquist_compliant: true
+- [ ] 14-02-PLAN.md — Wave 1: supervisor.py module (WhatsAppSupervisor + ReconnectPolicy + state machine) + ReconnectPolicy wiring in synapse_config.py + synapse.json.example + wire into WhatsAppChannel (replace MAX_RESTARTS loop, add healthState, drive update_connection_state through supervisor) (SUPV-01, SUPV-02, SUPV-03, SUPV-04)
+- [ ] 14-03-PLAN.md — Wave 2: gateway/echo_tracker.py (OutboundTracker ring buffer, sha256[:16] fingerprint, 20-msg window, 60s TTL) + wire record() into WhatsAppChannel.send() on 200 OK + wire is_echo() check into unified_webhook before dedup (ACL-01, ACL-02)
 
 ### Phase 15: Auth Persistence + Baileys 7.x
 **Goal**: Port OpenClaw's per-authDir `enqueueSaveCreds` atomic queue and `maybeRestoreCredsFromBackup` logic (`extensions/whatsapp/src/session.ts:37-95`) into the Node bridge, then upgrade Baileys from `^6.7.21` to the latest stable 7.x. Bundled together because both changes live in the bridge + auth surface, share regression risk, and Baileys 7.x has breaking changes in `useMultiFileAuthState` and `sendMessage` media shapes that the atomic creds queue must be validated against.
@@ -159,7 +163,15 @@ Plans:
   3. `package.json` shows Baileys at the latest stable 7.x tag — QR pairing + multi-device login succeed end-to-end against a fresh phone, confirmed by a manual pairing smoke test
   4. Sending an image, audio (voice note OGG Opus), document (PDF), and voice recording through WhatsApp all succeed on 7.x — the new `sendMessage` media shape is correctly used, confirmed by five media-send smoke tests each asserting a delivered receipt
   5. Group metadata fetch returns `{id, subject, participants, ...}` and an inbound message in a group is correctly routed by `self-JID + chat-JID` on 7.x — confirmed by a group smoke test asserting both metadata structure and a round-trip reply
-**Plans**: TBD
+**Plans**: 7 plans
+Plans:
+- [ ] 15-00-PLAN.md — Wave 0: Node `node:test` harness + lib/ module skeletons + tmp-authDir + corrupt-creds fixtures + OGG Opus test fixture + RED test stubs for every REQ + 15-MANUAL-VALIDATION.md scaffold (all REQs)
+- [ ] 15-01-PLAN.md — Wave 1: Port OpenClaw `enqueueSaveCreds` per-authDir Promise-chain queue + `safeSaveCreds` with JSON-parse-before-backup guard + chmod 600 to `baileys-bridge/lib/creds_queue.js` (AUTH-V31-01, AUTH-V31-03)
+- [ ] 15-02-PLAN.md — Wave 1: Port OpenClaw `maybeRestoreCredsFromBackup` + `readCredsJsonRaw` size guard to `baileys-bridge/lib/restore.js` (AUTH-V31-02)
+- [ ] 15-03-PLAN.md — Wave 2: Replace `atomicSaveCredsWrapper` in `index.js` with `enqueueSaveCreds` wiring; call `maybeRestoreCredsFromBackup` before `useMultiFileAuthState`; remove legacy `auth_state.bak/` dir-copy; rename legacy bak dir to `.legacy/` (AUTH-V31-01..03)
+- [ ] 15-04-PLAN.md — Wave 3: Pin `@whiskeysockets/baileys@7.0.0-rc.9` (exact); bump `engines.node` to `>=20.0.0`; ESM decision (empirical test); Node-version runtime guard in `index.js` + `synapse_start.sh/.bat`; update `HOW_TO_RUN.md` + `DEPENDENCIES.md`; manual QR pairing checkpoint (BAIL-01, BAIL-02)
+- [ ] 15-05-PLAN.md — Wave 4: Update `extractPayload` to emit `user_id_alt` from `participantAlt`/`remoteJidAlt`; enrich `GET /groups/:jid` with `ownerPn`; fill `test_group_metadata_shape` integration test; LID-mapping compat (BAIL-04)
+- [ ] 15-06-PLAN.md — Wave 5: Extract `buildSendPayload()` pure helper to `lib/send_payload.js` (7.x AnyMediaMessageContent parity); refactor `/send` + `/send-voice` to call helper; operator sign-off on BAIL-02 + BAIL-03 5-row media matrix + BAIL-04 group round-trip (BAIL-02, BAIL-03, BAIL-04)
 
 ### Phase 16: Heartbeat + Bridge Hardening
 **Goal**: Port OpenClaw's heartbeat-runner (`extensions/whatsapp/src/auto-reply/heartbeat-runner.ts`: `runWebHeartbeatOnce`, `resolveWhatsAppHeartbeatRecipients`, `HEARTBEAT_TOKEN` opt-out) and add a Python gateway <-> Node bridge health-polling contract: bridge exposes `/health`, gateway polls every 30s, N consecutive failures (default 3) restart the subprocess, webhooks are idempotent via `messageId` deduplication. Both features share the same emitter infrastructure from Phase 13 and both act on failure using supervisor hooks from Phase 14.
@@ -273,8 +285,8 @@ Phases execute in dependency order: 12 -> 13 -> 14 -> 15 -> 16 -> 17 -> 18
 | 11. Realtime Voice Streaming | v3.0 | 1/3 | In Progress | — |
 | 12. P0 Bug Fixes (Ship-Blocking) | v3.1 | 0/TBD | Not started | - |
 | 13. Structured Observability | v3.1 | 0/7 | Not started | - |
-| 14. Supervisor + Watchdog + Echo Tracker | v3.1 | 0/TBD | Not started | - |
-| 15. Auth Persistence + Baileys 7.x | v3.1 | 0/TBD | Not started | - |
+| 14. Supervisor + Watchdog + Echo Tracker | v3.1 | 0/3 | Not started | - |
+| 15. Auth Persistence + Baileys 7.x | v3.1 | 0/7 | Not started | - |
 | 16. Heartbeat + Bridge Hardening | v3.1 | 0/TBD | Not started | - |
 | 17. Pipeline Decomposition + Inbound Gate | v3.1 | 0/TBD | Not started | - |
 | 18. Multi-Account WhatsApp | v3.1 | 0/TBD | Not started | - |
