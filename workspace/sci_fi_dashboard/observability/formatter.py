@@ -35,7 +35,7 @@ class JsonFormatter(logging.Formatter):
     default_time_format = "%Y-%m-%dT%H:%M:%S"
 
     def format(self, record: logging.LogRecord) -> str:
-        module_name = getattr(record, "module", None) or record.name
+        module_name = getattr(record, "_obs_module", None) or record.name
 
         payload: dict = {
             "ts": self.formatTime(record, self.default_time_format),

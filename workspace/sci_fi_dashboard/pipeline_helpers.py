@@ -14,6 +14,7 @@ from synapse_config import SynapseConfig
 
 from sci_fi_dashboard import _deps as deps
 from sci_fi_dashboard.conv_kg_extractor import run_batch_extraction
+from sci_fi_dashboard.multiuser.session_key import build_session_key
 from sci_fi_dashboard.schemas import ChatRequest
 from sci_fi_dashboard.session_ingest import _ingest_session_background
 
@@ -390,7 +391,7 @@ async def process_message_pipeline(
         main_key="whatsapp:dm",
         identity_links=identity_links,
     )
-    logger.info("Session key: %s", session_key)
+    logger.debug("session_key_built")
 
     # ------------------------------------------------------------------
     # Step 2b: Sub-agent spawn detection (Phase 3)
@@ -515,15 +516,30 @@ async def on_batch_ready(chat_id: str, combined_message: str, metadata: dict):
     from gateway.queue import MessageTask
 
     is_group = metadata.get("is_group", False)
-    chat_type = "group" if is_group else "direct"
-    session_key = f"{metadata.get('channel_id', 'whatsapp')}:{chat_type}:{chat_id}"
+    channel_id = metadata.get("channel_id", "whatsapp")
+
+    # WA-FIX-04: use canonical build_session_key so on_batch_ready and
+    # process_message_pipeline agree on one session-key shape.
+    cfg = SynapseConfig.load()
+    session_cfg = getattr(cfg, "session", {}) or {}
+    target = deps._resolve_target(chat_id)
+    session_key = build_session_key(
+        agent_id=target,
+        channel=channel_id,
+        peer_id=chat_id,
+        peer_kind="group" if is_group else "direct",
+        account_id=channel_id,
+        dm_scope=session_cfg.get("dmScope", "per-channel-peer"),
+        main_key="whatsapp:dm",
+        identity_links=session_cfg.get("identityLinks", {}),
+    )
     task = MessageTask(
         task_id=str(uuid.uuid4()),
         chat_id=chat_id,
         user_message=combined_message,
         message_id=metadata.get("message_id", ""),
         sender_name=metadata.get("sender_name", ""),
-        channel_id=metadata.get("channel_id", "whatsapp"),
+        channel_id=channel_id,
         is_group=is_group,
         session_key=session_key,
         run_id=metadata.get("run_id"),

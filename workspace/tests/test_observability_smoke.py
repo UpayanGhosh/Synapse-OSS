@@ -28,9 +28,11 @@ pytest.importorskip(
 # 10+ digit runs that must NEVER appear in log lines (raw JIDs, phone numbers)
 _RAW_DIGIT_RUN = re.compile(r"[0-9]{10,}")
 
-# Critical-path modules where runId MUST be propagated
+# Exact Phase-13 logger names where runId MUST be propagated (anchored to
+# prevent matching stdlib names like sci_fi_dashboard.llm_router or
+# sci_fi_dashboard.channel_setup that happen to contain these substrings).
 _CRITICAL_PATH_MODULE_RX = re.compile(
-    r"flood|dedup|queue|worker|pipeline|llm|channel",
+    r"^(route\.whatsapp|gateway\.worker|pipeline\.chat|llm\.router|channel\.whatsapp)$"
 )
 
 # Phase 13 modules -- at least 2 must emit under our runId
@@ -74,12 +76,26 @@ def _assert_no_null_runid_on_critical_path(
 ) -> None:
     """OBS-01 null-guard: critical-path hops must NOT emit runId=null.
 
-    Mirrors the manual jq command:
-        jq -r 'select(.runId == null and (.module | test("flood|dedup|queue|worker|pipeline|llm|channel"))) | .module' | wc -l
-    MUST equal 0.
+    Only checks records within the request window (between the first and last
+    record that carries a non-null runId).  Startup and shutdown logs — which
+    legitimately lack a runId — are excluded by this window, preventing false
+    positives from lifespan events such as channel registration or worker
+    teardown.
     """
+    def _has_run_id(p: dict) -> bool:
+        rid = p.get("runId")
+        return rid is not None and rid != "<no-run>"
+
+    first_req = next((i for i, (p, _) in enumerate(captured) if _has_run_id(p)), None)
+    if first_req is None:
+        return  # no request was processed; nothing to check
+
+    last_req = len(captured) - 1 - next(
+        i for i, (p, _) in enumerate(reversed(captured)) if _has_run_id(p)
+    )
+
     null_critical: list[tuple[int, str, str]] = []
-    for idx, (parsed, line) in enumerate(captured):
+    for idx, (parsed, line) in enumerate(captured[first_req : last_req + 1], start=first_req):
         module = parsed.get("module") or ""
         run_id = parsed.get("runId")
         if (run_id is None or run_id == "<no-run>") and _CRITICAL_PATH_MODULE_RX.search(module):

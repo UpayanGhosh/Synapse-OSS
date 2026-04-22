@@ -35,6 +35,7 @@ _DEFAULT_THIRD_PARTY_LEVELS = {
     "openai._base_client": "WARNING",
     "anthropic._base_client": "WARNING",
     "google.auth": "WARNING",
+    "filelock": "WARNING",  # emits lock IDs (large ints) at DEBUG — triggers OBS-02 false positives
 }
 
 _OWNED_MARKER = "_synapse_obs_owned"
