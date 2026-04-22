@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v3.1
 milestone_name: Reliability + OpenClaw Supervisor Patterns
 status: executing
-stopped_at: Completed 15-00-PLAN.md
-last_updated: "2026-04-22T17:59:08.576Z"
+stopped_at: Completed 15-01-PLAN.md
+last_updated: "2026-04-22T18:06:06.321Z"
 last_activity: 2026-04-22 -- Phase 15 planning complete
 progress:
   total_phases: 6
@@ -76,6 +76,7 @@ Decisions are logged in PROJECT.md Key Decisions table. Recent decisions affecti
 - [v3.1 roadmap]: MULT (Phase 18) is last — depends on per-authDir creds-queue isolation (Phase 15), per-account healthState (Phase 14), per-account log-correlation (Phase 13), bridge contract (Phase 16), and pipeline context threading (Phase 17)
 - [Phase 15]: Used node --test test/*.test.js glob instead of directory path — Windows requires explicit glob on Node 22 win32
 - [Phase 15]: Synthetic OGG Opus fixture written via hand-crafted Node.js page builder (ffmpeg absent) — 129 bytes, valid OggS header, zero PII
+- [Phase 15]: _readRaw() duplicated in creds_queue.js to avoid forward dep on Plan 02 readCredsJsonRaw — Plan 02 can optionally refactor to import from restore.js
 
 ### Pending Todos
 
@@ -90,8 +91,8 @@ None active. v3.1 scope is fully defined; ready to plan Phase 12.
 
 ## Session Continuity
 
-Last session: 2026-04-22T17:59:02.761Z
-Stopped at: Completed 15-00-PLAN.md
+Last session: 2026-04-22T18:06:02.260Z
+Stopped at: Completed 15-01-PLAN.md
 Resume file: None
 Next step: `/gsd-plan-phase 12` to decompose Phase 12 (P0 Bug Fixes) into plans
 
