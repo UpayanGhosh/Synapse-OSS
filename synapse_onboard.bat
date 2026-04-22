@@ -14,8 +14,9 @@ REM      Mistral / xAI / Cohere / DeepSeek / Together AI, Chinese providers
 REM      (MiniMax / Moonshot / Z.AI / Volcengine / Qianfan), self-hosted
 REM      (Ollama / vLLM), and special providers (AWS Bedrock, Google Vertex AI,
 REM      NVIDIA NIM, HuggingFace, GitHub Copilot OAuth).
-REM   4. Starts all services
-REM   5. Pulls the required embedding model
+REM   4. The wizard prefetches the embedding model (FastEmbed) and, if Ollama is
+REM      selected, also pulls nomic-embed-text for offline fallback.
+REM   5. Starts all services
 
 set "PROJECT_ROOT=%~dp0"
 set "PROJECT_ROOT=%PROJECT_ROOT:~0,-1%"
@@ -189,22 +190,10 @@ echo.
 call "%PROJECT_ROOT%\synapse_start.bat"
 
 REM ============================================================
-REM Step 6: Pull the embedding model (only if Ollama is installed)
-REM ============================================================
-echo.
-if defined OLLAMA_EXE (
-    echo Step 6: Pulling embedding model ^(nomic-embed-text, ~900 MB^)...
-    echo This may take several minutes on first run. Please wait...
-    echo.
-    "%OLLAMA_EXE%" pull nomic-embed-text
-    echo    [OK] nomic-embed-text ready.
-) else (
-    echo Step 6: Ollama model pull skipped ^(Ollama not installed — optional^).
-)
-
-REM ============================================================
 REM Done
 REM ============================================================
+REM Note: Embedding model (FastEmbed nomic-embed-text-v1.5) is prefetched
+REM by the Python wizard in Step 4. No separate download needed here.
 echo.
 echo ========================================
 echo [OK] Onboarding complete!

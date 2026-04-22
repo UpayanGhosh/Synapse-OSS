@@ -1,33 +1,36 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: OpenClaw Feature Harvest
-status: in_progress
-last_updated: "2026-04-09T14:10:11Z"
+milestone: v3.1
+milestone_name: Reliability + OpenClaw Supervisor Patterns
+status: executing
+stopped_at: ROADMAP.md written — 7 phases (12-18), 44 REQ-IDs mapped at 100% coverage; REQUIREMENTS.md traceability updated
+last_updated: "2026-04-21T20:44:54.015Z"
+last_activity: 2026-04-21 -- Phase 13 planning complete
 progress:
-  total_phases: 12
-  completed_phases: 9
-  total_plans: 47
-  completed_plans: 44
+  total_phases: 6
+  completed_phases: 5
+  total_plans: 19
+  completed_plans: 18
+  percent: 95
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-04-08)
+See: .planning/PROJECT.md (updated 2026-04-21)
 
 **Core value:** An AI that knows you deeply, grows with you continuously, and reaches out to you first — on your machine, under your full control.
-**Current focus:** Phase 6 — LLM Provider Expansion (v3.0 first phase, ready to plan)
+**Current focus:** v3.1 milestone — ROADMAP.md drafted (Phases 12-18), ready to plan Phase 12
 
 ## Current Position
 
-Phase: 10 of 12 (Cron Wiring + Web Control Panel) — Complete (all 4 plans done)
-Plan: 4 of 4 complete in current phase
-Status: In progress
-Last activity: 2026-04-09 — Phase 10 Plan 04 complete (29 tests across 3 files: test_cron_wiring.py, test_loopback_middleware.py, test_cron_routes.py)
+Phase: 12 of 18 (P0 Bug Fixes — Ship-Blocking) — v3.1 starts at 12
+Plan: — (not yet planned)
+Status: Ready to execute
+Last activity: 2026-04-21 -- Phase 13 planning complete
 
-Progress: [████████░░] 96% (44/47 plans complete)
+Progress (v3.1): [░░░░░░░░░░] 0% (0/7 phases complete)
 
 ## Milestone Map
 
@@ -35,82 +38,78 @@ Progress: [████████░░] 96% (44/47 plans complete)
 |-----------|--------|--------|-------------|
 | v1.0 | 2026-03-03 | COMPLETE | OSS independence — all OpenClaw deps removed |
 | v2.0 | 2026-04-08 | COMPLETE | The Adaptive Core — skills, self-mod, subagents, browser |
-| v3.0 | 2026 | CURRENT | OpenClaw Feature Harvest — providers, skills library, TTS, image gen, cron v2, dashboard, voice |
+| v3.0 | 2026 | 96% (Phase 11 open) | OpenClaw Feature Harvest — providers, skills library, TTS, image gen, cron v2, dashboard; Realtime Voice carrying over |
+| v3.1 | 2026 | CURRENT | Reliability + OpenClaw Supervisor Patterns — WhatsApp bug fixes + watchdog, echo tracker, heartbeat, structured logging, multi-account, Baileys 7.x. Phases 12-18 |
 | v4.0 | Future | Planned | The Jarvis Threshold |
+
+## v3.1 Phase Map (at a glance)
+
+| Phase | Name | REQs | Scope |
+|-------|------|------|-------|
+| 12 | P0 Bug Fixes (Ship-Blocking) | 9 | WA-FIX-01..05 + PROA-01..04 |
+| 13 | Structured Observability | 4 | OBS-01..04 |
+| 14 | Supervisor + Watchdog + Echo Tracker | 6 | SUPV-01..04 + ACL-01..02 |
+| 15 | Auth Persistence + Baileys 7.x | 7 | AUTH-V31-01..03 + BAIL-01..04 |
+| 16 | Heartbeat + Bridge Hardening | 9 | HEART-01..05 + BRIDGE-01..04 |
+| 17 | Pipeline Decomposition + Inbound Gate | 5 | PIPE-01..04 + ACL-03 |
+| 18 | Multi-Account WhatsApp | 4 | MULT-01..04 |
 
 ## Accumulated Context
 
 ### Decisions
 
+Decisions are logged in PROJECT.md Key Decisions table. Recent decisions affecting current work:
+
 - v3.0 phases numbered 6-11 (continuous from v2.0 which ended at Phase 5)
+- v3.1 phases numbered 12-18 (continuous from v3.0 which ended at Phase 11 — no renumber, no reset)
+- Phase 11 (Realtime Voice Streaming) remains a v3.0 phase even though it is in flight during v3.1 period — NOT counted toward v3.1 progress
 - Phase 10 combines CRON + DASH (9 requirements) — tightly coupled; dashboard panels require TTS/image gen SSE events from Phases 8-9
-- Phase 11 (Realtime Voice) is last — highest complexity, depends on Phase 8 TTS chain and Phase 10 dashboard WebSocket
 - gpt-image-1 target for Phase 9 (DALL-E 3 deprecated May 12, 2026 — time-sensitive)
 - litellm budget-fallback bug (GitHub #10052) patched in Phase 6 — critical correctness dependency for all LLM-reliant phases
 - BackgroundTask pattern used for all media outputs (TTS, image gen) — never inline await in persona_chat()
 - Vault hemisphere isolation enforced at every cloud-API dispatch point across Phases 8-9
-- [06-01] DeepSeek placed in Major Cloud (US) group — USD pricing, globally accessible; not Chinese Providers
-- [06-01] deepseek/deepseek-chat chosen as validation model; deepseek-reasoner excluded (special response format not yet handled)
-- [06-01] together_ai key renamed to togetherai in synapse.json.example to match _KEY_MAP contract (was silently dropping Together AI keys)
-- [06-01] budget_usd/budget_duration documented on openai entry as canonical example for PROV-02 budget enforcement
-- [06-02] BudgetExceededError import-guarded for older litellm version compatibility — placeholder class never matches real exceptions so except clause is inert on old versions
-- [06-02] Budget check uses token count as USD proxy (1M tokens ~$1) — safety net, not billing system; avoids per-model pricing tables that change frequently
-- [06-02] get_provider_spend() is non-fatal (returns zeros on error) so DB issues never block LLM calls
-- [06-02] Fallback uses model_mappings.get(role).get('fallback') NOT self._router.model_list to avoid litellm Router internal coupling
-- [Phase 07-bundled-skills-library]: cloud_safe defaults to True — all existing skills are cloud_safe by default; only new bundled cloud-API skills need to explicitly set False
-- [Phase 07-bundled-skills-library]: synapse.* namespace reserved for bundled skills; user skills shadowing them trigger startup WARNING (not error) — both load but user is informed
-- [Phase 06-llm-provider-expansion]: BudgetExceededError must be raised with (current_cost, max_budget, message) signature matching litellm.exceptions.BudgetExceededError — production code was passing a single string and was fixed
-- [Phase 06-llm-provider-expansion]: qianfan is an intentional _KEY_MAP divergence — provider_steps only, not in llm_router._KEY_MAP; encoded as _PS_ONLY_KEYS in test for documentation
-- [Phase 08-tts-voice-output]: /send-voice is a separate dedicated endpoint (not a flag on /send) — keeps PTT logic isolated, no risk of breaking existing text/media send
-- [Phase 08-tts-voice-output]: PTT voice note requires three fields: audio buffer + ptt: true + mimetype: 'audio/ogg; codecs=opus' — all three required for WhatsApp earphone icon rendering
-- [Phase 09-image-generation]: IMAGE placed first in traffic cop prompt; negative examples prevent false-positive classification of 'draw up a plan', 'create a document'
-- [Phase 09-image-generation]: IMAGE branch uses early return placeholder — Plan 03 replaces with BackgroundTask dispatch; STRATEGY_TO_ROLE unchanged
-- [Phase 08-tts-voice-output]: edge-tts is default TTS provider — zero credentials, works out-of-the-box without tts config in synapse.json
-- [Phase 08-tts-voice-output]: ElevenLabs API key read from SynapseConfig.providers directly (not os.environ) to avoid init-time ordering dependency with LLMRouter
-- [Phase 08-tts-voice-output]: Terminal punctuation gate (. ! ? ) ] }) makes TTS and auto-continue mutually exclusive — auto-continue fires for non-terminal replies (cut-off), TTS fires for terminal replies (complete)
-- [Phase 08-tts-voice-output]: Patch path for TTSEngine tests is synapse_config.SynapseConfig.load (deferred local import inside synthesize()), not sci_fi_dashboard.tts.engine.SynapseConfig
-- [Phase 09-image-generation]: gpt-image-1 always returns b64_json — never URL, response_format param omitted; openai and fal-client are lazy-imported inside provider functions to keep them optional
-- [Phase 09-image-generation]: ImageGenEngine API key validation in engine helpers (_generate_openai/_generate_fal), not in provider functions — provider functions are pure and testable
-- [Phase 09-image-generation]: IMAGE branch Vault block is defense-in-depth; spicy sessions caught at outer vault routing (line 622) before reaching IMAGE — IMAGE Vault check guards future bypass paths
-- [Phase 09-image-generation]: save_media_buffer() wrapped in asyncio.to_thread() — synchronous file I/O (os.open, os.replace, os.chmod) must not block the event loop
-- [Phase 09-image-generation]: channel_id hardcoded to 'whatsapp' inside _generate_and_send_image() — persona_chat() has no channel_id scope; matches continue_conversation() default at pipeline_helpers.py:151
-- [Phase 11-realtime-voice-streaming/11-02]: redemptionMs set to 700ms per VOICE-02 requirement (plan overrides research default of 1400ms)
-- [Phase 11-realtime-voice-streaming/11-02]: ws.binaryType forced to arraybuffer in startVoice() — eliminates Blob conversion overhead for streaming MP3 chunks
-- [Phase 11-realtime-voice-streaming/11-02]: Barge-in guard re-checks isAISpeaking in scheduleAudioChunk after async decodeAudioData — prevents playing decoded chunk if barge-in fired during decode
-- [Phase 11-realtime-voice-streaming/11-02]: Transcription exposed as CustomEvent("synapse:transcription") on window — zero DOM coupling from voice.js
-- [Phase 11-realtime-voice-streaming/11-02]: handleWSMessage is passive — dashboard's existing ws.onmessage delegates to it; voice.js never patches global WS
-
-- [Phase 10-cron-wiring/10-01]: session_key added as explicit Optional field to ChatRequest — persona_chat already uses getattr fallback, field just makes it type-safe
-- [Phase 10-cron-wiring/10-01]: timeout_seconds passed via **kwargs in execute_fn — CronPayload.timeout_seconds flows through to asyncio.wait_for without leaking into ChatRequest
-- [Phase 10-cron-wiring/10-01]: All three SSE emitter calls use lazy try-import inside try/except — emitter optional, cron never blocked by dashboard unavailability
-- [Phase 10-cron-wiring/10-01]: old cron_service.py file retained — only api_gateway.py import replaced; tests referencing old file not broken
-- [Phase 10-cron-wiring-web-control-panel]: LoopbackOnlyMiddleware registered after BodySizeLimitMiddleware — Starlette LIFO order means it runs before body-size check
-- [Phase 10-cron-wiring-web-control-panel]: routes/cron.py serializes jobs as plain dicts — cron_service.py stores jobs as JSON dicts loaded from file
-- [Phase 10-cron-wiring-web-control-panel/10-03]: Dashboard memory stats fetched from /persona/status (not /persona/summary which doesn't exist) — response has memory_db field with documents/atomic_facts/entity_links
-- [Phase 10-cron-wiring-web-control-panel/10-03]: Routing decisions panel driven by llm.route SSE event (not pipeline.run_done) — llm.route carries role+model in current codebase; pipeline.run_done added as forward-compat fallback
-- [Phase 10-cron-wiring-web-control-panel/10-03]: formatSchedule() handles both CronSchedule objects (cron/service.py) and legacy schedule strings (cron_service.py) for dual-format compatibility
-- [Phase 10-cron-wiring-web-control-panel/10-04]: SSE emission tests patch sci_fi_dashboard.pipeline_emitter.get_emitter (not cron.service.get_emitter) — lazy import inside _execute_job() means the source module is the correct patch target
-- [Phase 10-cron-wiring-web-control-panel/10-04]: LoopbackOnlyMiddleware tests use direct dispatch() calls with mock request.client.host — TestClient uses 'testclient' hostname not '127.0.0.1', bypassing the loopback check
-- [Phase 10-cron-wiring-web-control-panel/10-04]: _require_gateway_auth patched via synapse_config.SynapseConfig.load — lazy import inside function body means patch must target the source module, not the middleware module
+- [v3.1 roadmap]: Phase 12 bundles all P0 bug fixes (9 REQs) so ship-blocking work is decoupled from downstream architectural changes — user gets a responsive WhatsApp bot ASAP
+- [v3.1 roadmap]: OBS (Phase 13) precedes SUPV (Phase 14) — watchdog state transitions are invisible without runId-correlated structured logs
+- [v3.1 roadmap]: AUTH + BAIL bundled in Phase 15 — both live in bridge + auth surface; Baileys 7.x breaking changes in `useMultiFileAuthState` must be validated together with per-authDir atomic creds queue
+- [v3.1 roadmap]: HEART + BRIDGE bundled in Phase 16 — share emitter infra from OBS (Phase 13) and supervisor hooks from Phase 14
+- [v3.1 roadmap]: PIPE (Phase 17) ships AFTER WA-FIX-05 cleanup — decomposition starts from known-good baseline; ACL-03 (gate before FloodGate) rides along because it changes inbound ordering
+- [v3.1 roadmap]: MULT (Phase 18) is last — depends on per-authDir creds-queue isolation (Phase 15), per-account healthState (Phase 14), per-account log-correlation (Phase 13), bridge contract (Phase 16), and pipeline context threading (Phase 17)
 
 ### Pending Todos
 
 - Phase 2 (v2.0): 02-06-PLAN.md integration tests still pending
-- Merge develop → main for v2.0 release
+- Phase 7 (v3.0): 07-02, 07-03 plans pending — Bundled Skills Library 1/3 complete
+- Phase 11 (v3.0): 11-02, 11-03 plans pending — Realtime Voice Streaming 1/3 complete (carryover)
+- Merge develop -> main for v2.0 release
 
 ### Blockers/Concerns
 
-None active.
+None active. v3.1 scope is fully defined; ready to plan Phase 12.
 
 ## Session Continuity
 
-Last session: 2026-04-09 (Phase 10 Plan 04 execution)
-Stopped at: Completed 10-04-PLAN.md — 29 tests for all Phase 10 requirements (CRON-01-04, DASH-01, DASH-02, DASH-04, DASH-05)
+Last session: 2026-04-21 (v3.1 milestone roadmap drafted)
+Stopped at: ROADMAP.md written — 7 phases (12-18), 44 REQ-IDs mapped at 100% coverage; REQUIREMENTS.md traceability updated
 Resume file: None
-Next step: Phase 11 — Realtime Voice Streaming
+Next step: `/gsd-plan-phase 12` to decompose Phase 12 (P0 Bug Fixes) into plans
 
-### Phase 13 Worktree Progress (feature/phase-13-structured-observability)
+## v3.1 Seed Findings (from comparative analysis, 2026-04-21)
 
-Last session: 2026-04-22 (Phase 13 Plan 04 execution)
-Stopped at: Completed 13-04-PLAN.md — pipeline_emitter singleton race fix + chat_pipeline/llm_router structured logger migration (OBS-01, OBS-02)
-Next step: 13-05-PLAN.md — apply_logging_config() + per-module log levels (OBS-04)
+**Smoking-gun Synapse bugs identified by OpenClaw comparison:**
+
+1. `routes/whatsapp.py:147` — `wa_channel.update_connection_state(payload)` not awaited -> retry-queue never flushes, code 515 restart never fires, isLoggedOut flag never set
+2. `GentleWorker` class never instantiated in production (only tests + `__main__` guard) -> `maybe_reach_out()` is dead code
+3. `chat_pipeline.py` lines 472-509 and 546-586 — duplicate skill-routing block -> state mutations fire twice on skill match
+4. `pipeline_helpers.py:407` vs `:519` — two different session-key builders -> SessionActorQueue can't serialize per-conversation
+
+**OpenClaw reliability patterns to port (by source file):**
+
+- `extensions/whatsapp/src/auto-reply/monitor.ts:283-338` — watchdog timer (30-min silence -> force reconnect) [Phase 14]
+- `extensions/whatsapp/src/reconnect.ts` — `DEFAULT_RECONNECT_POLICY` with jitter + configurable maxAttempts [Phase 14]
+- `extensions/whatsapp/src/session.ts:37-95` — per-authDir `enqueueSaveCreds` atomic queue + `maybeRestoreCredsFromBackup` [Phase 15]
+- `extensions/whatsapp/src/inbound/monitor.ts` — `createInboundDebouncer`, `rememberRecentOutboundMessage`, `checkInboundAccessControl` [Phase 14 echo + Phase 17 gate]
+- `extensions/whatsapp/src/auto-reply/heartbeat-runner.ts` — `runWebHeartbeatOnce` + `resolveWhatsAppHeartbeatRecipients` + `HEARTBEAT_TOKEN` opt-out [Phase 16]
+- `extensions/whatsapp/src/accounts.ts` + `account-config.ts` — multi-account resolution pattern [Phase 18]
+- Structured logging: `getChildLogger({module, runId})` + `redactIdentifier()` everywhere [Phase 13 ✅ merged]
+
+**Version gap:** Baileys `^6.7.21` (Synapse bridge) vs `7.0.0-rc.9` (OpenClaw) — upgrade validates pairing + media + groups [Phase 15].

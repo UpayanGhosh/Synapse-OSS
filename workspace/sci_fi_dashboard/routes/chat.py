@@ -6,7 +6,10 @@ import uuid
 from fastapi import APIRouter, BackgroundTasks, Depends, Request
 
 from sci_fi_dashboard import _deps as deps
+from sci_fi_dashboard.chat_pipeline import persona_chat
+from sci_fi_dashboard.middleware import validate_api_key
 from sci_fi_dashboard.observability import mint_run_id
+from sci_fi_dashboard.schemas import ChatRequest
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -81,12 +84,12 @@ async def chat_webhook(request: Request):
 
 def _make_persona_handler(persona_id: str):
     async def handler(
-        request: deps.ChatRequest, background_tasks: BackgroundTasks, http_request: Request
+        request: ChatRequest, background_tasks: BackgroundTasks, http_request: Request
     ):
         mint_run_id()
         deps._check_rate_limit(http_request)  # H-04: rate limit persona chat
-        deps.validate_api_key(http_request)
-        return await deps.persona_chat(request, persona_id, background_tasks)
+        validate_api_key(http_request)
+        return await persona_chat(request, persona_id, background_tasks)
 
     handler.__name__ = f"chat_{persona_id}"
     return handler
@@ -103,7 +106,7 @@ for _p in deps.PERSONAS_CONFIG.get("personas", []):
             methods=["POST"],
             summary=_p.get("description", f"Chat as {pid}"),
             dependencies=[
-                Depends(deps.validate_api_key),
+                Depends(validate_api_key),
                 Depends(deps._check_rate_limit),
             ],
         )

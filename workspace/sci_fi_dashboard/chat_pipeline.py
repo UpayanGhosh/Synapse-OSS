@@ -480,7 +480,12 @@ async def persona_chat(
     # Check if message matches a skill BEFORE traffic cop routing.
     # Skills handle the message entirely — skip MoA pipeline if matched.
     # Skills are NEVER triggered in spicy hemisphere (T-01-14 privacy boundary).
-    if deps._SKILL_SYSTEM_AVAILABLE and deps.skill_router is not None and session_mode != "spicy":
+    # WA-FIX-05: single skill-routing block (block #2 at former lines 546-586 deleted).
+    if (
+        getattr(deps, "_SKILL_SYSTEM_AVAILABLE", False)
+        and getattr(deps, "skill_router", None) is not None
+        and session_mode != "spicy"
+    ):
         matched_skill = deps.skill_router.match(user_msg)
         if matched_skill is not None:
             _log.info("skill_routed", extra={"skill_name": matched_skill.name})
@@ -491,6 +496,7 @@ async def persona_chat(
                 user_message=user_msg,
                 history=request.history,
                 llm_router=deps.synapse_llm_router,
+                session_context={"session_type": session_mode or ""},
             )
             reply = skill_result.text
 
@@ -501,9 +507,7 @@ async def persona_chat(
             # Store in memory (CRITICAL: method is add_memory, NOT store)
             with contextlib.suppress(Exception):
                 deps.memory_engine.add_memory(
-                    content=(
-                        f"[Skill: {matched_skill.name}] " f"User: {user_msg}\nAssistant: {reply}"
-                    ),
+                    content=f"[Skill: {matched_skill.name}] User: {user_msg}\nAssistant: {reply}",
                     category="skill_execution",
                 )
 
@@ -591,6 +595,7 @@ async def persona_chat(
                 "role": f"skill:{matched_skill.name}",
                 "retrieval_method": "skill",
             }
+
 
     if session_mode == "spicy":
         # === THE VAULT (Local Stheno) ===

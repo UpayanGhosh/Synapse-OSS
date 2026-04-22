@@ -120,12 +120,12 @@ conversation_cache = ConversationCache(max_entries=200, ttl_s=300)
 # ---------------------------------------------------------------------------
 # Async Gateway Components
 # ---------------------------------------------------------------------------
-from channels.registry import ChannelRegistry  # noqa: E402
-from channels.stub import StubChannel  # noqa: E402
-from channels.whatsapp import WhatsAppChannel  # noqa: E402
-from gateway.dedup import MessageDeduplicator  # noqa: E402
-from gateway.flood import FloodGate  # noqa: E402
-from gateway.queue import TaskQueue  # noqa: E402
+from sci_fi_dashboard.channels.registry import ChannelRegistry  # noqa: E402
+from sci_fi_dashboard.channels.stub import StubChannel  # noqa: E402
+from sci_fi_dashboard.channels.whatsapp import WhatsAppChannel  # noqa: E402
+from sci_fi_dashboard.gateway.dedup import MessageDeduplicator  # noqa: E402
+from sci_fi_dashboard.gateway.flood import FloodGate  # noqa: E402
+from sci_fi_dashboard.gateway.queue import TaskQueue  # noqa: E402
 
 task_queue = TaskQueue(max_size=100)
 dedup = MessageDeduplicator(window_seconds=300)
@@ -203,9 +203,22 @@ sbs_registry: dict[str, SBSOrchestrator] = {
 }
 
 
-def _check_rate_limit(request: "Request | None" = None) -> None:  # noqa: F821
-    """Rate-limit guard (not yet implemented — pass-through)."""
-    pass
+from sci_fi_dashboard.middleware import (  # noqa: E402, F401
+    BodySizeLimitMiddleware,
+    LoopbackOnlyMiddleware,
+    _check_rate_limit,
+    _require_gateway_auth,
+    validate_api_key,
+    validate_bridge_token,
+)
+from sci_fi_dashboard.schemas import (  # noqa: E402, F401
+    ChatRequest,
+    MemoryItem,
+    OpenAIRequest,
+    QueryItem,
+    WhatsAppEnqueueRequest,
+    WhatsAppLoopTestRequest,
+)
 
 
 def _resolve_target(raw_target: str) -> str:

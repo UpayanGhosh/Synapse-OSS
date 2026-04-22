@@ -34,6 +34,10 @@ lancedb>=0.6.0                   # Embedded vector DB - zero Docker overhead
 fastembed>=0.4.0                 # ONNX-based local embeddings (default provider)
 # sentence-transformers kept for Toxic-BERT (toxic_scorer_lazy.py) — NOT used for embeddings
 
+# --- Retrieval pipeline (eagerly imported by memory_engine + smart_entity) ---
+flashrank>=0.2.0                 # Cross-encoder reranker (ms-marco-TinyBERT) — chat-path critical
+flashtext>=2.7                   # EntityGate keyword extraction — chat-path critical
+
 # --- LLM Routing ---
 litellm>=1.40.0                  # Unified LLM API (Gemini, Claude, Ollama, OpenRouter dispatch)
 

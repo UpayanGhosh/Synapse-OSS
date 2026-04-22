@@ -2,13 +2,22 @@ import gc
 import threading
 import time
 
-import torch
+# torch is an OPTIONAL dep (ships in requirements-ml.txt). When absent, toxic
+# scoring silently returns 0.0 — the rest of the gateway continues to work.
+try:
+    import torch
+
+    _TORCH_AVAILABLE = True
+except ImportError:
+    torch = None  # type: ignore[assignment]
+    _TORCH_AVAILABLE = False
 
 
 class LazyToxicScorer:
     """
     Drop-in replacement for ToxicScorer.
     Loads model on first score() call, unloads after idle_timeout seconds.
+    Degrades gracefully to score=0.0 when torch / transformers are not installed.
     """
 
     def __init__(self, idle_timeout: float = 30.0):
@@ -23,6 +32,8 @@ class LazyToxicScorer:
     def _load(self):
         if self._model is not None:
             return
+        if not _TORCH_AVAILABLE:
+            return  # Nothing to load — score() will short-circuit to 0.0.
 
         print("[TEST] Loading Toxic-BERT (lazy)...")
         start = time.time()
@@ -48,7 +59,7 @@ class LazyToxicScorer:
             self._model = None
             self._tokenizer = None
             gc.collect()
-            if torch.backends.mps.is_available():
+            if _TORCH_AVAILABLE and torch.backends.mps.is_available():
                 torch.mps.empty_cache()
 
     def _schedule_cleanup(self):
@@ -59,6 +70,9 @@ class LazyToxicScorer:
         self._cleanup_timer.start()
 
     def score(self, text: str) -> float:
+        if not _TORCH_AVAILABLE:
+            return 0.0  # torch missing — toxicity scoring disabled for this install.
+
         # C-08 fix: capture local refs inside lock to prevent race with _unload()
         with self._lock:
             self._load()

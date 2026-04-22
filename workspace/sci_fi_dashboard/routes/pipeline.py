@@ -14,6 +14,7 @@ from fastapi import APIRouter, BackgroundTasks
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from sci_fi_dashboard import _deps as deps
+from sci_fi_dashboard.chat_pipeline import persona_chat
 from sci_fi_dashboard.pipeline_emitter import get_emitter
 
 router = APIRouter()
@@ -101,7 +102,7 @@ async def pipeline_send(body: dict, background_tasks: BackgroundTasks):
 
     req = ChatRequest(message=message)
     try:
-        reply = await deps.persona_chat(req, target, background_tasks)
+        reply = await persona_chat(req, target, background_tasks)
         # persona_chat returns a string or a dict with 'reply'
         if isinstance(reply, dict):
             text = reply.get("reply") or reply.get("response") or str(reply)

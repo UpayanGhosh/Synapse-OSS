@@ -291,6 +291,7 @@ class WhatsAppChannel(BaseChannel):
         base["restart_count"] = self._restart_count
         base["last_disconnect_reason"] = self._last_disconnect_reason
         base["connection_state"] = self._connection_state
+        base["isLoggedOut"] = self._connection_state == "logged_out"
         return base
 
     async def get_qr(self) -> str | None:

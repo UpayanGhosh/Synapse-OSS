@@ -155,7 +155,7 @@ async def whatsapp_connection_state(request: Request):
     if not isinstance(wa_channel, WhatsAppChannel):
         return {"ok": False, "detail": "WhatsApp channel not registered"}
     payload = await request.json()
-    wa_channel.update_connection_state(payload)
+    await wa_channel.update_connection_state(payload)
     return {"ok": True}
 
 

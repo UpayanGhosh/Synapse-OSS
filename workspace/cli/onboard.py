@@ -11,6 +11,7 @@ Exports:
 """
 
 import asyncio
+import contextlib
 import os
 import shutil
 import sys
@@ -255,6 +256,10 @@ def _run_non_interactive(
     # --- Model mappings ---
     config["model_mappings"] = _build_model_mappings(list(config["providers"].keys()))
 
+    # --- Prefetch embedding model (quiet in non-interactive mode — best-effort) ---
+    with contextlib.suppress(Exception):
+        _prefetch_embedding_models(list(config["providers"].keys()))
+
     # --- Write ---
     write_config(data_root, config)
     typer.echo(f"Config written to {data_root / 'synapse.json'}")
@@ -392,7 +397,408 @@ def _handle_reset(reset_scope: str, data_root: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Known models per provider (curated list — update when providers add models)
+# Live model discovery — hit each provider's /models endpoint with the user's key.
+# No curated defaults; the wizard only falls back to _KNOWN_MODELS when the API
+# is unreachable (offline, rate-limited, bad key).
+#
+# Each entry returned by _fetch_provider_models carries:
+#   value:           litellm-compatible "<prefix>/<model_id>" (used at runtime)
+#   label:           display name (usually the bare model_id, sometimes display_name)
+#   context_window:  int tokens — None when provider doesn't expose it
+#   capabilities:    list of tags like ["reasoning", "vision", "code"]
+#   hint:            pre-built display hint string (openclaw-style "ctx 128k · reasoning")
+# ---------------------------------------------------------------------------
+
+_OPENAI_COMPAT_MODELS_ENDPOINTS: dict[str, str] = {
+    "openai": "https://api.openai.com/v1/models",
+    "groq": "https://api.groq.com/openai/v1/models",
+    "openrouter": "https://openrouter.ai/api/v1/models",
+    "mistral": "https://api.mistral.ai/v1/models",
+    "xai": "https://api.x.ai/v1/models",
+    "deepseek": "https://api.deepseek.com/v1/models",
+    "togetherai": "https://api.together.xyz/v1/models",
+    "nvidia_nim": "https://integrate.api.nvidia.com/v1/models",
+    "moonshot": "https://api.moonshot.ai/v1/models",
+    "zai": "https://open.bigmodel.cn/api/paas/v4/models",
+}
+
+# litellm prefixes differ from our internal provider keys for a few providers.
+_LITELLM_PREFIX: dict[str, str] = {"togetherai": "together_ai"}
+
+
+def _humanize_ctx(n: int | None) -> str | None:
+    """Format context-window token counts as 'ctx 128k' / 'ctx 2M'."""
+    if not n or n < 1:
+        return None
+    if n >= 1_000_000:
+        return f"ctx {n // 1_000_000}M"
+    if n >= 1000:
+        return f"ctx {n // 1000}k"
+    return f"ctx {n}"
+
+
+def _infer_capabilities(model_id: str) -> list[str]:
+    """Heuristic capability tags derived from a model ID string."""
+    lid = model_id.lower()
+    caps: list[str] = []
+    reasoning_patterns = (
+        "o1-", "o1_", "/o1", "o3-", "o3_", "/o3", "o4-", "o4_", "/o4", "o5-",
+        "reasoning", "thinking", "-qwq", "qwq-", "r1", "deepseek-r", "nemotron-nano",
+        "gpt-oss", "nemotron-super",
+    )
+    if any(p in lid for p in reasoning_patterns):
+        caps.append("reasoning")
+    if any(p in lid for p in ("vision", "-vl-", "-vl2", "vis-", "-multimodal")):
+        caps.append("vision")
+    if any(p in lid for p in ("code", "coder", "codex", "-cd-")):
+        caps.append("code")
+    return caps
+
+
+def _build_hint(context_window: int | None, capabilities: list[str]) -> str | None:
+    """Render the openclaw-style hint string: 'ctx 128k · reasoning · code'."""
+    parts: list[str] = []
+    ctx_str = _humanize_ctx(context_window)
+    if ctx_str:
+        parts.append(ctx_str)
+    parts.extend(capabilities)
+    return " · ".join(parts) if parts else None
+
+
+def _make_entry(
+    value: str,
+    label: str,
+    context_window: int | None = None,
+    extra_caps: list[str] | None = None,
+) -> dict[str, object]:
+    """Build a fully-hydrated catalog entry with hints + capabilities."""
+    caps = _infer_capabilities(label)
+    if extra_caps:
+        for c in extra_caps:
+            if c not in caps:
+                caps.append(c)
+    return {
+        "value": value,
+        "label": label,
+        "context_window": context_window,
+        "capabilities": caps,
+        "hint": _build_hint(context_window, caps),
+    }
+
+
+def _fetch_provider_models(
+    provider: str,
+    api_key: str | None = None,
+    api_base: str | None = None,
+    timeout: float = 10.0,
+) -> list[dict[str, object]]:
+    """Query the provider's /models endpoint live and return hydrated entries.
+
+    Returns:
+      List of {value, label, context_window, capabilities, hint} on success.
+      Empty list on any failure — caller falls back to curated catalog.
+    """
+    try:
+        import httpx  # noqa: PLC0415
+    except ImportError:
+        return []
+
+    try:
+        # --- Gemini: key as query param, custom shape ---
+        if provider == "gemini":
+            if not api_key:
+                return []
+            r = httpx.get(
+                f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}",
+                timeout=timeout,
+            )
+            r.raise_for_status()
+            out: list[dict[str, object]] = []
+            for m in r.json().get("models", []):
+                name = m.get("name", "").replace("models/", "")
+                if "generateContent" not in m.get("supportedGenerationMethods", []):
+                    continue
+                ctx = m.get("inputTokenLimit")
+                out.append(_make_entry(f"gemini/{name}", name, context_window=ctx))
+            return sorted(out, key=lambda x: str(x["label"]))
+
+        # --- Anthropic: custom auth headers ---
+        if provider == "anthropic":
+            if not api_key:
+                return []
+            r = httpx.get(
+                "https://api.anthropic.com/v1/models",
+                headers={"x-api-key": api_key, "anthropic-version": "2023-06-01"},
+                timeout=timeout,
+            )
+            r.raise_for_status()
+            data = r.json().get("data", [])
+            # Anthropic doesn't expose context_window in /models; heuristic by family.
+            def _anthropic_ctx(mid: str) -> int | None:
+                lm = mid.lower()
+                if "claude-3-5" in lm or "claude-3-7" in lm or "claude-sonnet-4" in lm:
+                    return 200000
+                if "claude-3" in lm:
+                    return 200000
+                return None
+            return [
+                _make_entry(
+                    f"anthropic/{m['id']}",
+                    m.get("display_name", m["id"]),
+                    context_window=_anthropic_ctx(m["id"]),
+                )
+                for m in data
+            ]
+
+        # --- Ollama: local /api/tags (no context metadata) ---
+        if provider == "ollama":
+            base = (api_base or "http://localhost:11434").rstrip("/")
+            r = httpx.get(f"{base}/api/tags", timeout=5.0)
+            r.raise_for_status()
+            return [
+                _make_entry(f"ollama_chat/{m['name']}", m["name"])
+                for m in r.json().get("models", [])
+            ]
+
+        # --- vLLM: user-provided api_base + /v1/models ---
+        if provider == "vllm":
+            if not api_base:
+                return []
+            r = httpx.get(f"{api_base.rstrip('/')}/v1/models", timeout=5.0)
+            r.raise_for_status()
+            return [
+                _make_entry(f"openai/{m['id']}", m["id"])
+                for m in r.json().get("data", [])
+            ]
+
+        # --- OpenAI-compat providers ---
+        url = _OPENAI_COMPAT_MODELS_ENDPOINTS.get(provider)
+        if not url:
+            return []
+        headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+        r = httpx.get(url, headers=headers, timeout=timeout)
+        r.raise_for_status()
+        prefix = _LITELLM_PREFIX.get(provider, provider)
+        out = []
+        for m in r.json().get("data", []):
+            mid = m.get("id", "")
+            if not mid:
+                continue
+            # Provider-specific context_window extraction where available.
+            ctx = None
+            if provider == "openrouter":
+                ctx = m.get("context_length")
+            elif provider == "groq":
+                ctx = m.get("context_window")
+            elif provider == "togetherai":
+                ctx = m.get("context_length")
+            out.append(_make_entry(f"{prefix}/{mid}", mid, context_window=ctx))
+        return out
+    except Exception:  # noqa: BLE001 — any network/parse error → empty list
+        return []
+
+
+def _extract_provider_credentials(
+    config: dict, provider: str
+) -> tuple[str | None, str | None]:
+    """Read api_key + api_base for a provider from the in-progress config dict."""
+    prov_cfg = (config.get("providers") or {}).get(provider) or {}
+    # Copilot uses 'token' not 'api_key'; Ollama/vLLM use only api_base; others use api_key
+    api_key = prov_cfg.get("api_key") or prov_cfg.get("token")
+    api_base = prov_cfg.get("api_base")
+    return api_key, api_base
+
+
+def _fetch_live_catalog(
+    providers: list[str], config: dict
+) -> dict[str, list[dict[str, object]]]:
+    """Per-provider live model list, falling back to _KNOWN_MODELS on API failure.
+
+    Entries returned are fully hydrated (value, label, context_window, capabilities, hint).
+    """
+    result: dict[str, list[dict[str, object]]] = {}
+    for prov in providers:
+        api_key, api_base = _extract_provider_credentials(config, prov)
+        live = _fetch_provider_models(prov, api_key, api_base)
+        if live:
+            result[prov] = live
+            _print(f"  [green]✓[/] {prov}: {len(live)} models (live from API)")
+        elif prov in _KNOWN_MODELS:
+            # Hydrate curated fallback so it has the same shape as live entries.
+            result[prov] = [
+                _make_entry(str(m["value"]), str(m["label"]))
+                for m in _KNOWN_MODELS[prov]
+            ]
+            _print(
+                f"  [yellow]![/] {prov}: /models API unavailable — "
+                f"falling back to curated list ({len(_KNOWN_MODELS[prov])} models)"
+            )
+        else:
+            _print(
+                f"  [yellow]![/] {prov}: no model list available — "
+                "enter model ID manually in the picker"
+            )
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Openclaw-style unified flat picker helpers
+# ---------------------------------------------------------------------------
+
+_PROVIDER_FILTER_THRESHOLD = 30
+_MANUAL_ENTRY_VALUE = "__manual__"
+
+
+def _flatten_catalog(
+    catalog: dict[str, list[dict[str, object]]],
+) -> list[dict[str, object]]:
+    """Flatten the per-provider catalog into a single list.
+
+    Each entry gains a `provider` field. Sorted by (provider, label) for
+    deterministic scan order when the user doesn't search.
+    """
+    flat: list[dict[str, object]] = []
+    for prov, models in catalog.items():
+        for m in models:
+            entry = dict(m)
+            entry["provider"] = prov
+            flat.append(entry)
+    return sorted(
+        flat,
+        key=lambda x: (str(x.get("provider", "")), str(x.get("label", "")).lower()),
+    )
+
+
+def _format_choice_display(entry: dict[str, object]) -> str:
+    """Render an entry as 'provider/model · ctx 128k · reasoning'."""
+    value = str(entry.get("value", ""))
+    hint = entry.get("hint")
+    return f"{value}  ·  {hint}" if hint else value
+
+
+def _prompt_provider_filter(
+    flat: list[dict[str, object]], prompter: object
+) -> str:
+    """Openclaw-style filter step — pick one provider or * for all.
+
+    Triggered when total models > _PROVIDER_FILTER_THRESHOLD AND >1 provider configured.
+    Returns the selected provider id, or '*' for no filter.
+    """
+    from collections import Counter  # noqa: PLC0415
+
+    provider_counts = Counter(str(m.get("provider", "")) for m in flat)
+    if len(provider_counts) <= 1 or len(flat) <= _PROVIDER_FILTER_THRESHOLD:
+        return "*"
+
+    try:
+        import questionary  # noqa: PLC0415
+
+        choices: list = [questionary.Choice("All providers", value="*")]
+        for prov, n in sorted(provider_counts.items()):
+            choices.append(
+                questionary.Choice(f"{prov}  ({n} model{'s' if n != 1 else ''})", value=prov)
+            )
+    except ImportError:
+        choices = ["*"] + sorted(provider_counts.keys())
+
+    return prompter.select(  # type: ignore[attr-defined]
+        f"Filter models by provider ({len(flat)} total):",
+        choices=choices,
+    )
+
+
+def _pick_model_fuzzy(
+    role: str,
+    desc: str,
+    flat: list[dict[str, object]],
+    prompter: object,
+) -> str:
+    """Openclaw-style searchable picker for one role.
+
+    Uses InquirerPy fuzzy (type-to-filter + arrow-select) when available. Falls
+    back to questionary.autocomplete, then to a plain prompter.select call for
+    test stubs / headless envs. Adds a [Enter manually] escape hatch always.
+    """
+    manual_label = "[Enter model manually]"
+
+    # --- Preferred: InquirerPy fuzzy (best UX, matches openclaw) ---
+    try:
+        from InquirerPy import inquirer  # noqa: PLC0415
+
+        choices = [{"name": manual_label, "value": _MANUAL_ENTRY_VALUE}]
+        for m in flat:
+            choices.append(
+                {"name": _format_choice_display(m), "value": str(m["value"])}
+            )
+        try:
+            result = inquirer.fuzzy(  # type: ignore[attr-defined]
+                message=f"{role} ({desc}):",
+                choices=choices,
+                max_height="70%",
+                border=True,
+                info=True,
+                match_exact=False,
+            ).execute()
+        except KeyboardInterrupt:
+            from cli.wizard_prompter import WizardCancelledError  # noqa: PLC0415
+
+            raise WizardCancelledError() from None
+        if result is None:
+            from cli.wizard_prompter import WizardCancelledError  # noqa: PLC0415
+
+            raise WizardCancelledError()
+        if result == _MANUAL_ENTRY_VALUE:
+            return _prompt_manual_model(role, prompter)
+        return str(result)
+    except ImportError:
+        pass
+
+    # --- Fallback: questionary.autocomplete (type-to-match, no visual list) ---
+    try:
+        import questionary  # noqa: PLC0415
+
+        display_to_value: dict[str, str] = {}
+        choices_disp = [manual_label]
+        for m in flat:
+            disp = _format_choice_display(m)
+            choices_disp.append(disp)
+            display_to_value[disp] = str(m["value"])
+        result = questionary.autocomplete(
+            f"{role} ({desc}) — start typing to search:",
+            choices=choices_disp,
+            ignore_case=True,
+            match_middle=True,
+        ).ask()
+        if result is None:
+            from cli.wizard_prompter import WizardCancelledError  # noqa: PLC0415
+
+            raise WizardCancelledError()
+        if result == manual_label:
+            return _prompt_manual_model(role, prompter)
+        return display_to_value.get(result, result)
+    except ImportError:
+        pass
+
+    # --- Last resort: plain select via prompter (test stubs / no TTY) ---
+    plain_choices = [manual_label] + [str(m["value"]) for m in flat]
+    sel = prompter.select(  # type: ignore[attr-defined]
+        f"{role} ({desc}):", choices=plain_choices
+    )
+    if sel == manual_label:
+        return _prompt_manual_model(role, prompter)
+    return str(sel)
+
+
+def _prompt_manual_model(role: str, prompter: object) -> str:
+    """Free-text manual entry — user types provider/model directly."""
+    val = prompter.text(  # type: ignore[attr-defined]
+        f"{role} model (enter litellm-style provider/model_id):"
+    ).strip()
+    return val
+
+
+# ---------------------------------------------------------------------------
+# Known models per provider (FALLBACK only — used when live /models API fails).
 # ---------------------------------------------------------------------------
 
 _KNOWN_MODELS: dict[str, list[dict[str, str]]] = {
@@ -444,6 +850,93 @@ _KNOWN_MODELS: dict[str, list[dict[str, str]]] = {
         {"value": "xai/grok-3", "label": "Grok 3"},
         {"value": "xai/grok-3-mini", "label": "Grok 3 Mini (fast)"},
     ],
+    "nvidia_nim": [
+        # Meta Llama
+        {
+            "value": "nvidia_nim/meta/llama-3.3-70b-instruct",
+            "label": "Llama 3.3 70B Instruct (newest Meta, balanced)",
+        },
+        {
+            "value": "nvidia_nim/meta/llama-3.1-8b-instruct",
+            "label": "Llama 3.1 8B Instruct (fast, cheap)",
+        },
+        {
+            "value": "nvidia_nim/meta/llama-3.1-70b-instruct",
+            "label": "Llama 3.1 70B Instruct",
+        },
+        {
+            "value": "nvidia_nim/meta/llama-3.1-405b-instruct",
+            "label": "Llama 3.1 405B Instruct (best Meta)",
+        },
+        # Moonshot Kimi
+        {
+            "value": "nvidia_nim/moonshotai/kimi-k2-instruct",
+            "label": "Kimi K2 Instruct (Moonshot, long context)",
+        },
+        {
+            "value": "nvidia_nim/moonshotai/kimi-k2-thinking",
+            "label": "Kimi K2 Thinking (reasoning)",
+        },
+        # OpenAI GPT-OSS
+        {
+            "value": "nvidia_nim/openai/gpt-oss-120b",
+            "label": "GPT-OSS 120B (OpenAI open-weights, flagship)",
+        },
+        {
+            "value": "nvidia_nim/openai/gpt-oss-20b",
+            "label": "GPT-OSS 20B (OpenAI open-weights, fast)",
+        },
+        # Qwen
+        {
+            "value": "nvidia_nim/qwen/qwen3-235b-a22b",
+            "label": "Qwen3 235B (Alibaba, flagship)",
+        },
+        {
+            "value": "nvidia_nim/qwen/qwen2.5-coder-32b-instruct",
+            "label": "Qwen2.5 Coder 32B (code-tuned)",
+        },
+        # NVIDIA Nemotron
+        {
+            "value": "nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1",
+            "label": "Nemotron Super 49B (NVIDIA tuned)",
+        },
+        {
+            "value": "nvidia_nim/nvidia/llama-3.1-nemotron-70b-instruct",
+            "label": "Nemotron 70B (NVIDIA tuned)",
+        },
+        {
+            "value": "nvidia_nim/nvidia/nemotron-nano-9b-v2",
+            "label": "Nemotron Nano 9B v2 (fast, cheap)",
+        },
+        # DeepSeek
+        {
+            "value": "nvidia_nim/deepseek-ai/deepseek-r1",
+            "label": "DeepSeek R1 (reasoning)",
+        },
+        # Mistral
+        {
+            "value": "nvidia_nim/mistralai/mixtral-8x22b-instruct-v0.1",
+            "label": "Mixtral 8x22B Instruct",
+        },
+    ],
+    "deepseek": [
+        {"value": "deepseek/deepseek-chat", "label": "DeepSeek Chat"},
+        {"value": "deepseek/deepseek-reasoner", "label": "DeepSeek Reasoner (R1)"},
+    ],
+    "cohere": [
+        {"value": "cohere/command-r-plus", "label": "Command R+ (flagship)"},
+        {"value": "cohere/command-r", "label": "Command R"},
+    ],
+    "togetherai": [
+        {
+            "value": "together_ai/meta-llama/Llama-3.3-70B-Instruct-Turbo",
+            "label": "Llama 3.3 70B Turbo",
+        },
+        {
+            "value": "together_ai/meta-llama/Llama-3.1-8B-Instruct-Turbo",
+            "label": "Llama 3.1 8B Turbo (fast)",
+        },
+    ],
 }
 
 # Roles with descriptions and default preference order
@@ -451,101 +944,312 @@ _ROLES: list[tuple[str, str, list[str]]] = [
     (
         "casual",
         "Casual chat — fast, everyday",
-        ["gemini", "openai", "github_copilot", "groq", "anthropic"],
+        ["gemini", "openai", "github_copilot", "groq", "nvidia_nim", "anthropic"],
     ),
-    ("code", "Code generation & debugging", ["anthropic", "openai", "github_copilot", "groq"]),
-    ("analysis", "Analysis & deep research", ["gemini", "openai", "github_copilot", "anthropic"]),
-    ("review", "Code review & critique", ["anthropic", "openai", "github_copilot", "gemini"]),
-    ("kg", "Knowledge Graph extraction (background, always Gemini free tier)", ["gemini"]),
+    (
+        "code",
+        "Code generation & debugging",
+        ["anthropic", "openai", "github_copilot", "nvidia_nim", "groq"],
+    ),
+    (
+        "analysis",
+        "Analysis & deep research",
+        ["gemini", "openai", "github_copilot", "anthropic", "nvidia_nim"],
+    ),
+    (
+        "review",
+        "Code review & critique",
+        ["anthropic", "openai", "github_copilot", "gemini", "nvidia_nim"],
+    ),
+    (
+        "kg",
+        "Knowledge Graph extraction (background, Gemini free tier recommended)",
+        ["gemini"],
+    ),
 ]
 
 
 def _auto_pick(providers: list[str], prefs: list[str], models_map: dict) -> str | None:
-    """Return the first available model for the first matching provider."""
+    """Return the first available model for the first matching provider (strict — no fallback)."""
     for prov in prefs:
         if prov in providers and prov in models_map:
             return models_map[prov][0]["value"]
     return None
 
 
+def _auto_pick_with_fallback(
+    providers: list[str], prefs: list[str], models_map: dict
+) -> str | None:
+    """Pick the best model from prefs; fall back to the user's first selected provider's
+    first known model if no pref matches.
+
+    This guarantees every role gets a model as long as the user picked at least one
+    provider with a known catalog.
+    """
+    picked = _auto_pick(providers, prefs, models_map)
+    if picked is not None:
+        return picked
+    # Fallback: first selected provider that has a known catalog
+    for prov in providers:
+        if prov in models_map and models_map[prov]:
+            return models_map[prov][0]["value"]
+    return None
+
+
 def _build_model_mappings(providers: list[str]) -> dict:
-    """Generate sensible model_mappings automatically (QuickStart / non-interactive)."""
+    """Generate sensible model_mappings automatically (QuickStart / non-interactive).
+
+    Every role gets a model via `_auto_pick_with_fallback` when the user's providers have
+    known catalogs. The KG role prefers Gemini (free tier, background quota friendly)
+    but falls back to the user's primary provider when Gemini is absent — the memory
+    engine still builds, just consumes the primary provider's quota.
+    """
     mappings: dict = {}
     for role, _desc, prefs in _ROLES:
         if role == "kg":
-            continue  # handled below — always Gemini Flash-Lite
-        model = _auto_pick(providers, prefs, _KNOWN_MODELS)
+            continue  # handled below with provider-specific logic
+        model = _auto_pick_with_fallback(providers, prefs, _KNOWN_MODELS)
         if model:
             mappings[role] = {"model": model, "fallback": None}
 
-    # vault: always ollama (local-only by design)
+    # vault: always ollama (local-only by design, enforces zero cloud leakage for spicy)
     if "ollama" in providers:
         mappings["vault"] = {"model": "ollama_chat/llama3.3", "fallback": None}
 
-    # kg: always Gemini Flash-Lite (free tier, 1000 req/day)
-    # This is independent of the user's chat provider choice.
+    # kg: Gemini Flash-Lite preferred (free tier, 1000 req/day) — falls back to user's
+    # primary provider when Gemini isn't configured. Memory engine needs *some* LLM.
     if "gemini" in providers:
         mappings["kg"] = {
             "model": "gemini/gemini-2.5-flash-lite",
             "fallback": "gemini/gemini-2.5-flash",
         }
+    else:
+        kg_fallback = _auto_pick_with_fallback(
+            providers, ["groq", "openai", "github_copilot", "nvidia_nim", "anthropic"], _KNOWN_MODELS
+        )
+        if kg_fallback:
+            mappings["kg"] = {"model": kg_fallback, "fallback": None}
 
     return mappings
 
 
-def _build_model_mappings_interactive(providers: list[str], prompter: "object") -> dict:
-    """Let the user pick a model for each role from their configured providers."""
-    # Build choices from all configured providers
-    available: list = []
-    try:
-        import questionary  # noqa: PLC0415
+def _count_available_models(providers: list[str]) -> int:
+    """Total number of known models across the user's selected providers."""
+    return sum(len(_KNOWN_MODELS.get(p, [])) for p in providers)
 
-        for prov in providers:
-            models = _KNOWN_MODELS.get(prov)
-            if not models:
-                continue
-            available.append(questionary.Separator(f"--- {prov} ---"))
-            for m in models:
-                available.append(questionary.Choice(m["label"], value=m["value"]))
-    except ImportError:
-        # No questionary — flat list of values
-        for prov in providers:
-            for m in _KNOWN_MODELS.get(prov, []):
-                available.append(m["value"])
 
-    if not available:
-        _print("[yellow]No known models for selected providers. Using defaults.[/]")
-        return _build_model_mappings(providers)
+def _print_mapping_summary(mappings: dict) -> None:
+    """Render the final role→model assignment as a Rich table (or plain list)."""
+    if not mappings:
+        _print("[yellow]No model_mappings generated. Edit synapse.json manually.[/]")
+        return
+
+    if _RICH_AVAILABLE and Table is not None and console is not None:
+        tbl = Table(title="Model Mappings", show_header=True, header_style="bold cyan")
+        tbl.add_column("Role", style="bold")
+        tbl.add_column("Model")
+        tbl.add_column("Fallback", style="dim")
+        for role, cfg in mappings.items():
+            tbl.add_row(role, cfg.get("model", "—"), cfg.get("fallback") or "—")
+        console.print(tbl)
+    else:
+        _print("\n[bold cyan]Model Mappings:[/]")
+        for role, cfg in mappings.items():
+            fb = cfg.get("fallback")
+            fb_str = f"  (fallback: {fb})" if fb else ""
+            _print(f"  {role:10s}  →  {cfg.get('model', '—')}{fb_str}")
+
+
+def _build_model_mappings_interactive(
+    providers: list[str], prompter: "object", config: dict
+) -> dict:
+    """Openclaw-style role picker backed by live /models catalogs.
+
+    UX contract:
+      1. Hit each provider's /models API with the user's key; fall back to
+         _KNOWN_MODELS only when the API is unreachable.
+      2. Present a single unified flat list of `provider/model` entries, each
+         annotated with a hint (ctx window + capability flags like `reasoning`).
+      3. When the catalog has >30 models AND >1 provider, ask the user to
+         optionally narrow to one provider before each role pick.
+      4. Use a searchable fuzzy picker (InquirerPy.fuzzy or questionary.autocomplete)
+         so the user types to filter. Always include an `[Enter model manually]`
+         escape hatch for models not in the catalog.
+      5. No pre-selected defaults. Single-model collapse: auto-assign when
+         only one model is available. `vault` role is forced to Ollama.
+    """
+    _print("\n[bold cyan]--- Fetching available models from providers ---[/]")
+    catalog = _fetch_live_catalog(providers, config)
+    flat = _flatten_catalog(catalog)
+
+    if not flat:
+        _print(
+            "\n[yellow]No models available for your providers. "
+            "Edit synapse.json → model_mappings manually.[/]"
+        )
+        return {}
+
+    # Single-model collapse — nothing to pick
+    if len(flat) == 1:
+        only = flat[0]
+        _print("\n[bold cyan]--- Model Selection ---[/]")
+        _print(
+            f"[green]Only one model available ({only['value']}) — "
+            "using it for all roles.[/]"
+        )
+        mappings: dict = {
+            role: {"model": only["value"], "fallback": None} for role, _, _ in _ROLES
+        }
+        if "ollama" in providers:
+            mappings["vault"] = {"model": "ollama_chat/llama3.3", "fallback": None}
+        _print_mapping_summary(mappings)
+        return mappings
 
     _print("\n[bold cyan]--- Model Selection ---[/]")
-    _print("Choose a model for each role. You can use the same model for multiple roles.\n")
+    _print(
+        f"Type to search. {len(flat)} models across {len(catalog)} providers. "
+        "No defaults — pick every role explicitly.\n"
+    )
 
-    mappings: dict = {}
-    for role, desc, prefs in _ROLES:
-        if role == "kg":
-            continue  # handled below — always Gemini Flash-Lite
-        default = _auto_pick(providers, prefs, _KNOWN_MODELS)
-        selected = prompter.select(  # type: ignore[attr-defined]
-            f"{role} ({desc}):",
-            choices=available,
-            default=default,
-        )
+    # Optional provider-filter step (shown once when the catalog is large).
+    active_provider: str = _prompt_provider_filter(flat, prompter)
+    filtered = (
+        flat if active_provider == "*" else [m for m in flat if m.get("provider") == active_provider]
+    )
+
+    mappings = {}
+    for role, desc, _prefs in _ROLES:
+        selected = _pick_model_fuzzy(role, desc, filtered, prompter)
+        if not selected:
+            # Manual entry returned blank — keep prompting for this role.
+            _print(f"  [yellow]![/] {role}: empty entry, try again.")
+            selected = _pick_model_fuzzy(role, desc, filtered, prompter)
         mappings[role] = {"model": selected, "fallback": None}
 
-    # vault: always ollama (local-only by design)
+    # vault: always ollama (local-only by design — architectural invariant)
     if "ollama" in providers:
         mappings["vault"] = {"model": "ollama_chat/llama3.3", "fallback": None}
 
-    # kg: always Gemini Flash-Lite (free tier, 1000 req/day)
-    # Not user-configurable — memory engine runs on Gemini regardless of chat provider.
-    if "gemini" in providers:
-        mappings["kg"] = {
-            "model": "gemini/gemini-2.5-flash-lite",
-            "fallback": "gemini/gemini-2.5-flash",
-        }
-        _print("[dim]   KG role auto-set to Gemini 2.5 Flash-Lite (free tier)[/]")
-
+    _print_mapping_summary(mappings)
     return mappings
+
+
+# ---------------------------------------------------------------------------
+# Embedding prefetch — avoid surprise ~274 MB download on first memory query
+# ---------------------------------------------------------------------------
+
+
+def _prefetch_embedding_models(providers: list[str]) -> None:
+    """Warm the embedding stack so the user doesn't wait on first chat.
+
+    Steps:
+      1. Instantiate FastEmbed to trigger ONNX model download (~274 MB CPU / ~550 MB GPU).
+         This is the active runtime provider (see sci_fi_dashboard/embedding/factory.py).
+      2. If Ollama is among the user's selected providers AND reachable, also pull
+         `nomic-embed-text` via Ollama. Useful for users who want a fully-local backup
+         embedding path or plan to run vLLM + Ollama mixed.
+
+    Both steps are best-effort. Failure here is non-fatal — runtime will auto-download
+    on first use if we can't prefetch now.
+    """
+    _print("\n[bold cyan]--- Embedding Model Prefetch ---[/]")
+
+    # --- Step 1: FastEmbed (primary runtime provider) ---
+    try:
+        from sci_fi_dashboard.embedding.factory import (  # noqa: PLC0415
+            create_provider,
+            reset_provider,
+        )
+
+        if _RICH_AVAILABLE and console is not None:
+            with console.status(
+                "[yellow]Downloading FastEmbed model "
+                "(nomic-embed-text-v1.5, ~274 MB — one-time)...[/]",
+                spinner="dots",
+            ):
+                reset_provider()
+                prov = create_provider({"embedding": {"provider": "fastembed"}})
+                # Trigger actual download by requesting an embedding
+                prov.embed_documents(["warmup"])
+        else:
+            _print("  Downloading FastEmbed model (nomic-embed-text-v1.5, ~274 MB)...")
+            reset_provider()
+            prov = create_provider({"embedding": {"provider": "fastembed"}})
+            prov.embed_documents(["warmup"])
+
+        _print("  [green]✓[/] FastEmbed model cached — first chat will be instant.")
+    except ImportError:
+        _print(
+            "  [yellow]![/] fastembed not installed — embeddings will auto-download "
+            "on first memory query (~274 MB). Run: pip install fastembed"
+        )
+    except Exception as exc:  # noqa: BLE001
+        _print(
+            f"  [yellow]![/] FastEmbed prefetch failed (non-fatal): {exc}\n"
+            "  Runtime will download on first use."
+        )
+
+    # --- Step 2: Ollama nomic-embed-text (optional, only if user picked Ollama) ---
+    if "ollama" not in providers:
+        return
+
+    try:
+        from cli.provider_steps import validate_ollama  # noqa: PLC0415
+    except ImportError:
+        return
+
+    # Read ollama api_base from config-in-progress (caller passes it in env-agnostic way);
+    # default to localhost which matches validate_ollama's default.
+    api_base = "http://localhost:11434"
+    health = validate_ollama(api_base)
+    if not health.ok:
+        _print(
+            "  [yellow]![/] Ollama not reachable — skipping nomic-embed-text pull. "
+            "Start Ollama and run: ollama pull nomic-embed-text"
+        )
+        return
+
+    import subprocess  # noqa: PLC0415
+
+    ollama_bin = shutil.which("ollama")
+    if not ollama_bin:
+        _print("  [yellow]![/] `ollama` binary not in PATH — skipping Ollama embed pull.")
+        return
+
+    try:
+        if _RICH_AVAILABLE and console is not None:
+            with console.status(
+                "[yellow]Pulling nomic-embed-text via Ollama (offline fallback)...[/]",
+                spinner="dots",
+            ):
+                result = subprocess.run(
+                    [ollama_bin, "pull", "nomic-embed-text"],
+                    capture_output=True,
+                    text=True,
+                    timeout=600,
+                    check=False,
+                )
+        else:
+            _print("  Pulling nomic-embed-text via Ollama...")
+            result = subprocess.run(
+                [ollama_bin, "pull", "nomic-embed-text"],
+                capture_output=True,
+                text=True,
+                timeout=600,
+                check=False,
+            )
+
+        if result.returncode == 0:
+            _print("  [green]✓[/] Ollama nomic-embed-text ready (offline fallback available).")
+        else:
+            _print(
+                f"  [yellow]![/] Ollama pull returned {result.returncode}: "
+                f"{result.stderr.strip()[:200] if result.stderr else 'no detail'}"
+            )
+    except subprocess.TimeoutExpired:
+        _print("  [yellow]![/] Ollama pull timed out after 10 min — try again manually.")
+    except Exception as exc:  # noqa: BLE001
+        _print(f"  [yellow]![/] Ollama pull failed (non-fatal): {exc}")
 
 
 # ---------------------------------------------------------------------------
@@ -1221,12 +1925,15 @@ def _run_interactive_impl(
     config["gateway"] = gw_cfg
 
     # --- Step 9: Generate model_mappings ---
-    if flow == "advanced":
-        config["model_mappings"] = _build_model_mappings_interactive(
-            list(config["providers"].keys()), prompter
-        )
-    else:
-        config["model_mappings"] = _build_model_mappings(list(config["providers"].keys()))
+    # Interactive picker always runs — user picks every role from each provider's live
+    # /models API. No pre-selected defaults regardless of flow. Headless path
+    # (_run_non_interactive) still auto-picks from env vars for CI/Docker.
+    config["model_mappings"] = _build_model_mappings_interactive(
+        list(config["providers"].keys()), prompter, config
+    )
+
+    # --- Step 9b: Prefetch embedding model (avoids surprise delay on first chat) ---
+    _prefetch_embedding_models(list(config["providers"].keys()))
 
     # --- Step 10: Write config (ONB-07) ---
     write_config(data_root, config)

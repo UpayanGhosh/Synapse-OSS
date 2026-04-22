@@ -17,6 +17,7 @@ All business logic lives in dedicated modules:
 import asyncio
 import logging
 import os
+import threading
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path as _Path
 
@@ -263,6 +264,31 @@ async def lifespan(app: FastAPI):
     except Exception as _cron_exc:
         logger.warning("[CRON] CronService init failed (non-fatal): %s", _cron_exc)
 
+    # GentleWorker — thermal-guarded proactive check-ins (PROA-01/02/03/04)
+    app.state.gentle_worker = None
+    try:
+        from sci_fi_dashboard.gentle_worker import GentleWorker
+
+        app.state.gentle_worker = GentleWorker(
+            graph=deps.brain,
+            cron_service=app.state.cron_service,
+            proactive_engine=deps._proactive_engine,
+            channel_registry=deps.channel_registry,
+        )
+        # Capture the main event loop so heavy_task_proactive_checkin can
+        # hop into it via asyncio.run_coroutine_threadsafe (PROA-02 safety).
+        app.state.gentle_worker._event_loop = asyncio.get_running_loop()
+        app.state.gentle_worker_thread = threading.Thread(
+            target=app.state.gentle_worker.start,
+            daemon=True,
+            name="gentle-worker",
+        )
+        app.state.gentle_worker_thread.start()
+        logger.info("[GentleWorker] Started in background thread")
+    except Exception as _gw_exc:
+        logger.warning("[GentleWorker] init failed (non-fatal): %s", _gw_exc)
+        app.state.gentle_worker = None
+
     # DiaryEngine — generates diary entries on session archive
     try:
         deps.init_diary_engine()
@@ -332,6 +358,10 @@ async def lifespan(app: FastAPI):
             print(f"[SBS] Shutdown snapshot saved for {persona_id}")
         except Exception as e:
             print(f"[SBS] Shutdown snapshot failed for {persona_id}: {e}")
+
+    if hasattr(app.state, "gentle_worker") and app.state.gentle_worker is not None:
+        app.state.gentle_worker.is_running = False
+        # Thread is daemon — will exit with process; no join needed
 
     worker_task.cancel()
     if hasattr(app.state, "proactive_engine") and app.state.proactive_engine:

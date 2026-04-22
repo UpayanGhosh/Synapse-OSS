@@ -33,14 +33,25 @@ first — all on your machine, with your data, under your full control.
 
 ### Active
 
-<!-- v3.0 — OpenClaw Feature Harvest -->
-- [ ] User can chat via any of 10+ LLM providers without code changes (OpenAI, Anthropic, DeepSeek, Mistral, Together)
-- [ ] 10+ bundled skills available out of the box (weather, reminders, notes, web scrape, translate, summarize, image describe)
-- [ ] User receives voice replies on WhatsApp via TTS (ElevenLabs or edge-tts)
-- [ ] User can request image generation ("draw me X") and receive it in chat
-- [ ] Cron jobs run in isolated agent contexts with separate memory
-- [ ] Web control panel provides real-time interactive dashboard with SSE
-- [ ] User can have real-time voice conversations via streaming transcription
+<!-- v3.1 — Reliability + OpenClaw Supervisor Patterns -->
+- [ ] WhatsApp inbound messages reliably reach the reply pipeline (no silent drops)
+- [ ] WhatsApp outbound retry queue flushes automatically on reconnect
+- [ ] ProactiveAwarenessEngine reaches out to users after 8h+ of silence (not dead code)
+- [ ] Skill-routing runs exactly once per message (no duplicate state mutations)
+- [ ] Session-key is derived from a single canonical builder end-to-end
+- [ ] Dead-but-connected WhatsApp sockets are detected by watchdog and force-reconnected
+- [ ] Self-echoes (bot replies triggering the pipeline) are suppressed via outbound tracker
+- [ ] Reconnect policy is configurable via synapse.json (initialMs/maxMs/factor/jitter/maxAttempts)
+- [ ] All gateway logs carry a correlation runId and redact PII identifiers
+- [ ] Baileys is upgraded to 7.x with pairing + media + groups validated
+- [ ] WhatsApp creds are persisted atomically per authDir (no corruption on abrupt restart)
+- [ ] Heartbeat subsystem sends configurable health pings to named recipients
+- [ ] /channels/whatsapp/status surfaces a healthState enum (logged-out/conflict/reconnecting/stopped)
+- [ ] Inbound access-control gate runs before the pipeline (not only at DmPolicy)
+- [ ] chat_pipeline.py is decomposed into phase modules (normalize/debounce/access/enrich/route/reply)
+
+<!-- v3.0 — OpenClaw Feature Harvest (still-in-flight, single phase pending) -->
+- [ ] User can have real-time voice conversations via streaming transcription (Phase 11 — carryover)
 
 ### Out of Scope
 
@@ -57,20 +68,38 @@ first — all on your machine, with your data, under your full control.
 
 **Current branch:** `develop` — v2.0 merged and pushed (2026-04-08). Ready for v3.0 work.
 
-## Current Milestone: v3.0 OpenClaw Feature Harvest
+## Current Milestone: v3.1 Reliability + OpenClaw Supervisor Patterns
 
-**Goal:** Port high-value design patterns from the OpenClaw TypeScript codebase (6000+ files, 47 providers, 53 skills) into Synapse-OSS Python — concepts not code, depth not breadth.
+**Goal:** Fix Synapse's WhatsApp unresponsiveness and dead proactive outreach, then port OpenClaw's battle-tested supervisor/reliability patterns (watchdog, echo tracker, heartbeat, structured logging, multi-account, configurable reconnect) into the Python stack. Derived from direct comparative analysis of OpenClaw (TypeScript, in-process Baileys) vs Synapse (Python + Node bridge).
 
 **Target features:**
-- Expanded LLM provider routing (OpenAI, Anthropic native, DeepSeek, Mistral, Together)
-- Bundled skills library (~10 most useful: weather, reminders, notes, translate, summarize)
-- TTS / voice output (ElevenLabs or edge-tts for WhatsApp voice replies)
-- Image generation (DALL-E/Flux via API)
-- Cron with isolated agents (each job runs in its own agent context)
-- Web control panel (interactive real-time dashboard, not just static HTML)
-- Realtime voice streaming (streaming Whisper or WebRTC for live voice chat)
 
-**Architecture zones (non-negotiable):**
+*P0 — Ship-blocking bug fixes:*
+- Await the `update_connection_state()` coroutine at `routes/whatsapp.py:147`
+- Wire `ProactiveAwarenessEngine.maybe_reach_out()` into the running `gentle_worker_loop()`
+- Remove the duplicate skill-routing block in `chat_pipeline.py` (lines 472 + 546)
+- Unify session-key derivation across `on_batch_ready()` and `process_message_pipeline()`
+
+*P1 — OpenClaw reliability pattern ports:*
+- Watchdog timer (30-min silence → force bridge restart)
+- Outbound echo tracker (suppress self-echo loops)
+- Configurable reconnect policy in `synapse.json`
+- Structured logging with `runId` + `redact_identifier()` PII helper
+- Inbound access-control gate pre-pipeline
+- Baileys 6.7.21 → 7.x upgrade (bridge side)
+- Atomic per-authDir creds-save queue
+- Heartbeat subsystem with configurable recipients + `HEARTBEAT_TOKEN` opt-out
+- `healthState` enum on `/channels/whatsapp/status`
+
+*P2 — Architectural modernization:*
+- Split monolithic `chat_pipeline.py` into phase modules (normalize → debounce → access → enrich → route → reply)
+- Multi-account WhatsApp (per-account authDir, allowlists, media limits)
+- Python↔Node bridge hardening (mutual heartbeat, webhook idempotency, auto-restart policy)
+
+**Carryover from v3.0:**
+- Phase 11 — Realtime Voice Streaming (96% of v3.0 complete; Phase 11 is the only open phase)
+
+**Architecture zones (non-negotiable, unchanged from v3.0):**
 - Zone 1 (immutable): API gateway, auth, keys, core message loop, self-modification
   engine itself, rollback mechanism
 - Zone 2 (adaptive, with consent): cron jobs, MCP integrations, model routing, memory
@@ -84,6 +113,8 @@ first — all on your machine, with your data, under your full control.
 - LanceDB upsert_facts() rebuilds index per call — use table.merge_insert() for bulk ops
 - Banglish ~2 chars/token — batch=16 MAX_CHARS=1000 for embedder
 - asyncio.create_task() for all channel starts — NEVER asyncio.run() (uvicorn owns loop)
+- **v3.1 specific:** The Python↔Node HTTP bridge is a distributed-systems seam — any reliability improvement must treat it as such (no fire-and-forget coroutines, no silent drops, mutual health checks)
+- **v3.1 specific:** Baileys 7.x has breaking changes in `useMultiFileAuthState` and `sendMessage` media shapes — validate pairing/media/groups before shipping
 
 ## Constraints
 
@@ -122,4 +153,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-08 — v3.0 milestone started (OpenClaw Feature Harvest)*
+*Last updated: 2026-04-21 — v3.1 milestone started (Reliability + OpenClaw Supervisor Patterns)*

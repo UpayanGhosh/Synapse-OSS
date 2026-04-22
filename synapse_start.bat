@@ -28,29 +28,6 @@ if not exist "%PROJECT_ROOT%\.env" (
     )
 )
 
-REM --- Check for Gemini API key (required for memory/KG engine) ---
-findstr /R "^GEMINI_API_KEY=.\{20,\}" "%PROJECT_ROOT%\.env" >nul 2>&1
-if %ERRORLEVEL% NEQ 0 (
-    echo.
-    echo    Synapse's memory engine needs a Google Gemini API key.
-    echo    This is FREE - no credit card, no billing, 1000 requests/day.
-    echo    Get yours at: https://aistudio.google.com/apikey
-    echo.
-    echo    NOTE: This is separate from your chat LLM.
-    echo    You can use any provider for chatting ^(Copilot, OpenAI, etc.^)
-    echo    but memory always runs on Gemini free tier in the background.
-    echo.
-    set /p "GEMINI_KEY=   Paste your Gemini API key (or press Enter to skip): "
-    if defined GEMINI_KEY (
-        echo GEMINI_API_KEY=!GEMINI_KEY!>> "%PROJECT_ROOT%\.env"
-        echo    [OK] Gemini key saved ^(powers Knowledge Graph + memory^)
-    ) else (
-        echo    [--] Skipped. Synapse will chat but memory won't build.
-        echo         Add GEMINI_API_KEY to .env later.
-    )
-    echo.
-)
-
 REM --- First-run: Python environment ---
 if not exist "%PROJECT_ROOT%\.venv\Scripts\python.exe" (
     echo [SETUP] First run detected - setting up Python environment...
