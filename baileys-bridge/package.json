@@ -4,7 +4,8 @@
   "description": "Baileys WhatsApp bridge microservice for Synapse-OSS",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "test": "node --test test/"
   },
   "dependencies": {
     "@whiskeysockets/baileys": "^6.7.21",
