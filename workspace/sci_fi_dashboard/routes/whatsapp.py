@@ -44,7 +44,10 @@ async def unified_webhook(channel_id: str, request: Request):
     # Handle non-message event types from WhatsApp bridge (delivery, typing, reactions)
     event_type = raw.get("type", "message")
     if event_type in ("message_status", "typing_indicator", "reaction"):
-        logger.debug("[gateway] WhatsApp event type=%s chat=%s", event_type, raw.get("chat_id", ""))
+        _log.debug(
+            "wa_non_message_event",
+            extra={"event_type": event_type, "chat_id": raw.get("chat_id", "")},
+        )
         # Future: broadcast via WebSocket, update delivery tracking DB, etc.
         return {"status": "accepted", "event_type": event_type}
 

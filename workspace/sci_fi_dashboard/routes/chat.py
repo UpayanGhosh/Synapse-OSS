@@ -15,7 +15,7 @@ router = APIRouter()
 @router.post("/chat", dependencies=[Depends(deps._check_rate_limit)])
 @router.post("/v1/chat/completions", dependencies=[Depends(deps._check_rate_limit)])
 async def chat_webhook(request: Request):
-    mint_run_id()
+    run_id = mint_run_id()
     deps.validate_api_key(request)
     try:
         body = await request.json()
@@ -65,6 +65,7 @@ async def chat_webhook(request: Request):
         metadata={
             "message_id": message_id,
             "sender_name": sender_name,
+            "run_id": run_id,
         },
     )
 
@@ -82,6 +83,7 @@ def _make_persona_handler(persona_id: str):
     async def handler(
         request: deps.ChatRequest, background_tasks: BackgroundTasks, http_request: Request
     ):
+        mint_run_id()
         deps._check_rate_limit(http_request)  # H-04: rate limit persona chat
         deps.validate_api_key(http_request)
         return await deps.persona_chat(request, persona_id, background_tasks)
