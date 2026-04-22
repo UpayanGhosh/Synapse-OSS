@@ -42,6 +42,7 @@ from sci_fi_dashboard.observability import get_child_logger
 from .base import BaseChannel, ChannelMessage
 from .network_errors import is_safe_to_retry_send
 from .security import ChannelSecurityConfig, PairingStore, resolve_dm_access
+from .supervisor import ReconnectPolicy, WhatsAppSupervisor
 
 # ---------------------------------------------------------------------------
 # Windows event-loop policy — must be set before any asyncio usage
@@ -67,15 +68,13 @@ class WhatsAppChannel(BaseChannel):
     bridge's HTTP API.
     """
 
-    MAX_RESTARTS: int = 5
-    INITIAL_BACKOFF: float = 0.0
-
     def __init__(
         self,
         bridge_port: int = 5010,
         python_webhook_url: str = "",
         security_config: ChannelSecurityConfig | None = None,
         pairing_store: PairingStore | None = None,
+        reconnect_policy: ReconnectPolicy | None = None,
     ) -> None:
         self._port = bridge_port
         self._webhook_url = python_webhook_url or "http://127.0.0.1:8000/channels/whatsapp/webhook"
@@ -94,6 +93,13 @@ class WhatsAppChannel(BaseChannel):
 
         # Retry queue reference (injected by api_gateway after construction)
         self._retry_queue = None
+
+        # SUPV-01..04: supervisor with configurable reconnect policy
+        self._reconnect_policy = reconnect_policy or ReconnectPolicy()
+        self._supervisor = WhatsAppSupervisor(
+            restart_callback=self._restart_bridge,
+            policy=self._reconnect_policy,
+        )
 
     # ------------------------------------------------------------------
     # Identity
@@ -141,11 +147,12 @@ class WhatsAppChannel(BaseChannel):
 
     async def start(self) -> None:
         await self._validate_nodejs()
+        await self._supervisor.start()  # SUPV-01: start inbound-silence watchdog
 
         attempts = 0
-        backoff = self.INITIAL_BACKOFF
+        policy = self._reconnect_policy
 
-        while attempts < self.MAX_RESTARTS:
+        while attempts < policy.max_attempts:
             try:
                 self._proc = await asyncio.create_subprocess_exec(
                     "node",
@@ -171,26 +178,47 @@ class WhatsAppChannel(BaseChannel):
                 await self._proc.wait()
                 rc = self._proc.returncode
                 self._status = "crashed"
+
+                # SUPV-04: halt reconnect if non-retryable state reached
+                if self._supervisor.stop_reconnect:
+                    logger.warning(
+                        "[WA] Reconnect halted (health_state=%s)",
+                        self._supervisor.health_state,
+                    )
+                    self._status = "stopped"
+                    await self._supervisor.stop()
+                    return
+
+                # SUPV-02: configurable backoff via policy
+                backoff_s = policy.compute_backoff_s(attempts)
                 logger.warning(
-                    "[WA] Bridge exited (code %d), restarting in %.1fs (attempt %d/%d)",
+                    "[WA] Bridge exited (code %d), restarting in %.2fs (attempt %d/%d)",
                     rc,
-                    backoff,
+                    backoff_s,
                     attempts + 1,
-                    self.MAX_RESTARTS,
+                    policy.max_attempts,
                 )
 
                 attempts += 1
-                await asyncio.sleep(backoff)
-                backoff = min(max(backoff * 2, 1.0), 60.0)
+                await asyncio.sleep(backoff_s)
+
+                # Re-check stop_reconnect after sleep
+                if self._supervisor.stop_reconnect:
+                    logger.warning("[WA] Reconnect halted during backoff — stopping loop")
+                    self._status = "stopped"
+                    await self._supervisor.stop()
+                    return
 
             except asyncio.CancelledError:
                 await self.stop()
                 raise
 
         self._status = "failed"
-        logger.error("[WA] Bridge failed %d times — giving up", self.MAX_RESTARTS)
+        logger.error("[WA] Bridge failed %d times — giving up", policy.max_attempts)
+        await self._supervisor.stop()
 
     async def stop(self) -> None:
+        await self._supervisor.stop()  # SUPV-01: stop watchdog before bridge kill
         if self._proc and self._proc.returncode is None:
             self._proc.terminate()
             try:
@@ -227,6 +255,12 @@ class WhatsAppChannel(BaseChannel):
         self._auth_timestamp = payload.get("authTimestamp")
         self._restart_count = payload.get("restartCount", 0)
         self._last_disconnect_reason = payload.get("lastDisconnectReason")
+
+        # SUPV-03/04: drive state machine from bridge signals
+        if self._connection_state == "connected":
+            self._supervisor.note_connected()
+        elif self._connection_state in ("logged_out", "reconnecting"):
+            self._supervisor.note_disconnect(self._last_disconnect_reason)
 
         # Code 515: restart-after-pairing
         disconnect_reason = payload.get("lastDisconnectReason")
@@ -283,6 +317,13 @@ class WhatsAppChannel(BaseChannel):
             except OSError as exc:
                 logger.warning("[WA] Failed to clear auth_state: %s", exc)
 
+    _HEALTH_STATE_MAP: dict[str, str] = {
+        "connected": "connected",
+        "logged_out": "logged-out",
+        "reconnecting": "reconnecting",
+        "conflict": "conflict",
+    }
+
     async def get_status(self) -> dict:
         """Enhanced health check with auth age, uptime, and connection metrics."""
         base = await self.health_check()
@@ -292,6 +333,12 @@ class WhatsAppChannel(BaseChannel):
         base["last_disconnect_reason"] = self._last_disconnect_reason
         base["connection_state"] = self._connection_state
         base["isLoggedOut"] = self._connection_state == "logged_out"
+        # SUPV-03: authoritative healthState from supervisor
+        if self._status in ("stopped", "failed"):
+            base["healthState"] = "stopped"
+        else:
+            base["healthState"] = self._supervisor.health_state
+        base["stop_reconnect"] = self._supervisor.stop_reconnect
         return base
 
     async def get_qr(self) -> str | None:
@@ -371,6 +418,7 @@ class WhatsAppChannel(BaseChannel):
 
     async def relink(self) -> bool:
         """POST /relink — force fresh QR cycle without full logout."""
+        self._supervisor.reset_stop_reconnect()  # SUPV-04: clear halt flag
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 r = await client.post(f"http://127.0.0.1:{self._port}/relink")

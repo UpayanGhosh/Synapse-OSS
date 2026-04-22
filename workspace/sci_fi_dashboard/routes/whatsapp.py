@@ -56,6 +56,10 @@ async def unified_webhook(channel_id: str, request: Request):
     if msg is None:
         return {"status": "skipped", "reason": "blocked_or_filtered", "accepted": True}
 
+    # SUPV-01: record inbound activity for the WhatsApp silence watchdog
+    if channel_id == "whatsapp" and hasattr(channel, "_supervisor") and channel._supervisor is not None:
+        channel._supervisor.record_activity()
+
     # H-09: Generate UUID fallback if message_id is empty/None
     effective_msg_id = msg.message_id or raw.get("message_id", "") or str(uuid.uuid4())
     if deps.dedup.is_duplicate(effective_msg_id):
