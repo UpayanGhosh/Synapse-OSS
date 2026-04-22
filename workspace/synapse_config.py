@@ -107,6 +107,12 @@ class SynapseConfig:
     image_gen: dict = field(default_factory=dict)
     tts: dict = field(default_factory=dict)
     logging: dict = field(default_factory=dict)  # OBS-04: per-module log levels + formatter config
+    reconnect_raw: dict = field(default_factory=dict)
+
+    @property
+    def reconnect(self):
+        """Lazy-materialized ReconnectPolicy from synapse.json['reconnect']."""
+        return reconnect_policy(self)
 
     @classmethod
     def load(cls) -> "SynapseConfig":
@@ -141,6 +147,7 @@ class SynapseConfig:
         image_gen: dict[str, Any] = {}
         tts_raw: dict[str, Any] = {}
         logging_raw: dict[str, Any] = {}
+        reconnect_raw: dict[str, Any] = {}
 
         config_file = data_root / "synapse.json"
         validated = None
@@ -166,6 +173,7 @@ class SynapseConfig:
             image_gen = raw.get("image_gen", {})
             tts_raw = raw.get("tts", {})
             logging_raw = raw.get("logging", {})
+            reconnect_raw = raw.get("reconnect", {})
 
         # Build SBSConfig from the "sbs" key (missing keys use dataclass defaults)
         sbs_config = SBSConfig(
@@ -200,6 +208,7 @@ class SynapseConfig:
             image_gen=image_gen,
             tts=tts_raw,
             logging=logging_raw,
+            reconnect_raw=reconnect_raw,
         )
 
 
@@ -345,3 +354,26 @@ def identity_links(config: SynapseConfig) -> dict:
     platform IDs that resolve to the canonical name.  Returns ``{}`` if absent.
     """
     return config.session.get("identityLinks", {})
+
+
+def reconnect_policy(config: "SynapseConfig"):
+    """Return the ReconnectPolicy materialized from config.reconnect_raw.
+
+    camelCase keys match synapse.json; snake_case used internally.
+    Missing keys use ReconnectPolicy defaults (1000/60000/2.0/0.2/5).
+    """
+    from sci_fi_dashboard.channels.supervisor import ReconnectPolicy  # lazy import — avoids circular dep
+
+    raw = config.reconnect_raw or {}
+    key_map = {
+        "initialMs": "initial_ms",
+        "maxMs": "max_ms",
+        "factor": "factor",
+        "jitter": "jitter",
+        "maxAttempts": "max_attempts",
+    }
+    kwargs = {}
+    for camel, snake in key_map.items():
+        if camel in raw:
+            kwargs[snake] = raw[camel]
+    return ReconnectPolicy(**kwargs)

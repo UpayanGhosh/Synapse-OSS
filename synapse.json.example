@@ -125,5 +125,13 @@
       "gateway.worker": "INFO",
       "dual_cognition": "INFO"
     }
+  },
+  "reconnect": {
+    "_comment": "SUPV-02: WhatsApp bridge reconnect backoff. All timing in milliseconds.",
+    "initialMs": 1000,
+    "maxMs": 60000,
+    "factor": 2.0,
+    "jitter": 0.2,
+    "maxAttempts": 5
   }
 }
