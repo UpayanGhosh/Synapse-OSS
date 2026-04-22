@@ -60,6 +60,22 @@ async def unified_webhook(channel_id: str, request: Request):
     if channel_id == "whatsapp" and hasattr(channel, "_supervisor") and channel._supervisor is not None:
         channel._supervisor.record_activity()
 
+    # ACL-02: self-echo detection — drop inbound matching a recent outbound
+    if (
+        channel_id == "whatsapp"
+        and hasattr(channel, "_echo_tracker")
+        and channel._echo_tracker is not None
+    ):
+        if channel._echo_tracker.is_echo(msg.chat_id, msg.text):
+            _log.info(
+                "self_echo_dropped",
+                extra={
+                    "chat_id": redact_identifier(msg.chat_id),
+                    "reason": "self-echo",
+                },
+            )
+            return {"status": "skipped", "reason": "self-echo", "accepted": True}
+
     # H-09: Generate UUID fallback if message_id is empty/None
     effective_msg_id = msg.message_id or raw.get("message_id", "") or str(uuid.uuid4())
     if deps.dedup.is_duplicate(effective_msg_id):

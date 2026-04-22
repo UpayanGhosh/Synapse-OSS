@@ -39,6 +39,8 @@ import httpx
 
 from sci_fi_dashboard.observability import get_child_logger
 
+from sci_fi_dashboard.gateway.echo_tracker import OutboundTracker
+
 from .base import BaseChannel, ChannelMessage
 from .network_errors import is_safe_to_retry_send
 from .security import ChannelSecurityConfig, PairingStore, resolve_dm_access
@@ -100,6 +102,9 @@ class WhatsAppChannel(BaseChannel):
             restart_callback=self._restart_bridge,
             policy=self._reconnect_policy,
         )
+
+        # ACL-01: self-echo tracker — ring buffer of last 20 outbound fingerprints
+        self._echo_tracker = OutboundTracker(window_size=20, ttl_s=60.0)
 
     # ------------------------------------------------------------------
     # Identity
@@ -439,7 +444,11 @@ class WhatsAppChannel(BaseChannel):
                     f"http://127.0.0.1:{self._port}/send",
                     json={"jid": chat_id, "text": text},
                 )
-                return r.status_code == 200
+                success = r.status_code == 200
+                if success:
+                    # ACL-01: record only on confirmed success (failed sends must not pollute tracker)
+                    self._echo_tracker.record(chat_id, text)
+                return success
         except httpx.RequestError as exc:
             if is_safe_to_retry_send(exc):
                 logger.warning("[WA] send() pre-connect failure (retryable): %s", exc)

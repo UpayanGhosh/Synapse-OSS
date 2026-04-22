@@ -145,16 +145,153 @@ class TestIsEcho:
 
 
 class TestEchoWebhook:
-    """ACL-02 integration seam: echo filtering at the inbound webhook layer."""
+    """ACL-02: self-echo detection at webhook integration point."""
 
     @pytest.mark.asyncio
-    @pytest.mark.xfail(reason="Webhook integration wired in Plan 03", strict=False)
-    async def test_echo_dropped_in_webhook(self):
-        """Echoed messages must be silently dropped before reaching FloodGate."""
-        pytest.fail("Plan 03 must implement real webhook integration")
+    async def test_echo_dropped_in_webhook(self, monkeypatch):
+        """Inbound matching a recent outbound is dropped with reason=self-echo."""
+        from datetime import datetime
+
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+
+        from sci_fi_dashboard import _deps as deps
+        from sci_fi_dashboard.channels.base import ChannelMessage
+        from sci_fi_dashboard.channels.whatsapp import WhatsAppChannel
+        from sci_fi_dashboard.gateway.echo_tracker import OutboundTracker
+        from sci_fi_dashboard.routes.whatsapp import router
+
+        app = FastAPI()
+        app.include_router(router)
+
+        wa = WhatsAppChannel()
+        wa._echo_tracker = OutboundTracker()
+        wa._echo_tracker.record("9190000@s.whatsapp.net", "hello from bot")
+        wa._supervisor = None
+
+        flood_called = {"count": 0}
+
+        class _StubRegistry:
+            def get(self, cid):
+                return wa if cid == "whatsapp" else None
+
+        class _StubDedup:
+            def is_duplicate(self, mid):
+                return False
+
+        class _StubFlood:
+            async def incoming(self, **kw):
+                flood_called["count"] += 1
+
+        class _StubQueue:
+            pending_count = 0
+
+        monkeypatch.setattr(deps, "channel_registry", _StubRegistry())
+        monkeypatch.setattr(deps, "dedup", _StubDedup())
+        monkeypatch.setattr(deps, "flood", _StubFlood())
+        monkeypatch.setattr(deps, "task_queue", _StubQueue())
+
+        async def _fake_receive(raw):
+            return ChannelMessage(
+                channel_id="whatsapp",
+                user_id="9190000",
+                chat_id="9190000@s.whatsapp.net",
+                text="hello from bot",
+                timestamp=datetime.now(),
+                is_group=False,
+                message_id="msg_xyz",
+                sender_name="bot",
+            )
+
+        wa.receive = _fake_receive
+
+        with TestClient(app) as client:
+            resp = client.post(
+                "/channels/whatsapp/webhook",
+                json={
+                    "type": "message",
+                    "chat_id": "9190000@s.whatsapp.net",
+                    "text": "hello from bot",
+                    "message_id": "msg_xyz",
+                },
+            )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["status"] == "skipped"
+        assert body["reason"] == "self-echo"
+        assert body["accepted"] is True
+        # FloodGate must NOT have been called for a self-echo
+        assert flood_called["count"] == 0
 
     @pytest.mark.asyncio
-    @pytest.mark.xfail(reason="Webhook integration wired in Plan 03", strict=False)
-    async def test_non_echo_passes_through(self):
-        """Non-echo messages must continue through the pipeline unchanged."""
-        pytest.fail("Plan 03 must implement real webhook integration")
+    async def test_non_echo_passes_through(self, monkeypatch):
+        """Inbound NOT matching any recent outbound proceeds to FloodGate."""
+        from datetime import datetime
+
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+
+        from sci_fi_dashboard import _deps as deps
+        from sci_fi_dashboard.channels.base import ChannelMessage
+        from sci_fi_dashboard.channels.whatsapp import WhatsAppChannel
+        from sci_fi_dashboard.gateway.echo_tracker import OutboundTracker
+        from sci_fi_dashboard.routes.whatsapp import router
+
+        app = FastAPI()
+        app.include_router(router)
+
+        wa = WhatsAppChannel()
+        wa._echo_tracker = OutboundTracker()
+        wa._echo_tracker.record("9190000@s.whatsapp.net", "something else entirely")
+        wa._supervisor = None
+
+        flood_called = {"count": 0}
+
+        class _StubRegistry:
+            def get(self, cid):
+                return wa if cid == "whatsapp" else None
+
+        class _StubDedup:
+            def is_duplicate(self, mid):
+                return False
+
+        class _StubFlood:
+            async def incoming(self, **kw):
+                flood_called["count"] += 1
+
+        class _StubQueue:
+            pending_count = 0
+
+        monkeypatch.setattr(deps, "channel_registry", _StubRegistry())
+        monkeypatch.setattr(deps, "dedup", _StubDedup())
+        monkeypatch.setattr(deps, "flood", _StubFlood())
+        monkeypatch.setattr(deps, "task_queue", _StubQueue())
+
+        async def _fake_receive(raw):
+            return ChannelMessage(
+                channel_id="whatsapp",
+                user_id="9190000",
+                chat_id="9190000@s.whatsapp.net",
+                text="hello from user — different text",
+                timestamp=datetime.now(),
+                is_group=False,
+                message_id="msg_abc",
+                sender_name="user",
+            )
+
+        wa.receive = _fake_receive
+
+        with TestClient(app) as client:
+            resp = client.post(
+                "/channels/whatsapp/webhook",
+                json={
+                    "type": "message",
+                    "chat_id": "9190000@s.whatsapp.net",
+                    "text": "hello from user",
+                    "message_id": "msg_abc",
+                },
+            )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["status"] == "queued"
+        assert flood_called["count"] == 1
