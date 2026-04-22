@@ -15,11 +15,12 @@ const {
   downloadMediaMessage,
   fetchLatestBaileysVersion,
 } = require('@whiskeysockets/baileys');
-const writeFileAtomic = require('write-file-atomic');
 const pino = require('pino');
 const qrcodeTerminal = require('qrcode-terminal');
 const path = require('path');
 const fs = require('fs');
+const { enqueueSaveCreds, waitForCredsSaveQueueWithTimeout } = require('./lib/creds_queue.js');
+const { maybeRestoreCredsFromBackup } = require('./lib/restore.js');
 
 // ---------------------------------------------------------------------------
 // Configuration from environment
@@ -33,8 +34,7 @@ const PYTHON_STATE_WEBHOOK_URL =
   PYTHON_WEBHOOK_URL.replace('/webhook', '/connection-state');
 const MEDIA_CACHE_DIR = path.resolve(process.env.MEDIA_CACHE_DIR || './media_cache');
 const MEDIA_CACHE_TTL_MS = parseInt(process.env.MEDIA_CACHE_TTL_MINUTES || '60', 10) * 60 * 1000;
-const AUTH_DIR = path.resolve('./auth_state');
-const AUTH_BAK_DIR = path.resolve('./auth_state.bak');
+const AUTH_DIR = path.resolve(process.env.SYNAPSE_AUTH_DIR || './auth_state');
 const AUTH_META_FILE = path.join(AUTH_DIR, 'meta.json');
 
 // ---------------------------------------------------------------------------
@@ -104,18 +104,20 @@ function notifyStateChange(state) {
 }
 
 // ---------------------------------------------------------------------------
-// atomicSaveCreds — WA-04: write auth state atomically to survive SIGKILL
+// migrateLegacyAuthStateBakDir — AUTH-V31 one-shot: rename legacy auth_state.bak/
+// to auth_state.bak.legacy/ on boot (kept for operator rollback; Phase 16 may remove).
+// Per 15-RESEARCH.md Pitfall 12.
 // ---------------------------------------------------------------------------
-async function atomicSaveCreds(creds) {
-  fs.mkdirSync(AUTH_DIR, { recursive: true });
-  const credsPath = path.join(AUTH_DIR, 'creds.json');
-  await writeFileAtomic(credsPath, JSON.stringify(creds, null, 2));
-
-  // Rolling backup
+function migrateLegacyAuthStateBakDir() {
+  const legacyDir = path.resolve('./auth_state.bak');
+  const markedLegacyDir = path.resolve('./auth_state.bak.legacy');
   try {
-    fs.cpSync(AUTH_DIR, AUTH_BAK_DIR, { recursive: true, force: true });
+    if (fs.existsSync(legacyDir) && !fs.existsSync(markedLegacyDir)) {
+      fs.renameSync(legacyDir, markedLegacyDir);
+      console.warn('[BRIDGE] Renamed legacy auth_state.bak/ to auth_state.bak.legacy/ (one-shot migration)');
+    }
   } catch (err) {
-    console.warn('[BRIDGE] auth_state backup failed (non-fatal):', err.message);
+    console.warn('[BRIDGE] Legacy auth_state.bak migration skipped:', err.message);
   }
 }
 
@@ -236,6 +238,8 @@ async function extractPayload(msg) {
 // ---------------------------------------------------------------------------
 async function startSocket() {
   fs.mkdirSync(AUTH_DIR, { recursive: true });
+  migrateLegacyAuthStateBakDir();                            // one-shot legacy cleanup
+  maybeRestoreCredsFromBackup(AUTH_DIR);                     // AUTH-V31-02 — before useMultiFileAuthState
 
   const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
   if (!baileysVersion) {
@@ -248,11 +252,6 @@ async function startSocket() {
     }
   }
 
-  const atomicSaveCredsWrapper = async () => {
-    await saveCreds();
-    await atomicSaveCreds(state.creds);
-  };
-
   sock = makeWASocket({
     version: baileysVersion,
     auth: state,
@@ -262,7 +261,8 @@ async function startSocket() {
     markOnlineOnConnect: false,
   });
 
-  sock.ev.on('creds.update', atomicSaveCredsWrapper);
+  // AUTH-V31-01 + AUTH-V31-03: per-authDir atomic queue + JSON-parse-before-backup guard
+  sock.ev.on('creds.update', () => enqueueSaveCreds(AUTH_DIR, saveCreds));
 
   sock.ev.on('groups.update', async ([event]) => {
     try {
@@ -515,7 +515,8 @@ app.post('/logout', async (req, res) => {
     try { await sock.logout(); } catch (_) {}
   }
   fs.rmSync(AUTH_DIR, { recursive: true, force: true });
-  fs.rmSync(AUTH_BAK_DIR, { recursive: true, force: true });
+  // creds.json.bak lived INSIDE AUTH_DIR so it's already gone; legacy dir (if present) too:
+  fs.rmSync(path.resolve('./auth_state.bak.legacy'), { recursive: true, force: true });
   connectionState = 'logged_out';
   qrData = null;
   connectedSince = null;
@@ -531,7 +532,7 @@ app.post('/relink', async (req, res) => {
     try { sock.end(undefined); } catch (_) {}
   }
   fs.rmSync(AUTH_DIR, { recursive: true, force: true });
-  fs.rmSync(AUTH_BAK_DIR, { recursive: true, force: true });
+  fs.rmSync(path.resolve('./auth_state.bak.legacy'), { recursive: true, force: true });
   connectionState = 'disconnected';
   qrData = null;
   connectedSince = null;
@@ -664,6 +665,14 @@ app.get('/groups/:jid', async (req, res) => {
 app.listen(PORT, () => {
   console.log(`[BRIDGE] Express listening on port ${PORT}`);
   console.log(`[BRIDGE] Forwarding inbound messages to ${PYTHON_WEBHOOK_URL}`);
+});
+
+process.on('SIGTERM', async () => {
+  try {
+    await waitForCredsSaveQueueWithTimeout(AUTH_DIR, 5000);
+  } finally {
+    process.exit(0);
+  }
 });
 
 startSocket().catch((err) => {
