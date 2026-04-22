@@ -153,3 +153,92 @@ def pytest_collection_modifyitems(config, items):
         for item in items:
             if "slow" in item.keywords:
                 item.add_marker(skip_slow)
+
+
+# ---------------------------------------------------------------------------
+# Phase 13 observability: clear run_id ContextVar between tests
+# ---------------------------------------------------------------------------
+import contextlib  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def clear_run_id_between_tests():
+    """OBS-01: Prevent run_id ContextVar leakage across tests.
+
+    Plan 13-02 creates sci_fi_dashboard.observability.context; until then this
+    fixture is a no-op (silently suppresses ImportError).
+    """
+    yield
+    with contextlib.suppress(ImportError):
+        from sci_fi_dashboard.observability.context import _run_id_ctx
+
+        # Reset to module default (None) -- no Token needed for post-test cleanup
+        _run_id_ctx.set(None)
+
+
+# ---------------------------------------------------------------------------
+# Phase 13 observability smoke helpers
+# ---------------------------------------------------------------------------
+
+import json as _obs_json  # noqa: E402  # avoid shadowing other json imports in this file
+import logging as _obs_logging  # noqa: E402
+
+
+@pytest.fixture
+def fake_whatsapp_payload():
+    """Factory producing a synthetic inbound WhatsApp payload matching the
+    schema unified_webhook expects. The JID contains a 10-digit run which,
+    after Phase 13 redaction, must NEVER appear raw in any log line.
+    """
+
+    def _build(
+        text: str = "smoke test message",
+        chat_id: str = "5551234567890@s.whatsapp.net",
+        sender_name: str = "Smoke Tester",
+    ) -> dict:
+        return {
+            "type": "message",
+            "chat_id": chat_id,
+            "text": text,
+            "message_id": "SMOKE_MSG_ID_001",
+            "sender_name": sender_name,
+            "channel_id": "whatsapp",
+        }
+
+    return _build
+
+
+@pytest.fixture
+def json_log_capture():
+    """Capture every emitted LogRecord after passing through the Synapse
+    observability stack (JsonFormatter + RunIdFilter). Yields a list of
+    (parsed_dict, raw_line) tuples. Handler is torn down at fixture exit.
+    """
+    from sci_fi_dashboard.observability.filters import RunIdFilter
+    from sci_fi_dashboard.observability.formatter import JsonFormatter
+
+    captured: list[tuple[dict, str]] = []
+
+    class _CaptureHandler(_obs_logging.Handler):
+        def emit(self, record: _obs_logging.LogRecord) -> None:
+            try:
+                line = self.format(record)
+                parsed = _obs_json.loads(line)
+                captured.append((parsed, line))
+            except Exception as e:  # pragma: no cover
+                captured.append(({"_capture_error": str(e)}, ""))
+
+    handler = _CaptureHandler()
+    handler.setFormatter(JsonFormatter())
+    handler.addFilter(RunIdFilter())
+
+    root = _obs_logging.getLogger()
+    prev_level = root.level
+    root.addHandler(handler)
+    root.setLevel(_obs_logging.DEBUG)
+
+    try:
+        yield captured
+    finally:
+        root.removeHandler(handler)
+        root.setLevel(prev_level)

@@ -29,6 +29,7 @@ from fastapi.staticfiles import StaticFiles
 from sci_fi_dashboard import _deps as deps
 from sci_fi_dashboard.channel_setup import register_optional_channels
 from sci_fi_dashboard.middleware import BodySizeLimitMiddleware, LoopbackOnlyMiddleware
+from sci_fi_dashboard.observability import apply_logging_config
 from sci_fi_dashboard.pipeline_helpers import (
     gentle_worker_loop,
     process_message_pipeline,
@@ -83,6 +84,7 @@ except Exception as _emb_exc:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    apply_logging_config(deps._synapse_cfg)
     print("[MEM] Booting Antigravity Gateway v2...")
     ensure_bridge_db()
     worker_task = asyncio.create_task(gentle_worker_loop())

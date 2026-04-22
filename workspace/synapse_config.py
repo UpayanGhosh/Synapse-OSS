@@ -106,6 +106,7 @@ class SynapseConfig:
     kg_extraction: KGExtractionConfig = field(default_factory=KGExtractionConfig)
     image_gen: dict = field(default_factory=dict)
     tts: dict = field(default_factory=dict)
+    logging: dict = field(default_factory=dict)  # OBS-04: per-module log levels + formatter config
 
     @classmethod
     def load(cls) -> "SynapseConfig":
@@ -139,6 +140,7 @@ class SynapseConfig:
         kg_extraction_raw: dict[str, Any] = {}
         image_gen: dict[str, Any] = {}
         tts_raw: dict[str, Any] = {}
+        logging_raw: dict[str, Any] = {}
 
         config_file = data_root / "synapse.json"
         validated = None
@@ -163,6 +165,7 @@ class SynapseConfig:
             kg_extraction_raw = raw.get("kg_extraction", {})
             image_gen = raw.get("image_gen", {})
             tts_raw = raw.get("tts", {})
+            logging_raw = raw.get("logging", {})
 
         # Build SBSConfig from the "sbs" key (missing keys use dataclass defaults)
         sbs_config = SBSConfig(
@@ -196,6 +199,7 @@ class SynapseConfig:
             kg_extraction=kg_config,
             image_gen=image_gen,
             tts=tts_raw,
+            logging=logging_raw,
         )
 
 

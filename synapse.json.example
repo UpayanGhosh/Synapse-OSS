@@ -112,5 +112,18 @@
     "min_messages": 15,
     "extract_interval_seconds": 1200,
     "kg_role": "kg"
+  },
+
+  "logging": {
+    "level": "INFO",
+    "format": "json",
+    "modules": {
+      "pipeline.chat": "INFO",
+      "llm.router": "INFO",
+      "channel.whatsapp": "INFO",
+      "route.whatsapp": "INFO",
+      "gateway.worker": "INFO",
+      "dual_cognition": "INFO"
+    }
   }
 }

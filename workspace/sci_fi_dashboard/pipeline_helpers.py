@@ -526,6 +526,7 @@ async def on_batch_ready(chat_id: str, combined_message: str, metadata: dict):
         channel_id=metadata.get("channel_id", "whatsapp"),
         is_group=is_group,
         session_key=session_key,
+        run_id=metadata.get("run_id"),
     )
     await deps.task_queue.enqueue(task)
 

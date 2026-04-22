@@ -133,7 +133,7 @@ Plans:
 - [ ] 13-01-PLAN.md — Wave 1: implement `redact_identifier()` HMAC-SHA256 helper + `observability/` package bootstrap (OBS-02)
 - [ ] 13-02-PLAN.md — Wave 1: ContextVar + `mint/set/get_run_id()` + `get_child_logger()` LoggerAdapter + `JsonFormatter` (ensure_ascii) + RunIdFilter + sensitive-field auto-redaction (OBS-01, OBS-03)
 - [ ] 13-03-PLAN.md — Wave 2: thread runId through WhatsApp route -> FloodGate -> Dedup -> Queue -> Worker -> channel.send; add `run_id` field to MessageTask; fix PII leaks at channels/whatsapp.py:571 and worker:~128 (OBS-01, OBS-02)
-- [ ] 13-04-PLAN.md — Wave 2: fix `pipeline_emitter.start_run()` singleton race via ContextVar backfeed; migrate `persona_chat` + `llm_router` to `get_child_logger()`; fix `[MAIL] Inbound` PII leak (OBS-01, OBS-02, OBS-03)
+- [x] 13-04-PLAN.md — Wave 2: fix `pipeline_emitter.start_run()` singleton race via ContextVar backfeed; migrate `persona_chat` + `llm_router` to `get_child_logger()`; fix `[MAIL] Inbound` PII leak (OBS-01, OBS-02, OBS-03)
 - [ ] 13-05-PLAN.md — Wave 2: add `logging` field to SynapseConfig; implement `apply_logging_config()` with per-module levels, third-party taming, and idempotent `_OWNED_MARKER` re-apply; wire into `lifespan()`; extend `synapse.json.example` (OBS-04)
 - [ ] 13-06-PLAN.md — Wave 3: E2E smoke test (fake WhatsApp -> one runId, zero raw digits, structured JSON only, per-module toggle works) + conftest fixtures + standalone 13-MANUAL-VALIDATION.md for the 3 checks pytest cannot reproduce
 

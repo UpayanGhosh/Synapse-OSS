@@ -20,6 +20,7 @@ import random
 import re
 import sqlite3
 import sys
+import time
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -59,6 +60,18 @@ except ImportError:
 _litellm_module.drop_params = True
 
 logger = logging.getLogger(__name__)
+
+# OBS-01: structured child logger — inherits runId from ContextVar via
+# RunIdFilter attached by apply_logging_config() in Plan 13-05.
+try:
+    from sci_fi_dashboard.observability import get_child_logger as _get_child_logger
+
+    _log = _get_child_logger("llm.router")
+except ImportError:
+    # Circular-import fallback for early-boot edge cases (the
+    # observability package is pure stdlib so this branch should
+    # never actually trigger in production).
+    _log = logger  # type: ignore[assignment]
 
 
 @dataclass
@@ -1049,9 +1062,10 @@ class SynapseLLMRouter:
                 logger.warning("claude CLI failed (%s) — falling back to litellm", cli_exc)
                 # Fall through to normal litellm path
 
+        _start_time = time.time()
         response = await self._do_call(role, messages, temperature, max_tokens, **kwargs)
         usage = getattr(response, "usage", None)
-        return LLMResult(
+        result = LLMResult(
             text=response.choices[0].message.content or "",
             model=response.model or "unknown",
             prompt_tokens=getattr(usage, "prompt_tokens", 0) or 0,
@@ -1059,6 +1073,18 @@ class SynapseLLMRouter:
             total_tokens=getattr(usage, "total_tokens", 0) or 0,
             finish_reason=response.choices[0].finish_reason,
         )
+        _log.info(
+            "llm_call_done",
+            extra={
+                "role": role,
+                "model": result.model,
+                "prompt_tokens": result.prompt_tokens,
+                "completion_tokens": result.completion_tokens,
+                "total_tokens": result.total_tokens,
+                "latency_ms": round((time.time() - _start_time) * 1000),
+            },
+        )
+        return result
 
     async def call_model(
         self,
