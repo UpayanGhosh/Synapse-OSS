@@ -242,3 +242,43 @@ def json_log_capture():
     finally:
         root.removeHandler(handler)
         root.setLevel(prev_level)
+
+
+# ---------------------------------------------------------------------------
+# Phase 14 shared fixtures
+# ---------------------------------------------------------------------------
+
+try:
+    from sci_fi_dashboard.observability.context import _run_id_ctx as _p14_run_id_ctx
+except ImportError:
+    _p14_run_id_ctx = None
+
+
+@pytest.fixture(autouse=True)
+def reset_run_id():
+    """Clear the observability run_id ContextVar between every test.
+
+    Prevents cross-test leakage when Phase 13 emitted a run_id in one test
+    and a later test asserts on a clean starting state.
+    """
+    token = None
+    if _p14_run_id_ctx is not None:
+        token = _p14_run_id_ctx.set(None)
+    yield
+    if _p14_run_id_ctx is not None and token is not None:
+        _p14_run_id_ctx.reset(token)
+
+
+@pytest.fixture
+def fake_monotonic():
+    """Return a mutable single-element list acting as a patchable monotonic clock.
+
+    Usage::
+
+        def test_something(fake_monotonic):
+            from unittest.mock import patch
+            with patch("module.path.time.monotonic", lambda: fake_monotonic[0]):
+                fake_monotonic[0] = 1000.0
+                ...
+    """
+    return [0.0]
