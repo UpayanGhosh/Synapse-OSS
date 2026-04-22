@@ -118,6 +118,16 @@ class CronRetentionConfig(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+class ReconnectPolicySchema(BaseModel, extra="forbid"):
+    """Schema for the `reconnect` key in synapse.json (SUPV-02)."""
+
+    initialMs: int | None = Field(default=None, ge=100, le=60_000)
+    maxMs: int | None = Field(default=None, ge=1_000, le=600_000)
+    factor: float | None = Field(default=None, ge=1.0, le=10.0)
+    jitter: float | None = Field(default=None, ge=0.0, le=1.0)
+    maxAttempts: int | None = Field(default=None, ge=1, le=100)
+
+
 class SynapseConfigSchema(BaseModel, extra="allow"):
     """Root configuration schema for synapse.json.
 
@@ -134,6 +144,7 @@ class SynapseConfigSchema(BaseModel, extra="allow"):
     group_policy: GroupPolicyConfig = Field(default_factory=GroupPolicyConfig)
     cron_retention: CronRetentionConfig = Field(default_factory=CronRetentionConfig)
     auth_profiles: list[AuthProfileConfig] = Field(default_factory=list)
+    reconnect: ReconnectPolicySchema | None = None
 
     model_config = {"populate_by_name": True}
 
