@@ -38,14 +38,14 @@ created: 2026-04-22
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| 14-01-01 | 01 | 0 | SUPV-01 | — | N/A | unit stub | `pytest tests/test_supervisor_watchdog.py -v` | ✅ W0 | ⬜ pending |
-| 14-01-02 | 01 | 0 | ACL-01 | — | N/A | unit stub | `pytest tests/test_echo_tracker.py -v` | ✅ W0 | ⬜ pending |
-| 14-02-01 | 02 | 1 | SUPV-01 | — | N/A | unit | `pytest tests/test_supervisor_watchdog.py::test_watchdog_fires -v` | ✅ W0 | ⬜ pending |
-| 14-02-02 | 02 | 1 | SUPV-02 | — | N/A | unit | `pytest tests/test_supervisor_watchdog.py::test_reconnect_policy -v` | ✅ W0 | ⬜ pending |
-| 14-02-03 | 02 | 1 | SUPV-03 | — | N/A | unit | `pytest tests/test_supervisor_watchdog.py::test_health_state_transitions -v` | ✅ W0 | ⬜ pending |
-| 14-02-04 | 02 | 1 | SUPV-04 | — | N/A | unit | `pytest tests/test_supervisor_watchdog.py::test_nonretryable_codes -v` | ✅ W0 | ⬜ pending |
-| 14-03-01 | 03 | 1 | ACL-01 | — | Echo fingerprint prevents self-loop | unit | `pytest tests/test_echo_tracker.py::test_echo_dropped -v` | ✅ W0 | ⬜ pending |
-| 14-03-02 | 03 | 1 | ACL-02 | — | N/A | unit | `pytest tests/test_echo_tracker.py::test_non_echo_passes -v` | ✅ W0 | ⬜ pending |
+| 14-01-01 | 01 | 0 | SUPV-01 | — | N/A | unit stub | `pytest tests/test_supervisor_watchdog.py -v` | ✅ W0 | ✅ green |
+| 14-01-02 | 01 | 0 | ACL-01 | — | N/A | unit stub | `pytest tests/test_echo_tracker.py -v` | ✅ W0 | ✅ green |
+| 14-02-01 | 02 | 1 | SUPV-01 | — | N/A | unit | `pytest tests/test_supervisor_watchdog.py::test_watchdog_fires -v` | ✅ W0 | ✅ green |
+| 14-02-02 | 02 | 1 | SUPV-02 | — | N/A | unit | `pytest tests/test_supervisor_watchdog.py::test_reconnect_policy -v` | ✅ W0 | ✅ green |
+| 14-02-03 | 02 | 1 | SUPV-03 | — | N/A | unit | `pytest tests/test_supervisor_watchdog.py::test_health_state_transitions -v` | ✅ W0 | ✅ green |
+| 14-02-04 | 02 | 1 | SUPV-04 | — | N/A | unit | `pytest tests/test_supervisor_watchdog.py::test_nonretryable_codes -v` | ✅ W0 | ✅ green |
+| 14-03-01 | 03 | 1 | ACL-01 | — | Echo fingerprint prevents self-loop | unit | `pytest tests/test_echo_tracker.py::test_echo_dropped -v` | ✅ W0 | ✅ green |
+| 14-03-02 | 03 | 1 | ACL-02 | — | N/A | unit | `pytest tests/test_echo_tracker.py::test_non_echo_passes -v` | ✅ W0 | ✅ green |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
