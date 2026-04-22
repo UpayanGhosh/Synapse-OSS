@@ -82,7 +82,7 @@ def _assert_no_null_runid_on_critical_path(
     for idx, (parsed, line) in enumerate(captured):
         module = parsed.get("module") or ""
         run_id = parsed.get("runId")
-        if run_id is None and _CRITICAL_PATH_MODULE_RX.search(module):
+        if (run_id is None or run_id == "<no-run>") and _CRITICAL_PATH_MODULE_RX.search(module):
             sha = hashlib.sha256(line.encode()).hexdigest()[:16]
             null_critical.append((idx, module, sha))
     if null_critical:
@@ -151,7 +151,7 @@ def _get_app():
 def test_single_inbound_smoke(
     fake_whatsapp_payload,
     json_log_capture,
-    monkeypatch,
+    # monkeypatch: add back + monkeypatch.setenv("DISABLE_LLM_CALLS", "1") when T-13-SMOKE-04 hook is needed
 ):
     """Send one synthetic WhatsApp inbound; verify all four OBS invariants.
 
@@ -229,6 +229,10 @@ def test_per_module_level_toggle(
         client.post("/channels/whatsapp/webhook", json=payload)
         time.sleep(3.5)
 
+    assert len(json_log_capture) > 0, (
+        "OBS-04 precondition: no log lines were captured at all — "
+        "cannot verify that pipeline.chat INFO was silenced (test environment issue)"
+    )
     pipeline_chat_lines = [
         p
         for p, _ in json_log_capture
