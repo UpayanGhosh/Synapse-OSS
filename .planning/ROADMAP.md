@@ -165,7 +165,7 @@ Plans:
   5. Group metadata fetch returns `{id, subject, participants, ...}` and an inbound message in a group is correctly routed by `self-JID + chat-JID` on 7.x — confirmed by a group smoke test asserting both metadata structure and a round-trip reply
 **Plans**: 7 plans
 Plans:
-- [ ] 15-00-PLAN.md — Wave 0: Node `node:test` harness + lib/ module skeletons + tmp-authDir + corrupt-creds fixtures + OGG Opus test fixture + RED test stubs for every REQ + 15-MANUAL-VALIDATION.md scaffold (all REQs)
+- [x] 15-00-PLAN.md — Wave 0: Node `node:test` harness + lib/ module skeletons + tmp-authDir + corrupt-creds fixtures + OGG Opus test fixture + RED test stubs for every REQ + 15-MANUAL-VALIDATION.md scaffold (all REQs)
 - [ ] 15-01-PLAN.md — Wave 1: Port OpenClaw `enqueueSaveCreds` per-authDir Promise-chain queue + `safeSaveCreds` with JSON-parse-before-backup guard + chmod 600 to `baileys-bridge/lib/creds_queue.js` (AUTH-V31-01, AUTH-V31-03)
 - [ ] 15-02-PLAN.md — Wave 1: Port OpenClaw `maybeRestoreCredsFromBackup` + `readCredsJsonRaw` size guard to `baileys-bridge/lib/restore.js` (AUTH-V31-02)
 - [ ] 15-03-PLAN.md — Wave 2: Replace `atomicSaveCredsWrapper` in `index.js` with `enqueueSaveCreds` wiring; call `maybeRestoreCredsFromBackup` before `useMultiFileAuthState`; remove legacy `auth_state.bak/` dir-copy; rename legacy bak dir to `.legacy/` (AUTH-V31-01..03)
@@ -286,7 +286,7 @@ Phases execute in dependency order: 12 -> 13 -> 14 -> 15 -> 16 -> 17 -> 18
 | 12. P0 Bug Fixes (Ship-Blocking) | v3.1 | 0/TBD | Not started | - |
 | 13. Structured Observability | v3.1 | 0/7 | Not started | - |
 | 14. Supervisor + Watchdog + Echo Tracker | v3.1 | 0/3 | Not started | - |
-| 15. Auth Persistence + Baileys 7.x | v3.1 | 0/7 | Not started | - |
+| 15. Auth Persistence + Baileys 7.x | v3.1 | 1/7 | In Progress|  |
 | 16. Heartbeat + Bridge Hardening | v3.1 | 0/TBD | Not started | - |
 | 17. Pipeline Decomposition + Inbound Gate | v3.1 | 0/TBD | Not started | - |
 | 18. Multi-Account WhatsApp | v3.1 | 0/TBD | Not started | - |

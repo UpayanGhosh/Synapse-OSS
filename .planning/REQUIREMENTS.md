@@ -44,9 +44,9 @@ Scope derived from a direct comparative analysis of Synapse-OSS against OpenClaw
 
 ### Auth Persistence
 
-- [ ] **AUTH-V31-01**: WhatsApp creds are saved atomically via a per-authDir queue — no concurrent writes can corrupt `creds.json`
-- [ ] **AUTH-V31-02**: Corrupted `creds.json` on boot falls back to the most recent valid backup before forcing a re-pair
-- [ ] **AUTH-V31-03**: Backup is only written when the current `creds.json` parses as valid JSON (never clobbers a good backup with corrupt data)
+- [x] **AUTH-V31-01**: WhatsApp creds are saved atomically via a per-authDir queue — no concurrent writes can corrupt `creds.json`
+- [x] **AUTH-V31-02**: Corrupted `creds.json` on boot falls back to the most recent valid backup before forcing a re-pair
+- [x] **AUTH-V31-03**: Backup is only written when the current `creds.json` parses as valid JSON (never clobbers a good backup with corrupt data)
 
 ### Heartbeat Health Pings
 
@@ -58,10 +58,10 @@ Scope derived from a direct comparative analysis of Synapse-OSS against OpenClaw
 
 ### Baileys Upgrade
 
-- [ ] **BAIL-01**: `baileys-bridge/package.json` is upgraded from `^6.7.21` to the latest stable 7.x
-- [ ] **BAIL-02**: QR pairing + multi-device login validated end-to-end on 7.x
-- [ ] **BAIL-03**: Media (image / audio / document / voice) send + receive validated on 7.x
-- [ ] **BAIL-04**: Group metadata fetch + group message routing validated on 7.x
+- [x] **BAIL-01**: `baileys-bridge/package.json` is upgraded from `^6.7.21` to the latest stable 7.x
+- [x] **BAIL-02**: QR pairing + multi-device login validated end-to-end on 7.x
+- [x] **BAIL-03**: Media (image / audio / document / voice) send + receive validated on 7.x
+- [x] **BAIL-04**: Group metadata fetch + group message routing validated on 7.x
 
 ### Multi-Account WhatsApp
 
@@ -109,13 +109,13 @@ Which v3.1 phases cover which v3.1 requirements. Filled after v3.1 ROADMAP.md cr
 | SUPV-04 | Phase 14 | Pending |
 | ACL-01 | Phase 14 | Pending |
 | ACL-02 | Phase 14 | Pending |
-| AUTH-V31-01 | Phase 15 | Pending |
-| AUTH-V31-02 | Phase 15 | Pending |
-| AUTH-V31-03 | Phase 15 | Pending |
-| BAIL-01 | Phase 15 | Pending |
-| BAIL-02 | Phase 15 | Pending |
-| BAIL-03 | Phase 15 | Pending |
-| BAIL-04 | Phase 15 | Pending |
+| AUTH-V31-01 | Phase 15 | Complete |
+| AUTH-V31-02 | Phase 15 | Complete |
+| AUTH-V31-03 | Phase 15 | Complete |
+| BAIL-01 | Phase 15 | Complete |
+| BAIL-02 | Phase 15 | Complete |
+| BAIL-03 | Phase 15 | Complete |
+| BAIL-04 | Phase 15 | Complete |
 | HEART-01 | Phase 16 | Pending |
 | HEART-02 | Phase 16 | Pending |
 | HEART-03 | Phase 16 | Pending |

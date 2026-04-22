@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v3.1
 milestone_name: Reliability + OpenClaw Supervisor Patterns
 status: executing
-stopped_at: ROADMAP.md written — 7 phases (12-18), 44 REQ-IDs mapped at 100% coverage; REQUIREMENTS.md traceability updated
-last_updated: "2026-04-21T20:44:54.015Z"
-last_activity: 2026-04-21 -- Phase 13 planning complete
+stopped_at: Completed 15-00-PLAN.md
+last_updated: "2026-04-22T17:59:08.576Z"
+last_activity: 2026-04-22 -- Phase 15 planning complete
 progress:
   total_phases: 6
   completed_phases: 5
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-04-21)
 Phase: 12 of 18 (P0 Bug Fixes — Ship-Blocking) — v3.1 starts at 12
 Plan: — (not yet planned)
 Status: Ready to execute
-Last activity: 2026-04-21 -- Phase 13 planning complete
+Last activity: 2026-04-22 -- Phase 15 planning complete
 
 Progress (v3.1): [░░░░░░░░░░] 0% (0/7 phases complete)
 
@@ -74,6 +74,8 @@ Decisions are logged in PROJECT.md Key Decisions table. Recent decisions affecti
 - [v3.1 roadmap]: HEART + BRIDGE bundled in Phase 16 — share emitter infra from OBS (Phase 13) and supervisor hooks from Phase 14
 - [v3.1 roadmap]: PIPE (Phase 17) ships AFTER WA-FIX-05 cleanup — decomposition starts from known-good baseline; ACL-03 (gate before FloodGate) rides along because it changes inbound ordering
 - [v3.1 roadmap]: MULT (Phase 18) is last — depends on per-authDir creds-queue isolation (Phase 15), per-account healthState (Phase 14), per-account log-correlation (Phase 13), bridge contract (Phase 16), and pipeline context threading (Phase 17)
+- [Phase 15]: Used node --test test/*.test.js glob instead of directory path — Windows requires explicit glob on Node 22 win32
+- [Phase 15]: Synthetic OGG Opus fixture written via hand-crafted Node.js page builder (ffmpeg absent) — 129 bytes, valid OggS header, zero PII
 
 ### Pending Todos
 
@@ -88,8 +90,8 @@ None active. v3.1 scope is fully defined; ready to plan Phase 12.
 
 ## Session Continuity
 
-Last session: 2026-04-21 (v3.1 milestone roadmap drafted)
-Stopped at: ROADMAP.md written — 7 phases (12-18), 44 REQ-IDs mapped at 100% coverage; REQUIREMENTS.md traceability updated
+Last session: 2026-04-22T17:59:02.761Z
+Stopped at: Completed 15-00-PLAN.md
 Resume file: None
 Next step: `/gsd-plan-phase 12` to decompose Phase 12 (P0 Bug Fixes) into plans
 
