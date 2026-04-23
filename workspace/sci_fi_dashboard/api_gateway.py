@@ -105,6 +105,39 @@ async def lifespan(app: FastAPI):
         app.state.retry_queue = _retry_queue
         print("[INFO] WhatsApp retry queue started.")
 
+    # Phase 16 BRIDGE-02/03: Bridge /health poller with gated restart
+    app.state.bridge_health_poller = None
+    try:
+        if (
+            isinstance(wa_ch, WhatsAppChannel)
+            and hasattr(wa_ch, "_supervisor")
+            and wa_ch._supervisor is not None
+        ):
+            from sci_fi_dashboard.channels.bridge_health_poller import BridgeHealthPoller
+            from sci_fi_dashboard.pipeline_emitter import get_emitter as _get_poller_emitter
+
+            bridge_cfg = getattr(deps._synapse_cfg, "bridge", None) or {}
+            poller = BridgeHealthPoller(
+                channel=wa_ch,
+                supervisor=wa_ch._supervisor,
+                interval_s=float(bridge_cfg.get("healthPollIntervalSeconds", 30.0)),
+                failures_before_restart=int(bridge_cfg.get("healthFailuresBeforeRestart", 3)),
+                timeout_s=float(bridge_cfg.get("healthPollTimeoutSeconds", 5.0)),
+                grace_window_s=float(bridge_cfg.get("healthGraceWindowSeconds", 60.0)),
+                emitter=_get_poller_emitter(),
+            )
+            wa_ch._bridge_health_poller = poller  # surfaces in get_status as bridge_health
+            await poller.start()
+            app.state.bridge_health_poller = poller
+            logger.info(
+                "[BRIDGE_HEALTH] Poller started (interval=%ss, threshold=%d)",
+                bridge_cfg.get("healthPollIntervalSeconds", 30),
+                bridge_cfg.get("healthFailuresBeforeRestart", 3),
+            )
+    except Exception as _poller_exc:
+        logger.warning("[BRIDGE_HEALTH] Poller init failed (non-fatal): %s", _poller_exc)
+        app.state.bridge_health_poller = None
+
     from gateway.worker import MessageWorker
 
     app.state.worker = MessageWorker(
@@ -264,6 +297,59 @@ async def lifespan(app: FastAPI):
     except Exception as _cron_exc:
         logger.warning("[CRON] CronService init failed (non-fatal): %s", _cron_exc)
 
+    # Phase 16 HEART-01..05: Heartbeat runner — scheduled outbound pings
+    app.state.heartbeat_runner = None
+    try:
+        heartbeat_cfg = getattr(deps._synapse_cfg, "heartbeat", None) or {}
+        if heartbeat_cfg.get("enabled", False):
+            from sci_fi_dashboard.chat_pipeline import persona_chat
+            from sci_fi_dashboard.gateway.heartbeat_runner import HeartbeatRunner
+            from sci_fi_dashboard.pipeline_emitter import get_emitter as _get_heartbeat_emitter
+            from sci_fi_dashboard.schemas import ChatRequest
+
+            async def _heartbeat_reply_adapter(prompt: str) -> str:
+                """Adapter: heartbeat prompt -> persona_chat -> LLM reply text.
+
+                Uses session_key="heartbeat" so heartbeat cycles never appear
+                in user-visible conversation history.
+                """
+                req = ChatRequest(
+                    message=prompt,
+                    session_key="heartbeat",
+                    user_id="the_creator",
+                )
+                try:
+                    result = await asyncio.wait_for(
+                        persona_chat(req, "the_creator"),
+                        timeout=60.0,
+                    )
+                except TimeoutError:
+                    logger.warning("[HEARTBEAT] persona_chat timed out after 60s")
+                    return ""
+                if isinstance(result, dict):
+                    return str(result.get("reply", ""))
+                return str(result or "")
+
+            app.state.heartbeat_runner = HeartbeatRunner(
+                channel_registry=deps.channel_registry,
+                cfg=deps._synapse_cfg,
+                get_reply_fn=_heartbeat_reply_adapter,
+                emitter=_get_heartbeat_emitter(),
+                interval_s=float(heartbeat_cfg.get("interval_s", 1800)),
+                channel_name="whatsapp",
+            )
+            await app.state.heartbeat_runner.start()
+            logger.info(
+                "[HEARTBEAT] Runner started (interval=%ss, recipients=%d)",
+                heartbeat_cfg.get("interval_s", 1800),
+                len(heartbeat_cfg.get("recipients", [])),
+            )
+        else:
+            logger.info("[HEARTBEAT] Disabled (heartbeat.enabled=false in synapse.json)")
+    except Exception as _heart_exc:
+        logger.warning("[HEARTBEAT] Runner init failed (non-fatal): %s", _heart_exc)
+        app.state.heartbeat_runner = None
+
     # GentleWorker — thermal-guarded proactive check-ins (PROA-01/02/03/04)
     app.state.gentle_worker = None
     try:
@@ -372,6 +458,13 @@ async def lifespan(app: FastAPI):
         await app.state.mcp_client.disconnect_all()
     if hasattr(app.state, "retry_queue"):
         await app.state.retry_queue.stop()
+    # Phase 16: stop heartbeat runner + bridge health poller BEFORE channel_registry.stop_all
+    if hasattr(app.state, "heartbeat_runner") and app.state.heartbeat_runner is not None:
+        with suppress(Exception):
+            await app.state.heartbeat_runner.stop()
+    if hasattr(app.state, "bridge_health_poller") and app.state.bridge_health_poller is not None:
+        with suppress(Exception):
+            await app.state.bridge_health_poller.stop()
     await deps.channel_registry.stop_all()
     if hasattr(app.state, "worker"):
         await app.state.worker.stop()
