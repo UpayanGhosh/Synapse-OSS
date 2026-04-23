@@ -216,7 +216,10 @@ async def whatsapp_heartbeat_test(request: Request):
             await runner.run_heartbeat_once(to, dry_run=True)
         except Exception as exc:
             # HEART-05 contract — never crash on a single recipient
-            logger.warning("[HEARTBEAT_TEST] recipient=%s failed: %s", to, exc)
+            logger.warning(
+                "heartbeat_test_failed",
+                extra={"to_redacted": redact_identifier(to), "error": str(exc)},
+            )
 
     return {
         "ok": True,
