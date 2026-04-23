@@ -1,10 +1,19 @@
 'use strict';
 
+// Node 20+ required for Baileys 7.x — fail fast with a clear message.
+const _nodeMajor = parseInt((process.versions && process.versions.node || '0').split('.')[0], 10);
+if (!Number.isFinite(_nodeMajor) || _nodeMajor < 20) {
+  console.error('[BRIDGE] FATAL: Node.js 20.x or newer is required for Baileys 7.x.');
+  console.error('[BRIDGE] Detected:', process.versions && process.versions.node, '— install from https://nodejs.org/');
+  console.error('[BRIDGE] See DEPENDENCIES.md for rationale.');
+  process.exit(1);
+}
+
 // baileys-bridge/index.js
 // CommonJS Node.js Express + Baileys WhatsApp bridge microservice for Synapse-OSS.
 // Exposes REST endpoints for outbound messages, media, reactions, group management,
 // session control (logout/relink), and connection monitoring.
-// Node.js 18+ required (uses built-in global fetch, not node-fetch npm).
+// Node.js 20+ required (Baileys 7.x — uses p-queue@9 which requires Node 20+).
 
 const express = require('express');
 const NodeCache = require('node-cache');

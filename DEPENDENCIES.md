@@ -82,3 +82,21 @@ channels/registry.py
 - `ChannelRegistry` is lazy-imported in `gateway/worker.py`
 - `LanceDBVectorStore` is conditionally imported in `memory_engine.py`
 - `SynapseConfig` imported at function level in `db.py`, `sqlite_graph.py`
+
+---
+
+### Baileys 7.x Upgrade (Phase 15)
+
+**Pinned version:** `7.0.0-rc.9` (exact, no caret)
+
+**Why exact pin:** Pre-release RC + active LID-mapping breaking changes. Floating pins would introduce regression surface on every `npm install`.
+
+**Node requirement:** `>=20.0.0` (up from `>=18.0.0`). Baileys 7.x uses `p-queue@9` which requires Node 20+.
+
+**ESM decision:** Option B — CommonJS works. `require('@whiskeysockets/baileys')` resolves correctly on Node 22 (`typeof b.default === 'function'`). No ESM conversion needed; bridge stays `'use strict'` CommonJS.
+
+**npm audit findings:** 3 critical severity — all trace to `protobufjs < 7.5.5` nested inside `@whiskeysockets/libsignal-node` (vendored at `node_modules/libsignal/node_modules/protobufjs@6.8.8`). This is an upstream Baileys packaging issue — `npm audit fix` cannot resolve it because the vulnerable copy is owned by `libsignal`'s internal `node_modules`. Not introduced by this upgrade; identical to Baileys 6.x. Awaiting a `libsignal-node` release that updates its bundled protobufjs.
+
+**Maintainer directive:** Baileys 6.x is end-of-lifed. Release notes: "Hotfix to fix issue in pairing. Move to 7.0.0-rc.6 as soon as possible."
+
+**LID-mapping note:** Baileys 7.x introduces `@lid` JIDs for group participants. Existing 6.x `creds.json` may require re-pair on first 7.x boot.

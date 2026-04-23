@@ -11,6 +11,14 @@ echo ""
 project_root="$(cd "$(dirname "$0")" && pwd)"
 cd "$project_root"
 
+# Phase 15: Baileys 7.x requires Node 20+
+NODE_VERSION="$(node --version 2>/dev/null | sed 's/^v//' | cut -d. -f1)"
+if [ -z "$NODE_VERSION" ] || [ "$NODE_VERSION" -lt 20 ]; then
+  echo "ERROR: Node.js 20+ required (found: ${NODE_VERSION:-none})." >&2
+  echo "See DEPENDENCIES.md -- Baileys 7.x needs Node 20." >&2
+  exit 1
+fi
+
 LOG_DIR="${SYNAPSE_HOME:-$HOME/.synapse}/logs"
 mkdir -p "$LOG_DIR"
 

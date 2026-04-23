@@ -887,16 +887,16 @@ Common causes:
 
 ### Node.js not found (Baileys bridge fails to start)
 
-The Baileys WhatsApp bridge requires **Node.js 18 or higher**. The gateway logs a clear
+The Baileys WhatsApp bridge requires **Node.js 20+** (Baileys 7.x requirement — Phase 15). The gateway logs a clear
 error if Node.js is missing or outdated.
 
 **Check:**
 ```bash
 node --version
-# Expected: v18.x.x or higher
+# Expected: v20.x.x or higher
 ```
 
-**Install if missing:** Download from [nodejs.org](https://nodejs.org) — choose the **LTS** version (18 or higher).
+**Install if missing:** Download from [nodejs.org](https://nodejs.org) — choose the **LTS** version (20 or higher).
 
 After installing, restart Synapse. The bridge starts automatically.
 

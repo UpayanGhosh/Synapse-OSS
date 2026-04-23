@@ -8,14 +8,13 @@
     "test": "node --test test/*.test.js"
   },
   "dependencies": {
-    "@whiskeysockets/baileys": "^6.7.21",
+    "@whiskeysockets/baileys": "7.0.0-rc.9",
     "express": "^4.18.3",
     "node-cache": "^5.1.2",
     "pino": "^8.21.0",
-    "qrcode-terminal": "^0.12.0",
-    "write-file-atomic": "^5.0.1"
+    "qrcode-terminal": "^0.12.0"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.0.0"
   }
 }

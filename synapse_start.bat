@@ -7,6 +7,15 @@ setlocal EnableDelayedExpansion
 REM Synapse Start Script for Windows (Batch)
 REM Handles both first-run setup and subsequent starts.
 
+REM Phase 15: Baileys 7.x requires Node 20+
+for /f "tokens=1 delims=v." %%a in ('node --version 2^>nul') do set NODE_MAJOR=%%a
+if not defined NODE_MAJOR set NODE_MAJOR=0
+if %NODE_MAJOR% LSS 20 (
+  echo ERROR: Node.js 20+ required ^(found: %NODE_MAJOR%^).
+  echo See DEPENDENCIES.md -- Baileys 7.x needs Node 20.
+  exit /b 1
+)
+
 REM Get project root
 set "PROJECT_ROOT=%~dp0"
 set "PROJECT_ROOT=%PROJECT_ROOT:~0,-1%"
