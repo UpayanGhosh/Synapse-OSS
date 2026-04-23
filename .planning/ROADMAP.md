@@ -96,10 +96,10 @@ Phase 12 (P0 Bug Fixes)
 
 ## Phases
 
-- [ ] **Phase 12: P0 Bug Fixes (Ship-Blocking)** - Restore WhatsApp reply reliability and wake dead proactive outreach (9 REQs, smallest diff possible)
-- [ ] **Phase 13: Structured Observability** - runId correlation, PII-redacted JSON logs, per-module log levels (4 REQs, foundation for everything downstream)
-- [ ] **Phase 14: Supervisor + Watchdog + Echo Tracker** - 30-min-silence watchdog, configurable reconnect policy, healthState enum, self-echo suppression (6 REQs)
-- [ ] **Phase 15: Auth Persistence + Baileys 7.x** - Per-authDir atomic creds queue, backup restore, upgrade to Baileys 7.x with pairing/media/group validation (7 REQs)
+- [x] **Phase 12: P0 Bug Fixes (Ship-Blocking)** - Restore WhatsApp reply reliability and wake dead proactive outreach (9 REQs, smallest diff possible) — Complete 2026-04-23
+- [x] **Phase 13: Structured Observability** - runId correlation, PII-redacted JSON logs, per-module log levels (4 REQs, foundation for everything downstream) — Complete 2026-04-23
+- [x] **Phase 14: Supervisor + Watchdog + Echo Tracker** - 30-min-silence watchdog, configurable reconnect policy, healthState enum, self-echo suppression (6 REQs) — Complete 2026-04-23
+- [x] **Phase 15: Auth Persistence + Baileys 7.x** - Per-authDir atomic creds queue, backup restore, upgrade to Baileys 7.x with pairing/media/group validation (7 REQs) — Complete 2026-04-23
 - [ ] **Phase 16: Heartbeat + Bridge Hardening** - Configurable heartbeat recipients, `/health` endpoint, 3-strike subprocess restart, webhook idempotency (9 REQs)
 - [ ] **Phase 17: Pipeline Decomposition + Inbound Gate** - Split chat_pipeline.py into normalize/debounce/access/enrich/route/reply modules; ACL gate pre-FloodGate (5 REQs)
 - [ ] **Phase 18: Multi-Account WhatsApp** - Multiple WA accounts per instance with independent authDirs, allowlists, and media limits (4 REQs)
@@ -116,7 +116,7 @@ Phase 12 (P0 Bug Fixes)
   3. `GET /channels/whatsapp/status` surfaces `isLoggedOut: true` within 10 seconds of the bridge reporting a logged-out event — the flag is no longer silently dropped
   4. A single inbound WhatsApp message produces exactly one skill-routing log entry (not two) — the duplicate skill-routing block at `chat_pipeline.py:546-586` is gone and state mutations fire once per message
   5. A conversation that goes silent for 8+ hours outside the configured sleep window receives a proactive check-in message via `channel_registry.get("whatsapp").send()` — confirmed by a pipeline SSE event `proactive.sent` visible in the dashboard, with thermal guard (CPU < 20% AND plugged in) honored
-**Plans**: TBD
+**Plans**: 3/3 Complete
 
 ### Phase 13: Structured Observability
 **Goal**: Port OpenClaw's `getChildLogger({module, runId})` + `redactIdentifier()` pattern into Synapse so every log line for a given message carries the same correlation ID from receipt through outbound send, phone numbers and JIDs are redacted via a single helper, logs are structured JSON/key=value, and log levels are configurable per module via `synapse.json`. Foundation for every downstream reliability feature — watchdog state transitions, heartbeat emissions, and bridge health polls are all invisible without this.
