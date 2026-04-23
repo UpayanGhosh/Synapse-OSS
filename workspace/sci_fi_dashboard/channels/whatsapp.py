@@ -371,6 +371,21 @@ class WhatsAppChannel(BaseChannel):
             base["bridge_health"] = self._bridge_health_poller.last_health
         else:
             base["bridge_health"] = {}
+        # Phase 16 BRIDGE-04: expose dedup telemetry (hit/miss counts + hit rate)
+        try:
+            from sci_fi_dashboard import _deps as _deps_mod
+
+            _dedup = getattr(_deps_mod, "dedup", None)
+            if _dedup is not None:
+                base["dedup"] = {
+                    "hits": int(getattr(_dedup, "hits", 0)),
+                    "misses": int(getattr(_dedup, "misses", 0)),
+                    "hit_rate": float(_dedup.hit_rate()) if hasattr(_dedup, "hit_rate") else 0.0,
+                }
+            else:
+                base["dedup"] = {"hits": 0, "misses": 0, "hit_rate": 0.0}
+        except Exception:
+            base["dedup"] = {"hits": 0, "misses": 0, "hit_rate": 0.0}
         return base
 
     async def get_qr(self) -> str | None:
