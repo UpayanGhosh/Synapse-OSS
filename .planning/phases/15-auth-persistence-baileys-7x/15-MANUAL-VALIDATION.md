@@ -163,8 +163,6 @@ showing `user_id` / `user_id_alt` values.
 
 | Req | Date | Tester | Result |
 |-----|------|--------|--------|
-| BAIL-02 | | | ⬜ PASS / ⬜ FAIL |
-| BAIL-03 | | | ⬜ PASS (5/5) / ⬜ FAIL (_/5) |
-| BAIL-04 | | | ⬜ PASS / ⬜ FAIL |
-
-*Sign-off rows are completed by Plan 06 Task 3 after operator walkthrough.*
+| BAIL-02 | 2026-04-23 | UpayanGhosh | PASS — QR paired, code=515 transient recovered, `/health` connected |
+| BAIL-03 | 2026-04-23 | UpayanGhosh | PASS (5/5) — text/image/voice(PTT)/PDF/video all delivered, double grey tick confirmed |
+| BAIL-04 | 2026-04-23 | UpayanGhosh | PASS — `/groups/:jid` returned ownerPn+LID shape, round-trip reply delivered |
