@@ -554,49 +554,6 @@ async def persona_chat(
 
         tool_schemas = deps.tool_registry.get_schemas(session_tools) if session_tools else None
 
-    # --- Phase 1 (v2.0): Skill Routing ---
-    # Check if message matches a skill BEFORE traffic cop routing.
-    # Skills handle the message entirely — skip MoA pipeline if matched.
-    # Skills are NEVER triggered in spicy hemisphere (privacy boundary).
-    if (
-        getattr(deps, "_SKILL_SYSTEM_AVAILABLE", False)
-        and getattr(deps, "skill_router", None) is not None
-        and session_mode != "spicy"
-    ):
-        matched_skill = deps.skill_router.match(user_msg)
-        if matched_skill is not None:
-            _log.info("skill_routed", extra={"skill_name": matched_skill.name})
-            from sci_fi_dashboard.skills.runner import SkillRunner
-
-            skill_result = await SkillRunner.execute(
-                manifest=matched_skill,
-                user_message=user_msg,
-                history=request.history,
-                llm_router=deps.synapse_llm_router,
-                session_context={"session_type": session_mode or ""},
-            )
-            reply = skill_result.text
-
-            # Log via SBS
-            sbs_orchestrator = deps.get_sbs_for_target(target)
-            sbs_orchestrator.on_message("assistant", reply, request.user_id or "default")
-
-            # Store in memory (method is add_memory, NOT store)
-            with contextlib.suppress(Exception):
-                deps.memory_engine.add_memory(
-                    content=f"[Skill: {matched_skill.name}] User: {user_msg}\nAssistant: {reply}",
-                    category="skill_execution",
-                )
-
-            return {
-                "reply": reply,
-                "model": f"skill:{matched_skill.name}",
-                "tokens": {"prompt": 0, "completion": 0, "total": 0},
-                "role": f"skill:{matched_skill.name}",
-                "retrieval_method": "skill",
-            }
-
-
     if session_mode == "spicy":
         # === THE VAULT (Local Stheno) ===
         # C-02: Vault air-gap -- NEVER fall back to cloud for spicy/vault content
