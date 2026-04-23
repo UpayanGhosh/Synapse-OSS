@@ -30,6 +30,7 @@ const path = require('path');
 const fs = require('fs');
 const { enqueueSaveCreds, waitForCredsSaveQueueWithTimeout } = require('./lib/creds_queue.js');
 const { maybeRestoreCredsFromBackup } = require('./lib/restore.js');
+const { buildSendPayload } = require('./lib/send_payload.js');
 
 // ---------------------------------------------------------------------------
 // Configuration from environment
@@ -414,7 +415,7 @@ app.post('/send', async (req, res) => {
   if (!sock || connectionState !== 'connected') {
     return res.status(503).json({ error: 'Bridge not connected', connectionState });
   }
-  const { jid, text, mediaUrl, mediaType, caption } = req.body;
+  const { jid, text, mediaUrl, mediaType, caption, mediaMimeType, fileName, gifPlayback } = req.body;
   if (!jid) {
     return res.status(400).json({ error: 'jid is required' });
   }
@@ -424,18 +425,21 @@ app.post('/send', async (req, res) => {
 
     let sentMsg;
     if (mediaUrl) {
-      // Media send
-      const mediaTypeKey = mediaType || 'image';
+      const mt = mediaType || 'image';
       const response = await fetch(mediaUrl, { signal: AbortSignal.timeout(30000) });
       if (!response.ok) {
         return res.status(400).json({ error: `Failed to fetch media from URL: ${response.status}` });
       }
       const buffer = Buffer.from(await response.arrayBuffer());
-      const messageContent = { [mediaTypeKey]: buffer };
-      if (caption) messageContent.caption = caption;
-      sentMsg = await sock.sendMessage(jid, messageContent);
+      const payload = buildSendPayload(mt, buffer, {
+        caption,
+        mimetype: mediaMimeType,
+        fileName,
+        gifPlayback: gifPlayback === true,
+      });
+      sentMsg = await sock.sendMessage(jid, payload);
     } else if (text) {
-      sentMsg = await sock.sendMessage(jid, { text });
+      sentMsg = await sock.sendMessage(jid, buildSendPayload('text', null, { text }));
     } else {
       return res.status(400).json({ error: 'text or mediaUrl is required' });
     }
@@ -464,11 +468,7 @@ app.post('/send-voice', async (req, res) => {
     }
     const buffer = Buffer.from(await response.arrayBuffer());
 
-    const sentMsg = await sock.sendMessage(jid, {
-      audio: buffer,
-      ptt: true,
-      mimetype: 'audio/ogg; codecs=opus',
-    });
+    const sentMsg = await sock.sendMessage(jid, buildSendPayload('voice', buffer, {}));
 
     res.json({ ok: true, messageId: sentMsg?.key?.id || null });
   } catch (err) {
