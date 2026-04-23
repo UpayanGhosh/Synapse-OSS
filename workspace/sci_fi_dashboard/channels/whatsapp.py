@@ -34,12 +34,12 @@ import sys
 import tempfile
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 import httpx
 
-from sci_fi_dashboard.observability import get_child_logger
-
 from sci_fi_dashboard.gateway.echo_tracker import OutboundTracker
+from sci_fi_dashboard.observability import get_child_logger
 
 from .base import BaseChannel, ChannelMessage
 from .network_errors import is_safe_to_retry_send
@@ -105,6 +105,12 @@ class WhatsAppChannel(BaseChannel):
 
         # ACL-01: self-echo tracker — ring buffer of last 20 outbound fingerprints
         self._echo_tracker = OutboundTracker(window_size=20, ttl_s=60.0)
+
+        # Phase 16 BRIDGE-02/03: bridge health polling + restart race guard
+        self._restart_in_progress: asyncio.Event = asyncio.Event()
+        self._bridge_health_poller: Any = (
+            None
+        )  # type: "BridgeHealthPoller | None" — set by lifespan wiring (Plan 04)
 
     # ------------------------------------------------------------------
     # Identity
@@ -236,13 +242,29 @@ class WhatsAppChannel(BaseChannel):
     async def _restart_bridge(self) -> None:
         """Stop and restart the bridge subprocess.
 
-        Used after code 515 (restart-after-pairing) when Baileys needs a fresh
-        connection with the newly saved auth state.
+        Triggered by:
+          - code 515 (restart-after-pairing) when Baileys needs a fresh connection
+            with the newly saved auth state (Phase 14 flow)
+          - Phase 16 BridgeHealthPoller after N consecutive /health failures
+
+        Phase 16 BRIDGE-03/G2: `_restart_in_progress` Event prevents concurrent
+        restarts. If watchdog + poller both fire simultaneously, the second call
+        no-ops and the first completes.
         """
-        logger.info("[WA] Restarting bridge (code-515 restart-after-pairing)")
-        await self.stop()
-        # start() is normally run as a task — spawn it as a background task
-        asyncio.create_task(self.start())
+        if self._restart_in_progress.is_set():
+            logger.warning("[WA] Bridge restart already in progress — skipping duplicate")
+            return
+        self._restart_in_progress.set()
+        try:
+            logger.info("[WA] Restarting bridge (Phase 16 gated restart)")
+            await self.stop()
+            # start() is normally run as a task — spawn it as a background task
+            asyncio.create_task(self.start())
+        finally:
+            # Clear the flag AFTER scheduling start(). The poller's grace window
+            # (Phase 16 G4) handles the "wait for bridge to come up" period —
+            # we don't block _restart_bridge on readiness.
+            self._restart_in_progress.clear()
 
     # ------------------------------------------------------------------
     # Connection state tracking (called by connection-state webhook)
@@ -344,6 +366,11 @@ class WhatsAppChannel(BaseChannel):
         else:
             base["healthState"] = self._supervisor.health_state
         base["stop_reconnect"] = self._supervisor.stop_reconnect
+        # Phase 16 BRIDGE-02: expose most recent /health poll result
+        if self._bridge_health_poller is not None:
+            base["bridge_health"] = self._bridge_health_poller.last_health
+        else:
+            base["bridge_health"] = {}
         return base
 
     async def get_qr(self) -> str | None:
