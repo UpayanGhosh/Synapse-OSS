@@ -711,7 +711,7 @@ app.get('/groups/:jid', async (req, res) => {
 // Start server then socket
 // ---------------------------------------------------------------------------
 // Phase 16: skip socket start and server listen in test mode so tests can import index.js
-if (process.env.START_BRIDGE_SOCKET !== 'false') {
+if (require.main === module && process.env.START_BRIDGE_SOCKET !== 'false') {
   app.listen(PORT, () => {
     console.log(`[BRIDGE] Express listening on port ${PORT}`);
     console.log(`[BRIDGE] Forwarding inbound messages to ${PYTHON_WEBHOOK_URL}`);
@@ -744,12 +744,12 @@ module.exports = { extractPayload };
 // Production usage is unaffected: `node index.js` never reads module.exports.
 // ---------------------------------------------------------------------------
 if (process.env.START_BRIDGE_SOCKET === 'false') {
-  module.exports = {
+  Object.assign(module.exports, {
     app,
     // Test hooks — let tests simulate inbound/outbound without running Baileys
     __testTriggerInbound: () => { lastInboundAtMs = Date.now(); },
     __testTriggerOutbound: () => { lastOutboundAtMs = Date.now(); },
     // Read-only accessors — helpful for debugging
     __getState: () => ({ lastInboundAtMs, lastOutboundAtMs, processStartMs, BRIDGE_VERSION }),
-  };
+  });
 }
