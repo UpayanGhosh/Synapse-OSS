@@ -49,15 +49,15 @@ async def test_poll_cadence(monkeypatch):
 
     transport = make_mock_transport([SUCCESS_HEALTH_JSON])
 
-    # Patch httpx.AsyncClient inside the poller's module to use our MockTransport
-    # Plan 03 MUST use httpx.AsyncClient at call-site so this patch works.
-    async def _mock_client(*_args, **kwargs):
-        return httpx.AsyncClient(transport=transport, **{k: v for k, v in kwargs.items() if k != "transport"})
+    # Inject transport via http_client_factory so no real bridge is needed in CI.
+    def _client_factory(timeout):
+        return httpx.AsyncClient(transport=transport, timeout=timeout)
 
     channel = _make_fake_channel()
     supervisor = _make_fake_supervisor()
     poller = BridgeHealthPoller(
         channel=channel, supervisor=supervisor, interval_s=0.05, failures_before_restart=3,
+        http_client_factory=_client_factory,
     )
     await poller.start()
     await asyncio.sleep(0.18)   # ~3 ticks
