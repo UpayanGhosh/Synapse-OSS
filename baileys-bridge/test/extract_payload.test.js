@@ -68,3 +68,44 @@ test('PN participant leaves user_id_alt null in group (BAIL-04 6.x shape)', asyn
   assert.equal(p.user_id_alt, null);
   assert.equal(p.is_group, true);
 });
+
+// Reaction path — exercises the second user_id_alt emission (index.js reaction branch)
+test('LID sender reaction carries user_id_alt (BAIL-04 reaction path)', async () => {
+  const msg = {
+    key: {
+      remoteJid: 'GROUP@g.us',
+      participant: '111@lid',
+      participantAlt: '919999999999@s.whatsapp.net',
+      fromMe: false,
+      id: 'M5',
+    },
+    message: {
+      reactionMessage: { text: '👍', key: { remoteJid: 'GROUP@g.us', id: 'ORIG' } },
+    },
+    messageTimestamp: 500,
+  };
+  const p = await extractPayload(msg);
+  assert.equal(p.type, 'reaction');
+  assert.equal(p.user_id, '111@lid');
+  assert.equal(p.user_id_alt, '919999999999@s.whatsapp.net');
+  assert.equal(p.reaction_emoji, '👍');
+});
+
+// Edge case: no alt fields present on either branch → both null
+test('no alt JIDs present → user_id_alt null on both DM and group (BAIL-04)', async () => {
+  const dmMsg = {
+    key: { remoteJid: '555@s.whatsapp.net', fromMe: false, id: 'M6' },
+    message: { conversation: 'hey' },
+    messageTimestamp: 600,
+  };
+  const dm = await extractPayload(dmMsg);
+  assert.equal(dm.user_id_alt, null);
+
+  const grpMsg = {
+    key: { remoteJid: 'GRP@g.us', participant: '555@s.whatsapp.net', fromMe: false, id: 'M7' },
+    message: { conversation: 'hey' },
+    messageTimestamp: 700,
+  };
+  const grp = await extractPayload(grpMsg);
+  assert.equal(grp.user_id_alt, null);
+});
