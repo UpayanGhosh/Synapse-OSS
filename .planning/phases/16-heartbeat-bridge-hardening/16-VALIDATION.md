@@ -52,7 +52,7 @@ created: 2026-04-23
 | 16-03-02 | 03 | 2 | BRIDGE-03 | T-16-01 | 3-strike restart + configurable threshold + grace window | unit | `cd workspace && python -m pytest "tests/test_bridge_health_poller.py::test_three_failures_trigger_restart" "tests/test_bridge_health_poller.py::test_threshold_configurable" "tests/test_bridge_health_poller.py::test_grace_window_after_restart" -v` | ✅ W0 | ⬜ |
 | 16-03-03 | 03 | 2 | BRIDGE-03 | T-16-01 | stop_reconnect gate + 401 non-failure | unit | `cd workspace && python -m pytest "tests/test_bridge_health_poller.py::test_stop_reconnect_blocks_restart" "tests/test_bridge_health_poller.py::test_401_not_counted_as_failure" -v` | ✅ W0 | ⬜ |
 | 16-04-01 | 04 | 2 | HEART-01..05 | T-16-06 | synapse_config heartbeat/bridge blocks + lifespan wiring | integration | `cd workspace && python -c "from synapse_config import SynapseConfig; c = SynapseConfig.load(); assert hasattr(c, 'heartbeat') and hasattr(c, 'bridge')"` | ✅ W0 | ⬜ |
-| 16-04-02 | 04 | 2 | HEART-01..05 | T-16-06 | Heartbeat runner started in lifespan | grep | `grep -n "HeartbeatRunner\|heartbeat_runner" workspace/sci_fi_dashboard/api_gateway.py` | ✅ W0 | ⬜ |
+| 16-04-02 | 04 | 2 | HEART-01..05 | T-16-06 | Heartbeat runner started in lifespan | grep | `grep -nE "HeartbeatRunner&#124;heartbeat_runner" workspace/sci_fi_dashboard/api_gateway.py` | ✅ W0 | ⬜ |
 | 16-05-01 | 05 | 3 | BRIDGE-04 | T-16-05 | Dedup contract + hit/miss counters | unit | `cd workspace && python -m pytest tests/test_webhook_dedup.py -v` | ✅ W0 | ⬜ |
 | 16-05-02 | 05 | 3 | BRIDGE-04 | T-16-05 | /channels/whatsapp/status surfaces dedup + bridge_health | integration | `cd workspace && python -m pytest tests/test_webhook_dedup.py::test_first_passes_second_dropped -v` | ✅ W0 | ⬜ |
 
