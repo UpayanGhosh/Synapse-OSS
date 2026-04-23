@@ -108,6 +108,12 @@ class SynapseConfig:
     tts: dict = field(default_factory=dict)
     logging: dict = field(default_factory=dict)  # OBS-04: per-module log levels + formatter config
     reconnect_raw: dict = field(default_factory=dict)
+    heartbeat: dict = field(
+        default_factory=dict
+    )  # Phase 16 HEART-01..05: scheduled pings config block
+    bridge: dict = field(
+        default_factory=dict
+    )  # Phase 16 BRIDGE-02/03: /health poll + subprocess restart config
 
     @property
     def reconnect(self):
@@ -148,6 +154,8 @@ class SynapseConfig:
         tts_raw: dict[str, Any] = {}
         logging_raw: dict[str, Any] = {}
         reconnect_raw: dict[str, Any] = {}
+        heartbeat_raw: dict[str, Any] = {}
+        bridge_raw: dict[str, Any] = {}
 
         config_file = data_root / "synapse.json"
         validated = None
@@ -174,6 +182,8 @@ class SynapseConfig:
             tts_raw = raw.get("tts", {})
             logging_raw = raw.get("logging", {})
             reconnect_raw = raw.get("reconnect", {})
+            heartbeat_raw = raw.get("heartbeat", {})
+            bridge_raw = raw.get("bridge", {})
 
         # Build SBSConfig from the "sbs" key (missing keys use dataclass defaults)
         sbs_config = SBSConfig(
@@ -209,6 +219,8 @@ class SynapseConfig:
             tts=tts_raw,
             logging=logging_raw,
             reconnect_raw=reconnect_raw,
+            heartbeat=heartbeat_raw,  # NEW — Phase 16 HEART-01..05
+            bridge=bridge_raw,  # NEW — Phase 16 BRIDGE-02/03
         )
 
 
@@ -362,7 +374,9 @@ def reconnect_policy(config: "SynapseConfig"):
     camelCase keys match synapse.json; snake_case used internally.
     Missing keys use ReconnectPolicy defaults (1000/60000/2.0/0.2/5).
     """
-    from sci_fi_dashboard.channels.supervisor import ReconnectPolicy  # lazy import — avoids circular dep
+    from sci_fi_dashboard.channels.supervisor import (
+        ReconnectPolicy,  # lazy import — avoids circular dep
+    )
 
     raw = config.reconnect_raw or {}
     key_map = {

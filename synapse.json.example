@@ -133,5 +133,25 @@
     "factor": 2.0,
     "jitter": 0.2,
     "maxAttempts": 5
+  },
+  "heartbeat": {
+    "_comment": "Phase 16 HEART-01..05: scheduled health pings to configured recipients. Set enabled: true and populate recipients with real JIDs to activate.",
+    "enabled": false,
+    "interval_s": 1800,
+    "recipients": ["919000000000@s.whatsapp.net"],
+    "prompt": "Health check — any updates?",
+    "ack_max_chars": 300,
+    "visibility": {
+      "showOk": false,
+      "showAlerts": true,
+      "useIndicator": true
+    }
+  },
+  "bridge": {
+    "_comment": "Phase 16 BRIDGE-02/03: Node bridge /health polling contract. Defaults: 30s interval, 3 consecutive failures → subprocess restart, 5s timeout.",
+    "healthPollIntervalSeconds": 30,
+    "healthFailuresBeforeRestart": 3,
+    "healthPollTimeoutSeconds": 5,
+    "healthGraceWindowSeconds": 60
   }
 }
