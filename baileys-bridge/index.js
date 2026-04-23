@@ -668,6 +668,11 @@ app.listen(PORT, () => {
 });
 
 process.on('SIGTERM', async () => {
+  // Stop new creds.update events before snapshotting the queue
+  if (sock) {
+    try { sock.end(undefined); } catch (_) {}
+    sock = null;
+  }
   try {
     await waitForCredsSaveQueueWithTimeout(AUTH_DIR, 5000);
   } finally {

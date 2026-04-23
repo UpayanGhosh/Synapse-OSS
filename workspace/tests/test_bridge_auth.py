@@ -128,6 +128,11 @@ async def test_corruption_recovery_no_qr(tmp_path):
                     pass
                 await asyncio.sleep(1.0)
 
+        # Yield briefly so drain tasks flush any remaining buffered lines.
+        # Do NOT await the drain tasks — they block until EOF (process exit).
+        # After 30s of polling, all startup output has been emitted.
+        await asyncio.sleep(0.2)
+
         # Assert 1: QR was never emitted
         assert not qr_seen, (
             'AUTH-V31-02 FAIL: QR was emitted. '
