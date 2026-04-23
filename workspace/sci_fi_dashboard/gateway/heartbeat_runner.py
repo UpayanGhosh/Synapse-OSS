@@ -290,9 +290,10 @@ class HeartbeatRunner:
             try:
                 await self.run_heartbeat_once(to)
             except Exception as exc:  # noqa: BLE001 — HEART-05 per-recipient isolation
+                to_redacted = redact_identifier(to)
                 _log.warning(
                     "heartbeat_recipient_failed",
-                    extra={"to": to, "error": str(exc)},
+                    extra={"to_redacted": to_redacted, "error": str(exc)},
                 )
 
     async def run_heartbeat_once(self, to: str, dry_run: bool = False) -> None:
@@ -311,10 +312,14 @@ class HeartbeatRunner:
         if not (visibility.show_alerts or visibility.show_ok or visibility.use_indicator):
             self._emit(
                 "heartbeat.skipped",
-                {
-                    "to_redacted": to_redacted,
-                    "reason": "all-flags-false",
-                },
+                self._with_indicator(
+                    visibility,
+                    {
+                        "to_redacted": to_redacted,
+                        "reason": "all-flags-false",
+                    },
+                    "skipped",
+                ),
             )
             return
 
@@ -335,7 +340,7 @@ class HeartbeatRunner:
         except Exception as exc:  # noqa: BLE001 — HEART-05
             _log.warning(
                 "heartbeat_llm_failed",
-                extra={"to": to, "error": str(exc)},
+                extra={"to_redacted": to_redacted, "error": str(exc)},
             )
             self._emit(
                 "heartbeat.failed",
@@ -362,7 +367,7 @@ class HeartbeatRunner:
                 except Exception as exc:  # noqa: BLE001 — HEART-05
                     _log.warning(
                         "heartbeat_ok_send_failed",
-                        extra={"to": to, "error": str(exc)},
+                        extra={"to_redacted": to_redacted, "error": str(exc)},
                     )
                     self._emit(
                         "heartbeat.failed",
@@ -391,7 +396,11 @@ class HeartbeatRunner:
             else:
                 self._emit(
                     "heartbeat.ok_token",
-                    {"to_redacted": to_redacted, "silent": True},
+                    self._with_indicator(
+                        visibility,
+                        {"to_redacted": to_redacted, "silent": True},
+                        "ok-token",
+                    ),
                 )
             return
 
@@ -399,10 +408,14 @@ class HeartbeatRunner:
         if not visibility.show_alerts or dry_run:
             self._emit(
                 "heartbeat.skipped",
-                {
-                    "to_redacted": to_redacted,
-                    "reason": "alerts-disabled" if not visibility.show_alerts else "dry-run",
-                },
+                self._with_indicator(
+                    visibility,
+                    {
+                        "to_redacted": to_redacted,
+                        "reason": "alerts-disabled" if not visibility.show_alerts else "dry-run",
+                    },
+                    "skipped",
+                ),
             )
             return
 
@@ -411,7 +424,7 @@ class HeartbeatRunner:
         except Exception as exc:  # noqa: BLE001 — HEART-05
             _log.warning(
                 "heartbeat_send_failed",
-                extra={"to": to, "error": str(exc)},
+                extra={"to_redacted": to_redacted, "error": str(exc)},
             )
             self._emit(
                 "heartbeat.failed",
