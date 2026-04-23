@@ -195,63 +195,78 @@ class BridgeHealthPoller:
           1. grace_window: skip polling logic entirely during post-restart grace
           2. supervisor.stop_reconnect: never restart when non-retryable state (440/401/logged-out)
           3. channel._restart_in_progress: never double-restart (G2)
+
+        Never-crash contract (mirrors HEART-05): any unexpected exception inside
+        the iteration body is caught, logged, and the loop sleeps interval_s before
+        retrying — the poller task never silently dies.
         """
         try:
             while not self._stopped.is_set():
-                # G4 grace window: during grace, skip counting failures so
-                # the bridge has time to come up cleanly.
-                if not self.in_grace_window:
-                    mint_run_id()
-                    ok = await self.poll_once()
-                    if ok:
-                        if self._consecutive_failures > 0:
-                            _log.info(
-                                "bridge_health_recovered",
-                                extra={"prior_failures": self._consecutive_failures},
+                try:
+                    # G4 grace window: during grace, skip counting failures so
+                    # the bridge has time to come up cleanly.
+                    if not self.in_grace_window:
+                        mint_run_id()
+                        ok = await self.poll_once()
+                        if ok:
+                            if self._consecutive_failures > 0:
+                                _log.info(
+                                    "bridge_health_recovered",
+                                    extra={"prior_failures": self._consecutive_failures},
+                                )
+                            self._consecutive_failures = 0
+                            self._emit(
+                                "bridge.health.poll",
+                                {
+                                    "ok": True,
+                                    "consecutive_failures": 0,
+                                    "status": self._last_health.get("status"),
+                                    "uptime_ms": self._last_health.get("uptime_ms"),
+                                    "bridge_version": self._last_health.get("bridge_version"),
+                                },
                             )
-                        self._consecutive_failures = 0
-                        self._emit(
-                            "bridge.health.poll",
-                            {
-                                "ok": True,
-                                "consecutive_failures": 0,
-                                "status": self._last_health.get("status"),
-                                "uptime_ms": self._last_health.get("uptime_ms"),
-                                "bridge_version": self._last_health.get("bridge_version"),
-                            },
-                        )
-                    else:
-                        # Failure branch
-                        self._consecutive_failures += 1
-                        _log.warning(
-                            "bridge_health_failed",
-                            extra={"consecutive_failures": self._consecutive_failures},
-                        )
-                        self._emit(
-                            "bridge.health.failed",
-                            {"consecutive_failures": self._consecutive_failures},
-                        )
+                        else:
+                            # Failure branch
+                            self._consecutive_failures += 1
+                            _log.warning(
+                                "bridge_health_failed",
+                                extra={"consecutive_failures": self._consecutive_failures},
+                            )
+                            self._emit(
+                                "bridge.health.failed",
+                                {"consecutive_failures": self._consecutive_failures},
+                            )
 
-                        if self._consecutive_failures >= self._failures_threshold:
-                            # Threshold hit — consider restart.
-                            if self._supervisor.stop_reconnect:
-                                _log.info(
-                                    "bridge_health_threshold_skipped",
-                                    extra={
-                                        "reason": "supervisor_stop_reconnect",
-                                        "consecutive_failures": self._consecutive_failures,
-                                    },
-                                )
-                            elif self._channel._restart_in_progress.is_set():
-                                # G2 race guard: don't double-restart
-                                _log.info(
-                                    "bridge_health_threshold_skipped",
-                                    extra={"reason": "restart_already_in_progress"},
-                                )
-                            else:
-                                await self._trigger_restart()
+                            if self._consecutive_failures >= self._failures_threshold:
+                                # Threshold hit — consider restart.
+                                if self._supervisor.stop_reconnect:
+                                    _log.info(
+                                        "bridge_health_threshold_skipped",
+                                        extra={
+                                            "reason": "supervisor_stop_reconnect",
+                                            "consecutive_failures": self._consecutive_failures,
+                                        },
+                                    )
+                                elif self._channel._restart_in_progress.is_set():
+                                    # G2 race guard: don't double-restart
+                                    _log.info(
+                                        "bridge_health_threshold_skipped",
+                                        extra={"reason": "restart_already_in_progress"},
+                                    )
+                                else:
+                                    await self._trigger_restart()
 
-                await asyncio.sleep(self._interval_s)
+                    await asyncio.sleep(self._interval_s)
+                except Exception as exc:  # noqa: BLE001 — never-crash contract
+                    _log.exception(
+                        "bridge_health_loop_iteration_failed",
+                        extra={"error": str(exc)},
+                    )
+                    # Sleep the full interval so we don't hot-loop on a persistent bug.
+                    try:
+                        await asyncio.sleep(self._interval_s)
+                    except asyncio.CancelledError:
+                        raise
         except asyncio.CancelledError:
             pass
 
@@ -277,6 +292,10 @@ class BridgeHealthPoller:
             _log.warning(
                 "bridge_health_restart_failed",
                 extra={"error": str(exc)},
+            )
+            self._emit(
+                "bridge.health.restart_failed",
+                {"error": str(exc), "prior_failures": prior},
             )
 
     # -------- emit helper --------
