@@ -57,7 +57,11 @@ async def unified_webhook(channel_id: str, request: Request):
         return {"status": "skipped", "reason": "blocked_or_filtered", "accepted": True}
 
     # SUPV-01: record inbound activity for the WhatsApp silence watchdog
-    if channel_id == "whatsapp" and hasattr(channel, "_supervisor") and channel._supervisor is not None:
+    if (
+        channel_id == "whatsapp"
+        and hasattr(channel, "_supervisor")
+        and channel._supervisor is not None
+    ):
         channel._supervisor.record_activity()
 
     # ACL-02: self-echo detection — drop inbound matching a recent outbound
@@ -65,16 +69,16 @@ async def unified_webhook(channel_id: str, request: Request):
         channel_id == "whatsapp"
         and hasattr(channel, "_echo_tracker")
         and channel._echo_tracker is not None
+        and channel._echo_tracker.is_echo(msg.chat_id, msg.text)
     ):
-        if channel._echo_tracker.is_echo(msg.chat_id, msg.text):
-            _log.info(
-                "self_echo_dropped",
-                extra={
-                    "chat_id": redact_identifier(msg.chat_id),
-                    "reason": "self-echo",
-                },
-            )
-            return {"status": "skipped", "reason": "self-echo", "accepted": True}
+        _log.info(
+            "self_echo_dropped",
+            extra={
+                "chat_id": redact_identifier(msg.chat_id),
+                "reason": "self-echo",
+            },
+        )
+        return {"status": "skipped", "reason": "self-echo", "accepted": True}
 
     # H-09: Generate UUID fallback if message_id is empty/None
     effective_msg_id = msg.message_id or raw.get("message_id", "") or str(uuid.uuid4())
@@ -177,6 +181,49 @@ async def whatsapp_connection_state(request: Request):
     payload = await request.json()
     await wa_channel.update_connection_state(payload)
     return {"ok": True}
+
+
+@router.post(
+    "/channels/whatsapp/heartbeat/test",
+    dependencies=[Depends(deps._require_gateway_auth)],
+)
+async def whatsapp_heartbeat_test(request: Request):
+    """Phase 16 HEART-01..05: POST /channels/whatsapp/heartbeat/test — fire one heartbeat cycle on demand (dry-run).
+
+    Operator tooling — lets you trigger the heartbeat loop without waiting for
+    the configured interval. Uses dry_run=True so no real WhatsApp send occurs
+    (LLM is still consulted, events are still emitted to SSE).
+
+    Returns 503 if heartbeat runner is not initialized (disabled in synapse.json).
+    """
+    runner = getattr(request.app.state, "heartbeat_runner", None)
+    if runner is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Heartbeat runner not initialized (heartbeat.enabled=false or init failed)",
+        )
+    # Count recipients from config for the response
+    cfg = deps._synapse_cfg
+    heartbeat_cfg = getattr(cfg, "heartbeat", None) or {}
+    recipients = heartbeat_cfg.get("recipients", [])
+    if not isinstance(recipients, list):
+        recipients = []
+
+    # Fire one cycle with dry_run=True by iterating recipients manually —
+    # run_cycle_once() does not expose dry_run, but run_heartbeat_once(to, dry_run=True) does.
+    for to in recipients:
+        try:
+            await runner.run_heartbeat_once(to, dry_run=True)
+        except Exception as exc:
+            # HEART-05 contract — never crash on a single recipient
+            logger.warning("[HEARTBEAT_TEST] recipient=%s failed: %s", to, exc)
+
+    return {
+        "ok": True,
+        "cycle_count": getattr(runner, "_cycle_count", 0),
+        "recipients": len(recipients),
+        "dry_run": True,
+    }
 
 
 # ---------------------------------------------------------------------------
