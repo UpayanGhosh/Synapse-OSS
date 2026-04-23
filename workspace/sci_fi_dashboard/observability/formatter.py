@@ -21,7 +21,9 @@ import logging
 from sci_fi_dashboard.observability.context import get_run_id
 from sci_fi_dashboard.observability.redact import redact_identifier
 
-_SENSITIVE_FIELDS: frozenset[str] = frozenset({"chat_id", "user_id", "jid", "phone", "sender_id"})
+_SENSITIVE_FIELDS: frozenset[str] = frozenset({
+    "chat_id", "user_id", "user_id_alt", "jid", "phone", "sender_id",
+})
 
 _RESERVED = frozenset(logging.LogRecord("", 0, "", 0, "", None, None).__dict__.keys()) | {
     "message",

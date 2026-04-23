@@ -179,7 +179,29 @@ def test_qr_endpoint_returns_string():
     pytest.skip('Wave 0 stub — requires live Baileys 7.x bridge')
 
 
-@pytest.mark.skipif('WAVE_15_LIVE_BRIDGE_7X' not in os.environ, reason='requires live 7.x bridge')
-def test_group_metadata_shape():
-    """BAIL-04: GET /groups/:jid returns expected shape on 7.x."""
-    pytest.skip('Wave 0 stub — requires live Baileys 7.x bridge')
+@pytest.mark.skipif(
+    'WAVE_15_LIVE_BRIDGE_7X' not in os.environ or 'WAVE_15_TEST_GROUP_JID' not in os.environ,
+    reason='requires live 7.x paired bridge + group JID (set WAVE_15_LIVE_BRIDGE_7X=1 + WAVE_15_TEST_GROUP_JID=<jid>@g.us)',
+)
+@pytest.mark.asyncio
+async def test_group_metadata_shape():
+    """BAIL-04 (structural): GET /groups/:jid returns expected shape on 7.x.
+
+    Pre-conditions (operator):
+    1. Baileys bridge is running on port 5010 (default) — paired on 7.0.0-rc.9
+    2. WAVE_15_LIVE_BRIDGE_7X=1 in env
+    3. WAVE_15_TEST_GROUP_JID=<jid>@g.us — a group the paired account is a member of
+    """
+    group_jid = os.environ['WAVE_15_TEST_GROUP_JID']
+    bridge_port = int(os.environ.get('BRIDGE_PORT', '5010'))
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        r = await client.get(f'http://127.0.0.1:{bridge_port}/groups/{group_jid}')
+    assert r.status_code == 200, f'Bridge returned {r.status_code}: {r.text}'
+    resp = r.json()
+
+    assert 'id' in resp, 'missing id'
+    assert 'subject' in resp, 'missing subject'
+    assert 'participants' in resp, 'missing participants'
+    assert isinstance(resp['participants'], list), 'participants not a list'
+    assert 'owner' in resp, 'missing owner (null allowed)'
+    assert 'ownerPn' in resp, 'missing ownerPn key (null allowed)'

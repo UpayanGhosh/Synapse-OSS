@@ -70,7 +70,7 @@ setInterval(() => {
   } catch (err) {
     console.warn('[BRIDGE] Media cache cleanup error (non-fatal):', err.message);
   }
-}, 60 * 60 * 1000); // every hour
+}, 60 * 60 * 1000).unref(); // every hour — unref() so tests can exit cleanly
 
 // ---------------------------------------------------------------------------
 // Module state
@@ -165,15 +165,26 @@ function mimeToExt(mime) {
   return MIME_EXT[mime] || 'bin';
 }
 
+// 7.x LID detection — LID JIDs end with '@lid'
+function isLid(jid) {
+  return typeof jid === 'string' && jid.endsWith('@lid');
+}
+
 // ---------------------------------------------------------------------------
 // extractPayload — normalise a Baileys message into the Synapse channel schema
 // Handles text, media (image/video/audio/document/sticker), and reactions
 // ---------------------------------------------------------------------------
 async function extractPayload(msg) {
   const isGroup = msg.key.remoteJid.endsWith('@g.us');
+  // 7.x LID-mapping: surface BOTH primary and alternate identifiers.
+  // - DM: msg.key.remoteJidAlt is PN if remoteJid is LID, null otherwise
+  // - Group: msg.key.participantAlt is PN if participant is LID, null otherwise
   const userId = isGroup
     ? (msg.key.participant || msg.pushName || msg.key.remoteJid)
     : msg.key.remoteJid;
+  const userIdAlt = isGroup
+    ? (msg.key.participantAlt || null)
+    : (msg.key.remoteJidAlt || null);
 
   // Detect message type
   const msgContent = msg.message || {};
@@ -191,6 +202,7 @@ async function extractPayload(msg) {
       type: 'reaction',
       channel_id: 'whatsapp',
       user_id: userId,
+      user_id_alt: userIdAlt,
       chat_id: msg.key.remoteJid,
       message_id: msg.key.id,
       reaction_emoji: msgContent.reactionMessage.text || '',
@@ -203,6 +215,7 @@ async function extractPayload(msg) {
     type: 'message',
     channel_id: 'whatsapp',
     user_id: userId,
+    user_id_alt: userIdAlt,
     chat_id: msg.key.remoteJid,
     text,
     message_id: msg.key.id,
@@ -658,11 +671,19 @@ app.get('/groups/:jid', async (req, res) => {
   }
   const { jid } = req.params;
   try {
-    const cached = groupCache.get(jid);
-    if (cached) return res.json(cached);
-    const meta = await sock.groupMetadata(jid);
-    groupCache.set(jid, meta);
-    res.json(meta);
+    let meta = groupCache.get(jid);
+    if (!meta) {
+      meta = await sock.groupMetadata(jid);
+      groupCache.set(jid, meta);
+    }
+    // 7.x LID-mapping: surface PN counterpart for owner/descOwner when Baileys provides it.
+    // ownerPn is null when owner is already a PN or when LID->PN mapping is unavailable.
+    const enriched = {
+      ...meta,
+      ownerPn: meta.ownerPn !== undefined ? meta.ownerPn : (isLid(meta.owner) ? null : (meta.owner || null)),
+      descOwnerPn: meta.descOwnerPn !== undefined ? meta.descOwnerPn : (isLid(meta.descOwner) ? null : (meta.descOwner || null)),
+    };
+    res.json(enriched);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -671,25 +692,31 @@ app.get('/groups/:jid', async (req, res) => {
 // ---------------------------------------------------------------------------
 // Start server then socket
 // ---------------------------------------------------------------------------
-app.listen(PORT, () => {
-  console.log(`[BRIDGE] Express listening on port ${PORT}`);
-  console.log(`[BRIDGE] Forwarding inbound messages to ${PYTHON_WEBHOOK_URL}`);
-});
+// CommonJS — only start the server when run directly (not when imported for tests)
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`[BRIDGE] Express listening on port ${PORT}`);
+    console.log(`[BRIDGE] Forwarding inbound messages to ${PYTHON_WEBHOOK_URL}`);
+  });
 
-process.on('SIGTERM', async () => {
-  // Stop new creds.update events before snapshotting the queue
-  if (sock) {
-    try { sock.end(undefined); } catch (_) {}
-    sock = null;
-  }
-  try {
-    await waitForCredsSaveQueueWithTimeout(AUTH_DIR, 5000);
-  } finally {
-    process.exit(0);
-  }
-});
+  process.on('SIGTERM', async () => {
+    // Stop new creds.update events before snapshotting the queue
+    if (sock) {
+      try { sock.end(undefined); } catch (_) {}
+      sock = null;
+    }
+    try {
+      await waitForCredsSaveQueueWithTimeout(AUTH_DIR, 5000);
+    } finally {
+      process.exit(0);
+    }
+  });
 
-startSocket().catch((err) => {
-  console.error('[BRIDGE] Fatal startup error:', err.message);
-  process.exit(1);
-});
+  startSocket().catch((err) => {
+    console.error('[BRIDGE] Fatal startup error:', err.message);
+    process.exit(1);
+  });
+}
+
+// Export for unit tests (index.js imported without side effects when require.main !== module)
+module.exports = { extractPayload };
