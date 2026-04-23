@@ -73,6 +73,12 @@ setInterval(() => {
   }
 }, 60 * 60 * 1000).unref(); // every hour — unref() so tests can exit cleanly
 
+// --- Phase 16 BRIDGE-01: /health augmentation ---------------------------
+const BRIDGE_VERSION = require('./package.json').version;
+const processStartMs = Date.now();
+let lastInboundAtMs = null;
+let lastOutboundAtMs = null;
+
 // ---------------------------------------------------------------------------
 // Module state
 // ---------------------------------------------------------------------------
@@ -391,6 +397,8 @@ async function startSocket() {
     if (type !== 'notify') return;
     for (const msg of messages) {
       if (!msg.message || msg.key.fromMe) continue;
+      // Phase 16 BRIDGE-01: track last inbound activity for /health
+      lastInboundAtMs = Date.now();
       const payload = await extractPayload(msg);
       await forwardToFastAPI(payload);
     }
@@ -444,6 +452,7 @@ app.post('/send', async (req, res) => {
       return res.status(400).json({ error: 'text or mediaUrl is required' });
     }
 
+    lastOutboundAtMs = Date.now();  // Phase 16 BRIDGE-01
     res.json({ ok: true, messageId: sentMsg?.key?.id || null });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -469,6 +478,7 @@ app.post('/send-voice', async (req, res) => {
     const buffer = Buffer.from(await response.arrayBuffer());
 
     const sentMsg = await sock.sendMessage(jid, buildSendPayload('voice', buffer, {}));
+    lastOutboundAtMs = Date.now();  // Phase 16 BRIDGE-01
 
     res.json({ ok: true, messageId: sentMsg?.key?.id || null });
   } catch (err) {
@@ -489,6 +499,7 @@ app.post('/react', async (req, res) => {
     await sock.sendMessage(jid, {
       react: { text: reaction || '', key: { remoteJid: jid, id: messageId } },
     });
+    lastOutboundAtMs = Date.now();  // Phase 16 BRIDGE-01
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -571,10 +582,12 @@ app.post('/relink', async (req, res) => {
 
 // GET /health — bridge liveness + connection state + metrics
 app.get('/health', (req, res) => {
+  const now = Date.now();
   const uptimeSeconds = connectedSince
-    ? (Date.now() - new Date(connectedSince).getTime()) / 1000
+    ? (now - new Date(connectedSince).getTime()) / 1000
     : 0;
   res.json({
+    // Existing fields (preserved — backward compatible with Phase 14 channels/whatsapp.py::health_check)
     status: connectionState === 'connected' ? 'ok' : 'degraded',
     connectionState,
     pid: process.pid,
@@ -583,6 +596,11 @@ app.get('/health', (req, res) => {
     uptimeSeconds: Math.floor(uptimeSeconds),
     restartCount,
     lastDisconnectReason,
+    // Phase 16 BRIDGE-01: new fields
+    last_inbound_at: lastInboundAtMs ? new Date(lastInboundAtMs).toISOString() : null,
+    last_outbound_at: lastOutboundAtMs ? new Date(lastOutboundAtMs).toISOString() : null,
+    uptime_ms: now - processStartMs,
+    bridge_version: BRIDGE_VERSION,
   });
 });
 
@@ -692,8 +710,8 @@ app.get('/groups/:jid', async (req, res) => {
 // ---------------------------------------------------------------------------
 // Start server then socket
 // ---------------------------------------------------------------------------
-// CommonJS — only start the server when run directly (not when imported for tests)
-if (require.main === module) {
+// Phase 16: skip socket start and server listen in test mode so tests can import index.js
+if (process.env.START_BRIDGE_SOCKET !== 'false') {
   app.listen(PORT, () => {
     console.log(`[BRIDGE] Express listening on port ${PORT}`);
     console.log(`[BRIDGE] Forwarding inbound messages to ${PYTHON_WEBHOOK_URL}`);
@@ -720,3 +738,18 @@ if (require.main === module) {
 
 // Export for unit tests (index.js imported without side effects when require.main !== module)
 module.exports = { extractPayload };
+
+// ---------------------------------------------------------------------------
+// Phase 16 test exports — only exposed when START_BRIDGE_SOCKET=false
+// Production usage is unaffected: `node index.js` never reads module.exports.
+// ---------------------------------------------------------------------------
+if (process.env.START_BRIDGE_SOCKET === 'false') {
+  module.exports = {
+    app,
+    // Test hooks — let tests simulate inbound/outbound without running Baileys
+    __testTriggerInbound: () => { lastInboundAtMs = Date.now(); },
+    __testTriggerOutbound: () => { lastOutboundAtMs = Date.now(); },
+    // Read-only accessors — helpful for debugging
+    __getState: () => ({ lastInboundAtMs, lastOutboundAtMs, processStartMs, BRIDGE_VERSION }),
+  };
+}
