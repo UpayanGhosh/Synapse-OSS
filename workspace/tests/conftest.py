@@ -282,3 +282,70 @@ def fake_monotonic():
                 ...
     """
     return [0.0]
+
+
+# --- Phase 16 fixtures — heartbeat + bridge health poller ---
+# ---------------------------------------------------------------------------
+# Phase 16 fixtures — heartbeat + bridge health poller
+# ---------------------------------------------------------------------------
+
+import types
+
+import pytest
+
+
+@pytest.fixture
+def fake_channel_with_recorded_sends():
+    """Return a SimpleNamespace(send=async_fn) that records every call.
+
+    Usage:
+        ch = fake_channel_with_recorded_sends()
+        await ch.send("1234@s.whatsapp.net", "hi")
+        assert ch.calls == [("1234@s.whatsapp.net", "hi")]
+    """
+    calls: list[tuple[str, str]] = []
+
+    async def _send(chat_id: str, text: str) -> dict:
+        calls.append((chat_id, text))
+        return {"ok": True, "messageId": f"M{len(calls)}"}
+
+    ch = types.SimpleNamespace(send=_send)
+    ch.calls = calls
+    return ch
+
+
+@pytest.fixture
+def fake_channel_registry_factory(fake_channel_with_recorded_sends):
+    """Return a factory that builds a registry exposing the fake channel.
+
+    Usage:
+        registry = fake_channel_registry_factory("whatsapp")
+        assert registry.get("whatsapp").send is not None
+    """
+
+    def _factory(channel_name: str = "whatsapp"):
+        ch = fake_channel_with_recorded_sends
+        return types.SimpleNamespace(get=lambda cid: ch if cid == channel_name else None)
+
+    return _factory
+
+
+@pytest.fixture
+def reset_emitter_singleton():
+    """Reset PipelineEventEmitter singleton state between tests so emit counts don't leak."""
+    # Module may not exist yet in Wave 0 — import defensively
+    try:
+        from sci_fi_dashboard import pipeline_emitter as pe  # noqa: F401
+
+        if hasattr(pe, "_EMITTER_SINGLETON"):
+            pe._EMITTER_SINGLETON = None
+    except Exception:
+        pass
+    yield
+    try:
+        from sci_fi_dashboard import pipeline_emitter as pe
+
+        if hasattr(pe, "_EMITTER_SINGLETON"):
+            pe._EMITTER_SINGLETON = None
+    except Exception:
+        pass
