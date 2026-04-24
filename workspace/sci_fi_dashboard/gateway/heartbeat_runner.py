@@ -394,6 +394,10 @@ class HeartbeatRunner:
                     ),
                 )
             else:
+                _log.info(
+                    "heartbeat.ok_token",
+                    extra={"to_redacted": to_redacted, "silent": True, "event": "heartbeat.ok_token"},
+                )
                 self._emit(
                     "heartbeat.ok_token",
                     self._with_indicator(

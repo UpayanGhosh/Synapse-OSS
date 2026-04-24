@@ -256,6 +256,12 @@ synapse_llm_router = SynapseLLMRouter(_synapse_cfg)
 # Module-level proactive engine reference — set in lifespan after engine starts
 _proactive_engine = None
 
+# Consent flow state — keyed by (channel_id, peer_id); populated by chat_pipeline
+pending_consents: dict = {}
+
+# ConsentProtocol singleton — optional, initialized in lifespan if SnapshotEngine available
+consent_protocol = None
+
 # ---------------------------------------------------------------------------
 # Phase 3: SubAgent System (optional — initialized in lifespan)
 # ---------------------------------------------------------------------------

@@ -94,7 +94,7 @@ async def lifespan(app: FastAPI):
     await deps.channel_registry.start_all()
 
     # Wire retry queue into WhatsApp channel
-    from channels.whatsapp import WhatsAppChannel
+    from sci_fi_dashboard.channels.whatsapp import WhatsAppChannel
     from gateway.retry_queue import RetryQueue
 
     wa_ch = deps.channel_registry.get("whatsapp")
@@ -326,9 +326,12 @@ async def lifespan(app: FastAPI):
                 except TimeoutError:
                     logger.warning("[HEARTBEAT] persona_chat timed out after 60s")
                     return ""
-                if isinstance(result, dict):
-                    return str(result.get("reply", ""))
-                return str(result or "")
+                raw = str(result.get("reply", "") if isinstance(result, dict) else (result or ""))
+                # Strip pipeline metadata footer (--- **Context Usage:**...) before
+                # strip_heartbeat_token sees the reply, otherwise HEARTBEAT_OK residue
+                # causes the runner to forward the footer to WhatsApp.
+                sep = raw.find("\n\n---\n")
+                return raw[:sep] if sep != -1 else raw
 
             app.state.heartbeat_runner = HeartbeatRunner(
                 channel_registry=deps.channel_registry,

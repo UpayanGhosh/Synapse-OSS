@@ -125,11 +125,11 @@ Validates the 9 scenarios that cannot be fully reproduced in pytest.
 
 | Req | Date | Tester | Result | Notes |
 |-----|------|--------|--------|-------|
-| HEART-01 live | | | ⬜ PASS / ⬜ FAIL | |
-| HEART-03 live strip | | | ⬜ PASS / ⬜ FAIL | |
-| BRIDGE-01 flood | | | ⬜ PASS / ⬜ FAIL | |
-| BRIDGE-03 kill-pid | | | ⬜ PASS / ⬜ FAIL | |
-| BRIDGE-04 TTL expiry | | | ⬜ PASS / ⬜ FAIL | |
-| HEART-04 dashboard SSE | | | ⬜ PASS / ⬜ FAIL | |
-| HEART-05 24h longevity | | | ⬜ PASS / ⬜ FAIL | |
-| BRIDGE-01 version bump | | | ⬜ PASS / ⬜ FAIL | |
+| HEART-01 live | 2026-04-24 | UpayanGhosh | ✅ PASS | WA message received within 70s |
+| HEART-03 live strip | 2026-04-24 | UpayanGhosh | ✅ PASS | silent=true in log, no outbound message |
+| BRIDGE-01 flood | 2026-04-24 | UpayanGhosh | ✅ PASS | 0 FAIL across 30 concurrent /health curls |
+| BRIDGE-03 kill-pid | 2026-04-24 | UpayanGhosh | ✅ PASS | 3 bridge.health.failed + 1 bridge.health.restart |
+| BRIDGE-04 TTL expiry | 2026-04-24 | UpayanGhosh | ✅ PASS | duplicate on step 2, queued on step 4 after 312s |
+| HEART-04 dashboard SSE | 2026-04-24 | UpayanGhosh | ✅ PASS | heartbeat.send_start + ok_token in SSE stream |
+| HEART-05 24h longevity | | UpayanGhosh | ⬜ PENDING | interval_s=3600 set; soak deferred |
+| BRIDGE-01 version bump | 2026-04-24 | UpayanGhosh | ✅ PASS | bridge_version=1.0.1 confirmed |
