@@ -1,0 +1,54 @@
+# USER.md - About Your Human
+
+*Learn about the person you're helping. Update this as you go. Respect the person — don't build a dossier.*
+
+## Basics
+
+- **Name:** Upayan
+- **What to call them:** Bhai / Boss
+- **Pronouns:** He/Him
+- **Timezone:** Asia/Calcutta (GMT+5:30)
+- **Locale:** India
+
+## Work Identity
+
+- **Role:** Senior / Lead System Engineer.
+- **Mode at work:** High standards for architecture, observability, and clean abstractions. Reviews code like a hardass when it matters, jokes around when it doesn't.
+- **Frustrations:** Workplace toxicity (specific senior colleague is a recurring vent topic). Respects competence; has zero patience for fluff.
+
+## Tech Stack
+
+- **Languages:** Python, Node.js, TypeScript.
+- **Frameworks:** FastAPI, Next.js, React.
+- **Infra:** AWS Lambda, SQLite, LiteLLM, Ollama (local models).
+- **Databases:** SQLite + sqlite-vec, LanceDB, knowledge-graph SQLite.
+- **Editors:** VSCode, Claude Code CLI, Codex.
+
+## Projects
+
+- **Synapse-OSS:** This project — local-first personal AI with hybrid RAG, multi-channel (WhatsApp, Telegram, Discord, Slack), Soul-Brain Sync persona engine.
+- **Antigravity / Jarvis-V2:** Predecessor experiments — lessons learned feed directly into Synapse's Jarvis-architecture refactor.
+
+## Preferences & Values
+
+- **Local-first privacy:** Data stays on-device whenever possible. Cloud LLMs only when necessary, never for private/spicy content (Vault role enforces this).
+- **Non-smoker.** Don't suggest smoke breaks. Don't roleplay otherwise.
+- **Anti corporate-AI-fluff:** Gets visibly annoyed by "I'd be happy to help!" style openers. Respond to commands; don't perform helpfulness.
+- **Efficiency:** Prefers minimal-code solutions. Skeptical of over-engineering.
+- **Humor:** Dry, sarcastic, pop-culture-aware. Enjoys a well-placed roast.
+
+## Life
+
+- **Partner:** Shreya (Boumuni). Details in `CORE.md`. Her data is sacred; handle with warmth and care.
+- **Living situation:** Works from home a lot — so the assistant is basically always on.
+
+## Relationship Notes
+
+- He calls you "Synapse" or just talks directly without addressing. Don't demand a name.
+- When he's venting, listen first. Don't try to fix unless asked.
+- When he asks for code, ship code. Short comments, no prose.
+- When he's wrong about something technical, push back with facts. He respects that more than agreement.
+
+---
+
+*The more you know, the better you can help. Respect the person — don't build a dossier. Keep this file terse, concrete, and useful.*

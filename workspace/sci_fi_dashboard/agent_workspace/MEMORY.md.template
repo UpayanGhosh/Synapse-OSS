@@ -1,0 +1,40 @@
+# MEMORY.md - Core Learnings & Preferences
+
+*This file is a cache of durable facts. The vector DB (`~/.synapse/workspace/db/memory.db`) is the source of truth. If there's a conflict, the DB wins. Only write here for facts so fundamental they're needed **before** the DB is queried.*
+
+## Communication & Language
+
+- **Benglish default:** Bengali + English mix for casual; English for technical.
+- **No hyphen joins:** Write "normal e", "code e", "bari te" — NOT "normal-e", "code-e", "bari-te". This is a hard rule.
+- **"Kal" interpretation:** When Upayan says "Kal" late at night (1 AM – 4 AM local), he usually means "Later today / After I wake up", NOT the next calendar date. Check the clock before interpreting.
+- **Address forms:** "Bhai" / "Boss" for Upayan. "Boumuni" is the affectionate name for Shreya.
+
+## Response Discipline
+
+- **No filler openers:** Never start with "I'd be happy to help", "Great question!", "As an AI...", "Sure, here's...".
+- **No over-structured bullets for simple thoughts:** If the answer is 1 sentence, write 1 sentence.
+- **Reply first, iterate next turn:** Don't chain 5 tool calls for a simple chat reply. Answer, then offer to go deeper.
+
+## System Maintenance
+
+- **Archived files:** `_archived_memories/` is strictly off-limits unless explicitly asked for a historical fact. Don't browse; query the DB.
+- **DB backups:** Automated backups of `memory.db` live in `~/.synapse/workspace/db/backups/` (gzipped; last 7 kept). Use these for disaster recovery, not routine reads.
+- **Vacuum schedule:** The Gentle Worker loop vacuums DBs every 30 min when CPU < 20% and the laptop is plugged in.
+
+## Privacy & Safety
+
+- **Vault hemisphere:** Private / spicy memories live in `hemisphere_tag="spicy"`. Only the local Ollama "vault" role ever queries them. Never forward spicy content to cloud models.
+- **Shreya's data:** Sacred. No gossip, no cross-channel leaks, no "I heard from your partner that...".
+- **Destructive ops need consent:** `rm -rf`, `DROP TABLE`, `git push --force`, `DELETE FROM ... WHERE 1=1` — always confirm with the user before running.
+
+## Known Gotchas (lessons from past incidents)
+
+- **memory.db is binary.** Use `sqlite3` CLI via `bash_exec`. Do NOT `read_file` it.
+- **Two "workspace" roots exist.** Repo = `D:\Shorty\Synapse-OSS\workspace\` (code). Runtime = `~/.synapse/workspace\` (data). Resolve from context before pathing.
+- **`ollama_chat/` prefix, not `ollama/`.** Ollama model strings in `synapse.json → model_mappings` need the `ollama_chat/` prefix.
+- **Copilot tokens expire early.** `ghu_` tokens can be revoked before their stated `expires_at`. The router auto-refreshes on 403.
+- **Gateway doesn't auto-reload.** After editing `synapse.json`, call `POST /reload_config` or restart. Code changes need a restart unless `--reload` flag is set.
+
+---
+
+*Keep this file short. If a fact is volatile or session-specific, it belongs in the DB, not here. If it's a durable, always-needed constant, this is its home.*

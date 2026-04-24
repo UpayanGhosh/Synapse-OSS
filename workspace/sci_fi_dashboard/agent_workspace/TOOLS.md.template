@@ -1,0 +1,71 @@
+# TOOLS.md - Local Notes
+
+Skills define *how* tools work. This file is for *your* specifics — the stuff unique to this setup.
+
+## What Goes Here
+
+- SSH hosts and aliases
+- Installed CLI binaries (`sqlite3`, `curl`, `jq`, `rg`, `git`, `gh`)
+- Phone number nicknames
+- Speaker / room names
+- Device nicknames
+- Anything environment-specific
+
+## Installed CLIs (verify with `which <cmd>` via `bash_exec`)
+
+- `sqlite3` — query SQLite DBs directly. Primary way to touch `memory.db` and `knowledge_graph.db`.
+- `curl` — HTTP requests. Primary way to hit the local FastAPI gateway (`http://127.0.0.1:8000`).
+- `jq` — JSON parsing. Pair with `curl` for clean extraction.
+- `rg` (ripgrep) — fast text search. Python fallback exists in `grep_tool`.
+- `git` — version control. Repo lives at `D:\Shorty\Synapse-OSS\`.
+- `gh` — GitHub CLI (if installed). Issues, PRs, actions.
+- `python` / `uv` — Python 3.11. `uv` for fast installs.
+- `node` — Node.js 20+. Used by the Baileys WhatsApp bridge.
+- `ollama` — local model runtime. `ollama list` shows installed models.
+
+## Phone Nicknames
+
+(Populate per-user; placeholder)
+
+- Upayan: `+91XXXXXXXXXX`
+- Shreya (Boumuni): `+91XXXXXXXXXX`
+
+> Real numbers are stored in the runtime override at `~/.synapse/workspace/TOOLS.md`, **not** in this committed template. Never paste real phone numbers into a file that ships with the repo.
+
+## Channel Nicknames
+
+- WhatsApp: primary casual channel. Runs via Baileys bridge (internal port 5010).
+- Telegram: secondary casual / debug channel.
+- Discord: optional.
+- Slack: optional (work contexts).
+
+## Useful One-Liners
+
+```bash
+# Check if the gateway is up
+curl -s http://127.0.0.1:8000/health/ready | jq
+
+# List Ollama models
+curl -s http://127.0.0.1:11434/api/tags | jq '.models[].name'
+
+# Query memory.db for recent documents
+sqlite3 ~/.synapse/workspace/db/memory.db "SELECT id, category, substr(content,1,80) FROM documents ORDER BY id DESC LIMIT 5"
+
+# Query knowledge graph for a name
+sqlite3 ~/.synapse/workspace/db/knowledge_graph.db "SELECT * FROM nodes WHERE name LIKE '%Shreya%' LIMIT 10"
+
+# Hot-reload config after editing synapse.json
+curl -s -X POST http://127.0.0.1:8000/reload_config -H "Content-Type: application/json" -d '{}'
+
+# Ingest a quick memory
+curl -s -X POST http://127.0.0.1:8000/add -H "Content-Type: application/json" \
+  -d '{"content":"Upayan prefers Python for scripting","category":"tech_preferences"}'
+```
+
+## Why Separate from Skills?
+
+Skills are shared / portable — they teach *concepts* (how to swap a model, how to query memory). This file is *your* environment — what's actually installed on this machine, the nicknames Upayan uses, which hosts are reachable. Keeping them apart means you can update skills without losing your notes, and share skills without leaking your infrastructure.
+
+---
+
+*Update this file as you learn the environment. Add a command here the moment you realize you'll need it again.*
