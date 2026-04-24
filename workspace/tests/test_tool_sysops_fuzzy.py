@@ -1,0 +1,439 @@
+"""
+Test Suite: edit_synapse_config fuzzy-match fallback (RT3)
+==========================================================
+Tests for the fuzzy-match fallback path in ``edit_synapse_config`` —
+when a user supplies an invalid model name, the tool should:
+
+* exact-match → apply silently
+* close-match (similarity ≥ 0.85) → auto-apply + return note
+* ambiguous (suggestions but no clear winner) → return suggestions list
+* no match → return helpful error pointing at list_available_models
+* offline (no reachable list) → fall back to prefix-only check
+
+All HTTP discovery is mocked — these tests never hit real endpoints.
+
+See: .planning/JARVIS-ARCH-PLAN.md (RT3)
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import sys
+
+import pytest
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
+from sci_fi_dashboard import tool_sysops  # noqa: E402
+from sci_fi_dashboard.tool_registry import ToolContext  # noqa: E402
+from sci_fi_dashboard.tool_sysops import (  # noqa: E402
+    _discover_reachable_models,
+    _edit_synapse_config_factory,
+    _fuzzy_match_model,
+)
+
+
+# Realistic snapshot of what Copilot+Ollama return — used as the canonical
+# fixture for every test in this module.
+FAKE_REACHABLE = [
+    "github_copilot/claude-3-5-sonnet-20241022",
+    "github_copilot/claude-3-7-sonnet-thought",
+    "github_copilot/gemini-2.0-flash-001",
+    "github_copilot/gemini-2.5-flash",
+    "github_copilot/gemini-2.5-pro",
+    "github_copilot/gpt-4o",
+    "github_copilot/gpt-4o-mini",
+    "github_copilot/o3-mini",
+    "ollama_chat/llama3.2:3b",
+    "ollama_chat/mistral:latest",
+    "ollama_chat/nomic-embed-text:latest",
+]
+
+
+@pytest.fixture(autouse=True)
+def reset_models_cache():
+    """Clear the module-level cache before each test so nothing leaks across."""
+    tool_sysops._models_cache["models"] = []
+    tool_sysops._models_cache["expires_at"] = 0.0
+    yield
+    tool_sysops._models_cache["models"] = []
+    tool_sysops._models_cache["expires_at"] = 0.0
+
+
+@pytest.fixture
+def fake_synapse_config(tmp_path, monkeypatch):
+    """Patch Path.home() to a tmp dir holding a minimal synapse.json so the
+    edit_synapse_config tool reads/writes against an isolated file.
+    """
+    home = tmp_path / "home"
+    synapse_dir = home / ".synapse"
+    synapse_dir.mkdir(parents=True)
+    cfg_path = synapse_dir / "synapse.json"
+    cfg_path.write_text(
+        json.dumps(
+            {
+                "model_mappings": {
+                    "casual": {"model": "github_copilot/gpt-4o-mini"},
+                    "code": {"model": "github_copilot/claude-3-5-sonnet-20241022"},
+                },
+                "providers": {"github_copilot": {}, "ollama": {}},
+            },
+            indent=2,
+        )
+    )
+    monkeypatch.setattr("pathlib.Path.home", lambda: home)
+    return cfg_path
+
+
+def _make_ctx(owner: bool = True) -> ToolContext:
+    return ToolContext(
+        chat_id="test_chat",
+        sender_id="test_sender",
+        sender_is_owner=owner,
+        workspace_dir="/tmp",
+        config={},
+    )
+
+
+# ---------------------------------------------------------------------------
+# 1. _fuzzy_match_model — pure function tests (no I/O)
+# ---------------------------------------------------------------------------
+
+
+class TestFuzzyMatchModel:
+    """Tests for the pure fuzzy-match helper."""
+
+    @pytest.mark.unit
+    def test_empty_reachable_returns_no_suggestions(self):
+        suggestions, top, sim = _fuzzy_match_model("anything", [])
+        assert suggestions == []
+        assert top is None
+        assert sim == 0.0
+
+    @pytest.mark.unit
+    def test_close_suffix_match_scores_high(self):
+        """Bare suffix 'gemini-2.0-flash' should match
+        'github_copilot/gemini-2.0-flash-001' with high similarity.
+        """
+        suggestions, top, sim = _fuzzy_match_model("gemini-2.0-flash", FAKE_REACHABLE)
+        assert len(suggestions) > 0
+        assert top is not None
+        assert top.startswith("github_copilot/gemini-2.0-flash")
+        assert sim >= 0.85
+
+    @pytest.mark.unit
+    def test_ambiguous_match_returns_suggestions_low_similarity(self):
+        """'gemini-3-flash' is in the gemini family but no exact suffix match."""
+        suggestions, top, sim = _fuzzy_match_model("gemini-3-flash", FAKE_REACHABLE)
+        assert len(suggestions) > 0
+        # Top match should be a gemini model (suffix similarity will catch it)
+        assert top is not None
+        assert "gemini" in top.lower()
+        # But similarity should be below auto-apply threshold (different generation)
+        assert sim < 0.85
+
+    @pytest.mark.unit
+    def test_no_match_returns_empty(self):
+        """A totally unrelated string should produce no suggestions."""
+        suggestions, top, sim = _fuzzy_match_model("xyzzy-nonsense-9000", FAKE_REACHABLE)
+        assert suggestions == []
+        assert top is None
+        assert sim == 0.0
+
+    @pytest.mark.unit
+    def test_suggestions_capped_at_max(self):
+        """Suggestions list never exceeds _FUZZY_MAX_SUGGESTIONS."""
+        suggestions, _, _ = _fuzzy_match_model("gemini", FAKE_REACHABLE)
+        assert len(suggestions) <= tool_sysops._FUZZY_MAX_SUGGESTIONS
+
+    @pytest.mark.unit
+    def test_full_string_exact_match_scores_one(self):
+        """An exact match in reachable returns suggestion with similarity 1.0."""
+        target = "github_copilot/gpt-4o"
+        suggestions, top, sim = _fuzzy_match_model(target, FAKE_REACHABLE)
+        assert target in suggestions
+        assert top == target
+        assert sim == pytest.approx(1.0)
+
+
+# ---------------------------------------------------------------------------
+# 2. _discover_reachable_models — cache + best-effort tests
+# ---------------------------------------------------------------------------
+
+
+class TestDiscoverReachableModels:
+    """Tests for the discovery helper — verifies cache TTL + best-effort behavior."""
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_returns_empty_when_both_endpoints_fail(self, monkeypatch):
+        """When httpx raises on every request, helper returns []."""
+        # Force _get_copilot_token to raise so the Copilot path is skipped early.
+        def _bust_token():
+            raise RuntimeError("no token")
+
+        monkeypatch.setattr("sci_fi_dashboard.llm_router._get_copilot_token", _bust_token)
+
+        # Make every httpx GET raise.
+        class _FailClient:
+            def __init__(self, *a, **kw):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+            async def get(self, *a, **kw):
+                raise RuntimeError("network down")
+
+        monkeypatch.setattr("httpx.AsyncClient", _FailClient)
+
+        models = await _discover_reachable_models()
+        assert models == []
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_cache_ttl_honored(self, monkeypatch):
+        """Second call within TTL should not re-query — return cached list."""
+        # Seed the cache directly so we don't have to mock httpx.
+        import time as _time
+
+        tool_sysops._models_cache["models"] = ["github_copilot/gpt-4o"]
+        tool_sysops._models_cache["expires_at"] = _time.monotonic() + 1000.0
+
+        # If the helper bypasses cache, this httpx mock would be invoked.
+        called = {"count": 0}
+
+        class _SpyClient:
+            def __init__(self, *a, **kw):
+                called["count"] += 1
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+            async def get(self, *a, **kw):
+                raise AssertionError("should not be called when cache is fresh")
+
+        monkeypatch.setattr("httpx.AsyncClient", _SpyClient)
+
+        models = await _discover_reachable_models()
+        assert models == ["github_copilot/gpt-4o"]
+        assert called["count"] == 0
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_cache_expires_and_refetches(self, monkeypatch):
+        """When the cache has expired, helper re-queries and updates cache."""
+        import time as _time
+
+        # Seed an EXPIRED cache.
+        tool_sysops._models_cache["models"] = ["github_copilot/old-model"]
+        tool_sysops._models_cache["expires_at"] = _time.monotonic() - 10.0
+
+        # Force token + httpx to fail so the helper just returns [] but still
+        # writes the cache. We're verifying the refetch path is taken, not the
+        # specific return value.
+        def _bust_token():
+            raise RuntimeError("no token")
+
+        monkeypatch.setattr("sci_fi_dashboard.llm_router._get_copilot_token", _bust_token)
+
+        class _FailClient:
+            def __init__(self, *a, **kw):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+            async def get(self, *a, **kw):
+                raise RuntimeError("network down")
+
+        monkeypatch.setattr("httpx.AsyncClient", _FailClient)
+
+        models = await _discover_reachable_models()
+        # Old cache value should NOT have leaked through; refetch ran and
+        # produced [] because both endpoints failed.
+        assert models == []
+
+
+# ---------------------------------------------------------------------------
+# 3. edit_synapse_config — fuzzy fallback integration tests
+# ---------------------------------------------------------------------------
+
+
+async def _call_set(factory_tool, key_path: str, value):
+    """Helper: invoke the tool's _execute with action=set."""
+    return await factory_tool.execute(
+        {"action": "set", "key_path": key_path, "value": value}
+    )
+
+
+class TestEditSynapseConfigFuzzy:
+    """Integration tests for the fuzzy-match path in edit_synapse_config."""
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_exact_match_applies(self, fake_synapse_config, monkeypatch):
+        """Exact reachable model passes validation and writes config."""
+        async def _stub(timeout: float = 3.0):
+            return list(FAKE_REACHABLE)
+
+        monkeypatch.setattr(tool_sysops, "_discover_reachable_models", _stub)
+
+        tool = _edit_synapse_config_factory(_make_ctx(owner=True))
+        assert tool is not None
+
+        result = await _call_set(tool, "model_mappings.casual.model", "github_copilot/gpt-4o")
+        assert not result.is_error, f"expected success, got: {result.content}"
+        payload = json.loads(result.content)
+        assert payload["status"] == "applied"
+        assert payload["value"] == "github_copilot/gpt-4o"
+        assert "note" not in payload  # No fuzzy auto-apply happened
+
+        # Verify file was written
+        cfg = json.loads(fake_synapse_config.read_text(encoding="utf-8"))
+        assert cfg["model_mappings"]["casual"]["model"] == "github_copilot/gpt-4o"
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_close_suffix_match_auto_applies_with_note(
+        self, fake_synapse_config, monkeypatch
+    ):
+        """value='gemini-2.0-flash' auto-applies 'github_copilot/gemini-2.0-flash-001'."""
+        async def _stub(timeout: float = 3.0):
+            return list(FAKE_REACHABLE)
+
+        monkeypatch.setattr(tool_sysops, "_discover_reachable_models", _stub)
+
+        tool = _edit_synapse_config_factory(_make_ctx(owner=True))
+        result = await _call_set(tool, "model_mappings.casual.model", "gemini-2.0-flash")
+
+        assert not result.is_error, f"expected success, got: {result.content}"
+        payload = json.loads(result.content)
+        assert payload["status"] == "applied"
+        # Auto-applied value should be the close match, not the original.
+        assert payload["value"] == "github_copilot/gemini-2.0-flash-001"
+        # Note should be present and reference both the requested and applied values.
+        assert "note" in payload
+        assert "gemini-2.0-flash" in payload["note"]
+        assert "gemini-2.0-flash-001" in payload["note"]
+        assert "auto-applied" in payload["note"].lower()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_ambiguous_match_returns_suggestions(
+        self, fake_synapse_config, monkeypatch
+    ):
+        """value='gemini-3-flash' (no exact match, similarity < 0.85) returns suggestions."""
+        async def _stub(timeout: float = 3.0):
+            return list(FAKE_REACHABLE)
+
+        monkeypatch.setattr(tool_sysops, "_discover_reachable_models", _stub)
+
+        tool = _edit_synapse_config_factory(_make_ctx(owner=True))
+        result = await _call_set(tool, "model_mappings.casual.model", "gemini-3-flash")
+
+        assert result.is_error, f"expected error, got success: {result.content}"
+        err = json.loads(result.content)["error"]
+        # Error message must contain at least one real model name as a suggestion.
+        assert "gemini" in err.lower()
+        assert "Closest matches" in err
+        assert "list_available_models" in err
+        # Must not have written anything to config.
+        cfg = json.loads(fake_synapse_config.read_text(encoding="utf-8"))
+        assert cfg["model_mappings"]["casual"]["model"] == "github_copilot/gpt-4o-mini"
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_no_match_returns_helpful_error(
+        self, fake_synapse_config, monkeypatch
+    ):
+        """value='totally-random-name-xyz' returns error with hint to call list_available_models."""
+        async def _stub(timeout: float = 3.0):
+            return list(FAKE_REACHABLE)
+
+        monkeypatch.setattr(tool_sysops, "_discover_reachable_models", _stub)
+
+        tool = _edit_synapse_config_factory(_make_ctx(owner=True))
+        result = await _call_set(
+            tool, "model_mappings.casual.model", "xyzzy-nonsense-9000"
+        )
+
+        assert result.is_error
+        err = json.loads(result.content)["error"]
+        assert "list_available_models" in err
+        # Must not have written anything to config.
+        cfg = json.loads(fake_synapse_config.read_text(encoding="utf-8"))
+        assert cfg["model_mappings"]["casual"]["model"] == "github_copilot/gpt-4o-mini"
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_non_string_value_rejected(self, fake_synapse_config, monkeypatch):
+        """Non-string value yields a clear type error."""
+        async def _stub(timeout: float = 3.0):
+            return list(FAKE_REACHABLE)
+
+        monkeypatch.setattr(tool_sysops, "_discover_reachable_models", _stub)
+
+        tool = _edit_synapse_config_factory(_make_ctx(owner=True))
+        result = await _call_set(tool, "model_mappings.casual.model", 42)
+        assert result.is_error
+        err = json.loads(result.content)["error"]
+        assert "must be a string" in err
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_offline_fallback_accepts_provider_prefix(
+        self, fake_synapse_config, monkeypatch
+    ):
+        """When discovery returns empty (offline), the prefix-only sanity check applies."""
+        async def _stub(timeout: float = 3.0):
+            return []  # Both endpoints unreachable
+
+        monkeypatch.setattr(tool_sysops, "_discover_reachable_models", _stub)
+
+        tool = _edit_synapse_config_factory(_make_ctx(owner=True))
+
+        # Provider-prefixed value passes the offline fallback.
+        result = await _call_set(
+            tool, "model_mappings.casual.model", "gemini/gemini-experimental"
+        )
+        assert not result.is_error, f"expected success, got: {result.content}"
+
+        # No prefix → offline fallback rejects it.
+        result_bad = await _call_set(
+            tool, "model_mappings.casual.model", "no-prefix-here"
+        )
+        assert result_bad.is_error
+        err = json.loads(result_bad.content)["error"]
+        assert "provider prefix" in err
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_non_owner_factory_returns_none(self, fake_synapse_config):
+        """Non-owner sessions don't get the tool at all."""
+        tool = _edit_synapse_config_factory(_make_ctx(owner=False))
+        assert tool is None
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_non_model_path_skips_fuzzy(self, fake_synapse_config, monkeypatch):
+        """Setting a non-model key (e.g. providers config) should not invoke fuzzy logic."""
+        # If the helper is touched at all, the test fails.
+        async def _boom(timeout: float = 3.0):
+            raise AssertionError("fuzzy path should not run for non-model keys")
+
+        monkeypatch.setattr(tool_sysops, "_discover_reachable_models", _boom)
+
+        tool = _edit_synapse_config_factory(_make_ctx(owner=True))
+        result = await _call_set(tool, "session.dual_cognition_timeout", 7.5)
+        assert not result.is_error, f"expected success, got: {result.content}"
