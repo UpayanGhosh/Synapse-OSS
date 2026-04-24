@@ -11,7 +11,7 @@ Skills define *how* tools work. This file is for *your* specifics — the stuff 
 - Device nicknames
 - Anything environment-specific
 
-## Installed CLIs (verify with `which <cmd>` via `bash_exec`)
+## Installed CLIs (verify with `command -v <cmd>` (bash/zsh) or `Get-Command <cmd>` (PowerShell))
 
 - `sqlite3` — query SQLite DBs directly. Primary way to touch `memory.db` and `knowledge_graph.db`.
 - `curl` — HTTP requests. Primary way to hit the local FastAPI gateway (`http://127.0.0.1:8000`).
