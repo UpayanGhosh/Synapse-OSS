@@ -29,28 +29,17 @@ class ProtectionLevel(Enum):
 # The agent cannot read, write, or even list these paths
 # ============================================================
 CRITICAL_FILES: set[str] = {
-    # Core application entry points
-    "api_gateway.py",
-    "main.py",
-    "run.py",
-    "app.py",
-    # SBS Core -- the brain itself
-    "sbs/orchestrator.py",
-    "sbs/injection/compiler.py",
-    "sbs/profile/manager.py",
-    # Sentinel -- self-protection
+    # Sentinel -- self-protection (no read, no write — preserves integrity hash)
     "sbs/sentinel/__init__.py",
     "sbs/sentinel/manifest.py",
     "sbs/sentinel/gateway.py",
     "sbs/sentinel/audit.py",
     "sbs/sentinel/tools.py",
-    # Configuration and secrets
+    # Secrets — never readable by the agent
     ".env",
-    "config.py",
-    "settings.py",
-    "requirements.txt",
-    "pyproject.toml",
-    # Profile immutable layer
+    ".env.local",
+    ".env.production",
+    # Profile immutable layer (read-only identity anchor)
     "data/profiles/current/core_identity.json",
 }
 
@@ -66,16 +55,59 @@ CRITICAL_DIRECTORIES: set[str] = {
     ".venv/",
 }
 
+# Directories where every file is read-only to the agent (PROTECTED).
+# Bot can read to understand structure; cannot write anywhere inside.
+PROTECTED_DIRECTORIES: set[str] = {
+    "pipeline/",  # Phase 17 decomposed pipeline — core chat flow
+    "mcp_servers/",  # MCP server plumbing
+    "gateway/",  # Flood/dedup/queue primitives
+    "channels/",  # Channel adapter implementations
+    "multiuser/",  # Session store, session_key, compaction
+    "media/",  # Media processing pipeline
+    "sbs/",  # SBS persona engine (finer-grained PROTECTED_FILES above still apply)
+}
+
 # ============================================================
 # PROTECTED FILES -- Read-only access
 # ============================================================
 PROTECTED_FILES: set[str] = {
+    # Bot can READ these to understand the system, but CANNOT write/delete them.
+    # Editing any of these breaks core chat, memory, or pipeline behaviour.
     "sbs/ingestion/schema.py",
     "sbs/ingestion/logger.py",
     "sbs/processing/realtime.py",
     "sbs/processing/batch.py",
     "sbs/processing/selectors/exemplar.py",
     "sbs/vacuum.py",
+    "sbs/orchestrator.py",
+    "sbs/injection/compiler.py",
+    "sbs/profile/manager.py",
+    # Core entry points + runtime
+    "api_gateway.py",
+    "main.py",
+    "run.py",
+    "app.py",
+    # Chat + pipeline core
+    "chat_pipeline.py",
+    "pipeline_helpers.py",
+    "_deps.py",
+    "llm_router.py",
+    "memory_engine.py",
+    "db.py",
+    "retriever.py",
+    "sqlite_graph.py",
+    "persona.py",
+    "tool_registry.py",
+    "tool_features.py",
+    "tool_sysops.py",
+    "owner_registry.py",
+    "channel_setup.py",
+    "middleware.py",
+    # Build/dependency manifests — bumping versions needs human review
+    "config.py",
+    "settings.py",
+    "requirements.txt",
+    "pyproject.toml",
 }
 
 # ============================================================
@@ -93,6 +125,8 @@ WRITABLE_ZONES: set[str] = {
     "skills/",  # User-defined skills
     "diary/",  # Diary entries
     "cron/",  # Cron job definitions
+    "user_features/",  # Bot-authored new features (Python, docs, scratch)
+    "experiments/",  # Bot-authored experiments / prototypes
     os.path.expanduser("~/.synapse/"),  # User data dir (SBS data lives here now)
 }
 

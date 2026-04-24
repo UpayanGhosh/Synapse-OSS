@@ -21,6 +21,16 @@ def _make_flood_enqueue(channel_id: str):
     """
 
     async def _enqueue(channel_msg):
+        # First-contact owner auto-pairing (DMs only).
+        # Idempotent: only fills empty slots, never overwrites.
+        if not getattr(channel_msg, "is_group", False):
+            try:
+                from sci_fi_dashboard.owner_registry import register_first_contact
+
+                register_first_contact(channel_id, str(channel_msg.chat_id))
+            except Exception as _exc:  # pragma: no cover — never break inbound path
+                logger.warning("owner_registry hook failed: %s", _exc)
+
         # H-09: Generate UUID fallback if message_id is empty/None
         effective_id = channel_msg.message_id or str(uuid.uuid4())
         if deps.dedup.is_duplicate(effective_id):

@@ -91,9 +91,11 @@ skill_watcher: "_SkillWatcher | None" = None
 # ---------------------------------------------------------------------------
 # Tool execution loop constants
 # ---------------------------------------------------------------------------
-MAX_TOOL_ROUNDS = 5
+MAX_TOOL_ROUNDS = 12  # bumped from 5 — Jarvis-like chains need 8-10 steps
 TOOL_RESULT_MAX_CHARS = 4000
 MAX_TOTAL_TOOL_RESULT_CHARS = 20_000
+TOOL_LOOP_WALL_CLOCK_S = 180.0  # hard timeout on full agent loop
+TOOL_LOOP_TOKEN_RATIO_ABORT = 0.8  # abort if cumulative tokens > 80% of model context
 
 _tool_logger = logging.getLogger(__name__ + ".tools")
 

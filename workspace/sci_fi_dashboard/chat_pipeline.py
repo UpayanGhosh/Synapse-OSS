@@ -78,11 +78,23 @@ def _is_serial_tool(tool_name: str, tools: list) -> bool:
 
 
 def _is_owner_sender(user_id: str | None) -> bool:
-    """Heuristic: treat the_creator / the_partner as owner.
-    M-01: Return False for absent/empty user_id instead of True."""
+    """Return True if user_id is owner.
+
+    Three cases treated as owner:
+      1. Persona names ("the_creator", "the_partner") — for HTTP /chat/{target}.
+      2. Channel peer_id present in the owner_registry — first-contact
+         auto-pairing on Telegram/WhatsApp/Discord/Slack.
+    M-01: Return False for absent/empty user_id instead of True.
+    """
     if not user_id:
         return False
-    return user_id.lower() in {"the_creator", "the_partner"}
+    if user_id.lower() in {"the_creator", "the_partner"}:
+        return True
+    try:
+        from sci_fi_dashboard.owner_registry import is_owner
+        return is_owner(user_id)
+    except Exception:
+        return False
 
 
 # ---------------------------------------------------------------------------
@@ -745,14 +757,90 @@ async def persona_chat(
             )
 
         # --- Tool Execution Loop (Phase 3 + 4 + 5) ---
+        # Nudge: tell the LLM it has tools and is expected to chain them
+        # until the task is actually done. Goes last in messages so small
+        # models with strong recency bias still see it.
+        if tool_schemas:
+            _tool_names = ", ".join(t.name for t in session_tools)
+            messages.append(
+                {
+                    "role": "system",
+                    "content": (
+                        f"You have tools available: {_tool_names}.\n\n"
+                        "CORE RULES:\n"
+                        "1. When the user asks you to DO something (read a file, "
+                        "edit config, run a command, search something), USE THE "
+                        "TOOLS — do not just describe what you would do.\n"
+                        "2. Chain multiple tool calls across rounds until the task "
+                        "is actually complete. Only give your final text reply "
+                        "after the work is done.\n"
+                        "3. ON TOOL ERROR: do NOT surrender and report the error "
+                        "to the user. Read the error, then investigate. If a "
+                        "model/file/API is 'invalid', call discovery tools first "
+                        "(list_available_models, list_directory, grep_tool, "
+                        "glob_tool, bash_exec) to find out what IS valid, then "
+                        "retry with a real value. Only ask the user after you've "
+                        "tried at least 2 concrete alternatives.\n"
+                        "4. When picking a model: ALWAYS call "
+                        "list_available_models first to see what's actually "
+                        "reachable on this host. Do not guess model names.\n"
+                        "5. Prefer the closest real match over asking the user "
+                        "to pick. 'gemini-3-flash' isn't available? "
+                        "'github_copilot/gemini-2.5-pro' probably is — use it "
+                        "and tell the user what you chose and why."
+                    ),
+                }
+            )
+
         reply = ""
         tools_used: list[str] = []
         total_tool_time = 0.0
         total_result_chars = 0
         result = None
         loop_detector = ToolLoopDetector() if deps._TOOL_SAFETY_AVAILABLE else None
+        _loop_start = time.time()
+        _cumulative_tokens = 0
 
         for round_num in range(deps.MAX_TOOL_ROUNDS):
+            # Hard wall-clock timeout on the entire agent loop
+            _elapsed = time.time() - _loop_start
+            if _elapsed > deps.TOOL_LOOP_WALL_CLOCK_S:
+                _log.warning(
+                    "tool_loop_wall_clock_exceeded",
+                    extra={"round": round_num, "elapsed_s": round(_elapsed, 1)},
+                )
+                reply = (
+                    getattr(result, "text", "")
+                    if result is not None
+                    else "I ran out of time while working on that. Here's what I got so far."
+                )
+                break
+
+            # Cumulative-token abort — prevents runaway context growth
+            try:
+                from litellm import get_model_info as _gmi
+                _mi = _gmi(getattr(result, "model", "unknown")) if result else {}
+                _ctx_max = (_mi or {}).get("max_input_tokens") or 128_000
+            except Exception:
+                _ctx_max = 128_000
+            if _cumulative_tokens > int(_ctx_max * deps.TOOL_LOOP_TOKEN_RATIO_ABORT):
+                _log.warning(
+                    "tool_loop_token_ratio_exceeded",
+                    extra={"round": round_num, "cum_tokens": _cumulative_tokens, "ctx_max": _ctx_max},
+                )
+                reply = getattr(result, "text", "") or "Token budget reached."
+                break
+
+            _log.info(
+                "tool_round_start",
+                extra={
+                    "round": round_num,
+                    "elapsed_s": round(_elapsed, 1),
+                    "cum_tokens": _cumulative_tokens,
+                    "tools_so_far": len(tools_used),
+                },
+            )
+
             try:
                 _llm_start = time.time()
                 with contextlib.suppress(Exception):
@@ -808,6 +896,9 @@ async def persona_chat(
                     _log.error("tool_loop_llm_error", extra={"round": round_num, "error": str(e)})
                     reply = "I encountered an error processing your request. " "Please try again."
                     break
+
+            # Track cumulative token usage across rounds (used by abort check next loop)
+            _cumulative_tokens += int(getattr(result, "total_tokens", 0) or 0)
 
             # If the result has no tool_calls we are done
             tool_calls = getattr(result, "tool_calls", None) or []

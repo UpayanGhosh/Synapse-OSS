@@ -481,7 +481,7 @@ async def test_blocked_sender_zero_flood_enqueue():
 
 ---
 
-## 8. Open Questions for Planner
+## 8. Open Questions (RESOLVED in plans; A1-A5 in Assumptions Log)
 
 **Q1: What does `debounce.py` contain?**
 The ROADMAP names the six modules as `normalize / debounce / access / enrich / route / reply`. The current `persona_chat()` body has a "consent protocol interception" section (lines 113-233) that acts as a pre-pipeline gate. This is the most logical candidate for `debounce.py`. But "debounce" suggests rate limiting / timing, which is FloodGate's job (already pre-pipeline). The planner must decide: does `debounce.py` = consent-protocol interceptor, or does it mean something else? [RECOMMENDED: consent-protocol interceptor, renamed semantically in the plan]

@@ -159,6 +159,20 @@ async def lifespan(app: FastAPI):
 
             deps.tool_registry = ToolRegistry()
             register_builtin_tools(deps.tool_registry, deps.memory_engine, deps.WORKSPACE_ROOT)
+
+            # Claude-Code-like toolkit (bash_exec, edit_file, grep, glob, edit_synapse_config,
+            # list_directory). Owner-gated and Sentinel-gated by factory; safe to register
+            # unconditionally — non-owner sessions see only read-type tools.
+            try:
+                from sci_fi_dashboard.tool_sysops import register_sysops_tools
+
+                register_sysops_tools(
+                    deps.tool_registry, deps.memory_engine, deps.WORKSPACE_ROOT
+                )
+                deps._tool_logger.info("sysops tools registered")
+            except Exception as exc:
+                deps._tool_logger.warning("sysops registration failed: %s", exc)
+
             deps._tool_logger.info("ToolRegistry initialized")
         except Exception as exc:
             deps._tool_logger.warning("ToolRegistry init failed (non-fatal): %s", exc)

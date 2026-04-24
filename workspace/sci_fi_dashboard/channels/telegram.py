@@ -158,7 +158,7 @@ class TelegramChannel(BaseChannel):
         # (avoids pre-initialize timing issue with filters.Mention).
         self._app.add_handler(
             MessageHandler(
-                filters.ChatType.PRIVATE & filters.TEXT & ~filters.COMMAND,
+                filters.ChatType.PRIVATE & filters.TEXT,
                 self._on_message,
             )
         )

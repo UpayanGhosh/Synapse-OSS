@@ -196,7 +196,14 @@ Plans:
   3. Running the full existing test suite (`cd workspace && pytest tests/ -v`) passes with zero test modifications after the split — confirmed by a clean `pytest` exit code 0 and equal test count pre/post refactor
   4. A message from a sender blocked by `DmPolicy = allowlist` is rejected at the inbound gate before FloodGate queues it — confirmed by asserting zero FloodGate `enqueue` events and zero dedup-cache entries for the blocked sender across a 100-message stress test
   5. Access-control rejection emits a structured log line `module: access, reason: dm-policy, sender: <redacted>, runId: <id>` and never invokes any downstream phase — confirmed by log filtering + downstream-phase-entry assertion
-**Plans**: TBD
+**Plans**: 6 plans
+Plans:
+- [ ] 17-00-PLAN.md — Wave 0: baseline capture + pipeline package bootstrap + use_modular rollback flag (PIPE-01, PIPE-04)
+- [ ] 17-01-PLAN.md — Wave 1: six phase-module stubs + seven test-stub files (PIPE-01, PIPE-02)
+- [ ] 17-02-PLAN.md — Wave 2: ACL-03 inbound gate — pipeline/access.py + unified_webhook wiring + three ACL tests (ACL-03)
+- [ ] 17-03-PLAN.md — Wave 2: extract normalize + debounce + enrich + route + reply from chat_pipeline.py (PIPE-01, PIPE-02)
+- [ ] 17-04-PLAN.md — Wave 3: persona_chat orchestrator slim to <=80 lines + _persona_chat_legacy rollback shim (PIPE-03)
+- [ ] 17-05-PLAN.md — Wave 4: post-refactor snapshots + parity report + VALIDATION map population + MANUAL-VALIDATION checklist (PIPE-04, ACL-03)
 
 ### Phase 18: Multi-Account WhatsApp
 **Goal**: Port OpenClaw's multi-account pattern (`extensions/whatsapp/src/accounts.ts` + `account-config.ts`) so one Synapse instance can run multiple WhatsApp accounts in parallel: each with its own authDir under `~/.synapse/wa_auth/{accountId}/`, independent `allowFrom` / `groupPolicy` / `mediaMaxMb` policies, and inbound routing keyed on self-JID -> accountId. Ships last because it depends on every prior piece of infrastructure: per-authDir atomic creds queue (Phase 15), per-account healthState (Phase 14), per-account structured logs (Phase 13), stable bridge contract (Phase 16), and the clean phase modules that receive account context (Phase 17).
