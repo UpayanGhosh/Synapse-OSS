@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import time
+from pathlib import Path
 
 from fastapi import BackgroundTasks
 
@@ -18,6 +19,123 @@ from sci_fi_dashboard.schemas import ChatRequest
 
 logger = logging.getLogger(__name__)
 _log = get_child_logger("pipeline.chat")  # OBS-01 structured logger carrying runId
+
+# ---------------------------------------------------------------------------
+# Agent Workspace Prefix (RT2)
+# ---------------------------------------------------------------------------
+# Static markdown discipline + identity layer (Jarvis-style backbone).
+# Concatenated into the system prompt at the top — sits ABOVE the SBS dynamic
+# persona layer so SBS adaptation still wins for tone/style while these files
+# anchor the bot's identity, rules, and tool discipline.
+#
+# Resolution order per file:
+#   1. ~/.synapse/workspace/<NAME>.md            (user override)
+#   2. ~/.synapse/workspace/<NAME>.md.template   (runtime fallback)
+#   3. <repo>/agent_workspace/<NAME>.md.template (repo default)
+
+_AGENT_WORKSPACE_FILES: tuple[str, ...] = (
+    "SOUL",
+    "CORE",
+    "IDENTITY",
+    "USER",
+    "TOOLS",
+    "MEMORY",
+    "AGENTS",  # AGENTS last — discipline rules are freshest before dynamic layer
+)
+
+_REPO_AGENT_WORKSPACE: Path = Path(__file__).parent / "agent_workspace"
+_USER_AGENT_WORKSPACE: Path = Path.home() / ".synapse" / "workspace"
+
+# Module-level cache keyed by file mtimes for cheap invalidation.
+_agent_workspace_cache: dict = {"content": "", "mtimes": {}}
+
+
+def _resolve_agent_workspace_path(name: str) -> Path | None:
+    """Resolve a single agent workspace file using the 3-tier override order.
+
+    Returns the first existing path or ``None`` if no copy is reachable.
+    """
+    candidates = (
+        _USER_AGENT_WORKSPACE / f"{name}.md",
+        _USER_AGENT_WORKSPACE / f"{name}.md.template",
+        _REPO_AGENT_WORKSPACE / f"{name}.md.template",
+    )
+    for candidate in candidates:
+        try:
+            if candidate.is_file():
+                return candidate
+        except OSError:
+            continue
+    return None
+
+
+def _load_agent_workspace_prefix() -> str:
+    """Load and concatenate the 7 agent workspace markdown files into a stable prompt prefix.
+
+    Files loaded in order: SOUL → CORE → IDENTITY → USER → TOOLS → MEMORY → AGENTS.
+    AGENTS comes LAST so its discipline rules are the freshest thing the LLM sees
+    before the dynamic SBS persona layer.
+
+    The result is cached at module level. The cache invalidates when ANY of the
+    7 resolved file mtimes changes — letting users edit ``~/.synapse/workspace/SOUL.md``
+    and see changes on the next message without restart.
+
+    Returns one big string with file boundaries marked by ``# ===== <NAME>.md =====``
+    headers. Empty string if none of the files resolve (logged at WARNING level).
+    """
+    resolved: dict[str, Path] = {}
+    for name in _AGENT_WORKSPACE_FILES:
+        path = _resolve_agent_workspace_path(name)
+        if path is not None:
+            resolved[name] = path
+
+    if not resolved:
+        if _agent_workspace_cache["content"]:
+            return _agent_workspace_cache["content"]
+        _log.warning(
+            "agent_workspace_empty",
+            extra={
+                "user_dir": str(_USER_AGENT_WORKSPACE),
+                "repo_dir": str(_REPO_AGENT_WORKSPACE),
+            },
+        )
+        return ""
+
+    # mtime-based cache invalidation — reload if ANY resolved file changed.
+    current_mtimes: dict[Path, float] = {}
+    for path in resolved.values():
+        try:
+            current_mtimes[path] = path.stat().st_mtime
+        except OSError:
+            current_mtimes[path] = 0.0
+
+    if (
+        _agent_workspace_cache["content"]
+        and _agent_workspace_cache["mtimes"] == current_mtimes
+    ):
+        return _agent_workspace_cache["content"]
+
+    sections: list[str] = []
+    for name in _AGENT_WORKSPACE_FILES:
+        path = resolved.get(name)
+        if path is None:
+            continue
+        try:
+            body = path.read_text(encoding="utf-8").strip()
+        except OSError as exc:
+            _log.warning(
+                "agent_workspace_read_failed",
+                extra={"file": str(path), "error": str(exc)},
+            )
+            continue
+        if not body:
+            continue
+        sections.append(f"# ===== {name}.md =====\n{body}")
+
+    content = "\n\n".join(sections)
+    _agent_workspace_cache["content"] = content
+    _agent_workspace_cache["mtimes"] = current_mtimes
+    return content
 
 # Conditional imports -- same pattern as original api_gateway.py
 with contextlib.suppress(ImportError):
@@ -439,6 +557,14 @@ async def persona_chat(
     # Merge proactive context + situational awareness block
     proactive_block = "\n\n".join(p for p in [_proactive_raw, _situational_block] if p)
     system_prompt = sbs_orchestrator.get_system_prompt(base_instructions, proactive_block)
+
+    # RT2: Prepend the static agent workspace markdown prefix (Jarvis-style discipline + identity)
+    # ABOVE the SBS dynamic persona layer. Both layers compose: agent_workspace anchors
+    # identity/rules, SBS adapts tone/style/exemplars per user.
+    _agent_workspace_prefix = _load_agent_workspace_prefix()
+    if _agent_workspace_prefix:
+        system_prompt = f"{_agent_workspace_prefix}\n\n---\n\n{system_prompt}"
+
     messages = [
         {"role": "system", "content": system_prompt},
         {
@@ -757,38 +883,16 @@ async def persona_chat(
             )
 
         # --- Tool Execution Loop (Phase 3 + 4 + 5) ---
-        # Nudge: tell the LLM it has tools and is expected to chain them
-        # until the task is actually done. Goes last in messages so small
-        # models with strong recency bias still see it.
+        # Tool discipline now lives in agent_workspace/AGENTS.md.template (TURN BUDGET,
+        # Resourcefulness, ON TOOL ERROR rules) — prepended to the system prompt at the
+        # top of persona_chat() via _load_agent_workspace_prefix(). We still note the
+        # available tool names here so the LLM has a concrete, current inventory.
         if tool_schemas:
             _tool_names = ", ".join(t.name for t in session_tools)
             messages.append(
                 {
                     "role": "system",
-                    "content": (
-                        f"You have tools available: {_tool_names}.\n\n"
-                        "CORE RULES:\n"
-                        "1. When the user asks you to DO something (read a file, "
-                        "edit config, run a command, search something), USE THE "
-                        "TOOLS — do not just describe what you would do.\n"
-                        "2. Chain multiple tool calls across rounds until the task "
-                        "is actually complete. Only give your final text reply "
-                        "after the work is done.\n"
-                        "3. ON TOOL ERROR: do NOT surrender and report the error "
-                        "to the user. Read the error, then investigate. If a "
-                        "model/file/API is 'invalid', call discovery tools first "
-                        "(list_available_models, list_directory, grep_tool, "
-                        "glob_tool, bash_exec) to find out what IS valid, then "
-                        "retry with a real value. Only ask the user after you've "
-                        "tried at least 2 concrete alternatives.\n"
-                        "4. When picking a model: ALWAYS call "
-                        "list_available_models first to see what's actually "
-                        "reachable on this host. Do not guess model names.\n"
-                        "5. Prefer the closest real match over asking the user "
-                        "to pick. 'gemini-3-flash' isn't available? "
-                        "'github_copilot/gemini-2.5-pro' probably is — use it "
-                        "and tell the user what you chose and why."
-                    ),
+                    "content": f"Available tools this turn: {_tool_names}.",
                 }
             )
 
