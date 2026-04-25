@@ -56,9 +56,11 @@ def reset_models_cache():
     """Clear the module-level cache before each test so nothing leaks across."""
     tool_sysops._models_cache["models"] = []
     tool_sysops._models_cache["expires_at"] = 0.0
+    tool_sysops._models_cache["fetched"] = False
     yield
     tool_sysops._models_cache["models"] = []
     tool_sysops._models_cache["expires_at"] = 0.0
+    tool_sysops._models_cache["fetched"] = False
 
 
 @pytest.fixture
@@ -94,6 +96,91 @@ def _make_ctx(owner: bool = True) -> ToolContext:
         workspace_dir="/tmp",
         config={},
     )
+
+
+# ---------------------------------------------------------------------------
+# 1a. _version_digits — extract the version-digit signature of a model name
+# ---------------------------------------------------------------------------
+
+
+class TestVersionDigits:
+    """Direct unit tests for _version_digits."""
+
+    @pytest.mark.unit
+    def test_extracts_simple_digits(self):
+        assert tool_sysops._version_digits("gpt-4") == ("4",)
+        assert tool_sysops._version_digits("gpt-4o") == ("4",)
+
+    @pytest.mark.unit
+    def test_extracts_multi_part_versions(self):
+        assert tool_sysops._version_digits("gemini-2.0-flash") == ("2", "0")
+        assert tool_sysops._version_digits("claude-3-5-sonnet") == ("3", "5")
+
+    @pytest.mark.unit
+    def test_no_digits_returns_empty_tuple(self):
+        assert tool_sysops._version_digits("ollama_chat/mistral") == ()
+        assert tool_sysops._version_digits("foo-bar-baz") == ()
+
+    @pytest.mark.unit
+    def test_strips_provider_prefix_for_extraction(self):
+        # Current implementation runs findall over the whole string; provider
+        # prefix "github_copilot/" has no digits so this is a no-op. Test
+        # documents the observed behavior so future changes to prefix handling
+        # surface here.
+        result = tool_sysops._version_digits("github_copilot/gemini-2.0-flash-001")
+        assert "2" in result and "0" in result
+
+
+# ---------------------------------------------------------------------------
+# 1b. _digit_compat — the version-digit prefix safety guard
+# ---------------------------------------------------------------------------
+
+
+class TestDigitCompat:
+    """Direct unit tests for _digit_compat — the version-digit prefix safety guard."""
+
+    @pytest.mark.unit
+    def test_no_digits_either_side(self):
+        """When neither has digits → compatible (free pass)."""
+        assert tool_sysops._digit_compat("foo", "bar") is True
+        assert tool_sysops._digit_compat("ollama_chat/mistral", "anthropic/claude") is True
+
+    @pytest.mark.unit
+    def test_request_no_digits_candidate_has_digits(self):
+        """Request without digits is compatible with any digit-bearing candidate."""
+        assert tool_sysops._digit_compat("gemini-flash", "github_copilot/gemini-2.5-flash") is True
+        assert tool_sysops._digit_compat("claude-sonnet", "anthropic/claude-3-5-sonnet") is True
+
+    @pytest.mark.unit
+    def test_request_digits_candidate_no_digits_returns_false(self):
+        """Request with digits but candidate has none → not compatible (different concept)."""
+        assert tool_sysops._digit_compat("gemini-2", "gemini") is False
+        assert tool_sysops._digit_compat("gpt-4", "ollama_chat/mistral") is False
+
+    @pytest.mark.unit
+    def test_request_digits_prefix_of_candidate(self):
+        """Request digits are a prefix of candidate digits → compatible (build suffix dropped)."""
+        assert (
+            tool_sysops._digit_compat("gemini-2.0", "github_copilot/gemini-2.0-flash-001")
+            is True
+        )
+        assert tool_sysops._digit_compat("gpt-4", "github_copilot/gpt-4o") is True
+
+    @pytest.mark.unit
+    def test_request_digits_diverge_from_candidate(self):
+        """Different version generations → not compatible (prevents wrong-version auto-apply)."""
+        assert tool_sysops._digit_compat("gemini-2.0", "gemini-2.5") is False
+        assert (
+            tool_sysops._digit_compat("gemini-3-flash", "github_copilot/gemini-2.5-flash")
+            is False
+        )
+        assert tool_sysops._digit_compat("gpt-3.5", "gpt-4") is False
+
+    @pytest.mark.unit
+    def test_request_has_more_digit_components_than_candidate(self):
+        """Request has more digit components than candidate → not compatible."""
+        # Request "2.0.1" has 3 components, candidate "2.0" has 2 → not a prefix.
+        assert tool_sysops._digit_compat("foo-2.0.1", "foo-2.0") is False
 
 
 # ---------------------------------------------------------------------------
@@ -203,6 +290,7 @@ class TestDiscoverReachableModels:
 
         tool_sysops._models_cache["models"] = ["github_copilot/gpt-4o"]
         tool_sysops._models_cache["expires_at"] = _time.monotonic() + 1000.0
+        tool_sysops._models_cache["fetched"] = True
 
         # If the helper bypasses cache, this httpx mock would be invoked.
         called = {"count": 0}
@@ -232,9 +320,11 @@ class TestDiscoverReachableModels:
         """When the cache has expired, helper re-queries and updates cache."""
         import time as _time
 
-        # Seed an EXPIRED cache.
+        # Seed an EXPIRED cache — fetched=True but expires_at in the past so the
+        # TTL guard is what should force the refetch (not the fetched flag).
         tool_sysops._models_cache["models"] = ["github_copilot/old-model"]
         tool_sysops._models_cache["expires_at"] = _time.monotonic() - 10.0
+        tool_sysops._models_cache["fetched"] = True
 
         # Force token + httpx to fail so the helper just returns [] but still
         # writes the cache. We're verifying the refetch path is taken, not the

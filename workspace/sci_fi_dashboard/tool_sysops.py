@@ -60,8 +60,14 @@ _FUZZY_AUTO_APPLY_THRESHOLD = 0.85
 _FUZZY_SUGGESTION_CUTOFF = 0.5
 _FUZZY_MAX_SUGGESTIONS = 5
 
-# Module-level cache: {"models": [...], "expires_at": float}
-_models_cache: dict = {"models": [], "expires_at": 0.0}
+# Module-level cache: {"models": [...], "expires_at": float, "fetched": bool}
+# `fetched` tracks whether a discovery attempt has completed within the TTL —
+# independent of whether it returned any models. Without this flag, an empty
+# result (both endpoints offline) would falsify the cache check below and
+# every subsequent call would burn another ~6s re-querying unreachable
+# endpoints. With the flag, offline callers get the cached empty list for
+# the full TTL window.
+_models_cache: dict = {"models": [], "expires_at": 0.0, "fetched": False}
 
 
 async def _discover_reachable_models(timeout: float = 3.0) -> list[str]:
@@ -70,14 +76,17 @@ async def _discover_reachable_models(timeout: float = 3.0) -> list[str]:
     Queries Copilot /models endpoint and Ollama /api/tags. Returns empty list
     if neither reachable (best-effort, no exceptions raised). Caches result
     for ``_MODELS_CACHE_TTL_S`` seconds to avoid hammering endpoints when the
-    LLM retries the tool repeatedly.
+    LLM retries the tool repeatedly. The cache is considered fresh whenever a
+    fetch has completed within the TTL — even if that fetch returned no
+    models — so offline hosts don't re-query unreachable endpoints on every
+    call.
 
     Returns provider-prefixed strings like:
         ["github_copilot/gpt-4o", "github_copilot/gemini-2.0-flash-001",
          "ollama_chat/llama3.2:3b", ...]
     """
     now = time.monotonic()
-    if _models_cache["models"] and now < _models_cache["expires_at"]:
+    if _models_cache["fetched"] and now < _models_cache["expires_at"]:
         return list(_models_cache["models"])
 
     models: list[str] = []
@@ -133,6 +142,10 @@ async def _discover_reachable_models(timeout: float = 3.0) -> list[str]:
     deduped = sorted(set(models))
     _models_cache["models"] = deduped
     _models_cache["expires_at"] = now + _MODELS_CACHE_TTL_S
+    # Mark the cache as fetched-within-TTL even when ``deduped`` is empty so
+    # offline callers don't re-query both endpoints (~6s round trip) on every
+    # subsequent call. TTL expiry still triggers a refetch.
+    _models_cache["fetched"] = True
     return list(deduped)
 
 
@@ -766,8 +779,13 @@ def _edit_synapse_config_factory(ctx: ToolContext) -> SynapseTool | None:
         description=(
             "Read or set values in ~/.synapse/synapse.json. action=get returns the "
             "config (or a sub-path via key_path like 'model_mappings.code.model'). "
-            "action=set writes a new value at key_path with JSON validation and a "
-            "timestamped backup. Restart server after set. Owner only."
+            "action=set writes a new value with JSON validation, a timestamped "
+            "backup, and a hot-reload of the LLM router (no server restart needed). "
+            "For model keys (model_mappings.*.model), the value is fuzzy-matched "
+            "against reachable Copilot + Ollama models — if your input is close to "
+            "a real model name, the closest match auto-applies and the response "
+            "includes a 'note' field explaining what was applied. If no close "
+            "match, the response lists suggestions for retry. Owner only."
         ),
         parameters={
             "type": "object",
