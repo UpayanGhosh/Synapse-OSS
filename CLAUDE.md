@@ -204,6 +204,8 @@ API:8000 | Baileys Bridge:5010 (internal) | Tools MCP:8989 | Ollama:11434 | OAut
 
 6. **Ollama models require `ollama_chat/` prefix** in `synapse.json`, not `ollama/`. The `api_base` is pulled from `providers.ollama.api_base`.
 
+   **Ollama silent context truncation** — Ollama defaults to `num_ctx=2048` regardless of the model's native window. Synapse's identity prompt is ~7k tokens — at the default, the trailing user message gets dropped and the bot replies with generic "how can I help" boilerplate. Fix is in `llm_router.py: _OLLAMA_DEFAULT_OPTS` (sets `num_ctx=8192`). Override per-role via `model_mappings.<role>.ollama_options.num_ctx`. Verify VRAM headroom: KV cache size grows linearly with `num_ctx`; on 8 GB GPUs avoid combining a 7B+ model with `num_ctx > 12k`.
+
 7. **`synapse_config.py` is imported by 50+ files** — even small changes there have wide blast radius.
 
 8. **Dual Cognition timeout** — `think()` is wrapped in `asyncio.wait_for(timeout=dual_cognition_timeout)`. If it times out, `CognitiveMerge()` (empty) is used and the message still gets a response. Tune via `session.dual_cognition_timeout` in `synapse.json` (default 5s).

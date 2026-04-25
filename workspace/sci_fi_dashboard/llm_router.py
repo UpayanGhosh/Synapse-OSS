@@ -291,6 +291,29 @@ def _inject_provider_keys(providers: dict) -> None:
 # Ollama chat prefix sentinel — centralised so no bare provider strings appear at call sites
 _OLLAMA_CHAT_PREFIX = "ollama_chat/"  # allowed: constant-definition
 
+# Ollama runtime defaults. num_ctx is critical: Ollama defaults to 2048 tokens
+# regardless of the model's native window, which silently truncates large system
+# prompts (Synapse's identity prompt is ~7k tokens) and drops the trailing user
+# message. Override per-role via model_mappings.<role>.ollama_options.num_ctx.
+_OLLAMA_DEFAULT_OPTS = {
+    # 8192 is a safe default for 6-8 GB VRAM hardware. Note: Synapse's full
+    # identity prompt is ~19k tokens — at 8k context the trailing user message
+    # gets truncated. Two paths:
+    #   1) Bump num_ctx via model_mappings.<role>.ollama_options.num_ctx
+    #      (32768 fits comfortably on 8 GB VRAM with 7B-class models)
+    #   2) Wait for W2 minimal-mode prompt builder (see MODEL-AGNOSTIC-ROADMAP.md)
+    # The startup-time prompt-size warning logs when a call's prompt exceeds
+    # the configured num_ctx — surfaces the issue without OOM-ing low-VRAM users.
+    "num_ctx": 8192,
+    "temperature": 0.7,
+    "repeat_penalty": 1.15,
+}
+
+
+def _build_ollama_options(cfg: dict) -> dict:
+    """Merge per-role ollama_options on top of defaults so num_ctx is always set."""
+    return {**_OLLAMA_DEFAULT_OPTS, **(cfg.get("ollama_options") or {})}
+
 # --- Router builder ---
 
 
@@ -423,9 +446,7 @@ def build_router(model_mappings: dict, providers: dict) -> Router:
         elif primary_model.startswith(_OLLAMA_CHAT_PREFIX):
             litellm_params = {"model": primary_model, "timeout": 60, "stream": False}
             litellm_params["api_base"] = ollama_api_base
-            # Ollama-specific defaults — configurable via model_mappings.<role>.ollama_options
-            ollama_opts = cfg.get("ollama_options", {"repeat_penalty": 1.15, "temperature": 0.7})
-            litellm_params["extra_body"] = {"options": ollama_opts}
+            litellm_params["extra_body"] = {"options": _build_ollama_options(cfg)}
         elif primary_model.startswith("ollama/"):
             raise ValueError(
                 f"Role '{role}' uses ollama/ prefix — must be {_OLLAMA_CHAT_PREFIX} for chat calls. "
@@ -458,10 +479,7 @@ def build_router(model_mappings: dict, providers: dict) -> Router:
                 fallback_params = {"model": fallback_model, "timeout": 60, "stream": False}
                 if fallback_model.startswith(_OLLAMA_CHAT_PREFIX):
                     fallback_params["api_base"] = ollama_api_base
-                    fb_opts = cfg.get(
-                        "ollama_options", {"repeat_penalty": 1.15, "temperature": 0.7}
-                    )
-                    fallback_params["extra_body"] = {"options": fb_opts}
+                    fallback_params["extra_body"] = {"options": _build_ollama_options(cfg)}
             model_list.append({"model_name": fallback_role, "litellm_params": fallback_params})
             fallbacks.append({role: [fallback_role]})
 
@@ -818,6 +836,27 @@ class SynapseLLMRouter:
                             f"({budget_duration})",
                         )
         try:
+            _prompt_chars = sum(len(m.get("content") or "") for m in messages)
+            _est_tokens = _prompt_chars // 4
+            logger.info(
+                "llm.call role=%s msgs=%d total_chars=%d est_tokens=%d",
+                role, len(messages), _prompt_chars, _est_tokens,
+            )
+            # OSS guardrail: warn if local engine prompt exceeds the configured
+            # num_ctx. Ollama silently truncates oversized prompts, dropping the
+            # trailing user message — bot replies with generic boilerplate.
+            _model_str = self._model_string_for_role(role) or ""
+            if _model_str.startswith(_OLLAMA_CHAT_PREFIX):
+                _cfg = self._config.model_mappings.get(role) or {}
+                _opts = _build_ollama_options(_cfg)
+                _num_ctx = int(_opts.get("num_ctx") or 0)
+                if _num_ctx and _est_tokens > _num_ctx:
+                    logger.warning(
+                        "ollama prompt likely overflows context: role=%s est_tokens=%d num_ctx=%d. "
+                        "Either bump model_mappings.%s.ollama_options.num_ctx (cost: VRAM) "
+                        "or wait for W2 minimal-mode prompt builder.",
+                        role, _est_tokens, _num_ctx, role,
+                    )
             response = await self._router.acompletion(
                 model=role,
                 messages=messages,
