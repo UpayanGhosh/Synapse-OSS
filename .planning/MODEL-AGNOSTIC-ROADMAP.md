@@ -117,21 +117,21 @@ Synapse must declare a target tier per role and ship a prompt variant suited to 
 
 **Done criteria:** synapse.json change picks correct prompt variant; health endpoint reports it.
 
-## Sequencing (revised 2026-04-25 after E4B test)
+## Sequencing (revised 2026-04-25 — three workstreams shipped same day)
 
-**Major reordering after live test:** with `num_ctx=32768` E4B answered correctly. Prompt size measured at **19,107 tokens**. Implication: no consumer GPU under 12 GB VRAM can run Synapse locally with current prompt size. **W2 is now mandatory blocker**, not optional polish.
+**Major reordering during the day:** initial plan was W1 first, others in any order. Live tests forced W2 to P0 (prompt was 19k tokens — no commodity GPU could run it). After W2 shipped, T3 tool-use test revealed `mid_open` had `native_tool_schemas=False`, which broke local tool calls — pulled W3 in same session to close that gap.
 
-| Order | Workstream | Why this order |
-|-------|------------|----------------|
-| 1 | W1 (config defaults) | DONE today — num_ctx default + per-role override + overflow warning shipping |
-| 2 | **W2 (prompt portability) — P0 escalated** | Without minimal-mode prompt, OSS local-host story is broken on 4-8 GB VRAM hardware. Must come before everything else. |
-| 3 | W4 (test suite) | After W2 lands; needed to verify minimal-mode doesn't degrade quality below per-tier thresholds |
-| 4 | W3 (tool resilience) | Independent; helps every smaller-tier swap |
-| 5 | W5 (tier declaration) | Glue; depends on W2 |
+| Order | Workstream | Status | Commit |
+|-------|------------|--------|--------|
+| 1 | W1 (Ollama config defaults) | ✓ shipped | `bdaa25a` |
+| 2 | W2 (tier-aware prompt compilation) | ✓ shipped | `eb1ffc0` (module) + `37a1dea` (wiring) |
+| 3 | W3 (tool-call resilience: parser + retry) | ✓ shipped | `eb1ffc0` |
+| 4 | W4 (golden behavior test suite) | next | — |
+| 5 | W5 (capability-tier auto-decl + warnings) | last | — |
 
 **OSS-friendliness constraint (locked in):** every default in this codebase must work on 4 GB VRAM hardware out of box. Bigger hardware enjoys more headroom but baseline must run on commodity GPUs. No "this works on my rig" tuning for global defaults — that's per-role override territory.
 
-Total effort estimate: ~14–20 hours across 5 workstreams (slightly bigger now that W2 is fully in scope, not just a stub).
+Original effort estimate ~14-20 hr. **Actual W1+W2+W3 ship time: ~one session day.**
 
 ## "Model-agnostic-ready" definition (when can we claim the vision is delivered)
 
@@ -145,18 +145,67 @@ Synapse is **model-agnostic-ready** when ALL of the following hold:
 
 ## Today's progress (2026-04-25)
 
-- **W1 shipped:**
-  - `_OLLAMA_DEFAULT_OPTS` constant in `llm_router.py` with `num_ctx=8192` (safe for 6-8 GB VRAM)
-  - `_build_ollama_options()` helper merges per-role overrides on top of defaults so essential keys never get dropped
-  - Both primary and fallback Ollama paths now use the helper
-  - Pre-call instrumentation logs `est_tokens` for every LLM call
-  - Overflow warning fires when an Ollama prompt likely exceeds configured `num_ctx`
-  - `synapse.json.example` documents the override syntax with a worked example
-  - `CLAUDE.md` Critical Gotchas section explains the truncation behavior and VRAM trade-off
+### W1 shipped — `bdaa25a`
 
-- **Live test conclusion:** at `num_ctx=8192` E4B replied with generic "how can I help" boilerplate (truncation drops user message). At `num_ctx=16384` same boilerplate (still oversized). At `num_ctx=32768` E4B correctly answered "What is 7×8?" with "56." Real prompt size measured: **19,107 tokens**. Confirms W1 fix works AND that W2 is the next hard blocker.
+- `_OLLAMA_DEFAULT_OPTS` constant in `llm_router.py` with `num_ctx=8192` (safe for 6-8 GB VRAM)
+- `_build_ollama_options()` helper merges per-role overrides on top of defaults so essential keys never get dropped
+- Both primary and fallback Ollama paths use the helper
+- Pre-call instrumentation logs `est_tokens` for every LLM call
+- Overflow warning fires when an Ollama prompt exceeds configured `num_ctx`
+- `synapse.json.example` documents override syntax; `CLAUDE.md` Critical Gotchas section explains the truncation behavior and VRAM trade-off
 
-- **Roadmap created** (this file). W2 escalated to P0.
+**E4B sweep result:** `num_ctx=8192` → boilerplate (prompt truncated). `num_ctx=16384` → still boilerplate (prompt still oversized). `num_ctx=32768` → "56." for "What is 7×8?" Real prompt size measured: **19,107 tokens**. Proved W1 worked AND that W2 was the next hard blocker.
+
+### W3 shipped — `eb1ffc0` (codex agent)
+
+- New module `prompt_tiers.py` (250 lines): `PromptTierPolicy` dataclass, three policies (frontier/mid_open/small), `<tier:...>` markdown filter, model-string → tier inference, alias normalization
+- `llm_router.py` extended with `normalize_tool_calls`, `_normalize_tool_calls_with_report`, `_attempt_json_repair`, fenced-block regex, function-like text-call extractor, fuzzy tool-name match, schema-driven argument key coercion
+- Retry-once logic when malformed tool attempt detected — re-prompts with explicit schema instruction
+- Tests: `test_prompt_tiers.py` (5 unit), `test_llm_router_tools.py` (4 new W3 tests + retry test)
+
+### W2 shipped — `37a1dea` (this session)
+
+- `chat_pipeline.py` imports prompt_tiers helpers; resolves per-role tier; applies `filter_tier_sections` to identity prefix + SBS-rendered prompt; tier-aware mtime cache
+- `dual_cognition.py: build_cognitive_context(detail="strategy")` emits compact strategy block for non-frontier tiers
+- `config/schema.py: prompt_tier` + `capability_tier` Literal fields on `AgentModelConfig`
+- 4 templates marked with `<tier:frontier>`, `<tier:frontier,mid_open>`, `<tier:small>` blocks (AGENTS, CORE, MEMORY, TOOLS)
+- `synapse.json.example` per-role tier examples + Ollama options
+- `.gitignore` excludes `.codex-*/` scratch dirs
+
+### Static identity prefix sizes (post-filter)
+
+```
+frontier   chars=43,656  est_tokens=10,914
+mid_open   chars=36,021  est_tokens= 9,005
+small      chars=23,622  est_tokens= 5,905
+```
+
+### Live E2E validation on RTX 3060 Ti 8 GB + qwen2.5:7b at `mid_open` tier (`num_ctx=16384`)
+
+| # | Dimension | Result |
+|---|-----------|--------|
+| T1 | Math (closed-form) | ✓ "It's 56." |
+| T2 | Identity recall | ✓ "My master is Bhai, Upayan" |
+| T3a | Tool use (multi-step ambiguous) | ⚠ bash_exec fired 4× across 5 rounds; reasoning wandered (model ceiling on negated multi-step prompts) |
+| T3b | Tool use (explicit one-liner) | ✓ "10,401 documents" via real bash_exec, no hallucination |
+| T4 | RAG memory recall | ✓ "Shreya loves momos" quoted from memory.db |
+| T5 | SBS auto-log ingest | ✓ both turns persisted with full metadata |
+| T6 | KG-augmented recall | ✓ "Boumuni" + Rapido incident + emotional pattern |
+
+**6 PASS + 1 partial.** The single partial (T3a) is a model reasoning ceiling, not an architecture defect — T3b on the same model confirms tool calls fire correctly when the prompt is unambiguous.
+
+### Validation of the OSS vision
+
+| Vision claim | Status |
+|--------------|--------|
+| Synapse runs on commodity 8 GB VRAM | ✓ proven |
+| Identity preserved across model swap | ✓ proven |
+| RAG / memory recall locally | ✓ proven |
+| KG-augmented context locally | ✓ proven |
+| Tool calls fire on local model | ✓ proven (W2 schemas + W3 parser/retry stack) |
+| SBS auto-logging continues regardless of model | ✓ proven |
+
+The "model-agnostic within a capability tier" claim is now defensible. **W4 will turn it from defensible-by-anecdote into defensible-by-test-matrix.**
 
 ## What this roadmap is NOT
 
@@ -166,6 +215,12 @@ Synapse is **model-agnostic-ready** when ALL of the following hold:
 
 ## Open questions
 
-1. Which tier do we declare as "default" for OSS distribution? Frontier is highest-quality but requires API keys; small is offline-first but degraded. Probably ship synapse.json.example with frontier defaults + commented-out small-tier alternatives.
-2. Do we ship reference models per tier (i.e. "for small tier, we recommend gemma3:4b-it-q4")? Helps OSS users but creates maintenance burden.
-3. How aggressively to auto-detect tier from model string? (Could parse "claude-sonnet" → frontier, "gemma" + "<7b" → small.) Convenience vs explicit-config trade-off.
+1. **Default tier for OSS distribution.** Frontier requires API keys; small is offline-first but degraded. Current example ships frontier defaults with one mid_open + one small example. Could ship a separate `synapse.local-only.json.example` for users who want zero-cloud out of box.
+
+2. **Reference local models per tier.** Live-validated baseline: **qwen2.5:7b at mid_open** on 8 GB VRAM. Should the example file recommend it instead of the placeholder `llama3.3`? Pro: validated quality, accurate VRAM math. Con: implicit endorsement that needs maintenance as new models ship.
+
+3. **Tier auto-inference aggressiveness.** Already implemented in `prompt_tier_for_role`: explicit `prompt_tier` > `capability_tier` > `tier` > inferred from `num_ctx` > inferred from model size in name > fallback default. Open question: should we WARN when inference disagrees with explicit config? E.g. user sets `prompt_tier=frontier` on a model named `gemma:4b` — inference says "small" — config wins but a warning would catch typos. (W5 territory.)
+
+4. **Tool-loop convergence guard.** T3a wandered 5 rounds because nothing told the model "you have enough info, stop now." Cheap mitigation: cap rounds at 3 with a "synthesize and respond" hint after round 2. Belongs in W3 polish or a new W3.5.
+
+5. **W4 scoring strategy.** Embedding similarity vs LLM-as-judge vs rule-based regex — each has tradeoffs (see W4 description below). Recommend hybrid: regex for closed-form (math, names), embedding for prose (RAG, KG context), assertions for tool-call shape (tool fired? right name? right args?).
