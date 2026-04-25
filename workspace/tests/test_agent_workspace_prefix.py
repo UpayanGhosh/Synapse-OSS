@@ -27,9 +27,11 @@ from sci_fi_dashboard import chat_pipeline
 def _reset_agent_workspace_cache():
     """Clear the module-level cache between tests so each starts clean."""
     chat_pipeline._agent_workspace_cache["content"] = ""
+    chat_pipeline._agent_workspace_cache["content_by_tier"] = {}
     chat_pipeline._agent_workspace_cache["mtimes"] = {}
     yield
     chat_pipeline._agent_workspace_cache["content"] = ""
+    chat_pipeline._agent_workspace_cache["content_by_tier"] = {}
     chat_pipeline._agent_workspace_cache["mtimes"] = {}
 
 
@@ -205,7 +207,7 @@ def test_agent_workspace_loader_is_wired_in_persona_chat():
     pipeline_path = Path(chat_pipeline.__file__)
     source = pipeline_path.read_text(encoding="utf-8")
     # The wiring call site
-    assert "_load_agent_workspace_prefix()" in source
+    assert "_load_agent_workspace_prefix(prompt_policy.tier)" in source
     # Composes ABOVE the existing system prompt with a separator
     assert '"---"' in source or "---" in source
 

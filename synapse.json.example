@@ -62,22 +62,27 @@
   "model_mappings": {
     "casual": {
       "model": "gemini/gemini-2.0-flash",
+      "prompt_tier": "frontier",
       "fallback": "groq/llama-3.3-70b-versatile"
     },
     "code": {
       "model": "anthropic/claude-sonnet-4-6",
+      "prompt_tier": "frontier",
       "fallback": "openai/gpt-4o"
     },
     "analysis": {
       "model": "gemini/gemini-2.0-pro",
+      "prompt_tier": "frontier",
       "fallback": "anthropic/claude-sonnet-4-6"
     },
     "review": {
       "model": "anthropic/claude-opus-4-6",
+      "prompt_tier": "frontier",
       "fallback": "anthropic/claude-sonnet-4-6"
     },
     "vault": {
       "model": "ollama_chat/llama3.3",
+      "prompt_tier": "small",
       "fallback": null,
       "_ollama_options_comment": "Override Ollama runtime params per-role. Defaults: num_ctx=8192, temperature=0.7, repeat_penalty=1.15. Bump num_ctx if you have VRAM headroom and want to send larger prompts.",
       "ollama_options": {
@@ -88,10 +93,12 @@
     },
     "translate": {
       "model": "openrouter/meta-llama/llama-3.3-70b-instruct",
+      "prompt_tier": "frontier",
       "fallback": "groq/llama-3.3-70b-versatile"
     },
     "kg": {
       "model": "gemini/gemini-2.5-flash-lite",
+      "prompt_tier": "mid_open",
       "fallback": "gemini/gemini-2.5-flash"
     }
   },

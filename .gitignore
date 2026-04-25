@@ -157,3 +157,8 @@ GEMINI.md
 .code-review-graph/
 landing/
 .worktrees/
+
+# ──────────────────────────────────────────────────────────────
+# Codex agent scratch — not for GitHub
+# ──────────────────────────────────────────────────────────────
+.codex-*/

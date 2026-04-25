@@ -15,6 +15,12 @@ from sci_fi_dashboard.dual_cognition import CognitiveMerge
 from sci_fi_dashboard.llm_router import LLMResult
 from sci_fi_dashboard.observability import get_child_logger
 from sci_fi_dashboard.pipeline_emitter import get_emitter as _get_emitter
+from sci_fi_dashboard.prompt_tiers import (
+    PromptTierPolicy,
+    filter_tier_sections,
+    get_prompt_tier_policy,
+    prompt_tier_for_role,
+)
 from sci_fi_dashboard.schemas import ChatRequest
 
 logger = logging.getLogger(__name__)
@@ -24,7 +30,7 @@ _log = get_child_logger("pipeline.chat")  # OBS-01 structured logger carrying ru
 # Agent Workspace Prefix (RT2)
 # ---------------------------------------------------------------------------
 # Static markdown discipline + identity layer (Jarvis-style backbone).
-# Concatenated into the system prompt at the top — sits ABOVE the SBS dynamic
+# Concatenated into the system prompt at the top -- sits ABOVE the SBS dynamic
 # persona layer so SBS adaptation still wins for tone/style while these files
 # anchor the bot's identity, rules, and tool discipline.
 #
@@ -40,14 +46,14 @@ _AGENT_WORKSPACE_FILES: tuple[str, ...] = (
     "USER",
     "TOOLS",
     "MEMORY",
-    "AGENTS",  # AGENTS last — discipline rules are freshest before dynamic layer
+    "AGENTS",  # AGENTS last -- discipline rules are freshest before dynamic layer
 )
 
 _REPO_AGENT_WORKSPACE: Path = Path(__file__).parent / "agent_workspace"
 _USER_AGENT_WORKSPACE: Path = Path.home() / ".synapse" / "workspace"
 
-# Module-level cache keyed by file mtimes for cheap invalidation.
-_agent_workspace_cache: dict = {"content": "", "mtimes": {}}
+# Module-level cache keyed by file mtimes + prompt tier for cheap invalidation.
+_agent_workspace_cache: dict = {"content": "", "content_by_tier": {}, "mtimes": {}}
 
 
 def _resolve_agent_workspace_path(name: str) -> Path | None:
@@ -69,20 +75,24 @@ def _resolve_agent_workspace_path(name: str) -> Path | None:
     return None
 
 
-def _load_agent_workspace_prefix() -> str:
+def _load_agent_workspace_prefix(prompt_tier: str = "frontier") -> str:
     """Load and concatenate the 7 agent workspace markdown files into a stable prompt prefix.
 
-    Files loaded in order: SOUL → CORE → IDENTITY → USER → TOOLS → MEMORY → AGENTS.
+    Files loaded in order: SOUL -> CORE -> IDENTITY -> USER -> TOOLS -> MEMORY -> AGENTS.
     AGENTS comes LAST so its discipline rules are the freshest thing the LLM sees
     before the dynamic SBS persona layer.
 
     The result is cached at module level. The cache invalidates when ANY of the
-    7 resolved file mtimes changes — letting users edit ``~/.synapse/workspace/SOUL.md``
+    7 resolved file mtimes changes -- letting users edit ``~/.synapse/workspace/SOUL.md``
     and see changes on the next message without restart.
+
+    Tier markers (``<tier:frontier>`` / ``<tier:small>`` / ``<tier:all>``)
+    are stripped before concatenation so the prompt can target a model class.
 
     Returns one big string with file boundaries marked by ``# ===== <NAME>.md =====``
     headers. Empty string if none of the files resolve (logged at WARNING level).
     """
+    tier = get_prompt_tier_policy(prompt_tier).tier
     resolved: dict[str, Path] = {}
     for name in _AGENT_WORKSPACE_FILES:
         path = _resolve_agent_workspace_path(name)
@@ -90,8 +100,9 @@ def _load_agent_workspace_prefix() -> str:
             resolved[name] = path
 
     if not resolved:
-        if _agent_workspace_cache["content"]:
-            return _agent_workspace_cache["content"]
+        cached_any = _agent_workspace_cache.get("content") or ""
+        if cached_any:
+            return cached_any
         _log.warning(
             "agent_workspace_empty",
             extra={
@@ -101,7 +112,7 @@ def _load_agent_workspace_prefix() -> str:
         )
         return ""
 
-    # mtime-based cache invalidation — reload if ANY resolved file changed.
+    # mtime-based cache invalidation -- reload if ANY resolved file changed.
     current_mtimes: dict[Path, float] = {}
     for path in resolved.values():
         try:
@@ -109,11 +120,12 @@ def _load_agent_workspace_prefix() -> str:
         except OSError:
             current_mtimes[path] = 0.0
 
-    if (
-        _agent_workspace_cache["content"]
-        and _agent_workspace_cache["mtimes"] == current_mtimes
-    ):
-        return _agent_workspace_cache["content"]
+    content_by_tier = _agent_workspace_cache.setdefault("content_by_tier", {})
+    if _agent_workspace_cache["mtimes"] == current_mtimes and tier in content_by_tier:
+        return content_by_tier[tier]
+
+    if _agent_workspace_cache["mtimes"] != current_mtimes:
+        content_by_tier.clear()
 
     sections: list[str] = []
     for name in _AGENT_WORKSPACE_FILES:
@@ -121,7 +133,7 @@ def _load_agent_workspace_prefix() -> str:
         if path is None:
             continue
         try:
-            body = path.read_text(encoding="utf-8").strip()
+            body = filter_tier_sections(path.read_text(encoding="utf-8"), tier).strip()
         except OSError as exc:
             _log.warning(
                 "agent_workspace_read_failed",
@@ -133,7 +145,9 @@ def _load_agent_workspace_prefix() -> str:
         sections.append(f"# ===== {name}.md =====\n{body}")
 
     content = "\n\n".join(sections)
-    _agent_workspace_cache["content"] = content
+    content_by_tier[tier] = content
+    if tier == "frontier":
+        _agent_workspace_cache["content"] = content
     _agent_workspace_cache["mtimes"] = current_mtimes
     return content
 
@@ -147,7 +161,7 @@ def _build_runtime_info_block() -> str:
     the bot has factual ground truth.
 
     Returns a formatted string showing all role->model mappings from
-    synapse.json plus OS/time. Best-effort — returns empty string on read
+    synapse.json plus OS/time. Best-effort -- returns empty string on read
     failure rather than raising.
     """
     import platform
@@ -164,9 +178,9 @@ def _build_runtime_info_block() -> str:
 
     if mappings:
         lines.append(
-            "Active model routing — Traffic Cop selects role per turn based on "
+            "Active model routing -- Traffic Cop selects role per turn based on "
             "message content, then the role's model handles the LLM call. "
-            "If asked about your model, answer from this table — do NOT guess "
+            "If asked about your model, answer from this table -- do NOT guess "
             "from training-data priors:"
         )
         for role, m in mappings.items():
@@ -190,6 +204,140 @@ def _build_runtime_info_block() -> str:
     lines.append(f"UTC time: {datetime.now(UTC).isoformat(timespec='minutes')}")
 
     return "\n".join(lines)
+
+
+def _format_memory_context_for_tier(
+    permanent_facts: list[str],
+    mem_response: dict | None,
+    policy: PromptTierPolicy,
+) -> str:
+    """Render retrieved memory under the active prompt-tier budget."""
+
+    if not mem_response:
+        return "(Memory retrieval unavailable)"
+
+    raw_results = mem_response.get("results", []) or []
+    selected: list[dict] = []
+    for result in raw_results:
+        if not isinstance(result, dict):
+            continue
+        if policy.memory_min_score is not None:
+            try:
+                score = float(result.get("score", 0.0) or 0.0)
+            except (TypeError, ValueError):
+                score = 0.0
+            if score < policy.memory_min_score:
+                continue
+        selected.append(result)
+        if len(selected) >= policy.memory_limit:
+            break
+
+    profile_limit = policy.profile_fact_limit
+    profile_facts = permanent_facts if profile_limit is None else permanent_facts[:profile_limit]
+    profile_block = "\n".join(
+        f"* {_truncate_text(fact, policy.profile_fact_chars)}" for fact in profile_facts if fact
+    )
+    dynamic_facts = "\n".join(
+        f"* {_truncate_text(str(item.get('content', '')), policy.profile_fact_chars)}"
+        for item in selected
+        if item.get("content")
+    )
+
+    parts = []
+    if profile_block:
+        parts.append(f"[PERMANENT USER PROFILE]\n{profile_block}")
+    if dynamic_facts:
+        parts.append(f"[RECENT CONTEXT FROM MEMORY]\n{dynamic_facts}")
+    if policy.include_graph_context and mem_response.get("graph_context"):
+        parts.append(str(mem_response.get("graph_context")))
+    return "\n\n".join(parts).strip() or "(No relevant memories retrieved)"
+
+
+def _build_cognitive_context_for_tier(cognitive_merge, policy: PromptTierPolicy) -> str:
+    """Ask the cognition engine for either full narrative or strategy-only context."""
+
+    if cognitive_merge is None:
+        return ""
+    try:
+        context = deps.dual_cognition.build_cognitive_context(
+            cognitive_merge, detail=policy.cognitive_detail
+        )
+    except TypeError:
+        # Tests and external integrations may still provide the old one-arg shape.
+        context = deps.dual_cognition.build_cognitive_context(cognitive_merge)
+    return context if isinstance(context, str) else ""
+
+
+def _select_recent_history(history: list | None, policy: PromptTierPolicy) -> list:
+    """Keep the most recent N turns. A turn is approximated as user+assistant."""
+
+    if not history:
+        return []
+    max_messages = max(0, policy.history_turns * 2)
+    return list(history[-max_messages:]) if max_messages else []
+
+
+def _format_profile_reminder(permanent_facts: list[str], policy: PromptTierPolicy) -> str:
+    """Render a short recency-biased profile reminder before the user turn."""
+
+    if not permanent_facts:
+        return ""
+    profile_limit = policy.profile_fact_limit
+    facts = permanent_facts if profile_limit is None else permanent_facts[:profile_limit]
+    lines = [
+        f"- {_truncate_text(fact, policy.profile_fact_chars)}"
+        for fact in facts
+        if str(fact).strip()
+    ]
+    if not lines:
+        return ""
+    return "USER PROFILE (always true, use this to personalize your reply):\n" + "\n".join(lines)
+
+
+def _format_tool_inventory(session_tools: list, policy: PromptTierPolicy) -> str:
+    """Render current tools as either names-only or compact one-line entries."""
+
+    if not session_tools:
+        return ""
+    if policy.native_tool_schemas:
+        names = ", ".join(t.name for t in session_tools)
+        return f"Available tools this turn: {names}."
+
+    lines = ["Available tools this turn (compact inventory):"]
+    for tool in session_tools:
+        name = getattr(tool, "name", "unknown_tool")
+        description = (
+            getattr(tool, "description", "")
+            or getattr(tool, "summary", "")
+            or "No description provided."
+        )
+        lines.append(f"- {name}: {_truncate_text(str(description), 160)}")
+    return "\n".join(lines)
+
+
+def _truncate_text(text: str, max_chars: int) -> str:
+    compact = " ".join(str(text).split())
+    if len(compact) <= max_chars:
+        return compact
+    return compact[: max(0, max_chars - 15)].rstrip() + " ... [truncated]"
+
+
+def _estimate_message_tokens(messages: list[dict]) -> int:
+    chars = 0
+    for message in messages:
+        content = message.get("content", "") if isinstance(message, dict) else ""
+        chars += len(content if isinstance(content, str) else str(content))
+    return chars // 4
+
+
+def _dep_int(name: str, default: int) -> int:
+    value = getattr(deps, name, default)
+    return value if isinstance(value, int) else default
+
+
+def _dep_float(name: str, default: float) -> float:
+    value = getattr(deps, name, default)
+    return value if isinstance(value, int | float) else default
 
 
 # Conditional imports -- same pattern as original api_gateway.py
@@ -254,8 +402,8 @@ def _is_owner_sender(user_id: str | None) -> bool:
     """Return True if user_id is owner.
 
     Three cases treated as owner:
-      1. Persona names ("the_creator", "the_partner") — for HTTP /chat/{target}.
-      2. Channel peer_id present in the owner_registry — first-contact
+      1. Persona names ("the_creator", "the_partner") -- for HTTP /chat/{target}.
+      2. Channel peer_id present in the owner_registry -- first-contact
          auto-pairing on Telegram/WhatsApp/Discord/Slack.
     M-01: Return False for absent/empty user_id instead of True.
     """
@@ -305,11 +453,11 @@ async def persona_chat(
 
     if _pending is not None:
         if _pending.is_expired:
-            # Expired consent — silently clear and continue normal pipeline
+            # Expired consent -- silently clear and continue normal pipeline
             deps.pending_consents.pop(_consent_key, None)
             _log.info("consent_expired", extra={"consent_key": str(_consent_key)})
         elif is_affirmative(user_msg):
-            # User confirmed — execute the modification
+            # User confirmed -- execute the modification
             deps.pending_consents.pop(_consent_key, None)
             _log.info("consent_confirmed", extra={"description": _pending.intent.description})
             # T-02-02: Validate sender_id matches
@@ -370,7 +518,7 @@ async def persona_chat(
             if result["status"] == "success":
                 reply_text = (
                     f"Done! I've made the change: {_pending.intent.description}\n"
-                    f"A snapshot has been saved — you can undo this anytime."
+                    f"A snapshot has been saved -- you can undo this anytime."
                 )
             else:
                 reply_text = (
@@ -419,6 +567,9 @@ async def persona_chat(
 
     # 1. Memory Retrieval (Phoenix v3 Unified Engine)
     mem_response = None
+    _permanent_facts: list[str] = []
+    memory_context = "(No relevant memories retrieved)"
+    retrieval_method = "standard"
     try:
         env_session = os.environ.get("SESSION_TYPE", "safe")
         session_mode = request.session_type or env_session
@@ -426,9 +577,8 @@ async def persona_chat(
             session_mode = "safe"
 
         # Layer 1: Always inject permanent profile docs (relationship_memories + distillations).
-        # These 10-15 docs are the core knowledge about the user — always relevant, ~500 tokens.
+        # These 10-15 docs are the core knowledge about the user -- always relevant, ~500 tokens.
         # They live in memory.db but are tiny enough to include every time.
-        _permanent_facts = []
         try:
             from sci_fi_dashboard.db import get_db_connection as _get_db
 
@@ -449,7 +599,7 @@ async def persona_chat(
         # Layer 2: Vector search for conversation-specific context (WhatsApp chunks etc.)
         # seed_entities: real-world names for the persona so first-person queries
         # ("my medical condition") still trigger a KG graph lookup.
-        # Configure via synapse.json → session → selfEntityNames → <target>
+        # Configure via synapse.json -> session -> selfEntityNames -> <target>
         _self_names = deps._synapse_cfg.session.get("selfEntityNames", {})
         _seed = _self_names.get(target, []) if isinstance(_self_names, dict) else []
         mem_response = deps.memory_engine.query(
@@ -465,7 +615,7 @@ async def persona_chat(
                 },
             )
 
-        # Format results for the prompt — permanent profile first, then dynamic context
+        # Format results for the prompt -- permanent profile first, then dynamic context
         results_list = mem_response.get("results", [])
         dynamic_facts = "\n".join([f"* {r['content']}" for r in results_list])
         profile_block = "\n".join([f"* {f}" for f in _permanent_facts])
@@ -497,6 +647,7 @@ async def persona_chat(
 
     # 2.5 DUAL COGNITION: Think before speaking
     cognitive_merge = None
+    cognitive_context = ""
     if deps._synapse_cfg.session.get("dual_cognition_enabled", True):
         dc_timeout = deps._synapse_cfg.session.get("dual_cognition_timeout", 5.0)
         try:
@@ -514,7 +665,6 @@ async def persona_chat(
                 timeout=dc_timeout,
             )
 
-            cognitive_context = deps.dual_cognition.build_cognitive_context(cognitive_merge)
             with contextlib.suppress(Exception):
                 _get_emitter().emit(
                     "cognition.merge_done",
@@ -555,19 +705,19 @@ async def persona_chat(
         cognitive_merge = CognitiveMerge()
         cognitive_context = ""
 
-    # Phase 1.2 — Message Length Mirroring
+    # Phase 1.2 -- Message Length Mirroring
     # Match response length to the incoming message so a "k" doesn't get a paragraph.
     _word_count = len(user_msg.split())
     if _word_count <= 3:
         _length_hint = "Tiny message. Reply in 1-2 words max. Match the casual brevity."
     elif _word_count <= 10:
-        _length_hint = "Short message. Keep your reply short — 1-2 sentences at most."
+        _length_hint = "Short message. Keep your reply short -- 1-2 sentences at most."
     elif _word_count <= 30:
-        _length_hint = "Medium message. Match the length — roughly 2-4 sentences."
+        _length_hint = "Medium message. Match the length -- roughly 2-4 sentences."
     else:
-        _length_hint = ""  # Long message — no constraint
+        _length_hint = ""  # Long message -- no constraint
 
-    # Phase 1.1 — Situational Awareness Block
+    # Phase 1.1 -- Situational Awareness Block
     # Inject current time, day, and last-seen gap so Synapse eases back in naturally.
     try:
         from datetime import datetime, timezone
@@ -582,10 +732,10 @@ async def persona_chat(
 
         # Gap since last message (uses last row in conversation history as proxy)
         if request.history:
-            # History entries don't carry timestamps — use rough heuristic
+            # History entries don't carry timestamps -- use rough heuristic
             _situational_parts.append("(Conversation continuing.)")
         else:
-            _situational_parts.append("Fresh conversation — ease in naturally.")
+            _situational_parts.append("Fresh conversation -- ease in naturally.")
 
         _situational_block = " ".join(_situational_parts)
         if _length_hint:
@@ -602,91 +752,11 @@ async def persona_chat(
     user_log = sbs_orchestrator.on_message("user", user_msg, request.user_id or "default")
     user_msg_id = user_log.get("msg_id")
 
-    base_instructions = (
-        "You are Synapse. Follow the persona profile below precisely. "
-        "A block of RETRIEVED MEMORIES will follow. Use those memories to give contextual, "
-        "relevant replies. Only reference what is explicitly in the memories — never invent "
-        "people, events, or details that are not there."
-    )
-    _proactive_raw = deps._proactive_engine.get_prompt_injection() if deps._proactive_engine else ""
-    # Merge proactive context + situational awareness block
-    proactive_block = "\n\n".join(p for p in [_proactive_raw, _situational_block] if p)
-    system_prompt = sbs_orchestrator.get_system_prompt(base_instructions, proactive_block)
-
-    # RT2: Prepend the static agent workspace markdown prefix (Jarvis-style discipline + identity)
-    # ABOVE the SBS dynamic persona layer. Both layers compose: agent_workspace anchors
-    # identity/rules, SBS adapts tone/style/exemplars per user.
-    _agent_workspace_prefix = _load_agent_workspace_prefix()
-    if _agent_workspace_prefix:
-        system_prompt = f"{_agent_workspace_prefix}\n\n---\n\n{system_prompt}"
-
-    # Runtime info — prevents the bot from hallucinating about its own model identity.
-    # Without this, the LLM falls back to training-data answers ("I'm GPT-4o") even when
-    # actually running on a different model. Inject the live routing table so the bot
-    # has factual ground truth about what's running per role.
-    try:
-        _runtime_block = _build_runtime_info_block()
-        if _runtime_block:
-            system_prompt = f"{system_prompt}\n\n---\n\n{_runtime_block}"
-    except Exception as _exc:  # pragma: no cover — runtime block is best-effort
-        logger.warning("[runtime] failed to build runtime info block: %s", _exc)
-
-    messages = [
-        {"role": "system", "content": system_prompt},
-        {
-            "role": "system",
-            "content": (
-                f"--- RETRIEVED MEMORIES ---\n"
-                f"These are real facts about the user's life retrieved from memory. "
-                f"Use ONLY what is in these memories — do not invent, hallucinate, or add "
-                f"names, people, events, or details that are not explicitly present below.\n\n"
-                f"{memory_context}\n--- END MEMORIES ---"
-            ),
-        },
-    ]
-    # Phase 3.3 — Emotional Trajectory injection
-    # Append 72h peak-end weighted trajectory to cognitive context for richer merges.
-    _trajectory_summary = ""
-    try:
-        if deps.dual_cognition.trajectory:
-            _trajectory_summary = deps.dual_cognition.trajectory.get_summary()
-    except Exception:
-        pass
-
-    _full_cognitive = "\n\n".join(p for p in [cognitive_context, _trajectory_summary] if p)
-    if _full_cognitive:
-        messages.append({"role": "system", "content": _full_cognitive})
-    if mcp_context:
-        messages.append({"role": "system", "content": mcp_context})
-
-    messages.extend(request.history)
-
-    # Permanent profile + language rule injected RIGHT before the user turn.
-    # Small models (Gemma4:e4b) have strong recency bias — context far from
-    # the user message gets ignored. Placing this last ensures it's read.
-    if _permanent_facts:
-        _profile_lines = "\n".join([f"- {f}" for f in _permanent_facts])
-        messages.append(
-            {
-                "role": "system",
-                "content": (
-                    f"USER PROFILE (always true, use this to personalize your reply):\n"
-                    f"{_profile_lines}"
-                ),
-            }
-        )
-
-    messages.append({"role": "user", "content": user_msg})
-
-    t0 = time.perf_counter()
-
-    # --- Phase 1 (v2.0): Skill Routing ---
-    # Check if message matches a skill BEFORE traffic cop routing.
-    # Skills handle the message entirely — skip MoA pipeline if matched.
-    # Skills are NEVER triggered in spicy hemisphere (T-01-14 privacy boundary).
-    # WA-FIX-05: single skill-routing block (block #2 at former lines 546-586 deleted).
+    # Skill routing happens before role routing and prompt compilation.
+    # A matched skill owns the request, so there is no reason to build a 6k-19k
+    # LLM prompt or call Traffic Cop.
     if (
-        getattr(deps, "_SKILL_SYSTEM_AVAILABLE", False)
+        getattr(deps, "_SKILL_SYSTEM_AVAILABLE", False) is True
         and getattr(deps, "skill_router", None) is not None
         and session_mode != "spicy"
     ):
@@ -705,7 +775,6 @@ async def persona_chat(
             reply = skill_result.text
 
             # Log via SBS
-            sbs_orchestrator = deps.get_sbs_for_target(target)
             sbs_orchestrator.on_message("assistant", reply, request.user_id or "default")
 
             # Store in memory (CRITICAL: method is add_memory, NOT store)
@@ -723,9 +792,227 @@ async def persona_chat(
                 "retrieval_method": "skill",
             }
 
+    # Route first, then compile the prompt for that role's capability tier.
+    classification = None
+    role = "vault" if session_mode == "spicy" else "casual"
+    if session_mode != "spicy":
+        from sci_fi_dashboard.llm_wrappers import (
+            STRATEGY_TO_ROLE,
+            route_traffic_cop,
+        )
+
+        if cognitive_merge is not None:
+            strategy = cognitive_merge.response_strategy
+            mapped = STRATEGY_TO_ROLE.get(strategy)
+            if mapped:
+                classification = mapped
+                _log.info(
+                    "traffic_cop_skip",
+                    extra={"strategy": strategy, "mapped_role": classification},
+                )
+                with contextlib.suppress(Exception):
+                    _get_emitter().emit(
+                        "traffic_cop.skip",
+                        {
+                            "strategy": cognitive_merge.response_strategy,
+                            "mapped_role": classification,
+                        },
+                    )
+        if classification is None:
+            with contextlib.suppress(Exception):
+                _get_emitter().emit("traffic_cop.start", {})
+            classification = await route_traffic_cop(user_msg)
+            with contextlib.suppress(Exception):
+                _get_emitter().emit(
+                    "traffic_cop.done",
+                    {
+                        "classification": classification,
+                        "role": classification,
+                        "skipped": False,
+                    },
+                )
+
+        override_role = None
+        if getattr(deps, "_TOOL_FEATURES_AVAILABLE", False) is True:
+            override_role = get_model_override(request.user_id or "default")
+
+        if override_role:
+            role = override_role
+            _log.info("model_override", extra={"role": role})
+        elif "CODING" in classification:
+            role = "code"
+        elif "ANALYSIS" in classification:
+            role = "analysis"
+        elif "REVIEW" in classification:
+            role = "review"
+        elif "IMAGE" in classification:
+            role = "image_gen"
+
+            if not deps._synapse_cfg.image_gen.get("enabled", True):
+                _log.info("image_gen_disabled")
+                return {
+                    "reply": "Image generation is currently disabled.",
+                    "role": "image_gen_disabled",
+                    "model": "none",
+                    "memory_method": "none",
+                }
+
+            async def _generate_and_send_image(prompt: str, chat_id: str) -> None:
+                """Generate an image in the background and deliver via send_media."""
+                import asyncio as _asyncio
+
+                from sci_fi_dashboard.image_gen.engine import ImageGenEngine
+                from sci_fi_dashboard.media.store import save_media_buffer
+
+                _channel_id = "whatsapp"
+                try:
+                    engine = ImageGenEngine()
+                    img_bytes = await engine.generate(prompt)
+                    if img_bytes is None:
+                        _log.warning("image_gen_empty", extra={"prompt_preview": prompt[:80]})
+                        return
+                    saved = await _asyncio.to_thread(
+                        save_media_buffer, img_bytes, "image/png", "image_gen_outbound"
+                    )
+                    img_url = f"http://127.0.0.1:8000/media/image_gen_outbound/{saved.path.name}"
+                    channel = deps.channel_registry.get(_channel_id)
+                    if channel and hasattr(channel, "send_media"):
+                        await channel.send_media(chat_id, img_url, media_type="image", caption="")
+                    else:
+                        _log.warning(
+                            "image_gen_channel_missing_send_media",
+                            extra={"channel_id": _channel_id},
+                        )
+                except Exception:
+                    _log.error("image_gen_background_failed", exc_info=True)
+
+            _img_chat_id = request.user_id or "default"
+            if background_tasks:
+                background_tasks.add_task(_generate_and_send_image, user_msg, _img_chat_id)
+            else:
+                _log.warning("image_gen_no_background_tasks")
+                asyncio.create_task(_generate_and_send_image(user_msg, _img_chat_id))
+
+            _log.info(
+                "route_classified",
+                extra={"classification": "IMAGE", "role": "image_gen", "dispatched": True},
+            )
+            return {
+                "reply": "Generating your image -- it'll be with you in a moment!",
+                "role": "image_gen",
+                "model": "gpt-image-1",
+                "memory_method": "none",
+            }
+        else:
+            role = "casual"
+
+        _log.info("route_classified", extra={"classification": classification, "role": role})
+
+    model_mappings = getattr(deps._synapse_cfg, "model_mappings", {}) or {}
+    prompt_tier = prompt_tier_for_role(model_mappings, role)
+    prompt_policy = get_prompt_tier_policy(prompt_tier)
+    memory_context = _format_memory_context_for_tier(_permanent_facts, mem_response, prompt_policy)
+    cognitive_context = _build_cognitive_context_for_tier(cognitive_merge, prompt_policy)
+
+    with contextlib.suppress(Exception):
+        _get_emitter().emit(
+            "prompt.tier_selected",
+            {
+                "role": role,
+                "tier": prompt_policy.tier,
+                "token_target": prompt_policy.token_target,
+            },
+        )
+
+    base_instructions = (
+        "You are Synapse. Follow the persona profile below precisely. "
+        "A block of RETRIEVED MEMORIES will follow. Use those memories to give contextual, "
+        "relevant replies. Only reference what is explicitly in the memories -- never invent "
+        "people, events, or details that are not there."
+    )
+    _proactive_raw = deps._proactive_engine.get_prompt_injection() if deps._proactive_engine else ""
+    # Merge proactive context + situational awareness block
+    proactive_block = "\n\n".join(p for p in [_proactive_raw, _situational_block] if p)
+    system_prompt = sbs_orchestrator.get_system_prompt(base_instructions, proactive_block)
+    system_prompt = filter_tier_sections(system_prompt, prompt_policy.tier)
+
+    # RT2: Prepend the static agent workspace markdown prefix (Jarvis-style discipline + identity)
+    # ABOVE the SBS dynamic persona layer. Both layers compose: agent_workspace anchors
+    # identity/rules, SBS adapts tone/style/exemplars per user.
+    _agent_workspace_prefix = _load_agent_workspace_prefix(prompt_policy.tier)
+    if _agent_workspace_prefix:
+        system_prompt = f"{_agent_workspace_prefix}\n\n---\n\n{system_prompt}"
+
+    # Runtime info -- prevents the bot from hallucinating about its own model identity.
+    # Without this, the LLM falls back to training-data answers ("I'm GPT-4o") even when
+    # actually running on a different model. Inject the live routing table so the bot
+    # has factual ground truth about what's running per role.
+    try:
+        _runtime_block = _build_runtime_info_block()
+        if _runtime_block:
+            system_prompt = f"{system_prompt}\n\n---\n\n{_runtime_block}"
+    except Exception as _exc:  # pragma: no cover -- runtime block is best-effort
+        logger.warning("[runtime] failed to build runtime info block: %s", _exc)
+
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {
+            "role": "system",
+            "content": (
+                f"--- RETRIEVED MEMORIES ---\n"
+                f"These are real facts about the user's life retrieved from memory. "
+                f"Use ONLY what is in these memories -- do not invent, hallucinate, or add "
+                f"names, people, events, or details that are not explicitly present below.\n\n"
+                f"{memory_context}\n--- END MEMORIES ---"
+            ),
+        },
+    ]
+    # Phase 3.3 -- Emotional Trajectory injection
+    # Append 72h peak-end weighted trajectory to cognitive context for richer merges.
+    _trajectory_summary = ""
+    try:
+        if deps.dual_cognition.trajectory:
+            _summary = deps.dual_cognition.trajectory.get_summary()
+            _trajectory_summary = _summary if isinstance(_summary, str) else ""
+    except Exception:
+        pass
+
+    _full_cognitive = "\n\n".join(p for p in [cognitive_context, _trajectory_summary] if p)
+    if _full_cognitive:
+        messages.append({"role": "system", "content": _full_cognitive})
+    if mcp_context and prompt_policy.include_mcp_context:
+        messages.append({"role": "system", "content": mcp_context})
+    elif mcp_context:
+        _log.info("prompt_mcp_context_skipped", extra={"tier": prompt_policy.tier})
+
+    messages.extend(_select_recent_history(request.history, prompt_policy))
+
+    # Permanent profile + language rule injected RIGHT before the user turn.
+    # Small models (Gemma4:e4b) have strong recency bias -- context far from
+    # the user message gets ignored. Placing this last ensures it's read.
+    _profile_reminder = _format_profile_reminder(_permanent_facts, prompt_policy)
+    if _profile_reminder:
+        messages.append({"role": "system", "content": _profile_reminder})
+
+    messages.append({"role": "user", "content": user_msg})
+
+    _log.info(
+        "prompt_compiled",
+        extra={
+            "role": role,
+            "tier": prompt_policy.tier,
+            "messages": len(messages),
+            "est_tokens": _estimate_message_tokens(messages),
+        },
+    )
+
+    t0 = time.perf_counter()
+
     # --- Phase 3: Tool Context & Schema Resolution ---
     use_tools = (
-        session_mode != "spicy" and deps.tool_registry is not None and deps._TOOL_REGISTRY_AVAILABLE
+        session_mode != "spicy"
+        and deps.tool_registry is not None
+        and getattr(deps, "_TOOL_REGISTRY_AVAILABLE", False) is True
     )
     session_tools: list = []
     tool_schemas: list | None = None
@@ -742,7 +1029,7 @@ async def persona_chat(
         session_tools = deps.tool_registry.resolve(tool_context)
 
         # Phase 4: Apply policy pipeline to filter tools
-        if deps._TOOL_SAFETY_AVAILABLE and session_tools:
+        if getattr(deps, "_TOOL_SAFETY_AVAILABLE", False) is True and session_tools:
             tool_infos = [
                 {"name": t.name, "owner_only": getattr(t, "owner_only", False)}
                 for t in session_tools
@@ -756,7 +1043,11 @@ async def persona_chat(
             )
             session_tools = [t for t in session_tools if t.name in surviving_names]
 
-        tool_schemas = deps.tool_registry.get_schemas(session_tools) if session_tools else None
+        tool_schemas = (
+            deps.tool_registry.get_schemas(session_tools)
+            if session_tools and prompt_policy.native_tool_schemas
+            else None
+        )
 
     if session_mode == "spicy":
         # === THE VAULT (Local Stheno) ===
@@ -803,140 +1094,7 @@ async def persona_chat(
             )
 
     else:
-        # === SAFE HEMISPHERE (MoA Routing) ===
-        from sci_fi_dashboard.llm_wrappers import (
-            STRATEGY_TO_ROLE,
-            route_traffic_cop,
-        )
-
-        classification = None
-        if cognitive_merge is not None:
-            strategy = cognitive_merge.response_strategy
-            mapped = STRATEGY_TO_ROLE.get(strategy)
-            if mapped:
-                classification = mapped
-                _log.info(
-                    "traffic_cop_skip",
-                    extra={"strategy": strategy, "mapped_role": classification},
-                )
-                with contextlib.suppress(Exception):
-                    _get_emitter().emit(
-                        "traffic_cop.skip",
-                        {
-                            "strategy": cognitive_merge.response_strategy,
-                            "mapped_role": classification,
-                        },
-                    )
-        if classification is None:
-            with contextlib.suppress(Exception):
-                _get_emitter().emit("traffic_cop.start", {})
-            classification = await route_traffic_cop(user_msg)
-            with contextlib.suppress(Exception):
-                _get_emitter().emit(
-                    "traffic_cop.done",
-                    {
-                        "classification": classification,
-                        "role": classification,
-                        "skipped": False,
-                    },
-                )
-
-        # Phase 5: Check model override before traffic cop
-        override_role = None
-        if deps._TOOL_FEATURES_AVAILABLE:
-            override_role = get_model_override(request.user_id or "default")
-
-        if override_role:
-            role = override_role
-            _log.info("model_override", extra={"role": role})
-        elif "CODING" in classification:
-            role = "code"
-        elif "ANALYSIS" in classification:
-            role = "analysis"
-        elif "REVIEW" in classification:
-            role = "review"
-        elif "IMAGE" in classification:
-            role = "image_gen"
-
-            # --- IMAGE branch: enabled check → Vault block → BackgroundTask dispatch ---
-
-            # 1. Enabled check (image_gen.enabled in synapse.json)
-            if not deps._synapse_cfg.image_gen.get("enabled", True):
-                _log.info("image_gen_disabled")
-                return {
-                    "reply": "Image generation is currently disabled.",
-                    "role": "image_gen_disabled",
-                    "model": "none",
-                    "memory_method": "none",
-                }
-
-            # 2. Vault hemisphere block — NEVER make cloud API calls for spicy sessions
-            if session_mode == "spicy":
-                _log.info("image_gen_vault_blocked")
-                return {
-                    "reply": "Image generation isn't available in private mode.",
-                    "role": "image_blocked",
-                    "model": "none",
-                    "memory_method": "none",
-                }
-
-            # 3. Background helper — defined inline, following auto-continue pattern
-            async def _generate_and_send_image(prompt: str, chat_id: str) -> None:
-                """Generate an image in the background and deliver via send_media."""
-                import asyncio as _asyncio
-
-                from sci_fi_dashboard.image_gen.engine import ImageGenEngine
-                from sci_fi_dashboard.media.store import save_media_buffer
-
-                # TODO: multi-channel support — resolve channel_id from request context
-                # Hardcoded to "whatsapp" — matches continue_conversation() default at
-                # pipeline_helpers.py:151 — only channel that exposes send_media() today.
-                _channel_id = "whatsapp"
-                try:
-                    engine = ImageGenEngine()
-                    img_bytes = await engine.generate(prompt)
-                    if img_bytes is None:
-                        _log.warning("image_gen_empty", extra={"prompt_preview": prompt[:80]})
-                        return
-                    saved = await _asyncio.to_thread(
-                        save_media_buffer, img_bytes, "image/png", "image_gen_outbound"
-                    )
-                    img_url = f"http://127.0.0.1:8000/media/image_gen_outbound/{saved.path.name}"
-                    channel = deps.channel_registry.get(_channel_id)
-                    if channel and hasattr(channel, "send_media"):
-                        await channel.send_media(chat_id, img_url, media_type="image", caption="")
-                    else:
-                        _log.warning(
-                            "image_gen_channel_missing_send_media",
-                            extra={"channel_id": _channel_id},
-                        )
-                except Exception:
-                    _log.error("image_gen_background_failed", exc_info=True)
-
-            # 4. Dispatch BackgroundTask
-            _img_chat_id = request.user_id or "default"
-            if background_tasks:
-                background_tasks.add_task(_generate_and_send_image, user_msg, _img_chat_id)
-            else:
-                _log.warning("image_gen_no_background_tasks")
-                asyncio.create_task(_generate_and_send_image(user_msg, _img_chat_id))
-
-            # 5. Return immediate acknowledgment — user gets text response instantly
-            _log.info(
-                "route_classified",
-                extra={"classification": "IMAGE", "role": "image_gen", "dispatched": True},
-            )
-            return {
-                "reply": "Generating your image — it'll be with you in a moment!",
-                "role": "image_gen",
-                "model": "gpt-image-1",
-                "memory_method": "none",
-            }
-        else:
-            role = "casual"
-
-        _log.info("route_classified", extra={"classification": classification, "role": role})
-
+        # === SAFE HEMISPHERE (MoA Routing already selected role before prompt compile) ===
         with contextlib.suppress(Exception):
             _get_emitter().emit(
                 "llm.route",
@@ -949,32 +1107,47 @@ async def persona_chat(
             )
 
         # --- Tool Execution Loop (Phase 3 + 4 + 5) ---
-        # Tool discipline now lives in agent_workspace/AGENTS.md.template (TURN BUDGET,
-        # Resourcefulness, ON TOOL ERROR rules) — prepended to the system prompt at the
-        # top of persona_chat() via _load_agent_workspace_prefix(). We still note the
-        # available tool names here so the LLM has a concrete, current inventory.
-        if tool_schemas:
-            _tool_names = ", ".join(t.name for t in session_tools)
-            messages.append(
-                {
-                    "role": "system",
-                    "content": f"Available tools this turn: {_tool_names}.",
-                }
-            )
+        # Frontier roles can afford native JSON tool schemas. Mid/small roles get
+        # a compact text inventory and skip native schemas to stay inside context.
+        if session_tools and not prompt_policy.native_tool_schemas:
+            _tool_inventory = _format_tool_inventory(session_tools, prompt_policy)
+            if _tool_inventory:
+                insert_at = (
+                    len(messages) - 1
+                    if messages and messages[-1].get("role") == "user"
+                    else len(messages)
+                )
+                if (
+                    insert_at > 0
+                    and messages[insert_at - 1].get("role") == "system"
+                    and str(messages[insert_at - 1].get("content", "")).startswith("USER PROFILE")
+                ):
+                    insert_at -= 1
+                messages.insert(insert_at, {"role": "system", "content": _tool_inventory})
+        if tool_schemas and not prompt_policy.native_tool_schemas:
+            _log.info("tool_schemas_compacted", extra={"tier": prompt_policy.tier})
+            tool_schemas = None
 
         reply = ""
         tools_used: list[str] = []
         total_tool_time = 0.0
         total_result_chars = 0
         result = None
-        loop_detector = ToolLoopDetector() if deps._TOOL_SAFETY_AVAILABLE else None
+        loop_detector = (
+            ToolLoopDetector() if getattr(deps, "_TOOL_SAFETY_AVAILABLE", False) is True else None
+        )
         _loop_start = time.time()
         _cumulative_tokens = 0
+        max_tool_rounds = _dep_int("MAX_TOOL_ROUNDS", 5)
+        tool_loop_wall_clock_s = _dep_float("TOOL_LOOP_WALL_CLOCK_S", 30.0)
+        tool_loop_token_ratio_abort = _dep_float("TOOL_LOOP_TOKEN_RATIO_ABORT", 0.85)
+        tool_result_max_chars = _dep_int("TOOL_RESULT_MAX_CHARS", 4000)
+        max_total_tool_result_chars = _dep_int("MAX_TOTAL_TOOL_RESULT_CHARS", 20_000)
 
-        for round_num in range(deps.MAX_TOOL_ROUNDS):
+        for round_num in range(max_tool_rounds):
             # Hard wall-clock timeout on the entire agent loop
             _elapsed = time.time() - _loop_start
-            if _elapsed > deps.TOOL_LOOP_WALL_CLOCK_S:
+            if _elapsed > tool_loop_wall_clock_s:
                 _log.warning(
                     "tool_loop_wall_clock_exceeded",
                     extra={"round": round_num, "elapsed_s": round(_elapsed, 1)},
@@ -986,14 +1159,14 @@ async def persona_chat(
                 )
                 break
 
-            # Cumulative-token abort — prevents runaway context growth
+            # Cumulative-token abort -- prevents runaway context growth
             try:
                 from litellm import get_model_info as _gmi
                 _mi = _gmi(getattr(result, "model", "unknown")) if result else {}
                 _ctx_max = (_mi or {}).get("max_input_tokens") or 128_000
             except Exception:
                 _ctx_max = 128_000
-            if _cumulative_tokens > int(_ctx_max * deps.TOOL_LOOP_TOKEN_RATIO_ABORT):
+            if _cumulative_tokens > int(_ctx_max * tool_loop_token_ratio_abort):
                 _log.warning(
                     "tool_loop_token_ratio_exceeded",
                     extra={"round": round_num, "cum_tokens": _cumulative_tokens, "ctx_max": _ctx_max},
@@ -1155,8 +1328,8 @@ async def persona_chat(
                 tr = tool_results[tc.id]
                 t_start = time.time()
                 content = tr.content
-                if len(content) > deps.TOOL_RESULT_MAX_CHARS:
-                    content = content[: deps.TOOL_RESULT_MAX_CHARS] + "\n... [truncated]"
+                if len(content) > tool_result_max_chars:
+                    content = content[:tool_result_max_chars] + "\n... [truncated]"
                 total_result_chars += len(content)
                 total_tool_time += time.time() - t_start
                 tools_used.append(tc.name)
@@ -1169,7 +1342,7 @@ async def persona_chat(
                 )
 
             # Context overflow guard
-            if total_result_chars > deps.MAX_TOTAL_TOOL_RESULT_CHARS:
+            if total_result_chars > max_total_tool_result_chars:
                 _log.warning(
                     "tool_result_limit",
                     extra={"total_chars": total_result_chars},
@@ -1189,7 +1362,7 @@ async def persona_chat(
             reply = (
                 getattr(result, "text", "") if result is not None else ""
             ) or "I wasn't able to complete that request."
-            _log.warning("tool_loop_exhausted", extra={"max_rounds": deps.MAX_TOOL_ROUNDS})
+            _log.warning("tool_loop_exhausted", extra={"max_rounds": max_tool_rounds})
 
         if tools_used:
             _log.info(
@@ -1232,7 +1405,7 @@ async def persona_chat(
     tools_footer = ""
     try:
         if session_mode != "spicy" and tools_used:
-            if deps._TOOL_FEATURES_AVAILABLE:
+            if getattr(deps, "_TOOL_FEATURES_AVAILABLE", False) is True:
                 tools_footer = format_tool_footer(
                     tools_used,
                     total_tool_time,
