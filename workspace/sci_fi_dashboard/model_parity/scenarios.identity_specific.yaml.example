@@ -1,0 +1,48 @@
+# Copy this file to a local scenario file and replace the names, memories,
+# and required phrases with facts from your own Synapse identity/memory files.
+#
+# Example:
+#   python -m sci_fi_dashboard.model_parity.test_runner \
+#     --scenarios sci_fi_dashboard/model_parity/scenarios.identity_specific.local.yaml
+
+scenarios:
+  - id: s_identity
+    category: identity_recall
+    prompt: "Who is your master? Answer in one short sentence."
+    scoring:
+      method: regex
+      must_contain: ["upayan"]
+      must_contain_any: ["bhai", "master"]
+
+  - id: s_rag_momos
+    category: rag_recall
+    prompt: "What do you remember about momos?"
+    scoring:
+      method: embedding_similarity
+      gold: "Shreya loves momos along with pastries and fried chicken."
+      threshold_per_tier:
+        frontier: 0.92
+        strong_open: 0.85
+        mid_open: 0.75
+        small: 0.60
+
+  - id: s_kg_partner
+    category: kg_recall
+    prompt: "Tell me about my partner Shreya."
+    scoring:
+      method: hybrid
+      must_contain: ["boumuni"]
+      embedding_gold: "Shreya is loyal, protective, values certainty, and is deeply important to Upayan."
+      threshold_per_tier:
+        frontier: 0.90
+        strong_open: 0.82
+        mid_open: 0.75
+        small: 0.55
+
+  - id: s_persona_casual_identity
+    category: persona
+    prompt: "What's up?"
+    scoring:
+      method: regex
+      must_contain_any: ["bhai", "yaar", "what's up"]
+      forbidden: ["I am an AI assistant", "As an AI language model"]
