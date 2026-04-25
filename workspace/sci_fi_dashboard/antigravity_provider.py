@@ -100,6 +100,26 @@ CLIENT_METADATA = {
     "platform": "PLATFORM_UNSPECIFIED",
     "pluginType": "GEMINI",
 }
+
+# Credit types that route the request through the user's paid tier (Google
+# One AI Pro / Antigravity Pro). Without this field the CodeAssist API bills
+# against standard-tier quotas regardless of paidTier eligibility — which is
+# why "free" Pro accounts hit Flash 429s after ~10-20 RPM.
+# Reference: @google/gemini-cli code_assist/server.js — `G1_CREDIT_TYPE`
+# and ``enabled_credit_types`` field passed to ``toGenerateContentRequest``.
+G1_CREDIT_TYPE = "GOOGLE_ONE_AI"
+
+# Models that are eligible to consume G1 (Google One AI Pro) credits — i.e.
+# requests with these model IDs may carry ``enabled_credit_types: [GOOGLE_ONE_AI]``
+# to use the user's Pro entitlement. Mirrors ``OVERAGE_ELIGIBLE_MODELS`` in
+# the Gemini CLI bundle.
+_G1_OVERAGE_MODELS = frozenset(
+    {
+        _PRO_API_MODEL,           # gemini-3.1-pro-preview
+        _FLASH_API_MODEL,          # gemini-3-flash-preview
+        "gemini-3-pro-preview",    # legacy alias the CLI still recognises
+    }
+)
 DEFAULT_TIMEOUT_SEC = 60.0
 
 
@@ -590,13 +610,21 @@ class AntigravityClient:
         user_prompt_id: str,
         inner_request: dict[str, Any],
     ) -> dict[str, Any]:
-        """CodeAssist v1internal envelope around the inner Gemini request."""
-        return {
+        """CodeAssist v1internal envelope around the inner Gemini request.
+
+        For Pro users (``g1-pro-tier``), eligible models carry
+        ``enabled_credit_types: ["GOOGLE_ONE_AI"]`` so the request bills against
+        the paid Pro quota rather than the much smaller standard-tier RPM cap.
+        """
+        envelope: dict[str, Any] = {
             "model": api_model,
             "project": project_id,
             "user_prompt_id": user_prompt_id,
             "request": inner_request,
         }
+        if api_model in _G1_OVERAGE_MODELS:
+            envelope["enabled_credit_types"] = [G1_CREDIT_TYPE]
+        return envelope
 
     async def _post_generate(
         self,
