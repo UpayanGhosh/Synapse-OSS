@@ -46,6 +46,11 @@ from litellm import (  # noqa: E402
     ServiceUnavailableError,
     Timeout,
 )
+from sci_fi_dashboard.claude_cli_provider import (  # noqa: E402
+    ClaudeCliClient,
+    ClaudeCliResponse,
+    is_claude_cli_model,
+)
 from synapse_config import SynapseConfig  # noqa: E402
 
 try:
@@ -261,7 +266,9 @@ def _attempt_json_repair(raw: str) -> str:
     return "{}"
 
 
-_FENCED_BLOCK_RE = re.compile(r"```(?:json|tool|tools|function|javascript)?\s*(.*?)```", re.I | re.S)
+_FENCED_BLOCK_RE = re.compile(
+    r"```(?:json|tool|tools|function|javascript)?\s*(.*?)```", re.I | re.S
+)
 _FUNCTION_CALL_RE = re.compile(r"(?<![\w.])([A-Za-z_]\w*)\s*\((.*?)\)", re.S)
 _ARG_KW_RE = re.compile(
     r"([A-Za-z_]\w*)\s*=\s*(\"(?:\\.|[^\"])*\"|'(?:\\.|[^'])*'|-?\d+(?:\.\d+)?|true|false|null)",
@@ -776,7 +783,9 @@ def _looks_like_malformed_tool_attempt(text: str, tool_index: dict[str, dict]) -
     if not text or not tool_index:
         return False
     lowered = text.lower()
-    toolish = "```" in text or "{" in text or "(" in text or "tool" in lowered or "arguments" in lowered
+    toolish = (
+        "```" in text or "{" in text or "(" in text or "tool" in lowered or "arguments" in lowered
+    )
     if not toolish:
         return False
     for name in tool_index:
@@ -929,6 +938,7 @@ def _build_ollama_options(cfg: dict) -> dict:
     """Merge per-role ollama_options on top of defaults so num_ctx is always set."""
     return {**_OLLAMA_DEFAULT_OPTS, **(cfg.get("ollama_options") or {})}
 
+
 # --- Router builder ---
 
 
@@ -968,69 +978,14 @@ def _copilot_litellm_params(model_suffix: str) -> dict:
 
 
 _GITHUB_COPILOT_PREFIX = "github_copilot/"
-_CLAUDE_MAX_PREFIX = "claude_max/"
 _GOOGLE_ANTIGRAVITY_PREFIX = "google_antigravity/"
-
-# Full Claude Code request signature required for OAuth tokens.
-# Anthropic fingerprints requests — Sonnet/Opus reject anything that doesn't
-# look exactly like the official Claude Code CLI. Haiku has looser checks.
-_CLAUDE_MAX_BETA_HEADERS = "claude-code-20250219,oauth-2025-04-20,interleaved-thinking-2025-05-14"
-_CLAUDE_MAX_USER_AGENT = "claude-cli/1.0.0 (external, cli)"
+_CLAUDE_CLI_PROVIDER_KEYS = ("claude_cli", "claude-cli", "claude_max")
 
 
-def _get_claude_max_token() -> str:
-    """Read the OAuth token from Claude CLI credentials file.
-
-    Requires Claude Code CLI to be installed and authenticated.
-    Install: https://docs.anthropic.com/en/docs/claude-code
-    Auth:    Run 'claude' in terminal and complete OAuth login.
-    """
-    import json
-    import pathlib
-
-    creds_path = pathlib.Path.home() / ".claude" / ".credentials.json"
-    try:
-        creds = json.loads(creds_path.read_text(encoding="utf-8"))
-        token = creds.get("claudeAiOauth", {}).get("accessToken", "")
-        if not token:
-            raise ValueError("No accessToken found in credentials")
-        return token
-    except FileNotFoundError:
-        logger.error(
-            "Claude Max requires Claude Code CLI. Install from "
-            "https://docs.anthropic.com/en/docs/claude-code then run "
-            "'claude' to authenticate. Credentials file not found: %s",
-            creds_path,
-        )
-        return "missing"
-    except Exception as exc:
-        logger.warning("Claude Max credentials read failed: %s", exc)
-        return "missing"
-
-
-def _claude_max_litellm_params(model_suffix: str) -> dict:
-    """Build litellm_params for a claude_max/ model using Claude OAuth token.
-
-    The request must match Claude Code CLI's exact signature:
-    - Full beta header set including interleaved-thinking
-    - User-Agent and x-app headers matching claude-cli
-    - No temperature field (added via extra_body exclusions)
-    - Empty tools array present
-    - metadata.user_id present
-    - system as content block array (handled by chat_pipeline.py)
-    """
-    token = _get_claude_max_token()
-    return {
-        "model": f"anthropic/{model_suffix}",
-        "api_key": token,
-        "extra_headers": {
-            "anthropic-beta": _CLAUDE_MAX_BETA_HEADERS,
-            "User-Agent": _CLAUDE_MAX_USER_AGENT,
-            "x-app": "cli",
-        },
-        "timeout": 60,
-        "stream": False,
-    }
+def _is_direct_provider_model(model: str | None) -> bool:
+    """Models Synapse dispatches itself instead of registering with litellm."""
+    model = model or ""
+    return model.startswith(_GOOGLE_ANTIGRAVITY_PREFIX) or is_claude_cli_model(model)
 
 
 def build_router(model_mappings: dict, providers: dict) -> Router:
@@ -1061,15 +1016,11 @@ def build_router(model_mappings: dict, providers: dict) -> Router:
         # antigravity it's likewise handled outside; if the fallback is a
         # litellm-supported provider, register it as <role>_fallback so the
         # standard fallback machinery still works.
-        if primary_model.startswith(_GOOGLE_ANTIGRAVITY_PREFIX):
+        if _is_direct_provider_model(primary_model):
             fallback_model = cfg.get("fallback")
-            if fallback_model and not fallback_model.startswith(_GOOGLE_ANTIGRAVITY_PREFIX):
+            if fallback_model and not _is_direct_provider_model(fallback_model):
                 fallback_role = f"{role}_fallback"
-                if fallback_model.startswith(_CLAUDE_MAX_PREFIX):
-                    fallback_params = _claude_max_litellm_params(
-                        fallback_model[len(_CLAUDE_MAX_PREFIX) :]
-                    )
-                elif fallback_model.startswith(_GITHUB_COPILOT_PREFIX):
+                if fallback_model.startswith(_GITHUB_COPILOT_PREFIX):
                     fallback_params = _copilot_litellm_params(
                         fallback_model[len(_GITHUB_COPILOT_PREFIX) :]
                     )
@@ -1082,9 +1033,7 @@ def build_router(model_mappings: dict, providers: dict) -> Router:
                 fallbacks.append({role: [fallback_role]})
             continue
 
-        if primary_model.startswith(_CLAUDE_MAX_PREFIX):
-            litellm_params = _claude_max_litellm_params(primary_model[len(_CLAUDE_MAX_PREFIX) :])
-        elif primary_model.startswith(_GITHUB_COPILOT_PREFIX):
+        if primary_model.startswith(_GITHUB_COPILOT_PREFIX):
             litellm_params = _copilot_litellm_params(primary_model[len(_GITHUB_COPILOT_PREFIX) :])
         elif primary_model.startswith(_OLLAMA_CHAT_PREFIX):
             litellm_params = {"model": primary_model, "timeout": 60, "stream": False}
@@ -1109,12 +1058,15 @@ def build_router(model_mappings: dict, providers: dict) -> Router:
         # Fallback model (optional)
         fallback_model = cfg.get("fallback")
         if fallback_model:
-            fallback_role = f"{role}_fallback"
-            if fallback_model.startswith(_CLAUDE_MAX_PREFIX):
-                fallback_params = _claude_max_litellm_params(
-                    fallback_model[len(_CLAUDE_MAX_PREFIX) :]
+            if _is_direct_provider_model(fallback_model):
+                logger.warning(
+                    "Direct-provider fallback for role '%s' is not registered with litellm: %s",
+                    role,
+                    fallback_model,
                 )
-            elif fallback_model.startswith(_GITHUB_COPILOT_PREFIX):
+                continue
+            fallback_role = f"{role}_fallback"
+            if fallback_model.startswith(_GITHUB_COPILOT_PREFIX):
                 fallback_params = _copilot_litellm_params(
                     fallback_model[len(_GITHUB_COPILOT_PREFIX) :]
                 )
@@ -1429,6 +1381,32 @@ def _build_antigravity_response_shim(antigravity_response):
     )
 
 
+def _build_claude_cli_response_shim(claude_response: ClaudeCliResponse):
+    """Wrap Claude Code CLI output in litellm's response shape."""
+    from types import SimpleNamespace
+
+    message = SimpleNamespace(
+        content=claude_response.text or "",
+        tool_calls=None,
+        role="assistant",
+    )
+    choice = SimpleNamespace(
+        message=message,
+        finish_reason=claude_response.finish_reason or "stop",
+        index=0,
+    )
+    usage = SimpleNamespace(
+        prompt_tokens=claude_response.prompt_tokens,
+        completion_tokens=claude_response.completion_tokens,
+        total_tokens=claude_response.total_tokens,
+    )
+    return SimpleNamespace(
+        choices=[choice],
+        model=claude_response.model,
+        usage=usage,
+    )
+
+
 class SynapseLLMRouter:
     """
     Unified litellm.Router wrapper. One instance per FastAPI lifespan.
@@ -1455,12 +1433,18 @@ class SynapseLLMRouter:
             for role, cfg in self._config.model_mappings.items()
             if cfg.get("model", "").startswith(_GOOGLE_ANTIGRAVITY_PREFIX)
         }
+        self._claude_cli_roles: set[str] = {
+            role
+            for role, cfg in self._config.model_mappings.items()
+            if is_claude_cli_model(cfg.get("model", ""))
+        }
         # C-09: Lock to prevent concurrent Copilot token refresh races
         self._copilot_refresh_lock = asyncio.Lock()
         logger.info(
-            "SynapseLLMRouter initialized with %d roles (antigravity: %d)",
+            "SynapseLLMRouter initialized with %d roles (antigravity: %d, claude_cli: %d)",
             len(self._config.model_mappings),
             len(self._antigravity_roles),
+            len(self._claude_cli_roles),
         )
 
     async def _invoke_antigravity(
@@ -1507,6 +1491,58 @@ class SynapseLLMRouter:
         except Exception as session_exc:  # noqa: BLE001
             logger.debug("Session write failed (non-fatal): %s", session_exc)
         return _build_antigravity_response_shim(ag_response)
+
+    def _claude_cli_provider_cfg(self) -> dict:
+        """Return provider config for Claude CLI, accepting legacy keys."""
+        for key in _CLAUDE_CLI_PROVIDER_KEYS:
+            cfg = self._config.providers.get(key)
+            if isinstance(cfg, dict):
+                return cfg
+        return {}
+
+    async def _invoke_claude_cli(
+        self,
+        *,
+        role: str,
+        messages: list[dict],
+        temperature: float,
+        max_tokens: int,
+    ):
+        """Dispatch a chat completion through Claude Code CLI subscription auth."""
+        cfg = self._claude_cli_provider_cfg()
+        model_str = self._model_string_for_role(role) or "claude_cli/sonnet"
+        client = ClaudeCliClient(
+            command=str(cfg.get("command") or "claude"),
+            timeout=float(cfg.get("timeout") or cfg.get("timeout_sec") or 180.0),
+            cwd=cfg.get("cwd"),
+            extra_args=list(cfg.get("extra_args") or []),
+            setting_sources=str(cfg.get("setting_sources") or "user"),
+            disable_tools=bool(cfg.get("disable_tools", True)),
+            disable_slash_commands=bool(cfg.get("disable_slash_commands", True)),
+        )
+        cli_response = await client.chat_completion(
+            messages=messages,
+            model=model_str,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+        try:
+            _write_session(
+                role=role,
+                model=cli_response.model,
+                usage=type(
+                    "U",
+                    (),
+                    {
+                        "prompt_tokens": cli_response.prompt_tokens,
+                        "completion_tokens": cli_response.completion_tokens,
+                        "total_tokens": cli_response.total_tokens,
+                    },
+                )(),
+            )
+        except Exception as session_exc:  # noqa: BLE001
+            logger.debug("Session write failed (non-fatal): %s", session_exc)
+        return _build_claude_cli_response_shim(cli_response)
 
     def _rebuild_router(self) -> None:
         """Rebuild the litellm Router (e.g. after a Copilot token refresh)."""
@@ -1579,7 +1615,10 @@ class SynapseLLMRouter:
             _est_tokens = _prompt_chars // 4
             logger.info(
                 "llm.call role=%s msgs=%d total_chars=%d est_tokens=%d",
-                role, len(messages), _prompt_chars, _est_tokens,
+                role,
+                len(messages),
+                _prompt_chars,
+                _est_tokens,
             )
             # OSS guardrail: warn if local engine prompt exceeds the configured
             # num_ctx. Ollama silently truncates oversized prompts, dropping the
@@ -1594,9 +1633,12 @@ class SynapseLLMRouter:
                         "ollama prompt likely overflows context: role=%s est_tokens=%d num_ctx=%d. "
                         "Either bump model_mappings.%s.ollama_options.num_ctx (cost: VRAM) "
                         "or wait for W2 minimal-mode prompt builder.",
-                        role, _est_tokens, _num_ctx, role,
+                        role,
+                        _est_tokens,
+                        _num_ctx,
+                        role,
                     )
-            if role in self._antigravity_roles:
+            if role in getattr(self, "_antigravity_roles", set()):
                 return await self._invoke_antigravity(
                     role=role,
                     messages=messages,
@@ -1604,6 +1646,32 @@ class SynapseLLMRouter:
                     temperature=temperature,
                     max_tokens=max_tokens,
                 )
+            if role in getattr(self, "_claude_cli_roles", set()):
+                try:
+                    return await self._invoke_claude_cli(
+                        role=role,
+                        messages=messages,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                    )
+                except Exception as cli_exc:
+                    fallback_cfg = self._config.model_mappings.get(role, {}).get("fallback")
+                    if fallback_cfg and not _is_direct_provider_model(fallback_cfg):
+                        fallback_role = f"{role}_fallback"
+                        logger.warning(
+                            "Claude CLI failed for role '%s' (%s); falling back to '%s'",
+                            role,
+                            cli_exc,
+                            fallback_role,
+                        )
+                        return await self._router.acompletion(
+                            model=fallback_role,
+                            messages=messages,
+                            temperature=temperature,
+                            max_tokens=max_tokens,
+                            **kwargs,
+                        )
+                    raise
             response = await self._router.acompletion(
                 model=role,
                 messages=messages,
@@ -1714,115 +1782,13 @@ class SynapseLLMRouter:
 
         stream=False enforced — Phase 2 does not stream (see 02-RESEARCH.md Pitfall 4).
         """
-        mapping = self._config.model_mappings.get(role, {})
-        if mapping.get("model", "").startswith(_CLAUDE_MAX_PREFIX):
+        if role in getattr(self, "_claude_cli_roles", set()):
             result = await self.call_with_metadata(
                 role, messages, temperature, max_tokens, **kwargs
             )
             return result.text
         response = await self._do_call(role, messages, temperature, max_tokens, **kwargs)
         return response.choices[0].message.content or ""
-
-    async def _call_claude_cli(
-        self,
-        model_suffix: str,
-        messages: list[dict],
-        max_tokens: int = 1000,
-    ) -> LLMResult:
-        """Call Claude via the CLI subprocess — bypasses direct API fingerprinting.
-
-        The claude binary handles OAuth auth internally with the correct headers
-        and request structure that Anthropic requires for Max subscription access.
-        """
-        import asyncio
-        import json
-        import shutil
-
-        claude_bin = shutil.which("claude")
-        if not claude_bin:
-            raise RuntimeError("claude CLI not found in PATH")
-
-        # Flatten messages into a single prompt for -p mode.
-        # System prompts are prepended to the user prompt (avoids CLI arg length limits).
-        system_parts = []
-        conversation_parts = []
-        for msg in messages:
-            if not isinstance(msg, dict):
-                continue
-            role_name = msg.get("role", "")
-            content = msg.get("content", "")
-            # Handle content blocks (list format) as well as plain strings
-            if isinstance(content, list):
-                content = " ".join(
-                    block.get("text", "") if isinstance(block, dict) else str(block)
-                    for block in content
-                )
-            elif not isinstance(content, str):
-                content = str(content)
-            if role_name == "system":
-                system_parts.append(content)
-            elif role_name == "user":
-                conversation_parts.append(content)
-            elif role_name == "assistant":
-                conversation_parts.append(f"[Previous response: {content[:200]}]")
-
-        # Build final prompt: system context + last user message
-        system_block = "\n\n".join(system_parts)
-        user_block = "\n".join(conversation_parts)
-        prompt = f"{system_block}\n\n---\n\n{user_block}" if system_block else user_block
-
-        cmd = [
-            claude_bin,
-            "-p",
-            "--output-format",
-            "json",
-            "--model",
-            model_suffix,
-        ]
-
-        env = {k: v for k, v in __import__("os").environ.items() if k != "CLAUDECODE"}
-
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            env=env,
-        )
-        stdout, stderr = await asyncio.wait_for(
-            proc.communicate(input=prompt.encode("utf-8")),
-            timeout=120,
-        )
-
-        if proc.returncode != 0:
-            raise RuntimeError(f"claude CLI failed: {stderr.decode(errors='replace')[:300]}")
-
-        # Parse JSONL output — find the result line
-        text = ""
-        total_input = 0
-        total_output = 0
-        for line in stdout.decode("utf-8", errors="replace").splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                obj = json.loads(line)
-                if obj.get("type") == "result" and obj.get("subtype") == "success":
-                    text = obj.get("result", "")
-                    usage = obj.get("usage", {})
-                    total_input = usage.get("input_tokens", 0) or 0
-                    total_output = usage.get("output_tokens", 0) or 0
-            except json.JSONDecodeError:
-                continue
-
-        return LLMResult(
-            text=text,
-            model=model_suffix,
-            prompt_tokens=total_input,
-            completion_tokens=total_output,
-            total_tokens=total_input + total_output,
-            finish_reason="stop",
-        )
 
     async def call_with_metadata(
         self,
@@ -1834,20 +1800,8 @@ class SynapseLLMRouter:
     ) -> LLMResult:
         """
         Same as call() but returns an LLMResult with text + usage metadata.
-        For claude_max roles, uses CLI subprocess to bypass API fingerprinting.
         Extra **kwargs (e.g. response_format) are forwarded to the underlying call.
         """
-        # Check if this role uses claude_max — if so, use CLI subprocess
-        mapping = self._config.model_mappings.get(role, {})
-        model_str = mapping.get("model", "")
-        if model_str.startswith(_CLAUDE_MAX_PREFIX):
-            model_suffix = model_str[len(_CLAUDE_MAX_PREFIX) :]
-            try:
-                return await self._call_claude_cli(model_suffix, messages, max_tokens)
-            except Exception as cli_exc:
-                logger.warning("claude CLI failed (%s) — falling back to litellm", cli_exc)
-                # Fall through to normal litellm path
-
         _start_time = time.time()
         response = await self._do_call(role, messages, temperature, max_tokens, **kwargs)
         usage = getattr(response, "usage", None)
@@ -1941,24 +1895,26 @@ class SynapseLLMRouter:
         Returns:
             :class:`LLMToolResult` with text, parsed tool calls, and usage.
         """
-        # For claude_max roles, redirect to CLI subprocess (tools not supported via CLI,
-        # but we get the text response which is what matters for persona chat)
-        mapping = self._config.model_mappings.get(role, {})
-        model_str = (
-            mapping.get("model", "") if isinstance(mapping, dict) else getattr(mapping, "model", "")
-        )
-        if model_str.startswith(_CLAUDE_MAX_PREFIX):
-            model_suffix = model_str[len(_CLAUDE_MAX_PREFIX) :]
+        # Claude Code CLI headless mode does not expose native tool calls; use
+        # it as a text fallback for tool-bearing chat paths.
+        if role in getattr(self, "_claude_cli_roles", set()):
             try:
-                llm_result = await self._call_claude_cli(model_suffix, messages, max_tokens)
+                response = await self._invoke_claude_cli(
+                    role=role,
+                    messages=messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                )
+                message = response.choices[0].message
+                usage = getattr(response, "usage", None)
                 return LLMToolResult(
-                    text=llm_result.text,
+                    text=message.content or "",
                     tool_calls=[],
-                    model=llm_result.model,
-                    prompt_tokens=llm_result.prompt_tokens,
-                    completion_tokens=llm_result.completion_tokens,
-                    total_tokens=llm_result.total_tokens,
-                    finish_reason="stop",
+                    model=response.model or role,
+                    prompt_tokens=getattr(usage, "prompt_tokens", 0) or 0,
+                    completion_tokens=getattr(usage, "completion_tokens", 0) or 0,
+                    total_tokens=getattr(usage, "total_tokens", 0) or 0,
+                    finish_reason=response.choices[0].finish_reason,
                 )
             except Exception as cli_exc:
                 import traceback
@@ -1966,6 +1922,7 @@ class SynapseLLMRouter:
                 logger.warning(
                     "claude CLI failed in call_with_tools (%s)\n%s", cli_exc, traceback.format_exc()
                 )
+                raise
 
         provider = self._resolve_provider(role)
         normalized_tools = normalize_tool_schemas(tools, provider)
@@ -1973,7 +1930,7 @@ class SynapseLLMRouter:
         # Google Antigravity is dispatched directly — feed normalized tools
         # straight into the antigravity client and reuse the litellm-shaped
         # shim so the rest of this method's tool-call extraction works.
-        if role in self._antigravity_roles:
+        if role in getattr(self, "_antigravity_roles", set()):
             response = await self._invoke_antigravity(
                 role=role,
                 messages=messages,
