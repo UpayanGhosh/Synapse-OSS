@@ -43,6 +43,13 @@
     },
     "vllm": {
       "api_base": "http://localhost:8001/v1"
+    },
+
+    "_google_antigravity_comment": "Google Antigravity / Gemini CLI OAuth provider — gives free Gemini 3 Pro/Flash access via the cloudcode-pa.googleapis.com endpoint. Run `python workspace/synapse_cli.py onboard` and pick 'Google Antigravity' to populate this section. The actual access/refresh tokens are stored in ~/.synapse/state/google-oauth.json (chmod 600); this block only records the email/project metadata so the runtime can detect the provider is configured. Unofficial integration: not endorsed by Google, account suspensions have been reported. Requires a local @google/gemini-cli install OR SYNAPSE_GEMINI_OAUTH_CLIENT_ID/_SECRET env vars to source the OAuth client.",
+    "google_antigravity": {
+      "oauth_email": "",
+      "project_id": "",
+      "tier": ""
     }
   },
 

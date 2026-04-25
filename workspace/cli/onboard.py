@@ -64,6 +64,7 @@ from cli.provider_steps import (  # noqa: E402
     PROVIDER_GROUPS,
     PROVIDER_LIST,
     github_copilot_device_flow,
+    google_antigravity_oauth_flow,
     validate_ollama,
     validate_provider,
 )
@@ -828,6 +829,24 @@ _KNOWN_MODELS: dict[str, list[dict[str, str]]] = {
         {"value": "github_copilot/claude-sonnet-4", "label": "Claude Sonnet 4"},
         {"value": "github_copilot/gemini-2.0-flash", "label": "Gemini 2.0 Flash"},
     ],
+    "google_antigravity": [
+        {
+            "value": "google_antigravity/gemini-3-flash",
+            "label": "Gemini 3 Flash (fast, balanced)",
+        },
+        {
+            "value": "google_antigravity/gemini-3-flash-lite",
+            "label": "Gemini 3 Flash-Lite (fastest, KG-friendly)",
+        },
+        {
+            "value": "google_antigravity/gemini-3-pro-low",
+            "label": "Gemini 3 Pro (low reasoning, balanced quality)",
+        },
+        {
+            "value": "google_antigravity/gemini-3-pro-high",
+            "label": "Gemini 3 Pro (high reasoning, best quality)",
+        },
+    ],
     "anthropic": [
         {"value": "anthropic/claude-sonnet-4-6", "label": "Claude Sonnet 4.6 (balanced)"},
         {"value": "anthropic/claude-haiku-4-5", "label": "Claude Haiku 4.5 (fast, cheap)"},
@@ -944,7 +963,15 @@ _ROLES: list[tuple[str, str, list[str]]] = [
     (
         "casual",
         "Casual chat — fast, everyday",
-        ["gemini", "openai", "github_copilot", "groq", "nvidia_nim", "anthropic"],
+        [
+            "google_antigravity",
+            "gemini",
+            "openai",
+            "github_copilot",
+            "groq",
+            "nvidia_nim",
+            "anthropic",
+        ],
     ),
     (
         "code",
@@ -954,17 +981,24 @@ _ROLES: list[tuple[str, str, list[str]]] = [
     (
         "analysis",
         "Analysis & deep research",
-        ["gemini", "openai", "github_copilot", "anthropic", "nvidia_nim"],
+        [
+            "google_antigravity",
+            "gemini",
+            "openai",
+            "github_copilot",
+            "anthropic",
+            "nvidia_nim",
+        ],
     ),
     (
         "review",
         "Code review & critique",
-        ["anthropic", "openai", "github_copilot", "gemini", "nvidia_nim"],
+        ["anthropic", "openai", "github_copilot", "google_antigravity", "gemini", "nvidia_nim"],
     ),
     (
         "kg",
         "Knowledge Graph extraction (background, Gemini free tier recommended)",
-        ["gemini"],
+        ["google_antigravity", "gemini"],
     ),
 ]
 
@@ -1440,6 +1474,22 @@ def _collect_provider_keys(
                 config["providers"]["github_copilot"] = {"token": token}
             else:
                 _print("[yellow]  Skipping GitHub Copilot (auth failed or timed out).[/]")
+            continue
+
+        # Google Antigravity — PKCE OAuth + localhost callback. Tokens are
+        # written to ~/.synapse/state/google-oauth.json; synapse.json only
+        # records the email/project metadata so other code can detect the
+        # provider is configured.
+        if provider == "google_antigravity":
+            metadata = asyncio.run(google_antigravity_oauth_flow(console))
+            if metadata:
+                config["providers"]["google_antigravity"] = {
+                    "oauth_email": metadata.get("email") or "",
+                    "project_id": metadata.get("project_id") or "",
+                    "tier": metadata.get("tier") or "",
+                }
+            else:
+                _print("[yellow]  Skipping Google Antigravity (auth failed or declined).[/]")
             continue
 
         # Ollama — api_base + httpx health check

@@ -969,6 +969,7 @@ def _copilot_litellm_params(model_suffix: str) -> dict:
 
 _GITHUB_COPILOT_PREFIX = "github_copilot/"
 _CLAUDE_MAX_PREFIX = "claude_max/"
+_GOOGLE_ANTIGRAVITY_PREFIX = "google_antigravity/"
 
 # Full Claude Code request signature required for OAuth tokens.
 # Anthropic fingerprints requests — Sonnet/Opus reject anything that doesn't
@@ -1053,6 +1054,33 @@ def build_router(model_mappings: dict, providers: dict) -> Router:
 
     for role, cfg in model_mappings.items():
         primary_model: str = cfg["model"]
+
+        # Google Antigravity is dispatched directly by SynapseLLMRouter, not by
+        # litellm.Router — skip registering it here. The router handles primary
+        # antigravity via _invoke_antigravity(). If a fallback is also
+        # antigravity it's likewise handled outside; if the fallback is a
+        # litellm-supported provider, register it as <role>_fallback so the
+        # standard fallback machinery still works.
+        if primary_model.startswith(_GOOGLE_ANTIGRAVITY_PREFIX):
+            fallback_model = cfg.get("fallback")
+            if fallback_model and not fallback_model.startswith(_GOOGLE_ANTIGRAVITY_PREFIX):
+                fallback_role = f"{role}_fallback"
+                if fallback_model.startswith(_CLAUDE_MAX_PREFIX):
+                    fallback_params = _claude_max_litellm_params(
+                        fallback_model[len(_CLAUDE_MAX_PREFIX) :]
+                    )
+                elif fallback_model.startswith(_GITHUB_COPILOT_PREFIX):
+                    fallback_params = _copilot_litellm_params(
+                        fallback_model[len(_GITHUB_COPILOT_PREFIX) :]
+                    )
+                else:
+                    fallback_params = {"model": fallback_model, "timeout": 60, "stream": False}
+                    if fallback_model.startswith(_OLLAMA_CHAT_PREFIX):
+                        fallback_params["api_base"] = ollama_api_base
+                        fallback_params["extra_body"] = {"options": _build_ollama_options(cfg)}
+                model_list.append({"model_name": fallback_role, "litellm_params": fallback_params})
+                fallbacks.append({role: [fallback_role]})
+            continue
 
         if primary_model.startswith(_CLAUDE_MAX_PREFIX):
             litellm_params = _claude_max_litellm_params(primary_model[len(_CLAUDE_MAX_PREFIX) :])
@@ -1358,6 +1386,49 @@ def _provider_from_model(model_string: str) -> str | None:
 # --- SynapseLLMRouter ---
 
 
+def _build_antigravity_response_shim(antigravity_response):
+    """Wrap an :class:`AntigravityResponse` in litellm's response shape.
+
+    Downstream code (``_do_call``, ``call``, ``call_with_metadata``,
+    ``call_with_tools``) reads ``response.choices[0].message.content``,
+    ``response.usage.prompt_tokens``, etc. Producing the same shape lets the
+    Google Antigravity path share the rest of the pipeline.
+    """
+    from types import SimpleNamespace
+
+    tool_calls = [
+        SimpleNamespace(
+            id=tc.get("id", ""),
+            type="function",
+            function=SimpleNamespace(
+                name=tc.get("name", ""),
+                arguments=tc.get("arguments", "{}"),
+            ),
+        )
+        for tc in antigravity_response.tool_calls
+    ]
+    message = SimpleNamespace(
+        content=antigravity_response.text or "",
+        tool_calls=tool_calls or None,
+        role="assistant",
+    )
+    choice = SimpleNamespace(
+        message=message,
+        finish_reason=antigravity_response.finish_reason or "stop",
+        index=0,
+    )
+    usage = SimpleNamespace(
+        prompt_tokens=antigravity_response.prompt_tokens,
+        completion_tokens=antigravity_response.completion_tokens,
+        total_tokens=antigravity_response.total_tokens,
+    )
+    return SimpleNamespace(
+        choices=[choice],
+        model=antigravity_response.model,
+        usage=usage,
+    )
+
+
 class SynapseLLMRouter:
     """
     Unified litellm.Router wrapper. One instance per FastAPI lifespan.
@@ -1377,12 +1448,65 @@ class SynapseLLMRouter:
             v.get("model", "").startswith(_GITHUB_COPILOT_PREFIX)
             for v in self._config.model_mappings.values()
         )
+        # Roles whose primary model goes through the Google Antigravity client
+        # rather than litellm.Router.
+        self._antigravity_roles: set[str] = {
+            role
+            for role, cfg in self._config.model_mappings.items()
+            if cfg.get("model", "").startswith(_GOOGLE_ANTIGRAVITY_PREFIX)
+        }
         # C-09: Lock to prevent concurrent Copilot token refresh races
         self._copilot_refresh_lock = asyncio.Lock()
         logger.info(
-            "SynapseLLMRouter initialized with %d roles",
+            "SynapseLLMRouter initialized with %d roles (antigravity: %d)",
             len(self._config.model_mappings),
+            len(self._antigravity_roles),
         )
+
+    async def _invoke_antigravity(
+        self,
+        *,
+        role: str,
+        messages: list[dict],
+        tools: list[dict] | None,
+        temperature: float,
+        max_tokens: int,
+    ):
+        """Dispatch a chat completion through the Google Antigravity client.
+
+        Returns a litellm-shaped response shim so the rest of the pipeline can
+        reuse the same field accesses (``choices[0].message.content`` etc).
+        """
+        from sci_fi_dashboard.antigravity_provider import (  # noqa: PLC0415
+            get_default_client,
+        )
+
+        model_str = self._model_string_for_role(role) or ""
+        client = await get_default_client()
+        ag_response = await client.chat_completion(
+            messages=messages,
+            model=model_str,
+            tools=tools,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+        try:
+            _write_session(
+                role=role,
+                model=ag_response.model,
+                usage=type(
+                    "U",
+                    (),
+                    {
+                        "prompt_tokens": ag_response.prompt_tokens,
+                        "completion_tokens": ag_response.completion_tokens,
+                        "total_tokens": ag_response.total_tokens,
+                    },
+                )(),
+            )
+        except Exception as session_exc:  # noqa: BLE001
+            logger.debug("Session write failed (non-fatal): %s", session_exc)
+        return _build_antigravity_response_shim(ag_response)
 
     def _rebuild_router(self) -> None:
         """Rebuild the litellm Router (e.g. after a Copilot token refresh)."""
@@ -1472,6 +1596,14 @@ class SynapseLLMRouter:
                         "or wait for W2 minimal-mode prompt builder.",
                         role, _est_tokens, _num_ctx, role,
                     )
+            if role in self._antigravity_roles:
+                return await self._invoke_antigravity(
+                    role=role,
+                    messages=messages,
+                    tools=kwargs.get("tools"),
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                )
             response = await self._router.acompletion(
                 model=role,
                 messages=messages,
@@ -1837,6 +1969,42 @@ class SynapseLLMRouter:
 
         provider = self._resolve_provider(role)
         normalized_tools = normalize_tool_schemas(tools, provider)
+
+        # Google Antigravity is dispatched directly — feed normalized tools
+        # straight into the antigravity client and reuse the litellm-shaped
+        # shim so the rest of this method's tool-call extraction works.
+        if role in self._antigravity_roles:
+            response = await self._invoke_antigravity(
+                role=role,
+                messages=messages,
+                tools=normalized_tools,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+            message = response.choices[0].message
+            usage = (
+                getattr(response, "usage", None)
+                or type(
+                    "U",
+                    (),
+                    {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+                )()
+            )
+            tool_calls, _malformed, recovery_events = _normalize_tool_calls_with_report(
+                message.tool_calls,
+                tools=normalized_tools,
+                text=message.content,
+            )
+            _log_tool_recovery_events(recovery_events)
+            return LLMToolResult(
+                text=message.content or "",
+                tool_calls=tool_calls,
+                model=response.model or role,
+                prompt_tokens=getattr(usage, "prompt_tokens", 0) or 0,
+                completion_tokens=getattr(usage, "completion_tokens", 0) or 0,
+                total_tokens=getattr(usage, "total_tokens", 0) or 0,
+                finish_reason=response.choices[0].finish_reason,
+            )
 
         kwargs: dict = {
             "model": role,

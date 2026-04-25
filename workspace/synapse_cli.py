@@ -11,6 +11,8 @@ Run from the workspace/ directory:
     python synapse_cli.py chat
 """
 
+from datetime import UTC
+
 import typer
 
 app = typer.Typer(
@@ -54,6 +56,71 @@ def whatsapp_logout(
     from cli.whatsapp_commands import logout_command  # noqa: PLC0415
 
     logout_command(port=port)
+
+
+# ---------------------------------------------------------------------------
+# Google Antigravity OAuth subcommand group
+# ---------------------------------------------------------------------------
+ag_app = typer.Typer(
+    name="antigravity",
+    help="Google Antigravity (Gemini 3 via OAuth) — login / status / logout",
+    no_args_is_help=True,
+)
+app.add_typer(ag_app)
+
+
+@ag_app.command("login")
+def antigravity_login() -> None:
+    """Run the Google Antigravity OAuth flow and store credentials.
+
+    Opens a browser for Google sign-in, captures the redirect on
+    localhost:8085, exchanges the code for access + refresh tokens, and
+    saves them to ~/.synapse/state/google-oauth.json.
+    """
+    import asyncio  # noqa: PLC0415
+
+    from cli.provider_steps import google_antigravity_oauth_flow  # noqa: PLC0415
+    from rich.console import Console  # noqa: PLC0415
+
+    console = Console()
+    metadata = asyncio.run(google_antigravity_oauth_flow(console))
+    if not metadata:
+        raise typer.Exit(1)
+    typer.echo(
+        f"Logged in as {metadata.get('email') or '(unknown)'} "
+        f"on tier '{metadata.get('tier') or 'unknown'}', "
+        f"project '{metadata.get('project_id') or 'unknown'}'."
+    )
+
+
+@ag_app.command("status")
+def antigravity_status() -> None:
+    """Show the email, tier, and expiry of the saved Antigravity credentials."""
+    from datetime import datetime  # noqa: PLC0415
+
+    from sci_fi_dashboard import google_oauth  # noqa: PLC0415
+
+    creds = google_oauth.load_credentials()
+    if creds is None:
+        typer.echo("No Google Antigravity credentials saved.")
+        raise typer.Exit(1)
+    expires_at = datetime.fromtimestamp(creds.expires_at, tz=UTC)
+    typer.echo(f"email:       {creds.email or '(unknown)'}")
+    typer.echo(f"project_id:  {creds.project_id}")
+    typer.echo(f"tier:        {creds.tier or '(unknown)'}")
+    typer.echo(f"expires_at:  {expires_at.isoformat()}")
+    typer.echo(f"is_expired:  {creds.is_expired()}")
+
+
+@ag_app.command("logout")
+def antigravity_logout() -> None:
+    """Delete the saved Antigravity credentials from disk."""
+    from sci_fi_dashboard import google_oauth  # noqa: PLC0415
+
+    if google_oauth.delete_credentials():
+        typer.echo("Google Antigravity credentials wiped.")
+    else:
+        typer.echo("No saved credentials to remove.")
 
 
 @app.command()
