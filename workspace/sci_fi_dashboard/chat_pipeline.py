@@ -137,6 +137,61 @@ def _load_agent_workspace_prefix() -> str:
     _agent_workspace_cache["mtimes"] = current_mtimes
     return content
 
+
+def _build_runtime_info_block() -> str:
+    """Build a runtime info block to inject into the system prompt.
+
+    Without this, LLMs hallucinate about their own model identity (e.g. Gemini
+    answering "I'm GPT-4o" because that's the most common answer in training
+    data). The fix is to put the live routing table in the prompt itself, so
+    the bot has factual ground truth.
+
+    Returns a formatted string showing all role->model mappings from
+    synapse.json plus OS/time. Best-effort — returns empty string on read
+    failure rather than raising.
+    """
+    import platform
+    from datetime import datetime
+
+    lines: list[str] = ["## Runtime"]
+
+    try:
+        from synapse_config import SynapseConfig
+        cfg = SynapseConfig.load()
+        mappings = getattr(cfg, "model_mappings", None) or {}
+    except Exception:
+        mappings = {}
+
+    if mappings:
+        lines.append(
+            "Active model routing — Traffic Cop selects role per turn based on "
+            "message content, then the role's model handles the LLM call. "
+            "If asked about your model, answer from this table — do NOT guess "
+            "from training-data priors:"
+        )
+        for role, m in mappings.items():
+            if isinstance(m, dict):
+                model = m.get("model", "<unset>")
+                fallback = m.get("fallback")
+            else:
+                model = str(m)
+                fallback = None
+            line = f"  - {role}: {model}"
+            if fallback:
+                line += f"  (fallback: {fallback})"
+            lines.append(line)
+    else:
+        lines.append(
+            "Model routing unknown (synapse.json unreachable). If asked, say "
+            "you don't have visibility into the active model rather than guessing."
+        )
+
+    lines.append(f"OS: {platform.system()} {platform.release()}")
+    lines.append(f"UTC time: {datetime.now(UTC).isoformat(timespec='minutes')}")
+
+    return "\n".join(lines)
+
+
 # Conditional imports -- same pattern as original api_gateway.py
 with contextlib.suppress(ImportError):
     from sci_fi_dashboard.tool_registry import (
@@ -564,6 +619,17 @@ async def persona_chat(
     _agent_workspace_prefix = _load_agent_workspace_prefix()
     if _agent_workspace_prefix:
         system_prompt = f"{_agent_workspace_prefix}\n\n---\n\n{system_prompt}"
+
+    # Runtime info — prevents the bot from hallucinating about its own model identity.
+    # Without this, the LLM falls back to training-data answers ("I'm GPT-4o") even when
+    # actually running on a different model. Inject the live routing table so the bot
+    # has factual ground truth about what's running per role.
+    try:
+        _runtime_block = _build_runtime_info_block()
+        if _runtime_block:
+            system_prompt = f"{system_prompt}\n\n---\n\n{_runtime_block}"
+    except Exception as _exc:  # pragma: no cover — runtime block is best-effort
+        logger.warning("[runtime] failed to build runtime info block: %s", _exc)
 
     messages = [
         {"role": "system", "content": system_prompt},

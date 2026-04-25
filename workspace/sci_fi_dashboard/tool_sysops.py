@@ -108,10 +108,12 @@ async def _discover_reachable_models(timeout: float = 3.0) -> list[str]:
                 get_copilot_default_headers,
             )
 
-            headers = {
-                "Authorization": f"Bearer {token}",
-                **get_copilot_default_headers(),
-            }
+            # NOTE: get_copilot_default_headers(token) returns the FULL header
+            # dict including Authorization. Calling it without the token raises
+            # TypeError (missing required positional arg) and used to silently
+            # fail via the bare except below, returning 0 models — bot then
+            # hallucinated from training data. Fixed 2026-04-25.
+            headers = get_copilot_default_headers(token)
             url = f"{GITHUB_COPILOT_API_BASE.rstrip('/')}/models"
             async with httpx.AsyncClient(timeout=timeout) as c:
                 r = await c.get(url, headers=headers)
