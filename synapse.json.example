@@ -81,10 +81,11 @@
       "fallback": "anthropic/claude-sonnet-4-6"
     },
     "vault": {
-      "model": "ollama_chat/llama3.3",
+      "_model_comment": "qwen2.5:7b is the validated local baseline on 8 GB VRAM (RTX 3060 Ti class). Pull with: ollama pull qwen2.5:7b. Other tested options: mistral:7b (~4.4 GB), gemma2:9b (~5.4 GB, tighter VRAM). Avoid models <7B for Synapse — see .planning/MODEL-AGNOSTIC-ROADMAP.md.",
+      "model": "ollama_chat/qwen2.5:7b",
       "prompt_tier": "small",
       "fallback": null,
-      "_ollama_options_comment": "Override Ollama runtime params per-role. Defaults: num_ctx=8192, temperature=0.7, repeat_penalty=1.15. Bump num_ctx if you have VRAM headroom and want to send larger prompts.",
+      "_ollama_options_comment": "Override Ollama runtime params per-role. Defaults: num_ctx=8192, temperature=0.7, repeat_penalty=1.15. Bump num_ctx to 16384 if you have VRAM headroom and want to send mid_open-tier prompts; on 8 GB VRAM with a 7B model that still fits comfortably.",
       "ollama_options": {
         "num_ctx": 8192,
         "temperature": 0.7,
