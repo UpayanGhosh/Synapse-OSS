@@ -7,6 +7,7 @@ Tests for:
   - _attempt_json_repair(): truncated JSON recovery
 """
 
+import asyncio
 import json
 import sys
 import types
@@ -18,6 +19,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from sci_fi_dashboard.llm_router import (
+    SynapseLLMRouter,
     _attempt_json_repair,
     normalize_tool_calls,
     normalize_tool_schemas,
@@ -62,6 +64,26 @@ def _make_raw_tool_call(
             name=name,
             arguments=arguments,
         ),
+    )
+
+
+def _make_response(
+    content: str,
+    tool_calls: list | None = None,
+) -> types.SimpleNamespace:
+    return types.SimpleNamespace(
+        model="fake/model",
+        usage=types.SimpleNamespace(
+            prompt_tokens=10,
+            completion_tokens=5,
+            total_tokens=15,
+        ),
+        choices=[
+            types.SimpleNamespace(
+                message=types.SimpleNamespace(content=content, tool_calls=tool_calls),
+                finish_reason="stop",
+            )
+        ],
     )
 
 
@@ -243,6 +265,111 @@ class TestToolCallNormalization:
         raw = [_make_raw_tool_call(arguments=args)]
         result = normalize_tool_calls(raw)
         assert result[0].arguments == args
+
+    def test_fuzzy_matches_tool_name_and_coerces_args(self):
+        """Wrong tool/arg names are coerced against the declared schema."""
+        tool = _make_tool(
+            name="bash_exec",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "command": {"type": "string"},
+                    "timeout": {"type": "integer"},
+                },
+                "required": ["command"],
+            },
+        )
+        raw = [_make_raw_tool_call(name="run_bash", arguments='{"cmd": "pwd",}')]
+
+        result = normalize_tool_calls(raw, tools=[tool])
+
+        assert len(result) == 1
+        assert result[0].name == "bash_exec"
+        assert json.loads(result[0].arguments)["command"] == "pwd"
+
+    def test_parses_markdown_text_tool_call(self):
+        """Markdown-wrapped JSON tool calls are recovered when native calls are absent."""
+        tool = _make_tool(
+            name="bash_exec",
+            parameters={
+                "type": "object",
+                "properties": {"command": {"type": "string"}},
+                "required": ["command"],
+            },
+        )
+        text = '```json\n{"tool": "run_bash", "arguments": {"cmd": "pwd"}}\n```'
+
+        result = normalize_tool_calls(None, tools=[tool], text=text)
+
+        assert len(result) == 1
+        assert result[0].name == "bash_exec"
+        assert json.loads(result[0].arguments) == {"command": "pwd"}
+
+    def test_parses_function_like_text_tool_call(self):
+        """Function-like text calls are mapped to the single required argument."""
+        tool = _make_tool(
+            name="bash_exec",
+            parameters={
+                "type": "object",
+                "properties": {"command": {"type": "string"}},
+                "required": ["command"],
+            },
+        )
+
+        result = normalize_tool_calls(None, tools=[tool], text='bash_exec("pwd")')
+
+        assert len(result) == 1
+        assert result[0].name == "bash_exec"
+        assert json.loads(result[0].arguments) == {"command": "pwd"}
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_call_with_tools_retries_malformed_text_attempt(monkeypatch):
+    """A malformed text-only tool attempt gets one schema-guided retry."""
+    monkeypatch.setattr("sci_fi_dashboard.llm_router._write_session", lambda **_kwargs: None)
+
+    tool = _make_tool(
+        name="bash_exec",
+        parameters={
+            "type": "object",
+            "properties": {"command": {"type": "string"}},
+            "required": ["command"],
+        },
+    )
+
+    class FakeRouter:
+        def __init__(self) -> None:
+            self.calls: list[dict] = []
+
+        async def acompletion(self, **kwargs):
+            self.calls.append(kwargs)
+            if len(self.calls) == 1:
+                return _make_response('bash_exec(command="pwd"')
+            return _make_response(
+                "",
+                [_make_raw_tool_call(name="run_bash", arguments='{"cmd": "pwd"}')],
+            )
+
+    fake_router = FakeRouter()
+    router = object.__new__(SynapseLLMRouter)
+    router._config = types.SimpleNamespace(
+        model_mappings={"casual": {"model": "ollama_chat/qwen2.5:7b"}},
+        providers={},
+    )
+    router._router = fake_router
+    router._uses_copilot = False
+    router._copilot_refresh_lock = asyncio.Lock()
+
+    result = await router.call_with_tools(
+        "casual",
+        [{"role": "user", "content": "run pwd"}],
+        tools=[tool],
+    )
+
+    assert len(fake_router.calls) == 2
+    assert result.tool_calls[0].name == "bash_exec"
+    assert json.loads(result.tool_calls[0].arguments) == {"command": "pwd"}
 
 
 # ---------------------------------------------------------------------------

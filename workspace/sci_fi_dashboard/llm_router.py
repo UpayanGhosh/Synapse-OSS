@@ -11,8 +11,10 @@ auth failed → rotate auth profile, server error → retry once,
 model not found → try fallback model.
 """
 
+import ast
 import asyncio
 import copy
+import difflib
 import json
 import logging
 import os
@@ -168,50 +170,663 @@ def _strip_keys_recursive(obj: dict, keys: set) -> None:
 # --- Tool call response normalization ---
 
 
-def normalize_tool_calls(raw_tool_calls: list | None) -> list[ToolCall]:
+def normalize_tool_calls(
+    raw_tool_calls: list | None,
+    tools: list[dict] | None = None,
+    text: str | None = None,
+) -> list[ToolCall]:
     """Parse litellm tool-call objects into provider-agnostic :class:`ToolCall` list.
 
-    Handles missing IDs (generates one), whitespace in function names, and
-    malformed JSON in arguments (attempts lightweight repair).
+    Handles missing IDs, whitespace in function names, malformed JSON in
+    arguments, fuzzy tool names, schema-driven argument key coercion, and
+    markdown/text tool-call fallbacks for smaller local models.
     """
+    calls, _attempted, events = _normalize_tool_calls_with_report(
+        raw_tool_calls,
+        tools=tools,
+        text=text,
+    )
+    _log_tool_recovery_events(events)
+    return calls
+
+
+def _normalize_tool_calls_with_report(
+    raw_tool_calls: list | None,
+    tools: list[dict] | None = None,
+    text: str | None = None,
+) -> tuple[list[ToolCall], bool, list[dict[str, str]]]:
+    """Normalize tool calls and report whether malformed tool use was attempted."""
+
+    tool_index = _build_tool_index(tools)
     if not raw_tool_calls:
-        return []
+        raw_tool_calls = []
     calls: list[ToolCall] = []
+    attempted = bool(raw_tool_calls)
+    events: list[dict[str, str]] = []
     for tc in raw_tool_calls:
-        name = (tc.function.name or "").strip()
+        call_id, raw_name, raw_args = _raw_tool_call_parts(tc)
+        name = (raw_name or "").strip()
         if not name:
             continue
-        args = tc.function.arguments or "{}"
-        try:
-            json.loads(args)
-        except json.JSONDecodeError:
-            args = _attempt_json_repair(args)
+        if tool_index:
+            coerced_name = _coerce_tool_name(name, tool_index, events)
+            if coerced_name not in tool_index:
+                events.append(
+                    {
+                        "kind": "unknown_tool_name",
+                        "tool_name": name,
+                    }
+                )
+                continue
+            name = coerced_name
+        args = _coerce_tool_arguments(raw_args, name, tool_index.get(name), events)
         calls.append(
             ToolCall(
-                id=tc.id or f"call_{uuid4().hex[:8]}",
+                id=call_id or f"call_{uuid4().hex[:8]}",
                 name=name,
                 arguments=args,
             )
         )
-    return calls
+
+    if not calls and text and tool_index:
+        text_calls, text_attempted, text_events = _extract_text_tool_calls(text, tool_index)
+        calls.extend(text_calls)
+        attempted = attempted or text_attempted
+        events.extend(text_events)
+    return calls, attempted, events
 
 
 def _attempt_json_repair(raw: str) -> str:
     """Best-effort fix for truncated JSON from streaming tool calls.
 
-    Adds missing closing braces.  Returns ``"{}"`` when repair fails.
+    Strips markdown fences, removes trailing commas, closes missing braces /
+    brackets / string quotes, and accepts Python-style dicts as a json5-ish
+    fallback. Returns ``"{}"`` when repair fails.
     """
-    raw = raw.rstrip()
-    if not raw.endswith("}"):
-        raw += "}"
-    open_count = raw.count("{") - raw.count("}")
-    if open_count > 0:
-        raw += "}" * open_count
-    try:
-        json.loads(raw)
-        return raw
-    except json.JSONDecodeError:
+    if not isinstance(raw, str):
         return "{}"
+    original = raw.rstrip()
+    try:
+        json.loads(original)
+        return original
+    except json.JSONDecodeError:
+        pass
+
+    try:
+        repaired = _loads_tolerant_json(original)
+    except (json.JSONDecodeError, ValueError, SyntaxError, TypeError):
+        return "{}"
+    if isinstance(repaired, dict | list):
+        return json.dumps(repaired)
+    return "{}"
+
+
+_FENCED_BLOCK_RE = re.compile(r"```(?:json|tool|tools|function|javascript)?\s*(.*?)```", re.I | re.S)
+_FUNCTION_CALL_RE = re.compile(r"(?<![\w.])([A-Za-z_]\w*)\s*\((.*?)\)", re.S)
+_ARG_KW_RE = re.compile(
+    r"([A-Za-z_]\w*)\s*=\s*(\"(?:\\.|[^\"])*\"|'(?:\\.|[^'])*'|-?\d+(?:\.\d+)?|true|false|null)",
+    re.I,
+)
+
+_TOOL_TOKEN_ALIASES = {
+    "run": "exec",
+    "execute": "exec",
+    "executed": "exec",
+    "shell": "bash",
+    "terminal": "bash",
+}
+
+_ARGUMENT_KEY_ALIASES: dict[str, set[str]] = {
+    "command": {"cmd", "shell", "bash", "bash_command", "shell_command", "terminal_command"},
+    "path": {"file", "file_path", "filepath", "filename", "target_path"},
+    "old_string": {"old", "old_text", "oldtext", "find", "search", "target"},
+    "new_string": {"new", "new_text", "newtext", "replace", "replacement"},
+    "pattern": {"regex", "query", "search_query"},
+    "url": {"link", "uri"},
+    "content": {"text", "body"},
+    "timeout": {"timeout_s", "seconds", "secs"},
+}
+
+
+def _raw_tool_call_parts(tc: Any) -> tuple[str | None, str | None, Any]:
+    if isinstance(tc, dict):
+        fn = tc.get("function") or {}
+        if not isinstance(fn, dict):
+            fn = {
+                "name": getattr(fn, "name", None),
+                "arguments": getattr(fn, "arguments", None),
+            }
+        return (
+            tc.get("id"),
+            fn.get("name") or tc.get("name"),
+            fn.get("arguments") if "arguments" in fn else tc.get("arguments"),
+        )
+
+    fn = getattr(tc, "function", None)
+    return (
+        getattr(tc, "id", None),
+        getattr(fn, "name", None),
+        getattr(fn, "arguments", None),
+    )
+
+
+def _build_tool_index(tools: list[dict] | None) -> dict[str, dict]:
+    index: dict[str, dict] = {}
+    for tool in tools or []:
+        if not isinstance(tool, dict):
+            continue
+        function = tool.get("function") if isinstance(tool.get("function"), dict) else tool
+        name = str(function.get("name") or "").strip()
+        if not name:
+            continue
+        index[name] = {
+            "name": name,
+            "parameters": function.get("parameters") or {},
+        }
+    return index
+
+
+def _coerce_tool_name(
+    name: str,
+    tool_index: dict[str, dict],
+    events: list[dict[str, str]],
+) -> str:
+    if not tool_index or name in tool_index:
+        return name
+
+    names = list(tool_index)
+    normalized = _normalize_identifier(name)
+    normalized_map = {_normalize_identifier(candidate): candidate for candidate in names}
+    if normalized in normalized_map:
+        target = normalized_map[normalized]
+        _record_recovery(events, "tool_name_coerced", name, target)
+        return target
+
+    token_match = _best_token_tool_match(name, names)
+    if token_match:
+        _record_recovery(events, "tool_name_coerced", name, token_match)
+        return token_match
+
+    close = difflib.get_close_matches(name, names, n=1, cutoff=0.72)
+    if close:
+        _record_recovery(events, "tool_name_coerced", name, close[0])
+        return close[0]
+
+    normalized_close = difflib.get_close_matches(normalized, list(normalized_map), n=1, cutoff=0.72)
+    if normalized_close:
+        target = normalized_map[normalized_close[0]]
+        _record_recovery(events, "tool_name_coerced", name, target)
+        return target
+    return name
+
+
+def _best_token_tool_match(name: str, candidates: list[str]) -> str | None:
+    query_tokens = _tool_name_tokens(name)
+    if not query_tokens:
+        return None
+    best_name = None
+    best_score = 0.0
+    for candidate in candidates:
+        candidate_tokens = _tool_name_tokens(candidate)
+        if not candidate_tokens:
+            continue
+        score = len(query_tokens & candidate_tokens) / max(len(query_tokens), len(candidate_tokens))
+        if score > best_score:
+            best_name = candidate
+            best_score = score
+    return best_name if best_score >= 0.66 else None
+
+
+def _tool_name_tokens(name: str) -> set[str]:
+    parts = re.findall(r"[a-z0-9]+", name.lower())
+    return {_TOOL_TOKEN_ALIASES.get(part, part) for part in parts if part}
+
+
+def _coerce_tool_arguments(
+    raw_args: Any,
+    tool_name: str,
+    tool_meta: dict | None,
+    events: list[dict[str, str]],
+) -> str:
+    schema = (tool_meta or {}).get("parameters") or {}
+    parsed = _parse_argument_value(raw_args)
+    if not isinstance(parsed, dict):
+        mapped = _map_scalar_argument(parsed, schema)
+        if mapped is None:
+            parsed = {}
+        else:
+            parsed = mapped
+            events.append({"kind": "scalar_argument_mapped", "tool_name": tool_name})
+
+    coerced = _coerce_argument_keys(parsed, schema, tool_name, events)
+    return json.dumps(coerced)
+
+
+def _parse_argument_value(raw_args: Any) -> Any:
+    if raw_args is None:
+        return {}
+    if isinstance(raw_args, dict | list):
+        return raw_args
+    if not isinstance(raw_args, str):
+        return raw_args
+
+    stripped = raw_args.strip()
+    if not stripped:
+        return {}
+    try:
+        return json.loads(stripped)
+    except json.JSONDecodeError:
+        pass
+    try:
+        return _loads_tolerant_json(stripped)
+    except (json.JSONDecodeError, ValueError, SyntaxError, TypeError):
+        return stripped
+
+
+def _loads_tolerant_json(raw: str) -> Any:
+    stripped = _strip_json_markdown_fence(raw).strip()
+    candidates = [
+        stripped,
+        re.sub(r",\s*([}\]])", r"\1", stripped),
+    ]
+    candidates.append(_close_json_delimiters(candidates[-1]))
+
+    seen: set[str] = set()
+    for candidate in candidates:
+        if not candidate or candidate in seen:
+            continue
+        seen.add(candidate)
+        try:
+            return json.loads(candidate)
+        except json.JSONDecodeError:
+            pass
+        try:
+            parsed = ast.literal_eval(candidate)
+        except (ValueError, SyntaxError):
+            continue
+        if isinstance(parsed, dict | list | str | int | float | bool) or parsed is None:
+            return parsed
+    raise json.JSONDecodeError("unable to repair JSON", stripped, 0)
+
+
+def _strip_json_markdown_fence(raw: str) -> str:
+    match = _FENCED_BLOCK_RE.fullmatch(raw.strip())
+    return match.group(1).strip() if match else raw
+
+
+def _close_json_delimiters(raw: str) -> str:
+    text = raw.strip()
+    if not text:
+        return text
+
+    if text[0] == "{" and not text.rstrip().endswith(("}", "]")):
+        text += "}"
+    elif text[0] == "[" and not text.rstrip().endswith(("}", "]")):
+        text += "]"
+
+    text = _close_unclosed_string_before_suffix(text)
+    curly = text.count("{") - text.count("}")
+    square = text.count("[") - text.count("]")
+    if curly > 0:
+        text += "}" * curly
+    if square > 0:
+        text += "]" * square
+    return _close_unclosed_string_before_suffix(text)
+
+
+def _close_unclosed_string_before_suffix(raw: str) -> str:
+    text = raw.rstrip()
+    suffix = ""
+    while text.endswith(("}", "]")):
+        suffix = text[-1] + suffix
+        text = text[:-1].rstrip()
+    if _inside_double_quoted_string(text):
+        text += '"'
+    return text + suffix
+
+
+def _inside_double_quoted_string(text: str) -> bool:
+    in_quote = False
+    escaped = False
+    for char in text:
+        if escaped:
+            escaped = False
+            continue
+        if char == "\\":
+            escaped = True
+            continue
+        if char == '"':
+            in_quote = not in_quote
+    return in_quote
+
+
+def _coerce_argument_keys(
+    parsed: dict,
+    schema: dict,
+    tool_name: str,
+    events: list[dict[str, str]],
+) -> dict:
+    properties = schema.get("properties") if isinstance(schema, dict) else {}
+    if not isinstance(properties, dict) or not properties:
+        return parsed
+
+    coerced: dict = {}
+    unknown: dict = {}
+    for key, value in parsed.items():
+        key_str = str(key)
+        if key_str in properties:
+            coerced[key_str] = value
+            continue
+        target = _match_argument_key(key_str, properties)
+        if target:
+            coerced[target] = value
+            events.append(
+                {
+                    "kind": "argument_key_coerced",
+                    "tool_name": tool_name,
+                    "from": key_str,
+                    "to": target,
+                }
+            )
+        else:
+            unknown[key_str] = value
+
+    required = _schema_required(schema)
+    missing = [key for key in required if key not in coerced]
+    if len(missing) == 1 and len(unknown) == 1:
+        old_key, value = next(iter(unknown.items()))
+        coerced[missing[0]] = value
+        events.append(
+            {
+                "kind": "argument_key_coerced",
+                "tool_name": tool_name,
+                "from": old_key,
+                "to": missing[0],
+            }
+        )
+        unknown.clear()
+
+    coerced.update(unknown)
+    return coerced
+
+
+def _match_argument_key(key: str, properties: dict) -> str | None:
+    if key in properties:
+        return key
+    normalized = _normalize_identifier(key)
+    normalized_map = {_normalize_identifier(prop): prop for prop in properties}
+    if normalized in normalized_map:
+        return normalized_map[normalized]
+    for prop in properties:
+        aliases = {_normalize_identifier(alias) for alias in _ARGUMENT_KEY_ALIASES.get(prop, set())}
+        if normalized in aliases:
+            return prop
+    close = difflib.get_close_matches(normalized, list(normalized_map), n=1, cutoff=0.78)
+    return normalized_map[close[0]] if close else None
+
+
+def _map_scalar_argument(value: Any, schema: dict) -> dict | None:
+    properties = schema.get("properties") if isinstance(schema, dict) else {}
+    if not isinstance(properties, dict) or not properties:
+        return None
+
+    required = _schema_required(schema)
+    if len(required) == 1:
+        prop = required[0]
+    elif len(properties) == 1:
+        prop = next(iter(properties))
+    else:
+        return None
+    return {prop: _coerce_scalar_to_schema(value, properties.get(prop, {}))}
+
+
+def _coerce_scalar_to_schema(value: Any, prop_schema: dict) -> Any:
+    kind = prop_schema.get("type") if isinstance(prop_schema, dict) else None
+    if kind == "integer":
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return value
+    if kind == "number":
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return value
+    if kind == "boolean":
+        if isinstance(value, str):
+            return value.strip().lower() in {"true", "1", "yes", "y"}
+        return bool(value)
+    return str(value)
+
+
+def _schema_required(schema: dict) -> list[str]:
+    required = schema.get("required") if isinstance(schema, dict) else []
+    return [str(item) for item in required] if isinstance(required, list) else []
+
+
+def _extract_text_tool_calls(
+    text: str,
+    tool_index: dict[str, dict],
+) -> tuple[list[ToolCall], bool, list[dict[str, str]]]:
+    events: list[dict[str, str]] = []
+    attempted = _looks_like_malformed_tool_attempt(text, tool_index)
+    segments = [match.group(1).strip() for match in _FENCED_BLOCK_RE.finditer(text)]
+    segments.append(text)
+
+    for segment in segments:
+        for candidate in _json_candidates_from_text(segment):
+            try:
+                payload = _loads_tolerant_json(candidate)
+            except (json.JSONDecodeError, ValueError, SyntaxError, TypeError):
+                continue
+            calls = _tool_calls_from_payload(payload, tool_index, events)
+            if calls:
+                events.append({"kind": "text_tool_call_parsed"})
+                return calls, True, events
+
+    function_calls = _function_like_tool_calls(text, tool_index, events)
+    if function_calls:
+        events.append({"kind": "text_tool_call_parsed"})
+        return function_calls, True, events
+    return [], attempted, events
+
+
+def _json_candidates_from_text(text: str) -> list[str]:
+    stripped = text.strip()
+    candidates: list[str] = []
+    if stripped.startswith(("{", "[")):
+        candidates.append(stripped)
+
+    stack: list[str] = []
+    start: int | None = None
+    in_quote = False
+    escaped = False
+    pairs = {"{": "}", "[": "]"}
+    for idx, char in enumerate(text):
+        if escaped:
+            escaped = False
+            continue
+        if char == "\\":
+            escaped = True
+            continue
+        if char == '"':
+            in_quote = not in_quote
+            continue
+        if in_quote:
+            continue
+        if char in pairs:
+            if not stack:
+                start = idx
+            stack.append(pairs[char])
+            continue
+        if stack and char == stack[-1]:
+            stack.pop()
+            if not stack and start is not None:
+                candidates.append(text[start : idx + 1])
+                start = None
+    return candidates
+
+
+def _tool_calls_from_payload(
+    payload: Any,
+    tool_index: dict[str, dict],
+    events: list[dict[str, str]],
+) -> list[ToolCall]:
+    if isinstance(payload, list):
+        calls: list[ToolCall] = []
+        for item in payload:
+            calls.extend(_tool_calls_from_payload(item, tool_index, events))
+        return calls
+    if not isinstance(payload, dict):
+        return []
+
+    if isinstance(payload.get("tool_calls"), list):
+        return _tool_calls_from_payload(payload["tool_calls"], tool_index, events)
+
+    function = payload.get("function")
+    if isinstance(function, dict) and function.get("name"):
+        call = _build_recovered_tool_call(
+            str(function.get("name")),
+            function.get("arguments", payload.get("arguments", {})),
+            tool_index,
+            events,
+        )
+        return [call] if call else []
+
+    for name_key in ("tool", "tool_name", "name"):
+        if payload.get(name_key):
+            args = (
+                payload.get("arguments")
+                if "arguments" in payload
+                else payload.get("args", payload.get("parameters", payload.get("input", {})))
+            )
+            call = _build_recovered_tool_call(str(payload[name_key]), args, tool_index, events)
+            return [call] if call else []
+
+    calls: list[ToolCall] = []
+    for key, value in payload.items():
+        name = _coerce_tool_name(str(key), tool_index, events)
+        if name in tool_index:
+            call = _build_recovered_tool_call(name, value, tool_index, events)
+            if call:
+                calls.append(call)
+    return calls
+
+
+def _function_like_tool_calls(
+    text: str,
+    tool_index: dict[str, dict],
+    events: list[dict[str, str]],
+) -> list[ToolCall]:
+    calls: list[ToolCall] = []
+    for match in _FUNCTION_CALL_RE.finditer(text):
+        name = _coerce_tool_name(match.group(1), tool_index, events)
+        if name not in tool_index:
+            continue
+        args = _parse_function_like_args(match.group(2), name, tool_index[name], events)
+        call = _build_recovered_tool_call(name, args, tool_index, events)
+        if call:
+            calls.append(call)
+    return calls
+
+
+def _parse_function_like_args(
+    raw: str,
+    tool_name: str,
+    tool_meta: dict,
+    events: list[dict[str, str]],
+) -> Any:
+    body = raw.strip()
+    if not body:
+        return {}
+    if body.startswith(("{", "[")):
+        return _parse_argument_value(body)
+    try:
+        literal = ast.literal_eval(body)
+        return literal
+    except (ValueError, SyntaxError):
+        pass
+
+    kwargs = {}
+    for key, value in _ARG_KW_RE.findall(body):
+        kwargs[key] = _parse_argument_value(value)
+    if kwargs:
+        events.append({"kind": "function_kwargs_parsed", "tool_name": tool_name})
+        return kwargs
+    return body
+
+
+def _build_recovered_tool_call(
+    name: str,
+    args: Any,
+    tool_index: dict[str, dict],
+    events: list[dict[str, str]],
+) -> ToolCall | None:
+    coerced_name = _coerce_tool_name(name, tool_index, events)
+    if coerced_name not in tool_index:
+        return None
+    return ToolCall(
+        id=f"call_{uuid4().hex[:8]}",
+        name=coerced_name,
+        arguments=_coerce_tool_arguments(args, coerced_name, tool_index[coerced_name], events),
+    )
+
+
+def _looks_like_malformed_tool_attempt(text: str, tool_index: dict[str, dict]) -> bool:
+    if not text or not tool_index:
+        return False
+    lowered = text.lower()
+    toolish = "```" in text or "{" in text or "(" in text or "tool" in lowered or "arguments" in lowered
+    if not toolish:
+        return False
+    for name in tool_index:
+        if name.lower() in lowered:
+            return True
+        if _tool_name_tokens(name) & set(re.findall(r"[a-z0-9]+", lowered)):
+            return True
+    return False
+
+
+def _normalize_identifier(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", value.lower())
+
+
+def _record_recovery(
+    events: list[dict[str, str]],
+    kind: str,
+    old: str,
+    new: str,
+) -> None:
+    if old != new:
+        events.append({"kind": kind, "from": old, "to": new})
+
+
+def _log_tool_recovery_events(events: list[dict[str, str]]) -> None:
+    for event in events:
+        kind = event.get("kind", "unknown")
+        logger.info("tool_call_resilience_%s", kind, extra={"tool_recovery": event})
+
+
+def _build_tool_retry_instruction(tools: list[dict]) -> str:
+    lines = [
+        "Your previous response attempted a tool call but the format was malformed.",
+        "Do not describe or simulate tool results. Use the native tool_call format.",
+        "Available tool schemas:",
+    ]
+    for tool in tools:
+        function = tool.get("function", {}) if isinstance(tool, dict) else {}
+        name = function.get("name")
+        params = function.get("parameters", {})
+        props = params.get("properties", {}) if isinstance(params, dict) else {}
+        required = set(params.get("required", [])) if isinstance(params, dict) else set()
+        arg_bits = []
+        for prop, prop_schema in props.items():
+            type_name = prop_schema.get("type", "any") if isinstance(prop_schema, dict) else "any"
+            suffix = " required" if prop in required else " optional"
+            arg_bits.append(f"{prop}: {type_name}{suffix}")
+        if name:
+            lines.append(f"- {name}({', '.join(arg_bits)})")
+    return "\n".join(lines)
 
 
 # --- Provider key injection ---
@@ -1300,6 +1915,42 @@ class SynapseLLMRouter:
                 {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
             )()
         )
+        tool_calls, malformed_attempt, recovery_events = _normalize_tool_calls_with_report(
+            message.tool_calls,
+            tools=normalized_tools,
+            text=message.content,
+        )
+        _log_tool_recovery_events(recovery_events)
+
+        if not tool_calls and malformed_attempt:
+            logger.info("tool_call_retry_after_malformed_response role=%s", role)
+            retry_messages = [
+                *messages,
+                {"role": "assistant", "content": message.content or ""},
+                {"role": "system", "content": _build_tool_retry_instruction(normalized_tools)},
+            ]
+            retry_kwargs = {**kwargs, "messages": retry_messages}
+            try:
+                retry_response = await self._router.acompletion(**retry_kwargs)
+            except Exception as retry_exc:
+                logger.warning("tool-call retry failed for role '%s': %s", role, retry_exc)
+            else:
+                response = retry_response
+                message = response.choices[0].message
+                usage = (
+                    getattr(response, "usage", None)
+                    or type(
+                        "U",
+                        (),
+                        {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+                    )()
+                )
+                tool_calls, _retry_attempted, retry_events = _normalize_tool_calls_with_report(
+                    message.tool_calls,
+                    tools=normalized_tools,
+                    text=message.content,
+                )
+                _log_tool_recovery_events(retry_events)
 
         # SESS-01: Write token usage (non-fatal)
         try:
@@ -1313,7 +1964,7 @@ class SynapseLLMRouter:
 
         return LLMToolResult(
             text=message.content or "",
-            tool_calls=normalize_tool_calls(message.tool_calls),
+            tool_calls=tool_calls,
             model=response.model or "unknown",
             prompt_tokens=usage.prompt_tokens,
             completion_tokens=usage.completion_tokens,
