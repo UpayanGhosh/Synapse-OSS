@@ -1,6 +1,6 @@
-# TOOLS.md - Local Notes
+# TOOLS.md - Your Local Notes
 
-Skills define *how* tools work. This file is for *your* specifics — the stuff unique to this setup.
+Skills define *how* tools work. This file is for *your* specifics — the stuff unique to your setup.
 
 ## What Goes Here
 
@@ -13,8 +13,8 @@ Skills define *how* tools work. This file is for *your* specifics — the stuff 
 
 ## Installed CLIs (verify with `command -v <cmd>` (bash/zsh) or `Get-Command <cmd>` (PowerShell))
 
-- `sqlite3` — query SQLite DBs directly. Primary way to touch `memory.db` and `knowledge_graph.db`.
-- `curl` — HTTP requests. Primary way to hit the local FastAPI gateway (`http://127.0.0.1:8000`).
+- `sqlite3` — query SQLite DBs directly. Your primary way to touch `memory.db` and `knowledge_graph.db`.
+- `curl` — HTTP requests. Your primary way to hit your local FastAPI gateway (`http://127.0.0.1:8000`).
 - `jq` — JSON parsing. Pair with `curl` for clean extraction.
 - `rg` (ripgrep) — fast text search. Python fallback exists in `grep_tool`.
 - `git` — version control. Repo lives at `D:\Shorty\Synapse-OSS\`.
@@ -30,7 +30,7 @@ Skills define *how* tools work. This file is for *your* specifics — the stuff 
 - Upayan: `+91XXXXXXXXXX`
 - Shreya (Boumuni): `+91XXXXXXXXXX`
 
-> Real numbers are stored in the runtime override at `~/.synapse/workspace/TOOLS.md`, **not** in this committed template. Never paste real phone numbers into a file that ships with the repo.
+> Real numbers are stored in your runtime override at `~/.synapse/workspace/TOOLS.md`, **not** in this committed template. Never paste real phone numbers into a file that ships with the repo.
 
 ## Channel Nicknames
 
@@ -190,7 +190,7 @@ curl -s http://localhost:11434/api/tags | jq -r '.models[].name'
 **Notes:** Use `ollama_chat/` prefix, NOT `ollama/`. The `api_base` is read from `providers.ollama.api_base`.
 
 **Why this is documentation, not a function tool:**
-You already have `bash_exec` — that's the only tool needed. New providers, new endpoints, new auth styles are added by editing this file (or the runtime override at `~/.synapse/workspace/TOOLS.md`). No code change. The LLM-as-brain decides which provider to query based on the user's intent.
+You already have `bash_exec` — that's the only tool needed. New providers, new endpoints, new auth styles are added by editing this file (or your runtime override at `~/.synapse/workspace/TOOLS.md`). No code change. You — as the brain — decide which provider to query based on your master's intent.
 
 ## Why Separate from Skills?
 
