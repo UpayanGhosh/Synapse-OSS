@@ -360,6 +360,7 @@ async def test_call_with_tools_retries_malformed_text_attempt(monkeypatch):
     router._router = fake_router
     router._uses_copilot = False
     router._copilot_refresh_lock = asyncio.Lock()
+    router._antigravity_roles = set()
 
     result = await router.call_with_tools(
         "casual",

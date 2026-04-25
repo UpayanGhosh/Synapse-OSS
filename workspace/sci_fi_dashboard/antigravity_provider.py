@@ -16,7 +16,9 @@ provider it came from.
 
 Pro reasoning level is selected by suffix: ``gemini-3-pro-low`` →
 ``thinkingConfig.thinkingLevel = "LOW"``, ``gemini-3-pro-high`` → ``"HIGH"``.
-Both resolve to the same API model ID (``gemini-3.1-pro-preview``).
+Bare Pro aliases also default to ``LOW`` to match OpenClaw's Antigravity
+normalization. All Pro aliases resolve to the same API model ID
+(``gemini-3.1-pro-preview``).
 
 Auto-refreshes the access token on 401/403 with a single retry. Maps quota
 errors to ``litellm.RateLimitError`` so the existing ``InferenceLoop`` retry
@@ -115,9 +117,9 @@ G1_CREDIT_TYPE = "GOOGLE_ONE_AI"
 # the Gemini CLI bundle.
 _G1_OVERAGE_MODELS = frozenset(
     {
-        _PRO_API_MODEL,           # gemini-3.1-pro-preview
-        _FLASH_API_MODEL,          # gemini-3-flash-preview
-        "gemini-3-pro-preview",    # legacy alias the CLI still recognises
+        _PRO_API_MODEL,  # gemini-3.1-pro-preview
+        _FLASH_API_MODEL,  # gemini-3-flash-preview
+        "gemini-3-pro-preview",  # legacy alias the CLI still recognises
     }
 )
 DEFAULT_TIMEOUT_SEC = 60.0
@@ -148,7 +150,8 @@ class ModelResolution:
     Attributes:
         api_model:       The model id sent on the wire (e.g. ``gemini-3.1-pro-preview``).
         thinking_level:  ``"LOW"`` / ``"HIGH"`` / ``"MEDIUM"`` / ``"MINIMAL"`` or
-                         ``None`` to let the server decide. Applied as
+                         ``None`` to let the server decide. Bare Pro aliases
+                         default to ``"LOW"``. Applied as
                          ``generationConfig.thinkingConfig.thinkingLevel`` on
                          Pro models.
     """
@@ -160,9 +163,9 @@ class ModelResolution:
 def resolve_model_with_thinking(prefixed: str) -> ModelResolution:
     """Translate a user-facing antigravity model name into (api_model, level).
 
-    Both Pro reasoning levels collapse to the same wire model
-    (``gemini-3.1-pro-preview``); the difference is communicated via
-    ``thinkingConfig.thinkingLevel`` in ``generationConfig``. All Flash
+    Pro aliases collapse to the same wire model (``gemini-3.1-pro-preview``);
+    the reasoning difference is communicated via ``thinkingConfig.thinkingLevel``
+    in ``generationConfig``. All Flash
     variants currently route to ``gemini-3-flash-preview`` since the API does
     not expose a separate flash-lite model id.
     """
@@ -174,7 +177,7 @@ def resolve_model_with_thinking(prefixed: str) -> ModelResolution:
             return ModelResolution(_PRO_API_MODEL, "LOW")
         if lower.endswith("-high"):
             return ModelResolution(_PRO_API_MODEL, "HIGH")
-        return ModelResolution(_PRO_API_MODEL, None)
+        return ModelResolution(_PRO_API_MODEL, "LOW")
 
     if lower in _FLASH_USER_IDS:
         if "flash-lite" in lower:
@@ -317,8 +320,19 @@ _GEMINI_UNSUPPORTED_SCHEMA_KEYS: frozenset[str] = frozenset(
         "format",
         "$schema",
         "$id",
+        "definitions",
         "examples",
         "default",
+        "minLength",
+        "maxLength",
+        "minimum",
+        "maximum",
+        "multipleOf",
+        "minItems",
+        "maxItems",
+        "uniqueItems",
+        "minProperties",
+        "maxProperties",
         "$defs",
     }
 )
@@ -336,9 +350,11 @@ def clean_tool_schema_for_gemini(schema: dict[str, Any]) -> dict[str, Any]:
             continue
         if key == "properties" and isinstance(value, dict):
             cleaned[key] = {
-                prop_name: clean_tool_schema_for_gemini(prop_schema)
-                if isinstance(prop_schema, dict)
-                else prop_schema
+                prop_name: (
+                    clean_tool_schema_for_gemini(prop_schema)
+                    if isinstance(prop_schema, dict)
+                    else prop_schema
+                )
                 for prop_name, prop_schema in value.items()
             }
         elif key == "items":
@@ -449,9 +465,7 @@ def parse_response_payload(
 
     usage = response.get("usageMetadata") or {}
     prompt_tokens = int(usage.get("promptTokenCount") or 0)
-    completion_tokens = int(
-        usage.get("candidatesTokenCount") or usage.get("outputTokenCount") or 0
-    )
+    completion_tokens = int(usage.get("candidatesTokenCount") or usage.get("outputTokenCount") or 0)
     total_tokens = int(usage.get("totalTokenCount") or (prompt_tokens + completion_tokens))
 
     return AntigravityResponse(
