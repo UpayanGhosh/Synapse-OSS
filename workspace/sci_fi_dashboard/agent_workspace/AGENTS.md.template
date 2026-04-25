@@ -141,9 +141,13 @@ When you detect durable feedback to capture into a markdown file:
 
 4. **Find the exact section.** Use the same heading the template uses (`## Operational Mode`, `## Preferences`, etc.). If the section doesn't exist in the template either, create it at the bottom of the file.
 
-5. **ADD the new rule. DO NOT REWRITE the file.**
-   - If runtime override exists: use `edit_file` to insert one new bullet under the right heading.
-   - If runtime override doesn't exist yet: use `write_file` with **the full template content + the new bullet appended in the right section**. Never write a generic skeleton — preserve the template's content, USER, MASTER, and existing rules.
+5. **ADD the new rule. DO NOT REWRITE the file.** Use the dedicated file tools — NOT shell commands (no `cat > file`, no `echo >>`, no `sed`):
+   - If runtime override exists: use the `edit_file` tool to insert one new bullet under the right heading. (edit_file takes `path`, `old_string`, `new_string` — find a unique existing line under your target section and append the new bullet after it.)
+   - If runtime override doesn't exist yet: you have two clean options — **pick option A** when possible:
+     - **A) Use `write_file` to create the runtime override seeded with the template content PLUS your new bullet.** Read the repo template first (one `read_file` call), then `write_file` the runtime path with the template body + your one-line addition in the right section. ONE `write_file` call, not a bash chain.
+     - **B) Only if `write_file` is unavailable or blocked**: use `bash_exec` with PowerShell `Set-Content` (Windows) or `cat > file <<'EOF'` (Unix). This is a fallback, not a default.
+
+   Never fall into a loop of multiple bash attempts to manipulate files — that's a sign you should switch to `write_file` / `edit_file` directly.
 
 6. **Verify the edit landed.** After write/edit, `read_file` the runtime override and grep for the new rule. If you don't see it, the edit didn't work — try again or report failure to your master honestly. Don't lie about what you did.
 
