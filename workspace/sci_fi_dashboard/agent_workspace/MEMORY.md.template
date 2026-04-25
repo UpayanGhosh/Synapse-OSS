@@ -21,6 +21,51 @@
 - **DB backups:** Automated backups of `memory.db` live in `~/.synapse/workspace/db/backups/` (gzipped; last 7 kept). Use these for disaster recovery, not routine reads.
 - **Vacuum schedule:** The Gentle Worker loop vacuums DBs every 30 min when CPU < 20% and the laptop is plugged in.
 
+## Memory Ingestion Protocol (CRITICAL — use the right path)
+
+When the user asks to **save / remember / update / store / ingest** something into memory, follow this protocol. Do NOT use `write_file` on `memory.db` — it's a binary SQLite file and Sentinel will block it (correctly — direct binary writes would corrupt the DB).
+
+### 1. PREFERRED — Use the FastAPI gateway
+
+The proper memorization path runs the full RAG pipeline (LLM-based fact extraction → embedding → sqlite-vec insert → optional knowledge-graph triple). Call it via `bash_exec`:
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/add \
+  -H "Content-Type: application/json" \
+  -d '{"content": "<the text to remember>", "category": "<one-word tag like chat | preference | tech | event>"}'
+```
+
+This is what you should reach for first. It handles embeddings, dedup, and graph extraction automatically.
+
+### 2. ALTERNATIVE — Structured triples via /ingest
+
+If the user gives a clear subject-predicate-object (e.g., "Upayan prefers Python over C#"), you can post a triple directly:
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/ingest \
+  -H "Content-Type: application/json" \
+  -d '{"subject": "Upayan", "predicate": "prefers", "object": "Python over C#"}'
+```
+
+### 3. READ-ONLY — Query existing memory
+
+To check what's already remembered before adding (avoid dupes), use the `query_memory` tool OR direct SQL:
+
+```bash
+sqlite3 ~/.synapse/workspace/db/memory.db \
+  "SELECT id, category, substr(content, 1, 80) FROM documents ORDER BY id DESC LIMIT 5"
+```
+
+### 4. NEVER
+
+- `write_file('~/.synapse/workspace/db/memory.db', ...)` — binary file, Sentinel-blocked, would corrupt the database.
+- Crafting raw `INSERT INTO documents` SQL — bypasses embeddings, the document becomes unsearchable.
+- Telling the user "I can't update memory.db" — you absolutely can, via `/add`. That's the whole purpose of the gateway.
+
+### When in doubt
+
+Run `bash_exec("curl -s http://127.0.0.1:8000/health/ready")` to verify the gateway is up, then `/add`.
+
 ## Privacy & Safety
 
 - **Vault hemisphere:** Private / spicy memories live in `hemisphere_tag="spicy"`. Only the local Ollama "vault" role ever queries them. Never forward spicy content to cloud models.

@@ -15,9 +15,41 @@ import json
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Binary file guard for write_file
+# ---------------------------------------------------------------------------
+# Extensions of structured/binary files that must NOT be written via the raw
+# write_file tool. Direct text writes on these formats either corrupt the
+# data (SQLite, LanceDB, Parquet, archives) or bypass a proper ingestion
+# pipeline (audio/video/images that need transcoding). The guard fires
+# BEFORE Sentinel runs — its purpose is teaching the LLM the right path,
+# not enforcing security (Sentinel handles that separately).
+BINARY_WRITE_EXTENSIONS: frozenset[str] = frozenset(
+    {
+        ".db",
+        ".sqlite",
+        ".sqlite3",
+        ".lancedb",
+        ".parquet",
+        ".gz",
+        ".tar",
+        ".zip",
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".mp3",
+        ".ogg",
+        ".mp4",
+        ".webm",
+        ".pdf",
+    }
+)
 
 
 # ---------------------------------------------------------------------------
@@ -279,6 +311,28 @@ def _write_file_factory(ctx: ToolContext) -> SynapseTool | None:
         return None
 
     async def _execute(arguments: dict) -> ToolResult:
+        # Binary-extension guard — fires BEFORE Sentinel so the LLM gets a
+        # specific, actionable error pointing at the right alternative path
+        # (FastAPI /add for memory.db, sqlite3/ffmpeg/etc. for other binaries).
+        # Sentinel still gates everything else; this is purely about LLM
+        # guidance, not security.
+        path = arguments.get("path", "")
+        if isinstance(path, str) and path:
+            ext = Path(path).suffix.lower()
+            if ext in BINARY_WRITE_EXTENSIONS:
+                return error_result(
+                    f"write_file refused: '{path}' is a binary file ({ext}). "
+                    f"Direct binary writes corrupt structured data. "
+                    f"For memory.db specifically: use the FastAPI gateway via "
+                    f"bash_exec(\"curl -X POST http://127.0.0.1:8000/add "
+                    f"-H 'Content-Type: application/json' "
+                    f"-d '{{\\\"content\\\":\\\"...\\\", \\\"category\\\":\\\"...\\\"}}'\") "
+                    f"— it runs the proper embedding + RAG pipeline. "
+                    f"For other binary files: use the appropriate CLI tool via bash_exec "
+                    f"(sqlite3 for DBs, ffmpeg for audio/video, ImageMagick for images, etc.). "
+                    f"See MEMORY.md → Memory Ingestion Protocol for full guidance."
+                )
+
         try:
             from sci_fi_dashboard.sbs.sentinel.tools import agent_write_file
 
