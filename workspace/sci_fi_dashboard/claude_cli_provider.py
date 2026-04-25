@@ -391,6 +391,19 @@ class ClaudeCliClient:
             "--max-turns",
             "1",
             "--no-session-persistence",
+            # Move per-machine sections (cwd, env info, memory paths, git
+            # status) out of the system prompt and into the first user
+            # message — saves ~3-5k tokens and makes the static system
+            # prompt prefix-cache friendly across calls.
+            "--exclude-dynamic-system-prompt-sections",
+            # Empty MCP config skips the plugin scan + MCP server discovery
+            # that Claude Code does at startup (~varies, often 5-10k tokens
+            # of tool descriptions). Synapse calls Claude only for chat,
+            # never for MCP-driven agentic work, so this overhead is dead
+            # weight here. ``--bare`` would also strip this but breaks
+            # subscription auth, so stay surgical.
+            "--mcp-config",
+            '{"mcpServers":{}}',
         ]
         if self.setting_sources:
             cmd.extend(["--setting-sources", self.setting_sources])
@@ -403,8 +416,14 @@ class ClaudeCliClient:
         # Windows CreateProcess's ~32k command-line limit when passed via
         # ``--system-prompt``. Mirror OpenClaw: write the system prompt to
         # a NamedTemporaryFile and pass the short path via
-        # ``--append-system-prompt-file``. Cleanup happens in the finally
-        # block regardless of subprocess outcome.
+        # ``--system-prompt-file`` (NOT the ``--append-...`` variant — that
+        # one keeps Claude Code's default "I am Claude Code agent" system
+        # prompt active and Synapse's persona just gets appended after,
+        # producing terse "AI assistant"-flavoured replies that fight the
+        # Bhai persona. ``--system-prompt-file`` REPLACES the default
+        # prompt so only Synapse's compiled persona drives the model).
+        # Cleanup happens in the finally block regardless of subprocess
+        # outcome.
         system_prompt_path: Path | None = None
         if system_prompt:
             tmp = tempfile.NamedTemporaryFile(
@@ -419,9 +438,20 @@ class ClaudeCliClient:
             finally:
                 tmp.close()
             system_prompt_path = Path(tmp.name)
-            cmd.extend(["--append-system-prompt-file", str(system_prompt_path)])
+            cmd.extend(["--system-prompt-file", str(system_prompt_path)])
 
         cmd.extend(self.extra_args)
+
+        # Spawn from a fresh empty temp directory so Claude Code's CLAUDE.md
+        # auto-discovery walk finds nothing — saves another ~5-10k tokens
+        # of project-context that Synapse doesn't want bleeding into chat.
+        # ``self.cwd`` (if set) wins to keep test/integration overrides
+        # working.
+        ephemeral_cwd: Path | None = None
+        run_cwd = self.cwd
+        if run_cwd is None:
+            ephemeral_cwd = Path(tempfile.mkdtemp(prefix="synapse-claude-cwd-"))
+            run_cwd = str(ephemeral_cwd)
 
         proc = await asyncio.create_subprocess_exec(
             *cmd,
@@ -429,7 +459,7 @@ class ClaudeCliClient:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             env=self._build_env(max_tokens),
-            cwd=self.cwd,
+            cwd=run_cwd,
         )
         try:
             try:
@@ -445,6 +475,8 @@ class ClaudeCliClient:
             if system_prompt_path is not None:
                 with contextlib.suppress(OSError):
                     system_prompt_path.unlink()
+            if ephemeral_cwd is not None:
+                shutil.rmtree(ephemeral_cwd, ignore_errors=True)
 
         stdout_text = stdout.decode("utf-8", errors="replace")
         stderr_text = stderr.decode("utf-8", errors="replace").strip()

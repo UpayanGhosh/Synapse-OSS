@@ -142,14 +142,15 @@ async def test_chat_completion_invokes_cli_with_subscription_safe_env(monkeypatc
     assert "--setting-sources" in captured["cmd"]
     assert "--disable-slash-commands" in captured["cmd"]
     assert "--tools" in captured["cmd"]
-    # System prompt must NOT be passed inline as a CLI arg — Windows
-    # CreateProcess caps the command line at ~32k chars and Synapse's
-    # persona prompt routinely exceeds that. We mirror OpenClaw and write
-    # the system prompt to a temp file, passed via
-    # ``--append-system-prompt-file <path>``.
+    # System prompt must REPLACE Claude Code's default agent prompt (not
+    # be appended on top), otherwise the default "I am Claude Code agent"
+    # system message dominates and Synapse's persona feels hollow / AI-ish.
+    # Pass via temp file because Synapse's persona regularly exceeds the
+    # ~32k Windows CreateProcess argv cap.
     assert "--system-prompt" not in captured["cmd"]
-    assert "--append-system-prompt-file" in captured["cmd"]
-    sp_idx = captured["cmd"].index("--append-system-prompt-file")
+    assert "--append-system-prompt-file" not in captured["cmd"]
+    assert "--system-prompt-file" in captured["cmd"]
+    sp_idx = captured["cmd"].index("--system-prompt-file")
     sp_path = captured["cmd"][sp_idx + 1]
     assert "synapse-claude-system-prompt-" in sp_path
     assert "User: Ping" in captured["stdin"]
