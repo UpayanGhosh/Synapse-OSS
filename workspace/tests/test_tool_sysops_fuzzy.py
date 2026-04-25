@@ -420,10 +420,13 @@ class TestEditSynapseConfigFuzzy:
 
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_ambiguous_match_returns_suggestions(
+    async def test_ambiguous_no_prefix_rejected_with_configured_providers_hint(
         self, fake_synapse_config, monkeypatch
     ):
-        """value='gemini-3-flash' (no exact match, similarity < 0.85) returns suggestions."""
+        """value='gemini-3-flash' — no "/" prefix, no auto-apply → trust-prefix
+        rejects with missing-prefix error that lists configured providers and
+        points to TOOLS.md (RT3.6 replaced the old 'Closest matches' message).
+        """
         async def _stub(timeout: float = 3.0):
             return list(FAKE_REACHABLE)
 
@@ -434,20 +437,21 @@ class TestEditSynapseConfigFuzzy:
 
         assert result.is_error, f"expected error, got success: {result.content}"
         err = json.loads(result.content)["error"]
-        # Error message must contain at least one real model name as a suggestion.
-        assert "gemini" in err.lower()
-        assert "Closest matches" in err
-        assert "list_available_models" in err
+        assert "provider prefix" in err  # missing-prefix message
+        assert "Configured providers" in err
+        assert "TOOLS.md" in err  # points at the curl recipes
         # Must not have written anything to config.
         cfg = json.loads(fake_synapse_config.read_text(encoding="utf-8"))
         assert cfg["model_mappings"]["casual"]["model"] == "github_copilot/gpt-4o-mini"
 
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_no_match_returns_helpful_error(
+    async def test_no_fuzzy_match_no_prefix_rejected(
         self, fake_synapse_config, monkeypatch
     ):
-        """value='totally-random-name-xyz' returns error with hint to call list_available_models."""
+        """value='xyzzy-nonsense-9000' — no fuzzy match AND no '/' → trust-prefix
+        rejects with missing-prefix error.
+        """
         async def _stub(timeout: float = 3.0):
             return list(FAKE_REACHABLE)
 
@@ -460,7 +464,8 @@ class TestEditSynapseConfigFuzzy:
 
         assert result.is_error
         err = json.loads(result.content)["error"]
-        assert "list_available_models" in err
+        assert "provider prefix" in err
+        assert "Configured providers" in err
         # Must not have written anything to config.
         cfg = json.loads(fake_synapse_config.read_text(encoding="utf-8"))
         assert cfg["model_mappings"]["casual"]["model"] == "github_copilot/gpt-4o-mini"
@@ -482,10 +487,13 @@ class TestEditSynapseConfigFuzzy:
 
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_offline_fallback_accepts_provider_prefix(
+    async def test_offline_fallback_accepts_configured_provider_prefix(
         self, fake_synapse_config, monkeypatch
     ):
-        """When discovery returns empty (offline), the prefix-only sanity check applies."""
+        """When discovery returns empty (offline), trust-prefix still accepts
+        values whose provider is in the always-trusted set (Copilot/Ollama)
+        even without a real api_key. No prefix or unknown prefix is rejected.
+        """
         async def _stub(timeout: float = 3.0):
             return []  # Both endpoints unreachable
 
@@ -493,13 +501,15 @@ class TestEditSynapseConfigFuzzy:
 
         tool = _edit_synapse_config_factory(_make_ctx(owner=True))
 
-        # Provider-prefixed value passes the offline fallback.
+        # github_copilot is always trusted (no synapse.json key required).
         result = await _call_set(
-            tool, "model_mappings.casual.model", "gemini/gemini-experimental"
+            tool,
+            "model_mappings.casual.model",
+            "github_copilot/future-model",
         )
         assert not result.is_error, f"expected success, got: {result.content}"
 
-        # No prefix → offline fallback rejects it.
+        # No prefix → trust-prefix rejects it.
         result_bad = await _call_set(
             tool, "model_mappings.casual.model", "no-prefix-here"
         )
@@ -527,3 +537,260 @@ class TestEditSynapseConfigFuzzy:
         tool = _edit_synapse_config_factory(_make_ctx(owner=True))
         result = await _call_set(tool, "session.dual_cognition_timeout", 7.5)
         assert not result.is_error, f"expected success, got: {result.content}"
+
+
+# ---------------------------------------------------------------------------
+# 4. RT3.6: trust-prefix fallback — configured-provider awareness
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def configured_synapse_config(tmp_path, monkeypatch):
+    """synapse.json with a realistic multi-provider mix:
+        * anthropic + openai → real-looking keys (trusted)
+        * gemini             → placeholder "YOUR_..." (not trusted)
+        * groq               → empty string (not trusted)
+        * github_copilot     → present but no api_key (always trusted anyway)
+        * ollama             → present but no api_key (always trusted anyway)
+    """
+    home = tmp_path / "home"
+    synapse_dir = home / ".synapse"
+    synapse_dir.mkdir(parents=True)
+    cfg_path = synapse_dir / "synapse.json"
+    cfg_path.write_text(
+        json.dumps(
+            {
+                "model_mappings": {
+                    "casual": {"model": "github_copilot/gpt-4o-mini"},
+                },
+                "providers": {
+                    "anthropic": {"api_key": "sk-ant-real-key-XXXXX"},
+                    "openai": {"api_key": "sk-real-XXXXX"},
+                    "gemini": {"api_key": "YOUR_GEMINI_API_KEY"},
+                    "groq": {"api_key": ""},
+                    "github_copilot": {},
+                    "ollama": {},
+                },
+            },
+            indent=2,
+        )
+    )
+    monkeypatch.setattr("pathlib.Path.home", lambda: home)
+    # SYNAPSE_HOME would override Path.home() inside SynapseConfig.load(), so
+    # scrub it for the duration of the test to keep the fixture honest.
+    monkeypatch.delenv("SYNAPSE_HOME", raising=False)
+    return cfg_path
+
+
+class TestGetConfiguredProviders:
+    """Direct unit tests for _get_configured_providers — the source of truth
+    for trust-prefix's accepted-provider set."""
+
+    @pytest.mark.unit
+    def test_real_keys_included(self, configured_synapse_config):
+        configured = tool_sysops._get_configured_providers()
+        assert "anthropic" in configured
+        assert "openai" in configured
+
+    @pytest.mark.unit
+    def test_always_trusted_providers_always_present(self, configured_synapse_config):
+        configured = tool_sysops._get_configured_providers()
+        # github_copilot (JWT auth) + ollama_chat / ollama (local daemon)
+        # are always in the trusted set regardless of synapse.json keys.
+        assert "github_copilot" in configured
+        assert "ollama_chat" in configured
+        assert "ollama" in configured
+
+    @pytest.mark.unit
+    def test_placeholder_key_filtered(self, configured_synapse_config):
+        configured = tool_sysops._get_configured_providers()
+        # gemini's api_key is "YOUR_GEMINI_API_KEY" → placeholder, not trusted.
+        assert "gemini" not in configured
+
+    @pytest.mark.unit
+    def test_empty_key_filtered(self, configured_synapse_config):
+        configured = tool_sysops._get_configured_providers()
+        # groq's api_key is "" → not trusted.
+        assert "groq" not in configured
+
+    @pytest.mark.unit
+    def test_unknown_provider_absent(self, configured_synapse_config):
+        configured = tool_sysops._get_configured_providers()
+        assert "deepseek" not in configured
+        assert "mistral" not in configured
+
+    @pytest.mark.unit
+    def test_placeholder_literals_filtered(self, tmp_path, monkeypatch):
+        """Keys equal to the literal PLACEHOLDER / changeme strings are filtered."""
+        home = tmp_path / "home"
+        synapse_dir = home / ".synapse"
+        synapse_dir.mkdir(parents=True)
+        (synapse_dir / "synapse.json").write_text(
+            json.dumps(
+                {
+                    "providers": {
+                        "anthropic": {"api_key": "PLACEHOLDER"},
+                        "openai": {"api_key": "changeme"},
+                        "cohere": {"api_key": "real-key"},
+                    }
+                }
+            )
+        )
+        monkeypatch.setattr("pathlib.Path.home", lambda: home)
+        monkeypatch.delenv("SYNAPSE_HOME", raising=False)
+
+        configured = tool_sysops._get_configured_providers()
+        assert "anthropic" not in configured
+        assert "openai" not in configured
+        assert "cohere" in configured
+
+    @pytest.mark.unit
+    def test_returns_always_trusted_on_load_failure(self, tmp_path, monkeypatch):
+        """If synapse.json is missing, helper still returns the always-trusted set."""
+        home = tmp_path / "home"
+        home.mkdir()
+        monkeypatch.setattr("pathlib.Path.home", lambda: home)
+        monkeypatch.delenv("SYNAPSE_HOME", raising=False)
+
+        configured = tool_sysops._get_configured_providers()
+        assert configured == {"github_copilot", "ollama_chat", "ollama"}
+
+
+class TestTrustPrefixFallback:
+    """Integration tests: edit_synapse_config with RT3.6 trust-prefix fallback."""
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_anthropic_prefix_accepted_when_configured(
+        self, configured_synapse_config, monkeypatch
+    ):
+        """Case C: anthropic/claude-... accepted because anthropic key is real,
+        even when fuzzy returns sub-threshold Copilot suggestions.
+        """
+        async def _stub(timeout: float = 3.0):
+            return list(FAKE_REACHABLE)
+
+        monkeypatch.setattr(tool_sysops, "_discover_reachable_models", _stub)
+
+        tool = _edit_synapse_config_factory(_make_ctx(owner=True))
+        result = await _call_set(
+            tool,
+            "model_mappings.casual.model",
+            "anthropic/claude-3-haiku-20240307",
+        )
+        assert not result.is_error, f"expected success, got: {result.content}"
+        payload = json.loads(result.content)
+        assert payload["status"] == "applied"
+        # Must have written the user's value verbatim — no silent swap to Copilot.
+        assert payload["value"] == "anthropic/claude-3-haiku-20240307"
+        # And no auto-apply note (we didn't switch to a fuzzy match).
+        assert "note" not in payload
+
+        cfg = json.loads(configured_synapse_config.read_text(encoding="utf-8"))
+        assert (
+            cfg["model_mappings"]["casual"]["model"]
+            == "anthropic/claude-3-haiku-20240307"
+        )
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_unknown_provider_rejected_with_hint(
+        self, configured_synapse_config, monkeypatch
+    ):
+        """Case D: deepseek/foo rejected — error lists configured providers
+        (anthropic, openai) but NOT placeholder-keyed ones (gemini)."""
+        async def _stub(timeout: float = 3.0):
+            return list(FAKE_REACHABLE)
+
+        monkeypatch.setattr(tool_sysops, "_discover_reachable_models", _stub)
+
+        tool = _edit_synapse_config_factory(_make_ctx(owner=True))
+        result = await _call_set(tool, "model_mappings.casual.model", "deepseek/foo")
+        assert result.is_error
+        err = json.loads(result.content)["error"]
+        assert "deepseek" in err
+        assert "unknown provider" in err
+        # Configured providers must appear in the hint...
+        assert "anthropic" in err
+        assert "openai" in err
+        # ...but providers with placeholder keys should NOT.
+        assert "gemini" not in err
+        assert "groq" not in err
+        # Points at the docs for the curl-recipe workflow.
+        assert "TOOLS.md" in err
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_placeholder_key_provider_not_trusted(
+        self, configured_synapse_config, monkeypatch
+    ):
+        """Case F: gemini/... rejected because gemini's key is placeholder."""
+        async def _stub(timeout: float = 3.0):
+            return list(FAKE_REACHABLE)
+
+        monkeypatch.setattr(tool_sysops, "_discover_reachable_models", _stub)
+
+        tool = _edit_synapse_config_factory(_make_ctx(owner=True))
+        result = await _call_set(
+            tool, "model_mappings.casual.model", "gemini/gemini-1.5-flash"
+        )
+        assert result.is_error
+        err = json.loads(result.content)["error"]
+        assert "gemini" in err
+        # Configured alternatives still surfaced.
+        assert "anthropic" in err
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_copilot_special_always_trusted(
+        self, configured_synapse_config, monkeypatch
+    ):
+        """Case I edge: github_copilot is always in the configured set even
+        without an explicit api_key — runtime validates the model name."""
+        async def _stub(timeout: float = 3.0):
+            return []  # offline — force trust-prefix path
+
+        monkeypatch.setattr(tool_sysops, "_discover_reachable_models", _stub)
+
+        tool = _edit_synapse_config_factory(_make_ctx(owner=True))
+        result = await _call_set(
+            tool, "model_mappings.casual.model", "github_copilot/gpt-5-future"
+        )
+        assert not result.is_error, f"expected success, got: {result.content}"
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_offline_configured_provider_accepted(
+        self, configured_synapse_config, monkeypatch
+    ):
+        """Case H: offline (reachable empty), anthropic configured → accept."""
+        async def _stub(timeout: float = 3.0):
+            return []
+
+        monkeypatch.setattr(tool_sysops, "_discover_reachable_models", _stub)
+
+        tool = _edit_synapse_config_factory(_make_ctx(owner=True))
+        result = await _call_set(
+            tool,
+            "model_mappings.casual.model",
+            "anthropic/claude-3-5-sonnet-20241022",
+        )
+        assert not result.is_error, f"expected success, got: {result.content}"
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_offline_unknown_provider_rejected(
+        self, configured_synapse_config, monkeypatch
+    ):
+        """Case H negative: offline + unknown provider → reject."""
+        async def _stub(timeout: float = 3.0):
+            return []
+
+        monkeypatch.setattr(tool_sysops, "_discover_reachable_models", _stub)
+
+        tool = _edit_synapse_config_factory(_make_ctx(owner=True))
+        result = await _call_set(tool, "model_mappings.casual.model", "deepseek/v3")
+        assert result.is_error
+        err = json.loads(result.content)["error"]
+        assert "unknown provider" in err
+        assert "deepseek" in err

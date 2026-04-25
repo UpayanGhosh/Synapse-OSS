@@ -270,6 +270,119 @@ def _fuzzy_match_model(value: str, reachable: list[str]) -> tuple[list[str], str
     capped = min(top_sim, _FUZZY_AUTO_APPLY_THRESHOLD - 0.01)
     return (suggestions, top, capped)
 
+
+# ---------------------------------------------------------------------------
+# RT3.6: trust-prefix fallback — configured-provider awareness
+# ---------------------------------------------------------------------------
+
+# Placeholder patterns that indicate a provider key was never set to a real value.
+# Keys starting with these or matching these literal strings are NOT considered
+# configured — provider stays out of the trusted set.
+_PLACEHOLDER_KEY_PREFIXES = ("YOUR_",)
+_PLACEHOLDER_KEY_LITERALS = frozenset({"PLACEHOLDER", "changeme"})
+
+# Providers that always live in the trusted set regardless of synapse.json keys:
+#   * github_copilot — uses JWT exchange in llm_router, not a synapse.json key
+#   * ollama / ollama_chat — local daemon, no API key required
+# These are the providers the fuzzy-match fast-path already queries for live
+# models, so trust-prefix should accept them unconditionally.
+_ALWAYS_TRUSTED_PROVIDERS = frozenset({"github_copilot", "ollama_chat", "ollama"})
+
+
+def _get_configured_providers() -> set[str]:
+    """Return the set of provider names trusted by the trust-prefix fallback.
+
+    A provider is "configured" if:
+      * Its ``api_key`` in ``synapse.json → providers.<name>`` is a non-empty
+        string that is not a placeholder (does not start with ``YOUR_`` and is
+        not literal ``PLACEHOLDER`` / ``changeme``), OR
+      * It is one of the always-trusted special-auth providers
+        (``github_copilot``, ``ollama_chat``, ``ollama``) — Copilot exchanges a
+        JWT from ``~/.config/litellm/github_copilot/api-key.json`` and Ollama
+        runs locally, so neither is gated by a synapse.json key.
+
+    Intentionally NOT cached — ``synapse.json`` may be mutated by this very tool
+    during a session, and we want the next call to see the new provider state.
+
+    Returns the always-trusted set on any failure (config missing / malformed /
+    import error), so trust-prefix degrades gracefully to "Copilot+Ollama only".
+    """
+    configured: set[str] = set(_ALWAYS_TRUSTED_PROVIDERS)
+
+    try:
+        from synapse_config import SynapseConfig  # local import — avoid cycles
+        cfg = SynapseConfig.load()
+        providers = getattr(cfg, "providers", None) or {}
+    except Exception:
+        return configured
+
+    for name, provider_cfg in providers.items():
+        if not isinstance(provider_cfg, dict):
+            continue
+        key = provider_cfg.get("api_key", "")
+        if not isinstance(key, str):
+            continue
+        key = key.strip()
+        if not key:
+            continue
+        if any(key.startswith(p) for p in _PLACEHOLDER_KEY_PREFIXES):
+            continue
+        if key in _PLACEHOLDER_KEY_LITERALS:
+            continue
+        configured.add(name)
+
+    return configured
+
+
+def _trust_prefix_error(value: str, fuzzy_suggestions: list[str] | None = None) -> str | None:
+    """Validate ``value`` via the trust-prefix fallback.
+
+    Returns an error message if the value should be rejected, or ``None`` if
+    the value's provider prefix is a configured provider (silently accept).
+
+    Inputs without a ``/`` separator are rejected — we cannot infer which
+    provider is intended. Inputs whose prefix is not a configured provider are
+    rejected with an actionable hint pointing at synapse.json providers config
+    and TOOLS.md's curl recipes.
+
+    The optional ``fuzzy_suggestions`` list is surfaced in the unknown-provider
+    error so the LLM still sees Copilot/Ollama alternatives it might want to
+    pick instead (e.g. user typed ``deepseek/foo`` but a close Copilot model
+    exists).
+    """
+    configured = _get_configured_providers()
+    configured_list = ", ".join(sorted(configured))
+
+    if "/" not in value:
+        return (
+            f"model value {value!r} is missing a provider prefix. "
+            f"Configured providers: {configured_list}. "
+            f"Format is 'provider/model-name' — e.g. 'anthropic/claude-3-5-sonnet-20241022'. "
+            f"For unknown providers, run bash_exec with the provider's /models endpoint "
+            f"(see TOOLS.md → Provider Model Discovery)."
+        )
+
+    prefix = value.split("/", 1)[0]
+    if prefix not in configured:
+        hint = ""
+        if fuzzy_suggestions:
+            hint = (
+                f" Closest reachable models (Copilot/Ollama): "
+                f"{', '.join(fuzzy_suggestions)}."
+            )
+        return (
+            f"unknown provider {prefix!r} in {value!r}. "
+            f"Configured providers (synapse.json): {configured_list}. "
+            f"To use {prefix}, first add a real api_key to synapse.json → providers.{prefix}, "
+            f"then verify the model name exists (see TOOLS.md → Provider Model Discovery "
+            f"for the curl recipe).{hint}"
+        )
+
+    # Prefix matches a configured provider — accept. Runtime LLM call validates
+    # the specific model name.
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Shared safety primitives
 # ---------------------------------------------------------------------------
@@ -669,15 +782,19 @@ def _edit_synapse_config_factory(ctx: ToolContext) -> SynapseTool | None:
             if not key_path:
                 return error_result("key_path required for set")
 
-            # Validate model mapping values against the live reachable list
-            # (Copilot /models + Ollama /api/tags). When the value is wrong:
-            #   * not a string  → hard error
-            #   * exact match   → fall through (apply as-is)
-            #   * close match (similarity ≥ threshold) → auto-apply close match
-            #     and surface a note so the LLM can tell the user what happened
-            #   * ambiguous     → return suggestions list, let the LLM retry
-            #     with a real model name
-            #   * no candidates → soft error pointing at list_available_models
+            # Validate model mapping values. Two-stage pipeline:
+            #   1. Fuzzy-match fast-path against reachable (Copilot + Ollama)
+            #        * exact match      → apply as-is
+            #        * close match ≥0.85 → auto-apply closest + surface note
+            #   2. Trust-prefix fallback (RT3.6) for everything else
+            #        * prefix is a configured provider     → accept silently
+            #        * prefix unknown or missing           → reject with hint
+            #
+            # The fallback lets non-Copilot/Ollama providers (anthropic, openai,
+            # gemini, etc.) through without ever touching their /models HTTP
+            # endpoints — we trust the user's choice once we've confirmed the
+            # provider is actually configured with a real key. Runtime LLM call
+            # will catch mistyped model names.
             auto_applied_note: str | None = None
             if key_path.startswith("model_mappings.") and key_path.endswith(".model"):
                 if not isinstance(value, str):
@@ -690,14 +807,6 @@ def _edit_synapse_config_factory(ctx: ToolContext) -> SynapseTool | None:
                 if reachable and value not in reachable:
                     suggestions, top, similarity = _fuzzy_match_model(value, reachable)
 
-                    if not suggestions:
-                        return error_result(
-                            f"model value {value!r} is not a reachable model and "
-                            f"no close matches were found. "
-                            f"Call list_available_models to see all options, "
-                            f"or check synapse.json → providers keys."
-                        )
-
                     if similarity >= _FUZZY_AUTO_APPLY_THRESHOLD and top is not None:
                         # Auto-apply the closest match — record what we changed
                         # so the success response can carry a note to the LLM.
@@ -708,27 +817,22 @@ def _edit_synapse_config_factory(ctx: ToolContext) -> SynapseTool | None:
                         )
                         value = top
                     else:
-                        # Not confident enough — return suggestions and let the
-                        # LLM retry with a real name. This is the autonomous
-                        # recovery path: error message contains the next move.
-                        return error_result(
-                            f"model value {value!r} is not reachable. "
-                            f"Closest matches (retry edit_synapse_config with one "
-                            f"of these): {', '.join(suggestions)}. "
-                            f"Or call list_available_models for the full list."
-                        )
+                        # No confident Copilot/Ollama match — fall back to the
+                        # trust-prefix check. If the user's prefix is a configured
+                        # provider, accept the value (runtime LLM call validates
+                        # the specific model name). Otherwise surface an error
+                        # that lists real configured providers and, when we have
+                        # them, the closest Copilot/Ollama suggestions too.
+                        trust_error = _trust_prefix_error(value, suggestions)
+                        if trust_error:
+                            return error_result(trust_error)
                 elif not reachable:
-                    # No reachable list (Copilot+Ollama both unreachable, e.g.
-                    # offline) — fall back to the old prefix-only sanity check
-                    # so we don't block the user when the network is down.
-                    if "/" not in value:
-                        return error_result(
-                            f"model value {value!r} is missing a provider prefix "
-                            f"and no reachable model list is available to fuzzy-match "
-                            f"against. Format is 'provider/model-name' — e.g. "
-                            f"'gemini/gemini-2.5-flash', 'github_copilot/gpt-4o', "
-                            f"'ollama_chat/llama3.2:3b'."
-                        )
+                    # Copilot + Ollama both unreachable (offline or no token) —
+                    # trust-prefix is the only safety net available. Same rules:
+                    # accept configured providers, reject unknown ones.
+                    trust_error = _trust_prefix_error(value)
+                    if trust_error:
+                        return error_result(trust_error)
 
             parts = key_path.split(".")
             node = cfg
@@ -785,7 +889,11 @@ def _edit_synapse_config_factory(ctx: ToolContext) -> SynapseTool | None:
             "against reachable Copilot + Ollama models — if your input is close to "
             "a real model name, the closest match auto-applies and the response "
             "includes a 'note' field explaining what was applied. If no close "
-            "match, the response lists suggestions for retry. Owner only."
+            "Copilot/Ollama match, the value is accepted as-is when its "
+            "'provider/' prefix names a provider with a real api_key in "
+            "synapse.json (anthropic, openai, gemini, etc.). Unknown or missing "
+            "prefixes are rejected with an error listing the configured "
+            "providers. Owner only."
         ),
         parameters={
             "type": "object",
