@@ -29,6 +29,7 @@ Important:
 from __future__ import annotations
 
 import base64
+import contextlib
 import hashlib
 import json
 import logging
@@ -94,6 +95,15 @@ USER_AGENT = "synapse-oss-google-oauth/1.0"
 
 
 # ---------------------------------------------------------------------------
+# Exceptions
+# ---------------------------------------------------------------------------
+
+
+class OAuthCallbackBindError(RuntimeError):
+    """Raised when the localhost OAuth callback server cannot bind to the port."""
+
+
+# ---------------------------------------------------------------------------
 # Data structures
 # ---------------------------------------------------------------------------
 
@@ -151,10 +161,8 @@ def save_credentials(creds: GoogleAntigravityCredentials) -> Path:
     payload = asdict(creds)
     tmp.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     os.replace(tmp, target)
-    try:
+    with contextlib.suppress(OSError):
         os.chmod(target, 0o600)
-    except OSError:
-        pass
     return target
 
 
@@ -371,6 +379,79 @@ def resolve_oauth_client_config() -> tuple[str, str | None]:
 
 
 # ---------------------------------------------------------------------------
+# Private helpers
+# ---------------------------------------------------------------------------
+
+
+def _is_wsl2() -> bool:
+    """True when running under Windows Subsystem for Linux (WSL2).
+
+    WSL2's localhost cannot reliably receive an OAuth callback from a Windows
+    browser, so we fall back to manual code-paste flow.
+    """
+    try:
+        with open("/proc/version", encoding="utf-8", errors="ignore") as fh:
+            content = fh.read()
+        return "microsoft" in content.lower() or "WSL" in content
+    except (OSError, FileNotFoundError):
+        return False
+
+
+# ---------------------------------------------------------------------------
+# Public callback-input parser
+# ---------------------------------------------------------------------------
+
+
+def parse_oauth_callback_input(pasted: str, *, expected_state: str) -> tuple[str, str]:
+    """Parse a pasted OAuth callback URL or bare 'code=...&state=...' fragment.
+
+    Returns (code, state). Raises RuntimeError with a *helpful* message if the
+    pasted text cannot yield both a code and a state, OR if the state mismatches
+    the expected_state.
+
+    Accepts:
+      - Full redirect URL: http://localhost:8085/oauth2callback?code=X&state=Y
+      - Bare query string: code=X&state=Y
+      - Bare query with leading ?: ?code=X&state=Y
+
+    Helpful errors:
+      - empty input → "Paste the redirect URL from your browser. It starts with http://localhost:8085."
+      - missing code → "The pasted URL is missing the 'code' parameter. Paste the FULL URL, not just the code value."
+      - missing state → "The pasted URL is missing the 'state' parameter. Paste the FULL URL."
+      - state mismatch → "OAuth state mismatch — please retry the login flow from the start."
+    """
+    stripped = pasted.strip()
+    if not stripped:
+        raise RuntimeError(
+            f"Paste the redirect URL from your browser. It starts with http://{REDIRECT_HOST}:{REDIRECT_PORT}."
+        )
+
+    # Normalise: bare query strings (with or without leading '?') → parseable URL
+    if not stripped.startswith("http://") and not stripped.startswith("https://"):
+        stripped = f"http://{REDIRECT_HOST}:{REDIRECT_PORT}{REDIRECT_PATH}?" + stripped.lstrip("?")
+
+    parsed = urlparse(stripped)
+    query = parse_qs(parsed.query)
+
+    code = (query.get("code", [None])[0] or "").strip()
+    state = (query.get("state", [None])[0] or "").strip()
+
+    if not code:
+        raise RuntimeError(
+            "The pasted URL is missing the 'code' parameter. "
+            "Paste the FULL URL, not just the code value."
+        )
+    if not state:
+        raise RuntimeError(
+            "The pasted URL is missing the 'state' parameter. Paste the FULL URL."
+        )
+    if state != expected_state:
+        raise RuntimeError("OAuth state mismatch — please retry the login flow from the start.")
+
+    return code, state
+
+
+# ---------------------------------------------------------------------------
 # PKCE helpers
 # ---------------------------------------------------------------------------
 
@@ -488,7 +569,7 @@ def _wait_for_callback(expected_state: str, *, timeout_sec: float) -> tuple[str,
     try:
         server = HTTPServer((REDIRECT_HOST, REDIRECT_PORT), handler_cls)
     except OSError as exc:
-        raise RuntimeError(
+        raise OAuthCallbackBindError(
             f"Cannot bind {REDIRECT_HOST}:{REDIRECT_PORT} for OAuth callback: {exc}"
         ) from exc
 
@@ -829,32 +910,51 @@ def login_pkce(
     state = _generate_state()
     auth_url = _build_auth_url(client_id, challenge, state)
 
+    # WSL2: localhost callback from a Windows browser cannot reach WSL2's network
+    # stack reliably — automatically promote to headless/manual-paste mode.
+    effective_headless = headless
+    if not headless and _is_wsl2():
+        _logger.warning(
+            "WSL2 detected: the localhost OAuth callback server cannot receive "
+            "the redirect from a Windows browser. Switching to headless (manual "
+            "code-paste) mode automatically."
+        )
+        effective_headless = True
+        if code_input is None:
+            raise RuntimeError(
+                "WSL2 detected; pass headless=True with a code_input callback"
+            )
+
     if auth_url_sink is not None:
-        try:
+        with contextlib.suppress(Exception):  # noqa: BLE001
             auth_url_sink(auth_url)
-        except Exception:  # noqa: BLE001
-            pass
 
-    if open_browser and not headless:
-        try:
+    if open_browser and not effective_headless:
+        with contextlib.suppress(webbrowser.Error):
             webbrowser.open(auth_url, new=1, autoraise=True)
-        except webbrowser.Error:
-            pass
 
-    if headless:
+    if effective_headless:
         if code_input is None:
             raise RuntimeError("headless=True requires code_input callback")
         pasted = code_input(auth_url).strip()
-        parsed = urlparse(pasted)
-        query = parse_qs(parsed.query)
-        code = (query.get("code", [None])[0] or "").strip()
-        state_back = (query.get("state", [None])[0] or "").strip()
-        if not code:
-            raise RuntimeError("Pasted URL had no `code` parameter")
-        if state_back != state:
-            raise RuntimeError("OAuth state mismatch on pasted URL")
+        code, _ = parse_oauth_callback_input(pasted, expected_state=state)
     else:
-        code, _ = _wait_for_callback(state, timeout_sec=OAUTH_CALLBACK_TIMEOUT_SEC)
+        try:
+            code, _ = _wait_for_callback(state, timeout_sec=OAUTH_CALLBACK_TIMEOUT_SEC)
+        except OAuthCallbackBindError as bind_err:
+            _logger.warning(
+                "OAuth callback server failed to bind (port %d busy?): %s — "
+                "falling back to manual code-paste mode.",
+                REDIRECT_PORT,
+                bind_err,
+            )
+            if code_input is None:
+                raise OAuthCallbackBindError(
+                    f"{bind_err}. Pass a code_input callback so the manual "
+                    "paste fallback can be used."
+                ) from bind_err
+            pasted = code_input(auth_url).strip()
+            code, _ = parse_oauth_callback_input(pasted, expected_state=state)
 
     with httpx.Client(timeout=DEFAULT_HTTP_TIMEOUT_SEC) as http_client:
         token_resp = _exchange_code_for_tokens(

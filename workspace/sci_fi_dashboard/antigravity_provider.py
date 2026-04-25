@@ -1,11 +1,22 @@
 """
 antigravity_provider.py — Google Antigravity / Gemini CLI inference client.
 
-Posts to ``cloudcode-pa.googleapis.com/v1internal:generateContent`` using the
-OAuth bearer token captured by ``google_oauth.py``. Translates OpenAI-format
-messages and tools into Gemini contents + envelope, then translates the
-response back into Synapse's ``LLMResult`` / ``LLMToolResult`` shape so the
-rest of the chat pipeline doesn't care what provider it came from.
+Posts to ``cloudcode-pa.googleapis.com/v1internal:generateContent`` (the
+CodeAssist endpoint, same one the official ``gemini`` CLI hits) using the
+OAuth bearer token captured by ``google_oauth.py``. Wraps the Gemini request
+in the CodeAssist envelope ``{model, project, user_prompt_id, request: {...}}``
+required by ``v1internal:generateContent`` — bare-body shapes targeted at
+``generativelanguage.googleapis.com`` will not work for OAuth identities.
+
+Translates OpenAI-format messages and tools into the inner Gemini request
+(contents, systemInstruction?, tools?, toolConfig?, generationConfig?,
+session_id), then translates the response back into Synapse's ``LLMResult`` /
+``LLMToolResult`` shape so the rest of the chat pipeline doesn't care what
+provider it came from.
+
+Pro reasoning level is selected by suffix: ``gemini-3-pro-low`` →
+``thinkingConfig.thinkingLevel = "LOW"``, ``gemini-3-pro-high`` → ``"HIGH"``.
+Both resolve to the same API model ID (``gemini-3.1-pro-preview``).
 
 Auto-refreshes the access token on 401/403 with a single retry. Maps quota
 errors to ``litellm.RateLimitError`` so the existing ``InferenceLoop`` retry
@@ -45,21 +56,50 @@ from sci_fi_dashboard.google_oauth import (
 
 _logger = logging.getLogger(__name__)
 
-# Models published by Google Antigravity / Gemini CLI free tier.
-# When a user lists a "bare" pro id (without -low/-high), default to -low so
-# we don't burn through their high-reasoning quota.
-_ANTIGRAVITY_BARE_PRO_IDS = frozenset({"gemini-3-pro", "gemini-3.1-pro", "gemini-3-1-pro"})
+# API model IDs that the CodeAssist v1internal endpoint actually accepts.
+# Verified live (2026-04-26): only the ``-preview``-suffixed IDs return 200;
+# bare ``gemini-3-pro``, ``gemini-3.1-pro``, and ``gemini-3.1-flash-preview``
+# return 404 NOT_FOUND. Reasoning level for Pro is controlled by
+# ``generationConfig.thinkingConfig.thinkingLevel`` (LOW / HIGH), not by the
+# model id, so ``-low``/``-high`` suffixes never reach the wire.
+_PRO_API_MODEL = "gemini-3.1-pro-preview"
+_FLASH_API_MODEL = "gemini-3-flash-preview"
 
-# CodeAssist requires "preview"-suffixed model IDs for the public Gemini 3
-# generations; bare aliases are treated as forward-compat hints.
-_PREVIEW_REWRITES: dict[str, str] = {
-    "gemini-3-pro": "gemini-3-pro-preview",
-    "gemini-3-flash": "gemini-3-flash-preview",
-    "gemini-3-flash-lite": "gemini-3-flash-lite-preview",
-    "gemini-3.1-flash-lite": "gemini-3.1-flash-lite-preview",
+_PRO_USER_IDS = frozenset(
+    {
+        "gemini-3-pro",
+        "gemini-3.1-pro",
+        "gemini-3-1-pro",
+        "gemini-3-pro-low",
+        "gemini-3.1-pro-low",
+        "gemini-3-1-pro-low",
+        "gemini-3-pro-high",
+        "gemini-3.1-pro-high",
+        "gemini-3-1-pro-high",
+        "gemini-3-pro-preview",
+        "gemini-3.1-pro-preview",
+    }
+)
+_FLASH_USER_IDS = frozenset(
+    {
+        "gemini-3-flash",
+        "gemini-3.1-flash",
+        "gemini-3-flash-preview",
+        "gemini-3.1-flash-preview",
+        "gemini-3-flash-lite",
+        "gemini-3.1-flash-lite",
+        "gemini-3-flash-lite-preview",
+        "gemini-3.1-flash-lite-preview",
+    }
+)
+
+USER_AGENT = "google-api-nodejs-client/9.15.1"
+GOOG_API_CLIENT = "gl-node/22.0.0"
+CLIENT_METADATA = {
+    "ideType": "IDE_UNSPECIFIED",
+    "platform": "PLATFORM_UNSPECIFIED",
+    "pluginType": "GEMINI",
 }
-
-USER_AGENT = "synapse-oss-antigravity/1.0"
 DEFAULT_TIMEOUT_SEC = 60.0
 
 
@@ -81,23 +121,53 @@ class AntigravityResponse:
 # ---------------------------------------------------------------------------
 
 
-def normalize_antigravity_model_id(model_id: str) -> str:
-    """Mirror OpenClaw: bare gemini-3 pro IDs default to ``-low`` reasoning."""
-    if model_id in _ANTIGRAVITY_BARE_PRO_IDS:
-        return f"{model_id}-low"
-    return model_id
+@dataclass(frozen=True)
+class ModelResolution:
+    """API model id + optional reasoning level for a user-facing model name.
+
+    Attributes:
+        api_model:       The model id sent on the wire (e.g. ``gemini-3.1-pro-preview``).
+        thinking_level:  ``"LOW"`` / ``"HIGH"`` / ``"MEDIUM"`` / ``"MINIMAL"`` or
+                         ``None`` to let the server decide. Applied as
+                         ``generationConfig.thinkingConfig.thinkingLevel`` on
+                         Pro models.
+    """
+
+    api_model: str
+    thinking_level: str | None
 
 
-def normalize_google_model_id(model_id: str) -> str:
-    """Mirror OpenClaw: rewrite known bare aliases to their preview model IDs."""
-    return _PREVIEW_REWRITES.get(model_id, model_id)
+def resolve_model_with_thinking(prefixed: str) -> ModelResolution:
+    """Translate a user-facing antigravity model name into (api_model, level).
+
+    Both Pro reasoning levels collapse to the same wire model
+    (``gemini-3.1-pro-preview``); the difference is communicated via
+    ``thinkingConfig.thinkingLevel`` in ``generationConfig``. All Flash
+    variants currently route to ``gemini-3-flash-preview`` since the API does
+    not expose a separate flash-lite model id.
+    """
+    bare = prefixed.split("/", 1)[1] if "/" in prefixed else prefixed
+    lower = bare.lower()
+
+    if lower in _PRO_USER_IDS:
+        if lower.endswith("-low"):
+            return ModelResolution(_PRO_API_MODEL, "LOW")
+        if lower.endswith("-high"):
+            return ModelResolution(_PRO_API_MODEL, "HIGH")
+        return ModelResolution(_PRO_API_MODEL, None)
+
+    if lower in _FLASH_USER_IDS:
+        if "flash-lite" in lower:
+            return ModelResolution(_FLASH_API_MODEL, "LOW")
+        return ModelResolution(_FLASH_API_MODEL, None)
+
+    # Unknown id — pass through verbatim, no thinking config.
+    return ModelResolution(bare, None)
 
 
 def resolve_inference_model_id(prefixed: str) -> str:
-    """Strip the ``google_antigravity/`` prefix and apply both normalizations."""
-    bare = prefixed.split("/", 1)[1] if "/" in prefixed else prefixed
-    bare = normalize_antigravity_model_id(bare)
-    return normalize_google_model_id(bare)
+    """Backward-compatible helper that returns just the API model id."""
+    return resolve_model_with_thinking(prefixed).api_model
 
 
 # ---------------------------------------------------------------------------
@@ -218,6 +288,56 @@ def translate_messages_to_gemini(
     return contents, system_instruction
 
 
+_GEMINI_UNSUPPORTED_SCHEMA_KEYS: frozenset[str] = frozenset(
+    {
+        "additionalProperties",
+        "$ref",
+        "patternProperties",
+        "pattern",
+        "format",
+        "$schema",
+        "$id",
+        "examples",
+        "default",
+        "$defs",
+    }
+)
+
+
+def clean_tool_schema_for_gemini(schema: dict[str, Any]) -> dict[str, Any]:
+    """Recursively strip JSON Schema keys that the Gemini API rejects.
+
+    Returns a new deep-cleaned dict — the input is never mutated.
+    Handles nested ``properties`` dicts and ``items`` arrays/dicts.
+    """
+    cleaned: dict[str, Any] = {}
+    for key, value in schema.items():
+        if key in _GEMINI_UNSUPPORTED_SCHEMA_KEYS:
+            continue
+        if key == "properties" and isinstance(value, dict):
+            cleaned[key] = {
+                prop_name: clean_tool_schema_for_gemini(prop_schema)
+                if isinstance(prop_schema, dict)
+                else prop_schema
+                for prop_name, prop_schema in value.items()
+            }
+        elif key == "items":
+            if isinstance(value, dict):
+                cleaned[key] = clean_tool_schema_for_gemini(value)
+            elif isinstance(value, list):
+                cleaned[key] = [
+                    clean_tool_schema_for_gemini(item) if isinstance(item, dict) else item
+                    for item in value
+                ]
+            else:
+                cleaned[key] = value
+        elif isinstance(value, dict):
+            cleaned[key] = clean_tool_schema_for_gemini(value)
+        else:
+            cleaned[key] = value
+    return cleaned
+
+
 def translate_tools_to_gemini(tools: list[dict[str, Any]] | None) -> list[dict[str, Any]] | None:
     """Convert OpenAI tool definitions into a Gemini ``tools`` array."""
     if not tools:
@@ -233,7 +353,7 @@ def translate_tools_to_gemini(tools: list[dict[str, Any]] | None) -> list[dict[s
             decl["description"] = fn["description"]
         params = fn.get("parameters")
         if isinstance(params, dict):
-            decl["parameters"] = params
+            decl["parameters"] = clean_tool_schema_for_gemini(params)
         declarations.append(decl)
     if not declarations:
         return None
@@ -305,10 +425,7 @@ def parse_response_payload(
             )
 
     finish_reason = candidate.get("finishReason")
-    if isinstance(finish_reason, str):
-        finish_reason = finish_reason.lower()
-    else:
-        finish_reason = None
+    finish_reason = finish_reason.lower() if isinstance(finish_reason, str) else None
 
     usage = response.get("usageMetadata") or {}
     prompt_tokens = int(usage.get("promptTokenCount") or 0)
@@ -446,37 +563,55 @@ class AntigravityClient:
 
     # -- request building --------------------------------------------------
 
-    def _build_envelope(
+    def _build_inner_request(
         self,
         *,
-        model_id: str,
         contents: list[dict[str, Any]],
         system_instruction: dict[str, Any] | None,
         tools: list[dict[str, Any]] | None,
         generation_config: dict[str, Any] | None,
-        project_id: str,
+        session_id: str,
     ) -> dict[str, Any]:
-        request: dict[str, Any] = {"contents": contents}
+        """Inner Gemini request — what goes inside the CodeAssist envelope."""
+        inner: dict[str, Any] = {"contents": contents, "session_id": session_id}
         if system_instruction:
-            request["systemInstruction"] = system_instruction
+            inner["systemInstruction"] = system_instruction
         if tools:
-            request["tools"] = tools
+            inner["tools"] = tools
         if generation_config:
-            request["generationConfig"] = generation_config
-        return {"model": model_id, "project": project_id, "request": request}
+            inner["generationConfig"] = generation_config
+        return inner
+
+    def _build_envelope(
+        self,
+        *,
+        api_model: str,
+        project_id: str,
+        user_prompt_id: str,
+        inner_request: dict[str, Any],
+    ) -> dict[str, Any]:
+        """CodeAssist v1internal envelope around the inner Gemini request."""
+        return {
+            "model": api_model,
+            "project": project_id,
+            "user_prompt_id": user_prompt_id,
+            "request": inner_request,
+        }
 
     async def _post_generate(
         self,
         *,
         envelope: dict[str, Any],
         access_token: str,
-        model_id: str,
+        api_model: str,
     ) -> httpx.Response:
         url = f"{self._endpoint}/v1internal:generateContent"
         headers = {
             "Authorization": f"Bearer {access_token}",
             "Content-Type": "application/json",
             "User-Agent": USER_AGENT,
+            "X-Goog-Api-Client": GOOG_API_CLIENT,
+            "Client-Metadata": json.dumps(CLIENT_METADATA),
         }
         return await self._http.post(url, headers=headers, content=json.dumps(envelope))
 
@@ -505,7 +640,8 @@ class AntigravityClient:
             An ``AntigravityResponse`` carrying text, tool calls, and usage metadata.
         """
         creds = await self._refresh_if_needed()
-        model_id = resolve_inference_model_id(model)
+        resolution = resolve_model_with_thinking(model)
+        api_model = resolution.api_model
 
         contents, system_instruction = translate_messages_to_gemini(messages)
         gemini_tools = translate_tools_to_gemini(tools)
@@ -515,14 +651,22 @@ class AntigravityClient:
             max_tokens=max_tokens,
             stop=stop,
         )
+        if resolution.thinking_level:
+            gen_config = dict(gen_config or {})
+            gen_config["thinkingConfig"] = {"thinkingLevel": resolution.thinking_level}
 
-        envelope = self._build_envelope(
-            model_id=model_id,
+        inner = self._build_inner_request(
             contents=contents,
             system_instruction=system_instruction,
             tools=gemini_tools,
             generation_config=gen_config,
+            session_id=str(uuid4()),
+        )
+        envelope = self._build_envelope(
+            api_model=api_model,
             project_id=creds.project_id,
+            user_prompt_id=str(uuid4()),
+            inner_request=inner,
         )
 
         attempts = 0
@@ -534,19 +678,20 @@ class AntigravityClient:
                 resp = await self._post_generate(
                     envelope=envelope,
                     access_token=creds.access_token,
-                    model_id=model_id,
+                    api_model=api_model,
                 )
             except httpx.HTTPError as exc:
                 raise APIConnectionError(
                     message=f"Antigravity request transport error: {exc}",
                     llm_provider="google_antigravity",
-                    model=model_id,
+                    model=api_model,
                 ) from exc
             elapsed_ms = (time.perf_counter() - t0) * 1000.0
             _logger.info(
                 "antigravity.call",
                 extra={
-                    "model": model_id,
+                    "model": api_model,
+                    "thinking_level": resolution.thinking_level,
                     "status": resp.status_code,
                     "elapsed_ms": round(elapsed_ms, 1),
                     "attempt": attempts,
@@ -555,20 +700,20 @@ class AntigravityClient:
             last_resp = resp
 
             if resp.status_code in (401, 403) and attempts == 1:
-                # Token may have been revoked or rotated server-side. Try once.
                 try:
                     creds = await self._force_refresh()
+                    envelope["project"] = creds.project_id
                 except RuntimeError as exc:
                     raise AuthenticationError(
                         message=f"Antigravity refresh failed: {exc}",
                         llm_provider="google_antigravity",
-                        model=model_id,
+                        model=api_model,
                     ) from exc
                 continue
             break
 
         assert last_resp is not None
-        _raise_for_status(last_resp, model=model_id)
+        _raise_for_status(last_resp, model=api_model)
 
         try:
             payload = last_resp.json()
@@ -576,9 +721,9 @@ class AntigravityClient:
             raise APIConnectionError(
                 message=f"Antigravity response was not JSON: {last_resp.text[:200]}",
                 llm_provider="google_antigravity",
-                model=model_id,
+                model=api_model,
             ) from exc
-        return parse_response_payload(payload, requested_model=model_id)
+        return parse_response_payload(payload, requested_model=api_model)
 
 
 # ---------------------------------------------------------------------------
