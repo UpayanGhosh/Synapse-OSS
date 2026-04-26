@@ -294,6 +294,13 @@ def pipeline_memory_engine(pipeline_lancedb, pipeline_graph):
 
     engine.get_embedding = _fake_get_embedding  # type: ignore[method-assign]
 
+    # CRITICAL: stub add_memory to a no-op so test pipelines that exercise
+    # error paths (e.g. chat_pipeline.py:782 skill_execution write) cannot
+    # leak into ~/.synapse/workspace/db/memory.db. Previously test_phase6's
+    # 10-turn loop polluted the prod DB with 18 MagicMock-named rows.
+    from unittest.mock import MagicMock as _MagicMock
+    engine.add_memory = _MagicMock(return_value=None)  # type: ignore[method-assign]
+
     yield engine
 
 
