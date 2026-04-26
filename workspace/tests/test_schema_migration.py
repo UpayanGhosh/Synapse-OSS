@@ -27,6 +27,7 @@ for _p in (_WORKSPACE, _DASHBOARD.parent):
 from sci_fi_dashboard.db import (  # noqa: E402
     EMBEDDING_DIMENSIONS,
     _ensure_embedding_metadata,
+    _ensure_memory_affect_schema,
     validate_embedding_dimension,
 )
 from sci_fi_dashboard.embedding.migrate import re_embed_documents  # noqa: E402
@@ -109,6 +110,17 @@ class TestMigrationAddsColumns(unittest.TestCase):
         cols = _column_names(conn, "atomic_facts")
         self.assertIn("embedding_model", cols)
         self.assertIn("embedding_version", cols)
+        conn.close()
+
+    def test_memory_affect_schema_created(self):
+        conn = _make_fresh_db()
+
+        _ensure_memory_affect_schema(conn)
+
+        cols = _column_names(conn, "memory_affect")
+        self.assertIn("doc_id", cols)
+        self.assertIn("mood", cols)
+        self.assertIn("tension_type", cols)
         conn.close()
 
 

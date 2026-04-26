@@ -159,6 +159,16 @@ def _ensure_kg_processed_column(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+def _ensure_memory_affect_schema(conn: sqlite3.Connection) -> None:
+    """Create memory_affect overlay schema if missing (idempotent)."""
+    try:
+        from .memory_affect import ensure_memory_affect_table
+    except ImportError:
+        from memory_affect import ensure_memory_affect_table
+
+    ensure_memory_affect_table(conn)
+
+
 def _ensure_embedding_metadata(conn: sqlite3.Connection) -> None:
     """Add embedding provenance columns if they don't exist yet (idempotent).
 
@@ -286,6 +296,7 @@ class DatabaseManager:
                 _ensure_embedding_metadata(conn)
                 _ensure_jarvis_tables(conn)
                 _ensure_kg_processed_column(conn)
+                _ensure_memory_affect_schema(conn)
                 _ensure_ingest_failures_table(conn)
                 conn.commit()
                 conn.close()
@@ -297,6 +308,7 @@ class DatabaseManager:
                     _ensure_embedding_metadata(_mig)
                     _ensure_jarvis_tables(_mig)
                     _ensure_kg_processed_column(_mig)
+                    _ensure_memory_affect_schema(_mig)
                     _ensure_ingest_failures_table(_mig)
 
             DatabaseManager._initialized = True
