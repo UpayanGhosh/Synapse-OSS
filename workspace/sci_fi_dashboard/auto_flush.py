@@ -27,8 +27,8 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Coroutine, Any
 
-if TYPE_CHECKING:
-    from sci_fi_dashboard.multiuser.session_store import SessionEntry, SessionStore
+from sci_fi_dashboard.multiuser.session_store import SessionEntry, SessionStore
+from sci_fi_dashboard.multiuser.transcript import transcript_path
 
 log = logging.getLogger(__name__)
 
@@ -138,8 +138,6 @@ class SessionAutoFlusher:
         Returns:
             Number of sessions flushed in this cycle.
         """
-        from sci_fi_dashboard.multiuser.session_store import SessionStore  # avoid circular at import
-
         flushed = 0
         for agent_id in self._agent_ids:
             store = SessionStore(agent_id=agent_id, data_root=self._data_root)
@@ -235,8 +233,6 @@ class SessionAutoFlusher:
         Runs synchronously inside asyncio.to_thread to avoid blocking the event loop.
         Returns 0 if the file is absent or unreadable.
         """
-        from sci_fi_dashboard.multiuser.transcript import transcript_path  # avoid circular
-
         path = transcript_path(entry, self._data_root, agent_id)
 
         def _count() -> int:

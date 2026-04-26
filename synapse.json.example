@@ -133,7 +133,13 @@
     "dual_cognition_enabled": true,
     "dual_cognition_timeout": 5.0,
     "_tier_strict_mode_comment": "When true, refuse to boot if any role's prompt_tier is two or more tiers above the model's inferred tier (e.g. frontier prompt on a 4B model). Default false (warn-only).",
-    "tier_strict_mode": false
+    "tier_strict_mode": false,
+    "_auto_flush_comment": "Auto-flush idle/long sessions into memory.db without requiring manual /new. The scanner runs as a FastAPI background task (not inside gentle_worker_loop — battery state must not gate ingestion). Trigger is OR-combined: flush when idle >= auto_flush_idle_seconds OR message count >= auto_flush_message_count. Sessions below auto_flush_min_messages are never flushed. Disable with auto_flush_enabled=false (e.g. low-resource environments).",
+    "auto_flush_enabled": true,
+    "auto_flush_idle_seconds": 1800,
+    "auto_flush_message_count": 50,
+    "auto_flush_check_interval_seconds": 60,
+    "auto_flush_min_messages": 5
   },
 
   "embedding": {
