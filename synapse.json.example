@@ -50,6 +50,11 @@
       "oauth_email": "",
       "project_id": "",
       "tier": ""
+    },
+
+    "_claude_cli_comment": "Claude Code CLI subscription provider — spawns the local `claude` binary headlessly so your Pro/Max subscription auth stays inside Claude Code (no API key in synapse.json, no OAuth dance from Synapse). Install Claude Code from https://docs.anthropic.com/en/docs/claude-code, run `claude /login` once to authorize, then run the onboarding wizard and pick 'Claude Code CLI'. Use model strings like `claude_cli/sonnet`, `claude_cli/opus`, or `claude_cli/haiku` in model_mappings. Heads-up: each call carries Claude Code's own ~50k-token system prompt overhead, so context usage is high — but unlimited tokens under subscription, only the message-count limit applies.",
+    "claude_cli": {
+      "binary_path": "claude"
     }
   },
 

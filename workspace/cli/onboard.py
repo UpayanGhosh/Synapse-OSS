@@ -63,6 +63,7 @@ from cli.provider_steps import (  # noqa: E402
     _KEY_MAP,
     PROVIDER_GROUPS,
     PROVIDER_LIST,
+    claude_cli_setup,
     github_copilot_device_flow,
     google_antigravity_oauth_flow,
     validate_ollama,
@@ -847,6 +848,20 @@ _KNOWN_MODELS: dict[str, list[dict[str, str]]] = {
             "label": "Gemini 3 Pro (high reasoning, best quality)",
         },
     ],
+    "claude_cli": [
+        {
+            "value": "claude_cli/sonnet",
+            "label": "Claude Sonnet 4.6 (Pro/Max subscription, balanced)",
+        },
+        {
+            "value": "claude_cli/opus",
+            "label": "Claude Opus 4.6 (Pro/Max subscription, best quality)",
+        },
+        {
+            "value": "claude_cli/haiku",
+            "label": "Claude Haiku 4.5 (Pro/Max subscription, fast/cheap)",
+        },
+    ],
     "anthropic": [
         {"value": "anthropic/claude-sonnet-4-6", "label": "Claude Sonnet 4.6 (balanced)"},
         {"value": "anthropic/claude-haiku-4-5", "label": "Claude Haiku 4.5 (fast, cheap)"},
@@ -965,6 +980,7 @@ _ROLES: list[tuple[str, str, list[str]]] = [
         "Casual chat — fast, everyday",
         [
             "google_antigravity",
+            "claude_cli",
             "gemini",
             "openai",
             "github_copilot",
@@ -976,12 +992,20 @@ _ROLES: list[tuple[str, str, list[str]]] = [
     (
         "code",
         "Code generation & debugging",
-        ["anthropic", "openai", "github_copilot", "nvidia_nim", "groq"],
+        [
+            "claude_cli",
+            "anthropic",
+            "openai",
+            "github_copilot",
+            "nvidia_nim",
+            "groq",
+        ],
     ),
     (
         "analysis",
         "Analysis & deep research",
         [
+            "claude_cli",
             "google_antigravity",
             "gemini",
             "openai",
@@ -993,7 +1017,15 @@ _ROLES: list[tuple[str, str, list[str]]] = [
     (
         "review",
         "Code review & critique",
-        ["anthropic", "openai", "github_copilot", "google_antigravity", "gemini", "nvidia_nim"],
+        [
+            "claude_cli",
+            "anthropic",
+            "openai",
+            "github_copilot",
+            "google_antigravity",
+            "gemini",
+            "nvidia_nim",
+        ],
     ),
     (
         "kg",
@@ -1474,6 +1506,19 @@ def _collect_provider_keys(
                 config["providers"]["github_copilot"] = {"token": token}
             else:
                 _print("[yellow]  Skipping GitHub Copilot (auth failed or timed out).[/]")
+            continue
+
+        # Claude Code CLI — no API key, no OAuth from Synapse. Synapse just
+        # spawns the local ``claude`` binary headlessly and lets Claude Code
+        # handle subscription auth. We only verify the binary exists.
+        if provider == "claude_cli":
+            metadata = claude_cli_setup(console)
+            if metadata:
+                config["providers"]["claude_cli"] = {
+                    "binary_path": metadata.get("binary_path") or "claude",
+                }
+            else:
+                _print("[yellow]  Skipping Claude CLI (binary missing or declined).[/]")
             continue
 
         # Google Antigravity — PKCE OAuth + localhost callback. Tokens are

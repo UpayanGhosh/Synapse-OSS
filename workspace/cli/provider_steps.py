@@ -146,6 +146,7 @@ PROVIDER_GROUPS: list[dict] = [
             {"key": "nvidia_nim", "label": "NVIDIA NIM"},
             {"key": "github_copilot", "label": "GitHub Copilot (OAuth device flow)"},
             {"key": "google_antigravity", "label": "Google Antigravity (Gemini 3 via OAuth)"},
+            {"key": "claude_cli", "label": "Claude Code CLI (Pro/Max subscription via local `claude` binary)"},
         ],
     },
 ]
@@ -472,3 +473,42 @@ async def google_antigravity_oauth_flow(console) -> dict | None:
         "project_id": creds.project_id,
         "tier": creds.tier,
     }
+
+
+# ---------------------------------------------------------------------------
+# Claude Code CLI subscription provider — uses the local `claude` binary so
+# Pro/Max subscription auth happens inside Claude Code itself; Synapse never
+# sees an API key.
+# ---------------------------------------------------------------------------
+
+
+def claude_cli_setup(console) -> dict | None:
+    """Detect the local ``claude`` binary and confirm subscription auth.
+
+    No interactive prompts here — the OAuth dance happens in Claude Code itself
+    (``claude /login`` from a terminal). Synapse's only job is to verify the
+    binary is on PATH and the user actually wants to wire it through.
+
+    Returns a small metadata dict on success, or ``None`` if the binary is
+    missing / the user opts out.
+    """
+    import shutil  # noqa: PLC0415
+
+    claude_bin = shutil.which("claude")
+    if not claude_bin:
+        console.print(
+            "[red]`claude` binary not found in PATH.[/red]\n"
+            "Install Claude Code: https://docs.anthropic.com/en/docs/claude-code\n"
+            "Then run `claude /login` in a terminal once to authorize your "
+            "Pro/Max subscription before configuring this provider in Synapse."
+        )
+        return None
+
+    console.print(
+        "[green]Found `claude` binary at:[/green] " + claude_bin + "\n"
+        "[dim]Synapse will spawn this binary headlessly per chat request, so "
+        "your Pro/Max subscription auth is handled inside Claude Code — no API "
+        "key is stored or transmitted by Synapse. Make sure you've run "
+        "`claude /login` at least once.[/dim]"
+    )
+    return {"binary_path": claude_bin}
