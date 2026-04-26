@@ -89,10 +89,11 @@ Channel (WA/TG/Discord/Slack)
 ```
 
 ### LLM Routing (Traffic Cop → MoA)
-`route_traffic_cop()` in `api_gateway.py` auto-classifies every message before the LLM call. The LLM is **never** given tools during `persona_chat()` — no function calling in the chat path.
+`route_traffic_cop()` in `llm_wrappers.py` auto-classifies every message before the LLM call. The LLM is **never** given tools during `persona_chat()` — no function calling in the chat path.
 
 | Role | Model | Trigger |
 |------|-------|---------|
+| traffic_cop | Gemini Flash Lite (default) | classifier — picks role for every chat turn |
 | casual | Gemini Flash | default / Banglish |
 | code | Claude Sonnet (thinking) | code detected |
 | analysis | Gemini Pro | deep reasoning |
@@ -100,6 +101,8 @@ Channel (WA/TG/Discord/Slack)
 | review | configurable | explicit review tasks |
 
 Model strings are provider-prefixed (`gemini/gemini-2.0-flash-exp`, `anthropic/claude-3-5-sonnet-20241022`, `ollama_chat/mistral`) and come from `synapse.json → model_mappings`. Each role can declare a `fallback` model.
+
+> **Note:** `traffic_cop` is a separate role from `casual` as of Phase 8. If unset in `synapse.json`, falls back to `casual` for backward compat.
 
 ### Soul-Brain Sync (SBS) Persona Engine
 Pipeline: `RawMessage → RealtimeProcessor → BatchProcessor (every 50 msgs or 6h) → PromptCompiler → system prompt`

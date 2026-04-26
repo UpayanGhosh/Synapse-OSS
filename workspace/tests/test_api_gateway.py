@@ -434,18 +434,18 @@ class TestRouteTrafficCop:
 
     def _import_fn(self):
         try:
-            from sci_fi_dashboard.api_gateway import route_traffic_cop
+            from sci_fi_dashboard.llm_wrappers import route_traffic_cop
 
             return route_traffic_cop
         except Exception:
-            pytest.skip("Cannot import api_gateway")
+            pytest.skip("Cannot import llm_wrappers")
 
     async def test_returns_string(self):
         fn = self._import_fn()
         with patch(
-            "sci_fi_dashboard.api_gateway.call_gemini_flash", new_callable=AsyncMock
-        ) as mock_flash:
-            mock_flash.return_value = "CASUAL"
+            "sci_fi_dashboard.llm_wrappers.call_traffic_cop_classifier", new_callable=AsyncMock
+        ) as mock_cop:
+            mock_cop.return_value = "CASUAL"
             result = await fn("Hello, how are you?")
             assert isinstance(result, str)
             assert result in ("CASUAL", "CODING", "ANALYSIS", "REVIEW")
@@ -453,27 +453,27 @@ class TestRouteTrafficCop:
     async def test_coding_classification(self):
         fn = self._import_fn()
         with patch(
-            "sci_fi_dashboard.api_gateway.call_gemini_flash", new_callable=AsyncMock
-        ) as mock_flash:
-            mock_flash.return_value = "CODING"
+            "sci_fi_dashboard.llm_wrappers.call_traffic_cop_classifier", new_callable=AsyncMock
+        ) as mock_cop:
+            mock_cop.return_value = "CODING"
             result = await fn("Fix this python bug")
             assert result == "CODING"
 
     async def test_fallback_on_error(self):
         fn = self._import_fn()
         with patch(
-            "sci_fi_dashboard.api_gateway.call_gemini_flash", new_callable=AsyncMock
-        ) as mock_flash:
-            mock_flash.side_effect = Exception("LLM down")
+            "sci_fi_dashboard.llm_wrappers.call_traffic_cop_classifier", new_callable=AsyncMock
+        ) as mock_cop:
+            mock_cop.side_effect = Exception("LLM down")
             result = await fn("test message")
             assert result == "CASUAL"
 
     async def test_cleans_punctuation(self):
         fn = self._import_fn()
         with patch(
-            "sci_fi_dashboard.api_gateway.call_gemini_flash", new_callable=AsyncMock
-        ) as mock_flash:
-            mock_flash.return_value = "ANALYSIS."
+            "sci_fi_dashboard.llm_wrappers.call_traffic_cop_classifier", new_callable=AsyncMock
+        ) as mock_cop:
+            mock_cop.return_value = "ANALYSIS."
             result = await fn("Summarize this data")
             assert result == "ANALYSIS"
 
@@ -639,9 +639,10 @@ class TestPersonaChat:
                         mock_router.call_with_tools = AsyncMock(return_value=mock_result)
                         mock_router.call_with_metadata = AsyncMock(return_value=mock_result)
                         with patch(
-                            "sci_fi_dashboard.api_gateway.call_gemini_flash", new_callable=AsyncMock
-                        ) as mock_flash:
-                            mock_flash.return_value = "CASUAL"
+                            "sci_fi_dashboard.llm_wrappers.call_traffic_cop_classifier",
+                            new_callable=AsyncMock,
+                        ) as mock_cop:
+                            mock_cop.return_value = "CASUAL"
                             with patch(
                                 "sci_fi_dashboard.api_gateway.get_sbs_for_target"
                             ) as mock_sbs:
@@ -728,9 +729,10 @@ class TestPersonaChat:
                     with patch("sci_fi_dashboard.api_gateway.synapse_llm_router") as mock_router:
                         mock_router.call_with_tools = AsyncMock(return_value=mock_result)
                         with patch(
-                            "sci_fi_dashboard.api_gateway.call_gemini_flash", new_callable=AsyncMock
-                        ) as mock_flash:
-                            mock_flash.return_value = "CASUAL"
+                            "sci_fi_dashboard.llm_wrappers.call_traffic_cop_classifier",
+                            new_callable=AsyncMock,
+                        ) as mock_cop:
+                            mock_cop.return_value = "CASUAL"
                             with patch(
                                 "sci_fi_dashboard.api_gateway.get_sbs_for_target"
                             ) as mock_sbs:
