@@ -250,6 +250,8 @@ def _format_memory_context_for_tier(
         parts.append(f"[RECENT CONTEXT FROM MEMORY]\n{dynamic_facts}")
     if policy.include_graph_context and mem_response.get("graph_context"):
         parts.append(str(mem_response.get("graph_context")))
+    if mem_response.get("affect_hints"):
+        parts.append(str(mem_response.get("affect_hints")))
     return "\n\n".join(parts).strip() or "(No relevant memories retrieved)"
 
 

@@ -37,6 +37,7 @@ class MemoryStream:
     relevant_facts: list = field(default_factory=list)
     relationship_context: str = ""
     graph_connections: str = ""
+    affect_hints: str = ""
     contradictions: list = field(default_factory=list)
 
 
@@ -421,6 +422,7 @@ JSON only:"""
             )
             memory.relevant_facts = [r["content"] for r in results.get("results", [])]
             memory.graph_connections = results.get("graph_context", "")
+            memory.affect_hints = str(results.get("affect_hints", "") or "")
         except (KeyError, IndexError, ValueError) as e:
             logger.debug("Memory recall returned no results: %s", e)
         except Exception as e:
@@ -485,6 +487,7 @@ WHAT THEY JUST SAID:
 WHAT I KNOW FROM MEMORY:
   Past facts: {json.dumps(memory.relevant_facts[:5])}
   Relationship: {memory.relationship_context[:400] if memory.relationship_context else "None"}
+  Emotional memory signals: {memory.affect_hints[:500] if memory.affect_hints else "None"}
 {trajectory_section}{cot_instruction}
 Return JSON only:
 {{

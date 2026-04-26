@@ -196,3 +196,27 @@ async def test_think_handles_llm_json_error(pipeline_memory_engine, pipeline_gra
     assert isinstance(result, CognitiveMerge)
     # tension_level should be the default (0.0) when JSON parsing fails gracefully
     assert result.tension_level >= 0.0
+
+
+@pytest.mark.asyncio
+async def test_think_passes_affect_hints_to_merge(pipeline_graph, mock_llm_fn):
+    """Affect hints from memory retrieval must reach the merge prompt."""
+    mock_mem = MagicMock()
+    pre_cached = {
+        "results": [{"content": "felt ignored before", "score": 0.9, "source": "lancedb_scored"}],
+        "tier": "scored_fallback",
+        "entities": [],
+        "graph_context": "",
+        "affect_hints": "[EMOTIONAL MEMORY SIGNALS]\n- Matching pattern: respond softly.",
+    }
+    engine = DualCognitionEngine(memory_engine=mock_mem, graph=pipeline_graph)
+
+    await engine.think(
+        "I feel ignored again",
+        "chat1",
+        llm_fn=mock_llm_fn,
+        pre_cached_memory=pre_cached,
+    )
+
+    prompts = "\n".join(str(call.args[0]) for call in mock_llm_fn.call_args_list)
+    assert "EMOTIONAL MEMORY SIGNALS" in prompts
