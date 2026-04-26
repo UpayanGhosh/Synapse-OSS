@@ -1512,7 +1512,7 @@ class SynapseLLMRouter:
         cfg = self._claude_cli_provider_cfg()
         model_str = self._model_string_for_role(role) or "claude_cli/sonnet"
         client = ClaudeCliClient(
-            command=str(cfg.get("command") or "claude"),
+            command=str(cfg.get("binary_path") or cfg.get("command") or "claude"),
             timeout=float(cfg.get("timeout") or cfg.get("timeout_sec") or 180.0),
             cwd=cfg.get("cwd"),
             extra_args=list(cfg.get("extra_args") or []),

@@ -448,12 +448,21 @@ async def google_antigravity_oauth_flow(console) -> dict | None:
     def _print_url(url: str) -> None:
         console.print(f"[dim]Auth URL: {url}[/dim]")
 
+    def _paste_fallback(url: str) -> str:
+        console.print(
+            "\n[yellow]Localhost callback unavailable (port 8085 busy or "
+            "WSL2 detected). Sign in in your browser, then paste the FULL "
+            "redirect URL (or just the ?code=... query string) here.[/yellow]"
+        )
+        return console.input("Paste redirect URL: ")
+
     try:
         creds = await asyncio.to_thread(
             google_oauth.login_pkce,
             headless=False,
             open_browser=True,
             auth_url_sink=_print_url,
+            code_input=_paste_fallback,
         )
     except RuntimeError as exc:
         console.print(f"[red]Google Antigravity OAuth failed: {exc}[/red]")
