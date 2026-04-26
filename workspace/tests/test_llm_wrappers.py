@@ -237,3 +237,94 @@ class TestSynapseRouterFallback:
             "Fallback INFO log must not fire on second call; "
             f"got {[r.message for r in fallback_records]}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Tests for call_ag_oracle (Task 7.4)
+# ---------------------------------------------------------------------------
+
+
+def _make_cfg(model_mappings: dict, session: dict = None):
+    """Return a minimal SynapseConfig-like object for oracle role tests."""
+    from pathlib import Path
+
+    from synapse_config import SynapseConfig
+
+    return SynapseConfig(
+        data_root=Path("/tmp/synapse_test"),
+        db_dir=Path("/tmp/synapse_test/workspace/db"),
+        sbs_dir=Path("/tmp/synapse_test/workspace/sci_fi_dashboard/synapse_data"),
+        log_dir=Path("/tmp/synapse_test/logs"),
+        providers={},
+        channels={},
+        model_mappings=model_mappings,
+        session=session or {},
+    )
+
+
+class TestCallAgOracle:
+    """call_ag_oracle must resolve the role from config, with sane fallback."""
+
+    async def test_call_ag_oracle_uses_oracle_role_when_configured(self):
+        """When 'oracle' exists in model_mappings, call must dispatch to 'oracle'."""
+        from sci_fi_dashboard.llm_wrappers import call_ag_oracle
+
+        cfg = _make_cfg(
+            model_mappings={
+                "oracle": {"model": "google_antigravity/gemini-3-flash-lite-preview"},
+                "analysis": {"model": "gemini/gemini-2.0-pro"},
+            }
+        )
+        mock_router = _make_router_mock("inner monologue result")
+
+        with patch("sci_fi_dashboard.llm_wrappers.deps") as mock_deps:
+            mock_deps._synapse_cfg = cfg
+            mock_deps.synapse_llm_router = mock_router
+            await call_ag_oracle([{"role": "user", "content": "think"}])
+
+        mock_router.call.assert_called_once()
+        role_used = mock_router.call.call_args.args[0]
+        assert role_used == "oracle", f"Expected 'oracle', got '{role_used}'"
+
+    async def test_call_ag_oracle_falls_back_to_analysis_when_oracle_unset(self):
+        """When 'oracle' is absent from model_mappings, must fall back to 'analysis'."""
+        from sci_fi_dashboard.llm_wrappers import call_ag_oracle
+
+        cfg = _make_cfg(
+            model_mappings={
+                "analysis": {"model": "gemini/gemini-2.0-pro"},
+            }
+        )
+        mock_router = _make_router_mock("analysis result")
+
+        with patch("sci_fi_dashboard.llm_wrappers.deps") as mock_deps:
+            mock_deps._synapse_cfg = cfg
+            mock_deps.synapse_llm_router = mock_router
+            await call_ag_oracle([{"role": "user", "content": "think"}])
+
+        mock_router.call.assert_called_once()
+        role_used = mock_router.call.call_args.args[0]
+        assert role_used == "analysis", f"Expected 'analysis' fallback, got '{role_used}'"
+
+    async def test_call_ag_oracle_respects_dual_cognition_role_override(self):
+        """session.dual_cognition_role overrides 'oracle' when present in model_mappings."""
+        from sci_fi_dashboard.llm_wrappers import call_ag_oracle
+
+        cfg = _make_cfg(
+            model_mappings={
+                "custom_oracle": {"model": "ollama_chat/mistral"},
+                "oracle": {"model": "google_antigravity/gemini-3-flash-lite-preview"},
+                "analysis": {"model": "gemini/gemini-2.0-pro"},
+            },
+            session={"dual_cognition_role": "custom_oracle"},
+        )
+        mock_router = _make_router_mock("custom result")
+
+        with patch("sci_fi_dashboard.llm_wrappers.deps") as mock_deps:
+            mock_deps._synapse_cfg = cfg
+            mock_deps.synapse_llm_router = mock_router
+            await call_ag_oracle([{"role": "user", "content": "think"}])
+
+        mock_router.call.assert_called_once()
+        role_used = mock_router.call.call_args.args[0]
+        assert role_used == "custom_oracle", f"Expected 'custom_oracle', got '{role_used}'"

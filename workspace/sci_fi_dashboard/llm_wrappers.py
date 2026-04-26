@@ -40,10 +40,14 @@ async def call_ag_code(messages: list) -> str:
 
 
 async def call_ag_oracle(messages: list, temperature: float = 0.7, max_tokens: int = 1500) -> str:
-    """AG_ORACLE (The Architect): routes to 'analysis' role in model_mappings."""
-    print("[BLDG] Calling The Architect (analysis role)...")
+    """ORACLE: routes to 'oracle' role in model_mappings (dual cognition).
+    Falls back to 'analysis' if 'oracle' role isn't configured (backwards compat)."""
+    cfg = deps._synapse_cfg
+    role = cfg.session.get("dual_cognition_role", "oracle") if cfg else "oracle"
+    if role not in (cfg.model_mappings if cfg else {}):
+        role = "analysis"
     return await deps.synapse_llm_router.call(
-        "analysis", messages, temperature=temperature, max_tokens=max_tokens
+        role, messages, temperature=temperature, max_tokens=max_tokens
     )
 
 

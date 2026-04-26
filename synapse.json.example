@@ -120,7 +120,13 @@
       "prompt_tier": "small",
       "fallback": "google_antigravity/gemini-3-flash"
     },
-    "_traffic_cop_privacy_alternative": "For zero-cloud classification, set: \"traffic_cop\": {\"model\": \"ollama_chat/qwen2.5:7b\", \"prompt_tier\": \"small\"}. The classifier sees every user message including spicy ones — keeping it local prevents metadata leakage to cloud providers."
+    "_traffic_cop_privacy_alternative": "For zero-cloud classification, set: \"traffic_cop\": {\"model\": \"ollama_chat/qwen2.5:7b\", \"prompt_tier\": \"small\"}. The classifier sees every user message including spicy ones — keeping it local prevents metadata leakage to cloud providers.",
+    "oracle": {
+      "_model_comment": "Inner-monologue + tension-merge for dual cognition. Cheap+fast > deep — flash-lite already implies thinkingLevel:LOW via antigravity_provider.resolve_model_with_thinking. Avoid pinning to pro-high (1 RPM kills dual cog). Local Ollama is also fine but bump session.dual_cognition_timeout to 10s.",
+      "model": "google_antigravity/gemini-3-flash-lite-preview",
+      "prompt_tier": "small",
+      "fallback": "google_antigravity/gemini-3-flash"
+    }
   },
 
   "session": {

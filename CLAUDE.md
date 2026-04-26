@@ -99,10 +99,13 @@ Channel (WA/TG/Discord/Slack)
 | analysis | Gemini Pro | deep reasoning |
 | vault | Local Ollama | private/spicy content — zero cloud leakage |
 | review | configurable | explicit review tasks |
+| oracle | Gemini Flash Lite (default) | dual cognition: inner monologue + tension merge |
 
 Model strings are provider-prefixed (`gemini/gemini-2.0-flash-exp`, `anthropic/claude-3-5-sonnet-20241022`, `ollama_chat/mistral`) and come from `synapse.json → model_mappings`. Each role can declare a `fallback` model.
 
 > **Note:** `traffic_cop` is a separate role from `casual` as of Phase 8. If unset in `synapse.json`, falls back to `casual` for backward compat.
+
+> **Note:** `oracle` is the dual-cognition role added in Phase 7. `call_ag_oracle()` resolves the role dynamically: reads `session.dual_cognition_role` (user override), then checks `model_mappings`, falls back to `analysis` if `oracle` is absent (backwards compat). Pinned to `flash-lite` by default — avoids 429 cascades that occur when dual cog is pointed at a 1 RPM Pro model. With the oracle role configured, `dual_cognition_enabled: true` is safe. If using a local Ollama model for oracle, bump `session.dual_cognition_timeout` to `10.0`.
 
 ### Soul-Brain Sync (SBS) Persona Engine
 Pipeline: `RawMessage → RealtimeProcessor → BatchProcessor (every 50 msgs or 6h) → PromptCompiler → system prompt`
@@ -184,6 +187,7 @@ Primary runtime config. Key sections:
 - `session.identityLinks` — maps canonical name to raw peer IDs across channels
 - `session.dual_cognition_enabled` — boolean (default `true`), disables DualCognitionEngine when `false`
 - `session.dual_cognition_timeout` — float seconds (default `5.0`), `asyncio.wait_for` timeout on `think()`
+- `session.dual_cognition_role` — string (default `"oracle"`), overrides which `model_mappings` role `call_ag_oracle()` dispatches to; falls back to `"analysis"` if the named role is absent
 
 ### Environment Variables
 `GEMINI_API_KEY`, `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `GROQ_API_KEY`, `WHATSAPP_BRIDGE_TOKEN`, `SYNAPSE_GATEWAY_TOKEN`
