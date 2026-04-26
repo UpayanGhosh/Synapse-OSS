@@ -190,6 +190,29 @@ Primary runtime config. Key sections:
 - `session.dual_cognition_role` — string (default `"oracle"`), overrides which `model_mappings` role `call_ag_oracle()` dispatches to; falls back to `"analysis"` if the named role is absent
 - `model_mappings.<role>.prompt_tier` is auto-validated at load against the model string — see `prompt_tiers.MODEL_TIER_MAP`. Set `session.tier_strict_mode=true` to make two-tier downgrades boot-blocking.
 
+#### Auto-flush configuration (Phase 3)
+
+These keys live in the `session` block of `synapse.json`. The scanner runs as a
+FastAPI lifespan background task — **not** inside `gentle_worker_loop` — so flush
+cadence follows gateway uptime, not battery/CPU state.
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `auto_flush_enabled` | `true` | Master switch. Set `false` to disable entirely (e.g. low-resource hosts). |
+| `auto_flush_idle_seconds` | `1800` | Seconds of inactivity before a session is auto-archived. OR-combined with count. |
+| `auto_flush_message_count` | `50` | Message count ceiling; sessions exceeding this flush even if recently active. |
+| `auto_flush_check_interval_seconds` | `60` | Scanner wake-up cadence in seconds. |
+| `auto_flush_min_messages` | `5` | Sessions below this count are never auto-flushed (avoids trivial exchanges). |
+
+Auto-flush is identical to the user running `/new`: transcript is archived,
+`_ingest_session_background` fires vector+KG ingestion, `session_id` rotates.
+Hemisphere is always `"safe"` — the scanner never infers hemisphere from session
+metadata. Dedup: `SessionEntry.memory_flush_at` is checked; if a flush happened
+within the idle window, the session is skipped (prevents double-flush after manual `/new`).
+Telemetry: each auto-flush writes a row to `ingest_failures` with
+`phase='auto_flush_triggered'`; visible in `GET /memory_health` as
+`last_auto_flush_at`, `auto_flushes_last_24h`, `auto_flush_enabled`.
+
 ### Environment Variables
 `GEMINI_API_KEY`, `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `GROQ_API_KEY`, `WHATSAPP_BRIDGE_TOKEN`, `SYNAPSE_GATEWAY_TOKEN`
 

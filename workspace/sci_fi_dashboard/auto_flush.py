@@ -22,10 +22,12 @@ Design decisions (Phase 3):
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import time
+from collections.abc import Callable, Coroutine
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable, Coroutine, Any
+from typing import Any
 
 from sci_fi_dashboard.multiuser.session_store import SessionEntry, SessionStore
 from sci_fi_dashboard.multiuser.transcript import transcript_path
@@ -103,10 +105,9 @@ class SessionAutoFlusher:
         """Signal the scanner to stop and await its termination."""
         self._stop.set()
         if self._task is not None and not self._task.done():
-            try:
+            with contextlib.suppress(TimeoutError, asyncio.CancelledError):
                 await asyncio.wait_for(self._task, timeout=10.0)
-            except (asyncio.TimeoutError, asyncio.CancelledError):
-                self._task.cancel()
+            self._task.cancel()
         log.info("[AutoFlush] Scanner stopped")
 
     # ------------------------------------------------------------------
@@ -122,13 +123,11 @@ class SessionAutoFlusher:
                     log.info("[AutoFlush] Scan complete — flushed %d session(s)", n)
             except Exception as exc:
                 log.error("[AutoFlush] Unhandled exception in scan loop: %s", exc, exc_info=True)
-            try:
+            with contextlib.suppress(TimeoutError, asyncio.CancelledError):
                 await asyncio.wait_for(
                     asyncio.shield(asyncio.Event().wait()),
                     timeout=self._check_interval,
                 )
-            except (asyncio.TimeoutError, asyncio.CancelledError):
-                pass  # normal — sleep expired or stop was set
             if self._stop.is_set():
                 break
 
@@ -147,7 +146,7 @@ class SessionAutoFlusher:
                 log.warning("[AutoFlush] Could not load sessions for agent %s: %s", agent_id, exc)
                 continue
 
-            for key, entry in sessions.items():
+            for key in sessions:
                 try:
                     # Always re-fetch the entry from disk to avoid acting on stale state.
                     # (The user may have sent messages after we loaded the full map.)
@@ -175,7 +174,7 @@ class SessionAutoFlusher:
         self,
         agent_id: str,
         key: str,
-        entry: "SessionEntry",
+        entry: SessionEntry,
     ) -> bool:
         """Return True if this session should be auto-flushed now.
 
@@ -227,7 +226,7 @@ class SessionAutoFlusher:
 
         return False
 
-    async def _count_messages(self, agent_id: str, entry: "SessionEntry") -> int:
+    async def _count_messages(self, agent_id: str, entry: SessionEntry) -> int:
         """Count JSONL lines in the transcript file for *entry*.
 
         Runs synchronously inside asyncio.to_thread to avoid blocking the event loop.
@@ -239,7 +238,7 @@ class SessionAutoFlusher:
             if not path.exists():
                 return 0
             try:
-                return sum(1 for _ in open(path, "r", encoding="utf-8"))  # noqa: WPS515
+                return sum(1 for _ in open(path, encoding="utf-8"))  # noqa: WPS515
             except OSError:
                 return 0
 
@@ -253,8 +252,8 @@ class SessionAutoFlusher:
         self,
         agent_id: str,
         key: str,
-        entry: "SessionEntry",
-        store: "SessionStore",
+        entry: SessionEntry,
+        store: SessionStore,
     ) -> None:
         """Archive and ingest one session, then record telemetry.
 
@@ -276,7 +275,12 @@ class SessionAutoFlusher:
         try:
             await store.update(key, {"memory_flush_at": time.time()})
         except Exception as exc:
-            log.warning("[AutoFlush] Could not update memory_flush_at for %s/%s: %s", agent_id, key, exc)
+            log.warning(
+                "[AutoFlush] Could not update memory_flush_at for %s/%s: %s",
+                agent_id,
+                key,
+                exc,
+            )
 
         # Telemetry: record to ingest_failures with phase='auto_flush_triggered'
         try:
