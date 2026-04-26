@@ -123,11 +123,8 @@ class SessionAutoFlusher:
                     log.info("[AutoFlush] Scan complete — flushed %d session(s)", n)
             except Exception as exc:
                 log.error("[AutoFlush] Unhandled exception in scan loop: %s", exc, exc_info=True)
-            with contextlib.suppress(TimeoutError, asyncio.CancelledError):
-                await asyncio.wait_for(
-                    asyncio.shield(asyncio.Event().wait()),
-                    timeout=self._check_interval,
-                )
+            with contextlib.suppress(TimeoutError):
+                await asyncio.wait_for(self._stop.wait(), timeout=self._check_interval)
             if self._stop.is_set():
                 break
 
