@@ -91,6 +91,19 @@ async def memory_health() -> dict[str, Any]:
         last_ingest_failure_at = _scalar(
             "SELECT MAX(created_at) FROM ingest_failures WHERE phase IN ('load','vector','kg')"
         )
+        last_auto_flush_at = _scalar(
+            "SELECT MAX(created_at) FROM ingest_failures WHERE phase = 'auto_flush_triggered'"
+        )
+        auto_flushes_last_24h = (
+            conn.execute(
+                """
+                SELECT COUNT(*) FROM ingest_failures
+                 WHERE phase = 'auto_flush_triggered'
+                   AND created_at >= datetime('now', '-24 hours')
+                """
+            ).fetchone()
+            or [0]
+        )[0]
 
         rows = conn.execute("""
             SELECT created_at, session_key, phase, exception_type, exception_msg
@@ -126,6 +139,8 @@ async def memory_health() -> dict[str, Any]:
             with contextlib.suppress(OSError):
                 pending_count += sum(1 for _ in jsonl_file.open(encoding="utf-8", errors="replace"))
 
+    auto_flush_enabled = deps._synapse_cfg.session_auto_flush.enabled
+
     return {
         "last_doc_added_at": last_doc_added_at,
         "last_kg_extraction_at": last_kg_extraction_at,
@@ -133,4 +148,7 @@ async def memory_health() -> dict[str, Any]:
         "last_ingest_failure_at": last_ingest_failure_at,
         "pending_session_message_count": pending_count,
         "recent_failures": recent_failures,
+        "last_auto_flush_at": last_auto_flush_at,
+        "auto_flushes_last_24h": auto_flushes_last_24h,
+        "auto_flush_enabled": auto_flush_enabled,
     }

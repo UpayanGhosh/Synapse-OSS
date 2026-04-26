@@ -443,6 +443,28 @@ async def lifespan(app: FastAPI):
     else:
         logger.info("[Skills] skills module not available -- skill system disabled")
 
+    # Phase 3 (auto-flush): Background scanner for idle/oversized sessions.
+    # Runs as a FastAPI lifespan task so flush cadence follows gateway uptime,
+    # not battery/CPU state (intentionally NOT inside gentle_worker_loop).
+    from sci_fi_dashboard.auto_flush import SessionAutoFlusher  # noqa: PLC0415
+    from sci_fi_dashboard.pipeline_helpers import _handle_new_command  # noqa: PLC0415
+
+    _auto_flush_cfg = deps._synapse_cfg.session_auto_flush
+    _flusher = SessionAutoFlusher(
+        data_root=deps._synapse_cfg.data_root,
+        agent_ids=list(deps.sbs_registry.keys()),
+        handle_new_command=_handle_new_command,
+        idle_threshold=_auto_flush_cfg.idle_seconds,
+        count_threshold=_auto_flush_cfg.message_count,
+        min_messages=_auto_flush_cfg.min_messages,
+        check_interval=_auto_flush_cfg.check_interval_seconds,
+    )
+    if _auto_flush_cfg.enabled:
+        await _flusher.start()
+    else:
+        logger.info("[AutoFlush] Disabled via config (session.auto_flush_enabled=false)")
+    app.state.auto_flusher = _flusher
+
     yield
 
     # --- Shutdown ---
@@ -476,6 +498,9 @@ async def lifespan(app: FastAPI):
     if hasattr(app.state, "retry_queue"):
         await app.state.retry_queue.stop()
     # Phase 16: stop heartbeat runner + bridge health poller BEFORE channel_registry.stop_all
+    if hasattr(app.state, "auto_flusher") and app.state.auto_flusher is not None:
+        with suppress(Exception):
+            await app.state.auto_flusher.stop()
     if hasattr(app.state, "heartbeat_runner") and app.state.heartbeat_runner is not None:
         with suppress(Exception):
             await app.state.heartbeat_runner.stop()
