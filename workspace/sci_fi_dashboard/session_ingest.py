@@ -33,12 +33,12 @@ def _record_ingest_failure(
     phase: str,
     session_key: str,
     agent_id: str,
-    archived_path: "Path | str",
-    batch_index: "int | None" = None,
-    total_batches: "int | None" = None,
-    exc: "Exception | None" = None,
-    ingested_vec: "int | None" = None,
-    ingested_kg: "int | None" = None,
+    archived_path: Path | str,
+    batch_index: int | None = None,
+    total_batches: int | None = None,
+    exc: Exception | None = None,
+    ingested_vec: int | None = None,
+    ingested_kg: int | None = None,
 ) -> None:
     """Insert one row into ingest_failures. Never raises — degrades to log.warning."""
     exc_type = type(exc).__name__ if exc is not None else None

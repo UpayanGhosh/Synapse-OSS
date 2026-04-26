@@ -33,7 +33,6 @@ def memory_health(
     port: int = typer.Option(8000, "--port", help="Gateway port"),
 ) -> None:
     """Show ingestion pipeline health: last ingest times, failure counts, pending messages."""
-    import sys  # noqa: PLC0415
 
     import httpx  # noqa: PLC0415
     from rich.console import Console  # noqa: PLC0415

@@ -1,7 +1,6 @@
 """Health and status endpoints."""
 
 import logging
-from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends
@@ -79,6 +78,7 @@ async def memory_health() -> dict[str, Any]:
 
     conn = get_db_connection()
     try:
+
         def _scalar(sql: str, params: tuple = ()) -> str | None:
             row = conn.execute(sql, params).fetchone()
             return row[0] if row else None
@@ -92,15 +92,13 @@ async def memory_health() -> dict[str, Any]:
             "SELECT MAX(created_at) FROM ingest_failures WHERE phase IN ('load','vector','kg')"
         )
 
-        rows = conn.execute(
-            """
+        rows = conn.execute("""
             SELECT created_at, session_key, phase, exception_type, exception_msg
               FROM ingest_failures
              WHERE phase != 'completed'
              ORDER BY created_at DESC
              LIMIT 10
-            """
-        ).fetchall()
+            """).fetchall()
         recent_failures = [
             {
                 "created_at": r[0],
@@ -123,10 +121,10 @@ async def memory_health() -> dict[str, Any]:
             # Skip archived (deleted) transcripts
             if ".deleted." in jsonl_file.name:
                 continue
-            try:
+            import contextlib  # noqa: PLC0415
+
+            with contextlib.suppress(OSError):
                 pending_count += sum(1 for _ in jsonl_file.open(encoding="utf-8", errors="replace"))
-            except OSError:
-                pass
 
     return {
         "last_doc_added_at": last_doc_added_at,
