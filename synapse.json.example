@@ -113,7 +113,14 @@
       "model": "gemini/gemini-2.5-flash-lite",
       "prompt_tier": "mid_open",
       "fallback": "gemini/gemini-2.5-flash"
-    }
+    },
+    "traffic_cop": {
+      "_model_comment": "Cheap classifier — runs on every chat turn to pick CASUAL/CODING/ANALYSIS/REVIEW/IMAGE. Should be small and fast. Default routes to a Gemini Flash Lite or local Ollama. Avoid OpenAI here unless you want per-turn billing.",
+      "model": "google_antigravity/gemini-3-flash-lite-preview",
+      "prompt_tier": "small",
+      "fallback": "google_antigravity/gemini-3-flash"
+    },
+    "_traffic_cop_privacy_alternative": "For zero-cloud classification, set: \"traffic_cop\": {\"model\": \"ollama_chat/qwen2.5:7b\", \"prompt_tier\": \"small\"}. The classifier sees every user message including spicy ones — keeping it local prevents metadata leakage to cloud providers."
   },
 
   "session": {
