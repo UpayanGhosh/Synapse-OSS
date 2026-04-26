@@ -145,6 +145,8 @@ PROVIDER_GROUPS: list[dict] = [
             {"key": "huggingface", "label": "HuggingFace Inference Endpoints"},
             {"key": "nvidia_nim", "label": "NVIDIA NIM"},
             {"key": "github_copilot", "label": "GitHub Copilot (OAuth device flow)"},
+            {"key": "google_antigravity", "label": "Google Antigravity (Gemini 3 via OAuth)"},
+            {"key": "claude_cli", "label": "Claude Code CLI (Pro/Max subscription via local `claude` binary)"},
         ],
     },
 ]
@@ -394,3 +396,119 @@ async def github_copilot_device_flow(console) -> str | None:
 
     console.print("[red]GitHub Copilot authorization timed out or was denied.[/red]")
     return None
+
+
+# ---------------------------------------------------------------------------
+# Google Antigravity / Gemini CLI OAuth (PKCE + localhost callback)
+# ---------------------------------------------------------------------------
+
+
+async def google_antigravity_oauth_flow(console) -> dict | None:
+    """Run the Google Antigravity OAuth flow and persist the credentials.
+
+    Mirrors OpenClaw's Gemini-CLI OAuth path: builds a PKCE auth URL using a
+    client_id/secret discovered from the locally installed Gemini CLI (or env
+    vars), captures the redirect on localhost:8085, exchanges the code for
+    access + refresh tokens, then resolves a Cloud project ID via
+    cloudcode-pa.googleapis.com.
+
+    Returns a small metadata dict (email, project_id, tier) on success — the
+    actual access/refresh tokens are saved to ~/.synapse/state/google-oauth.json
+    by ``google_oauth.save_credentials``. Returns None on failure or user opt-out.
+    """
+    try:
+        from sci_fi_dashboard import google_oauth  # noqa: PLC0415
+    except ImportError as exc:
+        console.print(
+            f"[red]Cannot import google_oauth module: {exc}[/red]"
+        )
+        return None
+
+    console.print(
+        "\n[yellow]"
+        "Heads up: Google Antigravity OAuth is an unofficial integration and is\n"
+        "not endorsed by Google. Some users have reported account restrictions\n"
+        "or suspensions after using third-party Gemini CLI / Antigravity OAuth\n"
+        "clients. Proceed only if you understand and accept this risk."
+        "[/yellow]"
+    )
+
+    try:
+        client_id, _ = google_oauth.resolve_oauth_client_config()
+    except RuntimeError as exc:
+        console.print(f"[red]{exc}[/red]")
+        return None
+    console.print(f"[dim]OAuth client_id resolved: {client_id[:24]}…[/dim]")
+
+    console.print(
+        "\nOpening browser for Google sign-in. Callback will be captured on\n"
+        f"[bold]http://localhost:{google_oauth.REDIRECT_PORT}{google_oauth.REDIRECT_PATH}[/bold]"
+    )
+
+    def _print_url(url: str) -> None:
+        console.print(f"[dim]Auth URL: {url}[/dim]")
+
+    try:
+        creds = await asyncio.to_thread(
+            google_oauth.login_pkce,
+            headless=False,
+            open_browser=True,
+            auth_url_sink=_print_url,
+        )
+    except RuntimeError as exc:
+        console.print(f"[red]Google Antigravity OAuth failed: {exc}[/red]")
+        return None
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[red]Unexpected error during OAuth: {exc}[/red]")
+        return None
+
+    target = google_oauth.save_credentials(creds)
+    console.print(
+        f"[green]Google Antigravity OAuth complete: {creds.email or '(unknown email)'} "
+        f"tier={creds.tier or 'unknown'}[/green]"
+    )
+    console.print(f"[dim]Credentials saved to {target}[/dim]")
+    return {
+        "email": creds.email,
+        "project_id": creds.project_id,
+        "tier": creds.tier,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Claude Code CLI subscription provider — uses the local `claude` binary so
+# Pro/Max subscription auth happens inside Claude Code itself; Synapse never
+# sees an API key.
+# ---------------------------------------------------------------------------
+
+
+def claude_cli_setup(console) -> dict | None:
+    """Detect the local ``claude`` binary and confirm subscription auth.
+
+    No interactive prompts here — the OAuth dance happens in Claude Code itself
+    (``claude /login`` from a terminal). Synapse's only job is to verify the
+    binary is on PATH and the user actually wants to wire it through.
+
+    Returns a small metadata dict on success, or ``None`` if the binary is
+    missing / the user opts out.
+    """
+    import shutil  # noqa: PLC0415
+
+    claude_bin = shutil.which("claude")
+    if not claude_bin:
+        console.print(
+            "[red]`claude` binary not found in PATH.[/red]\n"
+            "Install Claude Code: https://docs.anthropic.com/en/docs/claude-code\n"
+            "Then run `claude /login` in a terminal once to authorize your "
+            "Pro/Max subscription before configuring this provider in Synapse."
+        )
+        return None
+
+    console.print(
+        "[green]Found `claude` binary at:[/green] " + claude_bin + "\n"
+        "[dim]Synapse will spawn this binary headlessly per chat request, so "
+        "your Pro/Max subscription auth is handled inside Claude Code — no API "
+        "key is stored or transmitted by Synapse. Make sure you've run "
+        "`claude /login` at least once.[/dim]"
+    )
+    return {"binary_path": claude_bin}

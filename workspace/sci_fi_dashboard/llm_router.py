@@ -11,8 +11,10 @@ auth failed → rotate auth profile, server error → retry once,
 model not found → try fallback model.
 """
 
+import ast
 import asyncio
 import copy
+import difflib
 import json
 import logging
 import os
@@ -43,6 +45,11 @@ from litellm import (  # noqa: E402
     Router,
     ServiceUnavailableError,
     Timeout,
+)
+from sci_fi_dashboard.claude_cli_provider import (  # noqa: E402
+    ClaudeCliClient,
+    ClaudeCliResponse,
+    is_claude_cli_model,
 )
 from synapse_config import SynapseConfig  # noqa: E402
 
@@ -168,50 +175,667 @@ def _strip_keys_recursive(obj: dict, keys: set) -> None:
 # --- Tool call response normalization ---
 
 
-def normalize_tool_calls(raw_tool_calls: list | None) -> list[ToolCall]:
+def normalize_tool_calls(
+    raw_tool_calls: list | None,
+    tools: list[dict] | None = None,
+    text: str | None = None,
+) -> list[ToolCall]:
     """Parse litellm tool-call objects into provider-agnostic :class:`ToolCall` list.
 
-    Handles missing IDs (generates one), whitespace in function names, and
-    malformed JSON in arguments (attempts lightweight repair).
+    Handles missing IDs, whitespace in function names, malformed JSON in
+    arguments, fuzzy tool names, schema-driven argument key coercion, and
+    markdown/text tool-call fallbacks for smaller local models.
     """
+    calls, _attempted, events = _normalize_tool_calls_with_report(
+        raw_tool_calls,
+        tools=tools,
+        text=text,
+    )
+    _log_tool_recovery_events(events)
+    return calls
+
+
+def _normalize_tool_calls_with_report(
+    raw_tool_calls: list | None,
+    tools: list[dict] | None = None,
+    text: str | None = None,
+) -> tuple[list[ToolCall], bool, list[dict[str, str]]]:
+    """Normalize tool calls and report whether malformed tool use was attempted."""
+
+    tool_index = _build_tool_index(tools)
     if not raw_tool_calls:
-        return []
+        raw_tool_calls = []
     calls: list[ToolCall] = []
+    attempted = bool(raw_tool_calls)
+    events: list[dict[str, str]] = []
     for tc in raw_tool_calls:
-        name = (tc.function.name or "").strip()
+        call_id, raw_name, raw_args = _raw_tool_call_parts(tc)
+        name = (raw_name or "").strip()
         if not name:
             continue
-        args = tc.function.arguments or "{}"
-        try:
-            json.loads(args)
-        except json.JSONDecodeError:
-            args = _attempt_json_repair(args)
+        if tool_index:
+            coerced_name = _coerce_tool_name(name, tool_index, events)
+            if coerced_name not in tool_index:
+                events.append(
+                    {
+                        "kind": "unknown_tool_name",
+                        "tool_name": name,
+                    }
+                )
+                continue
+            name = coerced_name
+        args = _coerce_tool_arguments(raw_args, name, tool_index.get(name), events)
         calls.append(
             ToolCall(
-                id=tc.id or f"call_{uuid4().hex[:8]}",
+                id=call_id or f"call_{uuid4().hex[:8]}",
                 name=name,
                 arguments=args,
             )
         )
-    return calls
+
+    if not calls and text and tool_index:
+        text_calls, text_attempted, text_events = _extract_text_tool_calls(text, tool_index)
+        calls.extend(text_calls)
+        attempted = attempted or text_attempted
+        events.extend(text_events)
+    return calls, attempted, events
 
 
 def _attempt_json_repair(raw: str) -> str:
     """Best-effort fix for truncated JSON from streaming tool calls.
 
-    Adds missing closing braces.  Returns ``"{}"`` when repair fails.
+    Strips markdown fences, removes trailing commas, closes missing braces /
+    brackets / string quotes, and accepts Python-style dicts as a json5-ish
+    fallback. Returns ``"{}"`` when repair fails.
     """
-    raw = raw.rstrip()
-    if not raw.endswith("}"):
-        raw += "}"
-    open_count = raw.count("{") - raw.count("}")
-    if open_count > 0:
-        raw += "}" * open_count
-    try:
-        json.loads(raw)
-        return raw
-    except json.JSONDecodeError:
+    if not isinstance(raw, str):
         return "{}"
+    original = raw.rstrip()
+    try:
+        json.loads(original)
+        return original
+    except json.JSONDecodeError:
+        pass
+
+    try:
+        repaired = _loads_tolerant_json(original)
+    except (json.JSONDecodeError, ValueError, SyntaxError, TypeError):
+        return "{}"
+    if isinstance(repaired, dict | list):
+        return json.dumps(repaired)
+    return "{}"
+
+
+_FENCED_BLOCK_RE = re.compile(
+    r"```(?:json|tool|tools|function|javascript)?\s*(.*?)```", re.I | re.S
+)
+_FUNCTION_CALL_RE = re.compile(r"(?<![\w.])([A-Za-z_]\w*)\s*\((.*?)\)", re.S)
+_ARG_KW_RE = re.compile(
+    r"([A-Za-z_]\w*)\s*=\s*(\"(?:\\.|[^\"])*\"|'(?:\\.|[^'])*'|-?\d+(?:\.\d+)?|true|false|null)",
+    re.I,
+)
+
+_TOOL_TOKEN_ALIASES = {
+    "run": "exec",
+    "execute": "exec",
+    "executed": "exec",
+    "shell": "bash",
+    "terminal": "bash",
+}
+
+_ARGUMENT_KEY_ALIASES: dict[str, set[str]] = {
+    "command": {"cmd", "shell", "bash", "bash_command", "shell_command", "terminal_command"},
+    "path": {"file", "file_path", "filepath", "filename", "target_path"},
+    "old_string": {"old", "old_text", "oldtext", "find", "search", "target"},
+    "new_string": {"new", "new_text", "newtext", "replace", "replacement"},
+    "pattern": {"regex", "query", "search_query"},
+    "url": {"link", "uri"},
+    "content": {"text", "body"},
+    "timeout": {"timeout_s", "seconds", "secs"},
+}
+
+
+def _raw_tool_call_parts(tc: Any) -> tuple[str | None, str | None, Any]:
+    if isinstance(tc, dict):
+        fn = tc.get("function") or {}
+        if not isinstance(fn, dict):
+            fn = {
+                "name": getattr(fn, "name", None),
+                "arguments": getattr(fn, "arguments", None),
+            }
+        return (
+            tc.get("id"),
+            fn.get("name") or tc.get("name"),
+            fn.get("arguments") if "arguments" in fn else tc.get("arguments"),
+        )
+
+    fn = getattr(tc, "function", None)
+    return (
+        getattr(tc, "id", None),
+        getattr(fn, "name", None),
+        getattr(fn, "arguments", None),
+    )
+
+
+def _build_tool_index(tools: list[dict] | None) -> dict[str, dict]:
+    index: dict[str, dict] = {}
+    for tool in tools or []:
+        if not isinstance(tool, dict):
+            continue
+        function = tool.get("function") if isinstance(tool.get("function"), dict) else tool
+        name = str(function.get("name") or "").strip()
+        if not name:
+            continue
+        index[name] = {
+            "name": name,
+            "parameters": function.get("parameters") or {},
+        }
+    return index
+
+
+def _coerce_tool_name(
+    name: str,
+    tool_index: dict[str, dict],
+    events: list[dict[str, str]],
+) -> str:
+    if not tool_index or name in tool_index:
+        return name
+
+    names = list(tool_index)
+    normalized = _normalize_identifier(name)
+    normalized_map = {_normalize_identifier(candidate): candidate for candidate in names}
+    if normalized in normalized_map:
+        target = normalized_map[normalized]
+        _record_recovery(events, "tool_name_coerced", name, target)
+        return target
+
+    token_match = _best_token_tool_match(name, names)
+    if token_match:
+        _record_recovery(events, "tool_name_coerced", name, token_match)
+        return token_match
+
+    close = difflib.get_close_matches(name, names, n=1, cutoff=0.72)
+    if close:
+        _record_recovery(events, "tool_name_coerced", name, close[0])
+        return close[0]
+
+    normalized_close = difflib.get_close_matches(normalized, list(normalized_map), n=1, cutoff=0.72)
+    if normalized_close:
+        target = normalized_map[normalized_close[0]]
+        _record_recovery(events, "tool_name_coerced", name, target)
+        return target
+    return name
+
+
+def _best_token_tool_match(name: str, candidates: list[str]) -> str | None:
+    query_tokens = _tool_name_tokens(name)
+    if not query_tokens:
+        return None
+    best_name = None
+    best_score = 0.0
+    for candidate in candidates:
+        candidate_tokens = _tool_name_tokens(candidate)
+        if not candidate_tokens:
+            continue
+        score = len(query_tokens & candidate_tokens) / max(len(query_tokens), len(candidate_tokens))
+        if score > best_score:
+            best_name = candidate
+            best_score = score
+    return best_name if best_score >= 0.66 else None
+
+
+def _tool_name_tokens(name: str) -> set[str]:
+    parts = re.findall(r"[a-z0-9]+", name.lower())
+    return {_TOOL_TOKEN_ALIASES.get(part, part) for part in parts if part}
+
+
+def _coerce_tool_arguments(
+    raw_args: Any,
+    tool_name: str,
+    tool_meta: dict | None,
+    events: list[dict[str, str]],
+) -> str:
+    schema = (tool_meta or {}).get("parameters") or {}
+    parsed = _parse_argument_value(raw_args)
+    if not isinstance(parsed, dict):
+        mapped = _map_scalar_argument(parsed, schema)
+        if mapped is None:
+            parsed = {}
+        else:
+            parsed = mapped
+            events.append({"kind": "scalar_argument_mapped", "tool_name": tool_name})
+
+    coerced = _coerce_argument_keys(parsed, schema, tool_name, events)
+    return json.dumps(coerced)
+
+
+def _parse_argument_value(raw_args: Any) -> Any:
+    if raw_args is None:
+        return {}
+    if isinstance(raw_args, dict | list):
+        return raw_args
+    if not isinstance(raw_args, str):
+        return raw_args
+
+    stripped = raw_args.strip()
+    if not stripped:
+        return {}
+    try:
+        return json.loads(stripped)
+    except json.JSONDecodeError:
+        pass
+    try:
+        return _loads_tolerant_json(stripped)
+    except (json.JSONDecodeError, ValueError, SyntaxError, TypeError):
+        return stripped
+
+
+def _loads_tolerant_json(raw: str) -> Any:
+    stripped = _strip_json_markdown_fence(raw).strip()
+    candidates = [
+        stripped,
+        re.sub(r",\s*([}\]])", r"\1", stripped),
+    ]
+    candidates.append(_close_json_delimiters(candidates[-1]))
+
+    seen: set[str] = set()
+    for candidate in candidates:
+        if not candidate or candidate in seen:
+            continue
+        seen.add(candidate)
+        try:
+            return json.loads(candidate)
+        except json.JSONDecodeError:
+            pass
+        try:
+            parsed = ast.literal_eval(candidate)
+        except (ValueError, SyntaxError):
+            continue
+        if isinstance(parsed, dict | list | str | int | float | bool) or parsed is None:
+            return parsed
+    raise json.JSONDecodeError("unable to repair JSON", stripped, 0)
+
+
+def _strip_json_markdown_fence(raw: str) -> str:
+    match = _FENCED_BLOCK_RE.fullmatch(raw.strip())
+    return match.group(1).strip() if match else raw
+
+
+def _close_json_delimiters(raw: str) -> str:
+    text = raw.strip()
+    if not text:
+        return text
+
+    if text[0] == "{" and not text.rstrip().endswith(("}", "]")):
+        text += "}"
+    elif text[0] == "[" and not text.rstrip().endswith(("}", "]")):
+        text += "]"
+
+    text = _close_unclosed_string_before_suffix(text)
+    curly = text.count("{") - text.count("}")
+    square = text.count("[") - text.count("]")
+    if curly > 0:
+        text += "}" * curly
+    if square > 0:
+        text += "]" * square
+    return _close_unclosed_string_before_suffix(text)
+
+
+def _close_unclosed_string_before_suffix(raw: str) -> str:
+    text = raw.rstrip()
+    suffix = ""
+    while text.endswith(("}", "]")):
+        suffix = text[-1] + suffix
+        text = text[:-1].rstrip()
+    if _inside_double_quoted_string(text):
+        text += '"'
+    return text + suffix
+
+
+def _inside_double_quoted_string(text: str) -> bool:
+    in_quote = False
+    escaped = False
+    for char in text:
+        if escaped:
+            escaped = False
+            continue
+        if char == "\\":
+            escaped = True
+            continue
+        if char == '"':
+            in_quote = not in_quote
+    return in_quote
+
+
+def _coerce_argument_keys(
+    parsed: dict,
+    schema: dict,
+    tool_name: str,
+    events: list[dict[str, str]],
+) -> dict:
+    properties = schema.get("properties") if isinstance(schema, dict) else {}
+    if not isinstance(properties, dict) or not properties:
+        return parsed
+
+    coerced: dict = {}
+    unknown: dict = {}
+    for key, value in parsed.items():
+        key_str = str(key)
+        if key_str in properties:
+            coerced[key_str] = value
+            continue
+        target = _match_argument_key(key_str, properties)
+        if target:
+            coerced[target] = value
+            events.append(
+                {
+                    "kind": "argument_key_coerced",
+                    "tool_name": tool_name,
+                    "from": key_str,
+                    "to": target,
+                }
+            )
+        else:
+            unknown[key_str] = value
+
+    required = _schema_required(schema)
+    missing = [key for key in required if key not in coerced]
+    if len(missing) == 1 and len(unknown) == 1:
+        old_key, value = next(iter(unknown.items()))
+        coerced[missing[0]] = value
+        events.append(
+            {
+                "kind": "argument_key_coerced",
+                "tool_name": tool_name,
+                "from": old_key,
+                "to": missing[0],
+            }
+        )
+        unknown.clear()
+
+    coerced.update(unknown)
+    return coerced
+
+
+def _match_argument_key(key: str, properties: dict) -> str | None:
+    if key in properties:
+        return key
+    normalized = _normalize_identifier(key)
+    normalized_map = {_normalize_identifier(prop): prop for prop in properties}
+    if normalized in normalized_map:
+        return normalized_map[normalized]
+    for prop in properties:
+        aliases = {_normalize_identifier(alias) for alias in _ARGUMENT_KEY_ALIASES.get(prop, set())}
+        if normalized in aliases:
+            return prop
+    close = difflib.get_close_matches(normalized, list(normalized_map), n=1, cutoff=0.78)
+    return normalized_map[close[0]] if close else None
+
+
+def _map_scalar_argument(value: Any, schema: dict) -> dict | None:
+    properties = schema.get("properties") if isinstance(schema, dict) else {}
+    if not isinstance(properties, dict) or not properties:
+        return None
+
+    required = _schema_required(schema)
+    if len(required) == 1:
+        prop = required[0]
+    elif len(properties) == 1:
+        prop = next(iter(properties))
+    else:
+        return None
+    return {prop: _coerce_scalar_to_schema(value, properties.get(prop, {}))}
+
+
+def _coerce_scalar_to_schema(value: Any, prop_schema: dict) -> Any:
+    kind = prop_schema.get("type") if isinstance(prop_schema, dict) else None
+    if kind == "integer":
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return value
+    if kind == "number":
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return value
+    if kind == "boolean":
+        if isinstance(value, str):
+            return value.strip().lower() in {"true", "1", "yes", "y"}
+        return bool(value)
+    return str(value)
+
+
+def _schema_required(schema: dict) -> list[str]:
+    required = schema.get("required") if isinstance(schema, dict) else []
+    return [str(item) for item in required] if isinstance(required, list) else []
+
+
+def _extract_text_tool_calls(
+    text: str,
+    tool_index: dict[str, dict],
+) -> tuple[list[ToolCall], bool, list[dict[str, str]]]:
+    events: list[dict[str, str]] = []
+    attempted = _looks_like_malformed_tool_attempt(text, tool_index)
+    segments = [match.group(1).strip() for match in _FENCED_BLOCK_RE.finditer(text)]
+    segments.append(text)
+
+    for segment in segments:
+        for candidate in _json_candidates_from_text(segment):
+            try:
+                payload = _loads_tolerant_json(candidate)
+            except (json.JSONDecodeError, ValueError, SyntaxError, TypeError):
+                continue
+            calls = _tool_calls_from_payload(payload, tool_index, events)
+            if calls:
+                events.append({"kind": "text_tool_call_parsed"})
+                return calls, True, events
+
+    function_calls = _function_like_tool_calls(text, tool_index, events)
+    if function_calls:
+        events.append({"kind": "text_tool_call_parsed"})
+        return function_calls, True, events
+    return [], attempted, events
+
+
+def _json_candidates_from_text(text: str) -> list[str]:
+    stripped = text.strip()
+    candidates: list[str] = []
+    if stripped.startswith(("{", "[")):
+        candidates.append(stripped)
+
+    stack: list[str] = []
+    start: int | None = None
+    in_quote = False
+    escaped = False
+    pairs = {"{": "}", "[": "]"}
+    for idx, char in enumerate(text):
+        if escaped:
+            escaped = False
+            continue
+        if char == "\\":
+            escaped = True
+            continue
+        if char == '"':
+            in_quote = not in_quote
+            continue
+        if in_quote:
+            continue
+        if char in pairs:
+            if not stack:
+                start = idx
+            stack.append(pairs[char])
+            continue
+        if stack and char == stack[-1]:
+            stack.pop()
+            if not stack and start is not None:
+                candidates.append(text[start : idx + 1])
+                start = None
+    return candidates
+
+
+def _tool_calls_from_payload(
+    payload: Any,
+    tool_index: dict[str, dict],
+    events: list[dict[str, str]],
+) -> list[ToolCall]:
+    if isinstance(payload, list):
+        calls: list[ToolCall] = []
+        for item in payload:
+            calls.extend(_tool_calls_from_payload(item, tool_index, events))
+        return calls
+    if not isinstance(payload, dict):
+        return []
+
+    if isinstance(payload.get("tool_calls"), list):
+        return _tool_calls_from_payload(payload["tool_calls"], tool_index, events)
+
+    function = payload.get("function")
+    if isinstance(function, dict) and function.get("name"):
+        call = _build_recovered_tool_call(
+            str(function.get("name")),
+            function.get("arguments", payload.get("arguments", {})),
+            tool_index,
+            events,
+        )
+        return [call] if call else []
+
+    for name_key in ("tool", "tool_name", "name"):
+        if payload.get(name_key):
+            args = (
+                payload.get("arguments")
+                if "arguments" in payload
+                else payload.get("args", payload.get("parameters", payload.get("input", {})))
+            )
+            call = _build_recovered_tool_call(str(payload[name_key]), args, tool_index, events)
+            return [call] if call else []
+
+    calls: list[ToolCall] = []
+    for key, value in payload.items():
+        name = _coerce_tool_name(str(key), tool_index, events)
+        if name in tool_index:
+            call = _build_recovered_tool_call(name, value, tool_index, events)
+            if call:
+                calls.append(call)
+    return calls
+
+
+def _function_like_tool_calls(
+    text: str,
+    tool_index: dict[str, dict],
+    events: list[dict[str, str]],
+) -> list[ToolCall]:
+    calls: list[ToolCall] = []
+    for match in _FUNCTION_CALL_RE.finditer(text):
+        name = _coerce_tool_name(match.group(1), tool_index, events)
+        if name not in tool_index:
+            continue
+        args = _parse_function_like_args(match.group(2), name, tool_index[name], events)
+        call = _build_recovered_tool_call(name, args, tool_index, events)
+        if call:
+            calls.append(call)
+    return calls
+
+
+def _parse_function_like_args(
+    raw: str,
+    tool_name: str,
+    tool_meta: dict,
+    events: list[dict[str, str]],
+) -> Any:
+    body = raw.strip()
+    if not body:
+        return {}
+    if body.startswith(("{", "[")):
+        return _parse_argument_value(body)
+    try:
+        literal = ast.literal_eval(body)
+        return literal
+    except (ValueError, SyntaxError):
+        pass
+
+    kwargs = {}
+    for key, value in _ARG_KW_RE.findall(body):
+        kwargs[key] = _parse_argument_value(value)
+    if kwargs:
+        events.append({"kind": "function_kwargs_parsed", "tool_name": tool_name})
+        return kwargs
+    return body
+
+
+def _build_recovered_tool_call(
+    name: str,
+    args: Any,
+    tool_index: dict[str, dict],
+    events: list[dict[str, str]],
+) -> ToolCall | None:
+    coerced_name = _coerce_tool_name(name, tool_index, events)
+    if coerced_name not in tool_index:
+        return None
+    return ToolCall(
+        id=f"call_{uuid4().hex[:8]}",
+        name=coerced_name,
+        arguments=_coerce_tool_arguments(args, coerced_name, tool_index[coerced_name], events),
+    )
+
+
+def _looks_like_malformed_tool_attempt(text: str, tool_index: dict[str, dict]) -> bool:
+    if not text or not tool_index:
+        return False
+    lowered = text.lower()
+    toolish = (
+        "```" in text or "{" in text or "(" in text or "tool" in lowered or "arguments" in lowered
+    )
+    if not toolish:
+        return False
+    for name in tool_index:
+        if name.lower() in lowered:
+            return True
+        if _tool_name_tokens(name) & set(re.findall(r"[a-z0-9]+", lowered)):
+            return True
+    return False
+
+
+def _normalize_identifier(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", value.lower())
+
+
+def _record_recovery(
+    events: list[dict[str, str]],
+    kind: str,
+    old: str,
+    new: str,
+) -> None:
+    if old != new:
+        events.append({"kind": kind, "from": old, "to": new})
+
+
+def _log_tool_recovery_events(events: list[dict[str, str]]) -> None:
+    for event in events:
+        kind = event.get("kind", "unknown")
+        logger.info("tool_call_resilience_%s", kind, extra={"tool_recovery": event})
+
+
+def _build_tool_retry_instruction(tools: list[dict]) -> str:
+    lines = [
+        "Your previous response attempted a tool call but the format was malformed.",
+        "Do not describe or simulate tool results. Use the native tool_call format.",
+        "Available tool schemas:",
+    ]
+    for tool in tools:
+        function = tool.get("function", {}) if isinstance(tool, dict) else {}
+        name = function.get("name")
+        params = function.get("parameters", {})
+        props = params.get("properties", {}) if isinstance(params, dict) else {}
+        required = set(params.get("required", [])) if isinstance(params, dict) else set()
+        arg_bits = []
+        for prop, prop_schema in props.items():
+            type_name = prop_schema.get("type", "any") if isinstance(prop_schema, dict) else "any"
+            suffix = " required" if prop in required else " optional"
+            arg_bits.append(f"{prop}: {type_name}{suffix}")
+        if name:
+            lines.append(f"- {name}({', '.join(arg_bits)})")
+    return "\n".join(lines)
 
 
 # --- Provider key injection ---
@@ -291,6 +915,30 @@ def _inject_provider_keys(providers: dict) -> None:
 # Ollama chat prefix sentinel — centralised so no bare provider strings appear at call sites
 _OLLAMA_CHAT_PREFIX = "ollama_chat/"  # allowed: constant-definition
 
+# Ollama runtime defaults. num_ctx is critical: Ollama defaults to 2048 tokens
+# regardless of the model's native window, which silently truncates large system
+# prompts (Synapse's identity prompt is ~7k tokens) and drops the trailing user
+# message. Override per-role via model_mappings.<role>.ollama_options.num_ctx.
+_OLLAMA_DEFAULT_OPTS = {
+    # 8192 is a safe default for 6-8 GB VRAM hardware. Note: Synapse's full
+    # identity prompt is ~19k tokens — at 8k context the trailing user message
+    # gets truncated. Two paths:
+    #   1) Bump num_ctx via model_mappings.<role>.ollama_options.num_ctx
+    #      (32768 fits comfortably on 8 GB VRAM with 7B-class models)
+    #   2) Wait for W2 minimal-mode prompt builder (see MODEL-AGNOSTIC-ROADMAP.md)
+    # The startup-time prompt-size warning logs when a call's prompt exceeds
+    # the configured num_ctx — surfaces the issue without OOM-ing low-VRAM users.
+    "num_ctx": 8192,
+    "temperature": 0.7,
+    "repeat_penalty": 1.15,
+}
+
+
+def _build_ollama_options(cfg: dict) -> dict:
+    """Merge per-role ollama_options on top of defaults so num_ctx is always set."""
+    return {**_OLLAMA_DEFAULT_OPTS, **(cfg.get("ollama_options") or {})}
+
+
 # --- Router builder ---
 
 
@@ -330,68 +978,14 @@ def _copilot_litellm_params(model_suffix: str) -> dict:
 
 
 _GITHUB_COPILOT_PREFIX = "github_copilot/"
-_CLAUDE_MAX_PREFIX = "claude_max/"
-
-# Full Claude Code request signature required for OAuth tokens.
-# Anthropic fingerprints requests — Sonnet/Opus reject anything that doesn't
-# look exactly like the official Claude Code CLI. Haiku has looser checks.
-_CLAUDE_MAX_BETA_HEADERS = "claude-code-20250219,oauth-2025-04-20,interleaved-thinking-2025-05-14"
-_CLAUDE_MAX_USER_AGENT = "claude-cli/1.0.0 (external, cli)"
+_GOOGLE_ANTIGRAVITY_PREFIX = "google_antigravity/"
+_CLAUDE_CLI_PROVIDER_KEYS = ("claude_cli", "claude-cli", "claude_max")
 
 
-def _get_claude_max_token() -> str:
-    """Read the OAuth token from Claude CLI credentials file.
-
-    Requires Claude Code CLI to be installed and authenticated.
-    Install: https://docs.anthropic.com/en/docs/claude-code
-    Auth:    Run 'claude' in terminal and complete OAuth login.
-    """
-    import json
-    import pathlib
-
-    creds_path = pathlib.Path.home() / ".claude" / ".credentials.json"
-    try:
-        creds = json.loads(creds_path.read_text(encoding="utf-8"))
-        token = creds.get("claudeAiOauth", {}).get("accessToken", "")
-        if not token:
-            raise ValueError("No accessToken found in credentials")
-        return token
-    except FileNotFoundError:
-        logger.error(
-            "Claude Max requires Claude Code CLI. Install from "
-            "https://docs.anthropic.com/en/docs/claude-code then run "
-            "'claude' to authenticate. Credentials file not found: %s",
-            creds_path,
-        )
-        return "missing"
-    except Exception as exc:
-        logger.warning("Claude Max credentials read failed: %s", exc)
-        return "missing"
-
-
-def _claude_max_litellm_params(model_suffix: str) -> dict:
-    """Build litellm_params for a claude_max/ model using Claude OAuth token.
-
-    The request must match Claude Code CLI's exact signature:
-    - Full beta header set including interleaved-thinking
-    - User-Agent and x-app headers matching claude-cli
-    - No temperature field (added via extra_body exclusions)
-    - Empty tools array present
-    - metadata.user_id present
-    - system as content block array (handled by chat_pipeline.py)
-    """
-    token = _get_claude_max_token()
-    return {
-        "model": f"anthropic/{model_suffix}",
-        "api_key": token,
-        "extra_headers": {
-            "anthropic-beta": _CLAUDE_MAX_BETA_HEADERS,
-            "User-Agent": _CLAUDE_MAX_USER_AGENT,
-            "x-app": "cli",
-        },
-        "timeout": 60,
-        "stream": False,
-    }
+def _is_direct_provider_model(model: str | None) -> bool:
+    """Models Synapse dispatches itself instead of registering with litellm."""
+    model = model or ""
+    return model.startswith(_GOOGLE_ANTIGRAVITY_PREFIX) or is_claude_cli_model(model)
 
 
 def build_router(model_mappings: dict, providers: dict) -> Router:
@@ -416,16 +1010,35 @@ def build_router(model_mappings: dict, providers: dict) -> Router:
     for role, cfg in model_mappings.items():
         primary_model: str = cfg["model"]
 
-        if primary_model.startswith(_CLAUDE_MAX_PREFIX):
-            litellm_params = _claude_max_litellm_params(primary_model[len(_CLAUDE_MAX_PREFIX) :])
-        elif primary_model.startswith(_GITHUB_COPILOT_PREFIX):
+        # Google Antigravity is dispatched directly by SynapseLLMRouter, not by
+        # litellm.Router — skip registering it here. The router handles primary
+        # antigravity via _invoke_antigravity(). If a fallback is also
+        # antigravity it's likewise handled outside; if the fallback is a
+        # litellm-supported provider, register it as <role>_fallback so the
+        # standard fallback machinery still works.
+        if _is_direct_provider_model(primary_model):
+            fallback_model = cfg.get("fallback")
+            if fallback_model and not _is_direct_provider_model(fallback_model):
+                fallback_role = f"{role}_fallback"
+                if fallback_model.startswith(_GITHUB_COPILOT_PREFIX):
+                    fallback_params = _copilot_litellm_params(
+                        fallback_model[len(_GITHUB_COPILOT_PREFIX) :]
+                    )
+                else:
+                    fallback_params = {"model": fallback_model, "timeout": 60, "stream": False}
+                    if fallback_model.startswith(_OLLAMA_CHAT_PREFIX):
+                        fallback_params["api_base"] = ollama_api_base
+                        fallback_params["extra_body"] = {"options": _build_ollama_options(cfg)}
+                model_list.append({"model_name": fallback_role, "litellm_params": fallback_params})
+                fallbacks.append({role: [fallback_role]})
+            continue
+
+        if primary_model.startswith(_GITHUB_COPILOT_PREFIX):
             litellm_params = _copilot_litellm_params(primary_model[len(_GITHUB_COPILOT_PREFIX) :])
         elif primary_model.startswith(_OLLAMA_CHAT_PREFIX):
             litellm_params = {"model": primary_model, "timeout": 60, "stream": False}
             litellm_params["api_base"] = ollama_api_base
-            # Ollama-specific defaults — configurable via model_mappings.<role>.ollama_options
-            ollama_opts = cfg.get("ollama_options", {"repeat_penalty": 1.15, "temperature": 0.7})
-            litellm_params["extra_body"] = {"options": ollama_opts}
+            litellm_params["extra_body"] = {"options": _build_ollama_options(cfg)}
         elif primary_model.startswith("ollama/"):
             raise ValueError(
                 f"Role '{role}' uses ollama/ prefix — must be {_OLLAMA_CHAT_PREFIX} for chat calls. "
@@ -445,12 +1058,15 @@ def build_router(model_mappings: dict, providers: dict) -> Router:
         # Fallback model (optional)
         fallback_model = cfg.get("fallback")
         if fallback_model:
-            fallback_role = f"{role}_fallback"
-            if fallback_model.startswith(_CLAUDE_MAX_PREFIX):
-                fallback_params = _claude_max_litellm_params(
-                    fallback_model[len(_CLAUDE_MAX_PREFIX) :]
+            if _is_direct_provider_model(fallback_model):
+                logger.warning(
+                    "Direct-provider fallback for role '%s' is not registered with litellm: %s",
+                    role,
+                    fallback_model,
                 )
-            elif fallback_model.startswith(_GITHUB_COPILOT_PREFIX):
+                continue
+            fallback_role = f"{role}_fallback"
+            if fallback_model.startswith(_GITHUB_COPILOT_PREFIX):
                 fallback_params = _copilot_litellm_params(
                     fallback_model[len(_GITHUB_COPILOT_PREFIX) :]
                 )
@@ -458,10 +1074,7 @@ def build_router(model_mappings: dict, providers: dict) -> Router:
                 fallback_params = {"model": fallback_model, "timeout": 60, "stream": False}
                 if fallback_model.startswith(_OLLAMA_CHAT_PREFIX):
                     fallback_params["api_base"] = ollama_api_base
-                    fb_opts = cfg.get(
-                        "ollama_options", {"repeat_penalty": 1.15, "temperature": 0.7}
-                    )
-                    fallback_params["extra_body"] = {"options": fb_opts}
+                    fallback_params["extra_body"] = {"options": _build_ollama_options(cfg)}
             model_list.append({"model_name": fallback_role, "litellm_params": fallback_params})
             fallbacks.append({role: [fallback_role]})
 
@@ -725,6 +1338,75 @@ def _provider_from_model(model_string: str) -> str | None:
 # --- SynapseLLMRouter ---
 
 
+def _build_antigravity_response_shim(antigravity_response):
+    """Wrap an :class:`AntigravityResponse` in litellm's response shape.
+
+    Downstream code (``_do_call``, ``call``, ``call_with_metadata``,
+    ``call_with_tools``) reads ``response.choices[0].message.content``,
+    ``response.usage.prompt_tokens``, etc. Producing the same shape lets the
+    Google Antigravity path share the rest of the pipeline.
+    """
+    from types import SimpleNamespace
+
+    tool_calls = [
+        SimpleNamespace(
+            id=tc.get("id", ""),
+            type="function",
+            function=SimpleNamespace(
+                name=tc.get("name", ""),
+                arguments=tc.get("arguments", "{}"),
+            ),
+        )
+        for tc in antigravity_response.tool_calls
+    ]
+    message = SimpleNamespace(
+        content=antigravity_response.text or "",
+        tool_calls=tool_calls or None,
+        role="assistant",
+    )
+    choice = SimpleNamespace(
+        message=message,
+        finish_reason=antigravity_response.finish_reason or "stop",
+        index=0,
+    )
+    usage = SimpleNamespace(
+        prompt_tokens=antigravity_response.prompt_tokens,
+        completion_tokens=antigravity_response.completion_tokens,
+        total_tokens=antigravity_response.total_tokens,
+    )
+    return SimpleNamespace(
+        choices=[choice],
+        model=antigravity_response.model,
+        usage=usage,
+    )
+
+
+def _build_claude_cli_response_shim(claude_response: ClaudeCliResponse):
+    """Wrap Claude Code CLI output in litellm's response shape."""
+    from types import SimpleNamespace
+
+    message = SimpleNamespace(
+        content=claude_response.text or "",
+        tool_calls=None,
+        role="assistant",
+    )
+    choice = SimpleNamespace(
+        message=message,
+        finish_reason=claude_response.finish_reason or "stop",
+        index=0,
+    )
+    usage = SimpleNamespace(
+        prompt_tokens=claude_response.prompt_tokens,
+        completion_tokens=claude_response.completion_tokens,
+        total_tokens=claude_response.total_tokens,
+    )
+    return SimpleNamespace(
+        choices=[choice],
+        model=claude_response.model,
+        usage=usage,
+    )
+
+
 class SynapseLLMRouter:
     """
     Unified litellm.Router wrapper. One instance per FastAPI lifespan.
@@ -744,12 +1426,123 @@ class SynapseLLMRouter:
             v.get("model", "").startswith(_GITHUB_COPILOT_PREFIX)
             for v in self._config.model_mappings.values()
         )
+        # Roles whose primary model goes through the Google Antigravity client
+        # rather than litellm.Router.
+        self._antigravity_roles: set[str] = {
+            role
+            for role, cfg in self._config.model_mappings.items()
+            if cfg.get("model", "").startswith(_GOOGLE_ANTIGRAVITY_PREFIX)
+        }
+        self._claude_cli_roles: set[str] = {
+            role
+            for role, cfg in self._config.model_mappings.items()
+            if is_claude_cli_model(cfg.get("model", ""))
+        }
         # C-09: Lock to prevent concurrent Copilot token refresh races
         self._copilot_refresh_lock = asyncio.Lock()
         logger.info(
-            "SynapseLLMRouter initialized with %d roles",
+            "SynapseLLMRouter initialized with %d roles (antigravity: %d, claude_cli: %d)",
             len(self._config.model_mappings),
+            len(self._antigravity_roles),
+            len(self._claude_cli_roles),
         )
+
+    async def _invoke_antigravity(
+        self,
+        *,
+        role: str,
+        messages: list[dict],
+        tools: list[dict] | None,
+        temperature: float,
+        max_tokens: int,
+    ):
+        """Dispatch a chat completion through the Google Antigravity client.
+
+        Returns a litellm-shaped response shim so the rest of the pipeline can
+        reuse the same field accesses (``choices[0].message.content`` etc).
+        """
+        from sci_fi_dashboard.antigravity_provider import (  # noqa: PLC0415
+            get_default_client,
+        )
+
+        model_str = self._model_string_for_role(role) or ""
+        client = await get_default_client()
+        ag_response = await client.chat_completion(
+            messages=messages,
+            model=model_str,
+            tools=tools,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+        try:
+            _write_session(
+                role=role,
+                model=ag_response.model,
+                usage=type(
+                    "U",
+                    (),
+                    {
+                        "prompt_tokens": ag_response.prompt_tokens,
+                        "completion_tokens": ag_response.completion_tokens,
+                        "total_tokens": ag_response.total_tokens,
+                    },
+                )(),
+            )
+        except Exception as session_exc:  # noqa: BLE001
+            logger.debug("Session write failed (non-fatal): %s", session_exc)
+        return _build_antigravity_response_shim(ag_response)
+
+    def _claude_cli_provider_cfg(self) -> dict:
+        """Return provider config for Claude CLI, accepting legacy keys."""
+        for key in _CLAUDE_CLI_PROVIDER_KEYS:
+            cfg = self._config.providers.get(key)
+            if isinstance(cfg, dict):
+                return cfg
+        return {}
+
+    async def _invoke_claude_cli(
+        self,
+        *,
+        role: str,
+        messages: list[dict],
+        temperature: float,
+        max_tokens: int,
+    ):
+        """Dispatch a chat completion through Claude Code CLI subscription auth."""
+        cfg = self._claude_cli_provider_cfg()
+        model_str = self._model_string_for_role(role) or "claude_cli/sonnet"
+        client = ClaudeCliClient(
+            command=str(cfg.get("command") or "claude"),
+            timeout=float(cfg.get("timeout") or cfg.get("timeout_sec") or 180.0),
+            cwd=cfg.get("cwd"),
+            extra_args=list(cfg.get("extra_args") or []),
+            setting_sources=str(cfg.get("setting_sources") or "user"),
+            disable_tools=bool(cfg.get("disable_tools", True)),
+            disable_slash_commands=bool(cfg.get("disable_slash_commands", True)),
+        )
+        cli_response = await client.chat_completion(
+            messages=messages,
+            model=model_str,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+        try:
+            _write_session(
+                role=role,
+                model=cli_response.model,
+                usage=type(
+                    "U",
+                    (),
+                    {
+                        "prompt_tokens": cli_response.prompt_tokens,
+                        "completion_tokens": cli_response.completion_tokens,
+                        "total_tokens": cli_response.total_tokens,
+                    },
+                )(),
+            )
+        except Exception as session_exc:  # noqa: BLE001
+            logger.debug("Session write failed (non-fatal): %s", session_exc)
+        return _build_claude_cli_response_shim(cli_response)
 
     def _rebuild_router(self) -> None:
         """Rebuild the litellm Router (e.g. after a Copilot token refresh)."""
@@ -818,6 +1611,67 @@ class SynapseLLMRouter:
                             f"({budget_duration})",
                         )
         try:
+            _prompt_chars = sum(len(m.get("content") or "") for m in messages)
+            _est_tokens = _prompt_chars // 4
+            logger.info(
+                "llm.call role=%s msgs=%d total_chars=%d est_tokens=%d",
+                role,
+                len(messages),
+                _prompt_chars,
+                _est_tokens,
+            )
+            # OSS guardrail: warn if local engine prompt exceeds the configured
+            # num_ctx. Ollama silently truncates oversized prompts, dropping the
+            # trailing user message — bot replies with generic boilerplate.
+            _model_str = self._model_string_for_role(role) or ""
+            if _model_str.startswith(_OLLAMA_CHAT_PREFIX):
+                _cfg = self._config.model_mappings.get(role) or {}
+                _opts = _build_ollama_options(_cfg)
+                _num_ctx = int(_opts.get("num_ctx") or 0)
+                if _num_ctx and _est_tokens > _num_ctx:
+                    logger.warning(
+                        "ollama prompt likely overflows context: role=%s est_tokens=%d num_ctx=%d. "
+                        "Either bump model_mappings.%s.ollama_options.num_ctx (cost: VRAM) "
+                        "or wait for W2 minimal-mode prompt builder.",
+                        role,
+                        _est_tokens,
+                        _num_ctx,
+                        role,
+                    )
+            if role in getattr(self, "_antigravity_roles", set()):
+                return await self._invoke_antigravity(
+                    role=role,
+                    messages=messages,
+                    tools=kwargs.get("tools"),
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                )
+            if role in getattr(self, "_claude_cli_roles", set()):
+                try:
+                    return await self._invoke_claude_cli(
+                        role=role,
+                        messages=messages,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                    )
+                except Exception as cli_exc:
+                    fallback_cfg = self._config.model_mappings.get(role, {}).get("fallback")
+                    if fallback_cfg and not _is_direct_provider_model(fallback_cfg):
+                        fallback_role = f"{role}_fallback"
+                        logger.warning(
+                            "Claude CLI failed for role '%s' (%s); falling back to '%s'",
+                            role,
+                            cli_exc,
+                            fallback_role,
+                        )
+                        return await self._router.acompletion(
+                            model=fallback_role,
+                            messages=messages,
+                            temperature=temperature,
+                            max_tokens=max_tokens,
+                            **kwargs,
+                        )
+                    raise
             response = await self._router.acompletion(
                 model=role,
                 messages=messages,
@@ -928,115 +1782,13 @@ class SynapseLLMRouter:
 
         stream=False enforced — Phase 2 does not stream (see 02-RESEARCH.md Pitfall 4).
         """
-        mapping = self._config.model_mappings.get(role, {})
-        if mapping.get("model", "").startswith(_CLAUDE_MAX_PREFIX):
+        if role in getattr(self, "_claude_cli_roles", set()):
             result = await self.call_with_metadata(
                 role, messages, temperature, max_tokens, **kwargs
             )
             return result.text
         response = await self._do_call(role, messages, temperature, max_tokens, **kwargs)
         return response.choices[0].message.content or ""
-
-    async def _call_claude_cli(
-        self,
-        model_suffix: str,
-        messages: list[dict],
-        max_tokens: int = 1000,
-    ) -> LLMResult:
-        """Call Claude via the CLI subprocess — bypasses direct API fingerprinting.
-
-        The claude binary handles OAuth auth internally with the correct headers
-        and request structure that Anthropic requires for Max subscription access.
-        """
-        import asyncio
-        import json
-        import shutil
-
-        claude_bin = shutil.which("claude")
-        if not claude_bin:
-            raise RuntimeError("claude CLI not found in PATH")
-
-        # Flatten messages into a single prompt for -p mode.
-        # System prompts are prepended to the user prompt (avoids CLI arg length limits).
-        system_parts = []
-        conversation_parts = []
-        for msg in messages:
-            if not isinstance(msg, dict):
-                continue
-            role_name = msg.get("role", "")
-            content = msg.get("content", "")
-            # Handle content blocks (list format) as well as plain strings
-            if isinstance(content, list):
-                content = " ".join(
-                    block.get("text", "") if isinstance(block, dict) else str(block)
-                    for block in content
-                )
-            elif not isinstance(content, str):
-                content = str(content)
-            if role_name == "system":
-                system_parts.append(content)
-            elif role_name == "user":
-                conversation_parts.append(content)
-            elif role_name == "assistant":
-                conversation_parts.append(f"[Previous response: {content[:200]}]")
-
-        # Build final prompt: system context + last user message
-        system_block = "\n\n".join(system_parts)
-        user_block = "\n".join(conversation_parts)
-        prompt = f"{system_block}\n\n---\n\n{user_block}" if system_block else user_block
-
-        cmd = [
-            claude_bin,
-            "-p",
-            "--output-format",
-            "json",
-            "--model",
-            model_suffix,
-        ]
-
-        env = {k: v for k, v in __import__("os").environ.items() if k != "CLAUDECODE"}
-
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            env=env,
-        )
-        stdout, stderr = await asyncio.wait_for(
-            proc.communicate(input=prompt.encode("utf-8")),
-            timeout=120,
-        )
-
-        if proc.returncode != 0:
-            raise RuntimeError(f"claude CLI failed: {stderr.decode(errors='replace')[:300]}")
-
-        # Parse JSONL output — find the result line
-        text = ""
-        total_input = 0
-        total_output = 0
-        for line in stdout.decode("utf-8", errors="replace").splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                obj = json.loads(line)
-                if obj.get("type") == "result" and obj.get("subtype") == "success":
-                    text = obj.get("result", "")
-                    usage = obj.get("usage", {})
-                    total_input = usage.get("input_tokens", 0) or 0
-                    total_output = usage.get("output_tokens", 0) or 0
-            except json.JSONDecodeError:
-                continue
-
-        return LLMResult(
-            text=text,
-            model=model_suffix,
-            prompt_tokens=total_input,
-            completion_tokens=total_output,
-            total_tokens=total_input + total_output,
-            finish_reason="stop",
-        )
 
     async def call_with_metadata(
         self,
@@ -1048,20 +1800,8 @@ class SynapseLLMRouter:
     ) -> LLMResult:
         """
         Same as call() but returns an LLMResult with text + usage metadata.
-        For claude_max roles, uses CLI subprocess to bypass API fingerprinting.
         Extra **kwargs (e.g. response_format) are forwarded to the underlying call.
         """
-        # Check if this role uses claude_max — if so, use CLI subprocess
-        mapping = self._config.model_mappings.get(role, {})
-        model_str = mapping.get("model", "")
-        if model_str.startswith(_CLAUDE_MAX_PREFIX):
-            model_suffix = model_str[len(_CLAUDE_MAX_PREFIX) :]
-            try:
-                return await self._call_claude_cli(model_suffix, messages, max_tokens)
-            except Exception as cli_exc:
-                logger.warning("claude CLI failed (%s) — falling back to litellm", cli_exc)
-                # Fall through to normal litellm path
-
         _start_time = time.time()
         response = await self._do_call(role, messages, temperature, max_tokens, **kwargs)
         usage = getattr(response, "usage", None)
@@ -1155,24 +1895,26 @@ class SynapseLLMRouter:
         Returns:
             :class:`LLMToolResult` with text, parsed tool calls, and usage.
         """
-        # For claude_max roles, redirect to CLI subprocess (tools not supported via CLI,
-        # but we get the text response which is what matters for persona chat)
-        mapping = self._config.model_mappings.get(role, {})
-        model_str = (
-            mapping.get("model", "") if isinstance(mapping, dict) else getattr(mapping, "model", "")
-        )
-        if model_str.startswith(_CLAUDE_MAX_PREFIX):
-            model_suffix = model_str[len(_CLAUDE_MAX_PREFIX) :]
+        # Claude Code CLI headless mode does not expose native tool calls; use
+        # it as a text fallback for tool-bearing chat paths.
+        if role in getattr(self, "_claude_cli_roles", set()):
             try:
-                llm_result = await self._call_claude_cli(model_suffix, messages, max_tokens)
+                response = await self._invoke_claude_cli(
+                    role=role,
+                    messages=messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                )
+                message = response.choices[0].message
+                usage = getattr(response, "usage", None)
                 return LLMToolResult(
-                    text=llm_result.text,
+                    text=message.content or "",
                     tool_calls=[],
-                    model=llm_result.model,
-                    prompt_tokens=llm_result.prompt_tokens,
-                    completion_tokens=llm_result.completion_tokens,
-                    total_tokens=llm_result.total_tokens,
-                    finish_reason="stop",
+                    model=response.model or role,
+                    prompt_tokens=getattr(usage, "prompt_tokens", 0) or 0,
+                    completion_tokens=getattr(usage, "completion_tokens", 0) or 0,
+                    total_tokens=getattr(usage, "total_tokens", 0) or 0,
+                    finish_reason=response.choices[0].finish_reason,
                 )
             except Exception as cli_exc:
                 import traceback
@@ -1180,9 +1922,46 @@ class SynapseLLMRouter:
                 logger.warning(
                     "claude CLI failed in call_with_tools (%s)\n%s", cli_exc, traceback.format_exc()
                 )
+                raise
 
         provider = self._resolve_provider(role)
         normalized_tools = normalize_tool_schemas(tools, provider)
+
+        # Google Antigravity is dispatched directly — feed normalized tools
+        # straight into the antigravity client and reuse the litellm-shaped
+        # shim so the rest of this method's tool-call extraction works.
+        if role in getattr(self, "_antigravity_roles", set()):
+            response = await self._invoke_antigravity(
+                role=role,
+                messages=messages,
+                tools=normalized_tools,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+            message = response.choices[0].message
+            usage = (
+                getattr(response, "usage", None)
+                or type(
+                    "U",
+                    (),
+                    {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+                )()
+            )
+            tool_calls, _malformed, recovery_events = _normalize_tool_calls_with_report(
+                message.tool_calls,
+                tools=normalized_tools,
+                text=message.content,
+            )
+            _log_tool_recovery_events(recovery_events)
+            return LLMToolResult(
+                text=message.content or "",
+                tool_calls=tool_calls,
+                model=response.model or role,
+                prompt_tokens=getattr(usage, "prompt_tokens", 0) or 0,
+                completion_tokens=getattr(usage, "completion_tokens", 0) or 0,
+                total_tokens=getattr(usage, "total_tokens", 0) or 0,
+                finish_reason=response.choices[0].finish_reason,
+            )
 
         kwargs: dict = {
             "model": role,
@@ -1261,6 +2040,42 @@ class SynapseLLMRouter:
                 {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
             )()
         )
+        tool_calls, malformed_attempt, recovery_events = _normalize_tool_calls_with_report(
+            message.tool_calls,
+            tools=normalized_tools,
+            text=message.content,
+        )
+        _log_tool_recovery_events(recovery_events)
+
+        if not tool_calls and malformed_attempt:
+            logger.info("tool_call_retry_after_malformed_response role=%s", role)
+            retry_messages = [
+                *messages,
+                {"role": "assistant", "content": message.content or ""},
+                {"role": "system", "content": _build_tool_retry_instruction(normalized_tools)},
+            ]
+            retry_kwargs = {**kwargs, "messages": retry_messages}
+            try:
+                retry_response = await self._router.acompletion(**retry_kwargs)
+            except Exception as retry_exc:
+                logger.warning("tool-call retry failed for role '%s': %s", role, retry_exc)
+            else:
+                response = retry_response
+                message = response.choices[0].message
+                usage = (
+                    getattr(response, "usage", None)
+                    or type(
+                        "U",
+                        (),
+                        {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+                    )()
+                )
+                tool_calls, _retry_attempted, retry_events = _normalize_tool_calls_with_report(
+                    message.tool_calls,
+                    tools=normalized_tools,
+                    text=message.content,
+                )
+                _log_tool_recovery_events(retry_events)
 
         # SESS-01: Write token usage (non-fatal)
         try:
@@ -1274,7 +2089,7 @@ class SynapseLLMRouter:
 
         return LLMToolResult(
             text=message.content or "",
-            tool_calls=normalize_tool_calls(message.tool_calls),
+            tool_calls=tool_calls,
             model=response.model or "unknown",
             prompt_tokens=usage.prompt_tokens,
             completion_tokens=usage.completion_tokens,

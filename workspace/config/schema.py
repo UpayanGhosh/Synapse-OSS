@@ -54,6 +54,8 @@ class AgentModelConfig(BaseModel):
     fallback: str | None = None
     fallbacks: list[ModelFallbackEntry] = Field(default_factory=list)
     thinking: ThinkingLevel | None = None
+    prompt_tier: Literal["frontier", "mid_open", "small"] | None = None
+    capability_tier: Literal["frontier", "mid_open", "small"] | None = None
 
 
 class ProviderConfig(BaseModel, extra="allow"):

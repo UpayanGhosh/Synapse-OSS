@@ -1,6 +1,7 @@
 """Chat and OpenAI-compatible completion endpoints."""
 
 import logging
+import os
 import uuid
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Request
@@ -89,10 +90,57 @@ def _make_persona_handler(persona_id: str):
         mint_run_id()
         deps._check_rate_limit(http_request)  # H-04: rate limit persona chat
         validate_api_key(http_request)
+        override_role = http_request.headers.get("X-Synapse-Model-Role", "").strip()
+        if override_role and _parity_role_override_enabled():
+            return await _run_with_parity_role_override(
+                request, persona_id, background_tasks, override_role
+            )
         return await persona_chat(request, persona_id, background_tasks)
 
     handler.__name__ = f"chat_{persona_id}"
     return handler
+
+
+def _parity_role_override_enabled() -> bool:
+    return os.environ.get("SYNAPSE_PARITY_ALLOW_ROLE_HEADER", "").casefold() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+async def _run_with_parity_role_override(
+    request: ChatRequest,
+    persona_id: str,
+    background_tasks: BackgroundTasks,
+    override_role: str,
+):
+    mappings = getattr(deps._synapse_cfg, "model_mappings", {}) or {}
+    if override_role not in mappings:
+        return {
+            "status": "error",
+            "reason": "unknown_model_role",
+            "role": override_role,
+            "available_roles": sorted(mappings),
+        }
+
+    from sci_fi_dashboard.tool_features import (
+        clear_model_override,
+        get_model_override,
+        set_model_override,
+    )
+
+    chat_id = request.user_id or "default"
+    previous = get_model_override(chat_id)
+    set_model_override(chat_id, override_role)
+    try:
+        return await persona_chat(request, persona_id, background_tasks)
+    finally:
+        if previous:
+            set_model_override(chat_id, previous)
+        else:
+            clear_model_override(chat_id)
 
 
 # Register persona-specific routes

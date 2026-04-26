@@ -43,6 +43,18 @@
     },
     "vllm": {
       "api_base": "http://localhost:8001/v1"
+    },
+
+    "_google_antigravity_comment": "Google Antigravity / Gemini CLI OAuth provider — gives free Gemini 3 Pro/Flash access via the cloudcode-pa.googleapis.com endpoint. Run `python workspace/synapse_cli.py onboard` and pick 'Google Antigravity' to populate this section. The actual access/refresh tokens are stored in ~/.synapse/state/google-oauth.json (chmod 600); this block only records the email/project metadata so the runtime can detect the provider is configured. Unofficial integration: not endorsed by Google, account suspensions have been reported. Requires a local @google/gemini-cli install OR SYNAPSE_GEMINI_OAUTH_CLIENT_ID/_SECRET env vars to source the OAuth client.",
+    "google_antigravity": {
+      "oauth_email": "",
+      "project_id": "",
+      "tier": ""
+    },
+
+    "_claude_cli_comment": "Claude Code CLI subscription provider — spawns the local `claude` binary headlessly so your Pro/Max subscription auth stays inside Claude Code (no API key in synapse.json, no OAuth dance from Synapse). Install Claude Code from https://docs.anthropic.com/en/docs/claude-code, run `claude /login` once to authorize, then run the onboarding wizard and pick 'Claude Code CLI'. Use model strings like `claude_cli/sonnet`, `claude_cli/opus`, or `claude_cli/haiku` in model_mappings. Heads-up: each call carries Claude Code's own ~50k-token system prompt overhead, so context usage is high — but unlimited tokens under subscription, only the message-count limit applies.",
+    "claude_cli": {
+      "binary_path": "claude"
     }
   },
 
@@ -62,30 +74,44 @@
   "model_mappings": {
     "casual": {
       "model": "gemini/gemini-2.0-flash",
+      "prompt_tier": "frontier",
       "fallback": "groq/llama-3.3-70b-versatile"
     },
     "code": {
       "model": "anthropic/claude-sonnet-4-6",
+      "prompt_tier": "frontier",
       "fallback": "openai/gpt-4o"
     },
     "analysis": {
       "model": "gemini/gemini-2.0-pro",
+      "prompt_tier": "frontier",
       "fallback": "anthropic/claude-sonnet-4-6"
     },
     "review": {
       "model": "anthropic/claude-opus-4-6",
+      "prompt_tier": "frontier",
       "fallback": "anthropic/claude-sonnet-4-6"
     },
     "vault": {
-      "model": "ollama_chat/llama3.3",
-      "fallback": null
+      "_model_comment": "qwen2.5:7b is the validated local baseline on 8 GB VRAM (RTX 3060 Ti class). Pull with: ollama pull qwen2.5:7b. Other tested options: mistral:7b (~4.4 GB), gemma2:9b (~5.4 GB, tighter VRAM). Avoid models <7B for Synapse — see .planning/MODEL-AGNOSTIC-ROADMAP.md.",
+      "model": "ollama_chat/qwen2.5:7b",
+      "prompt_tier": "small",
+      "fallback": null,
+      "_ollama_options_comment": "Override Ollama runtime params per-role. Defaults: num_ctx=8192, temperature=0.7, repeat_penalty=1.15. Bump num_ctx to 16384 if you have VRAM headroom and want to send mid_open-tier prompts; on 8 GB VRAM with a 7B model that still fits comfortably.",
+      "ollama_options": {
+        "num_ctx": 8192,
+        "temperature": 0.7,
+        "repeat_penalty": 1.15
+      }
     },
     "translate": {
       "model": "openrouter/meta-llama/llama-3.3-70b-instruct",
+      "prompt_tier": "frontier",
       "fallback": "groq/llama-3.3-70b-versatile"
     },
     "kg": {
       "model": "gemini/gemini-2.5-flash-lite",
+      "prompt_tier": "mid_open",
       "fallback": "gemini/gemini-2.5-flash"
     }
   },

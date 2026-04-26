@@ -24,6 +24,7 @@ See tool_registry.py for the ToolContext / SynapseTool contract.
 from __future__ import annotations
 
 import asyncio
+import difflib
 import fnmatch
 import json
 import os
@@ -41,6 +42,348 @@ from sci_fi_dashboard.tool_registry import (
     error_result,
     text_result,
 )
+
+# ---------------------------------------------------------------------------
+# Reachable-models discovery (shared by edit_synapse_config + list_available_models)
+# ---------------------------------------------------------------------------
+
+# Cache TTL — how long to trust a freshly fetched reachable list before re-querying.
+# Tunable here without touching call sites.
+_MODELS_CACHE_TTL_S = 300.0
+
+# Auto-apply threshold — if a fuzzy match against the user's value scores at or
+# above this similarity, we silently switch to the close match and tell the LLM
+# what we did. Below this, we return suggestions and let the LLM retry. 0.85 is
+# tuned so that "gemini-2.0-flash" auto-resolves to "github_copilot/gemini-2.0-flash-001"
+# but "gemini-3-flash" (clearly a different generation) returns suggestions.
+_FUZZY_AUTO_APPLY_THRESHOLD = 0.85
+_FUZZY_SUGGESTION_CUTOFF = 0.5
+_FUZZY_MAX_SUGGESTIONS = 5
+
+# Module-level cache: {"models": [...], "expires_at": float, "fetched": bool}
+# `fetched` tracks whether a discovery attempt has completed within the TTL —
+# independent of whether it returned any models. Without this flag, an empty
+# result (both endpoints offline) would falsify the cache check below and
+# every subsequent call would burn another ~6s re-querying unreachable
+# endpoints. With the flag, offline callers get the cached empty list for
+# the full TTL window.
+_models_cache: dict = {"models": [], "expires_at": 0.0, "fetched": False}
+
+
+async def _discover_reachable_models(timeout: float = 3.0) -> list[str]:
+    """Return list of reachable model strings (provider-prefixed).
+
+    Queries Copilot /models endpoint and Ollama /api/tags. Returns empty list
+    if neither reachable (best-effort, no exceptions raised). Caches result
+    for ``_MODELS_CACHE_TTL_S`` seconds to avoid hammering endpoints when the
+    LLM retries the tool repeatedly. The cache is considered fresh whenever a
+    fetch has completed within the TTL — even if that fetch returned no
+    models — so offline hosts don't re-query unreachable endpoints on every
+    call.
+
+    Returns provider-prefixed strings like:
+        ["github_copilot/gpt-4o", "github_copilot/gemini-2.0-flash-001",
+         "ollama_chat/llama3.2:3b", ...]
+    """
+    now = time.monotonic()
+    if _models_cache["fetched"] and now < _models_cache["expires_at"]:
+        return list(_models_cache["models"])
+
+    models: list[str] = []
+
+    try:
+        import httpx  # type: ignore[import]
+    except ImportError:
+        # No httpx → can't reach any endpoints; return empty (best-effort).
+        return []
+
+    # --- GitHub Copilot /models ---
+    try:
+        from sci_fi_dashboard.llm_router import _get_copilot_token
+
+        token = _get_copilot_token()
+        if token and token != "missing":
+            from litellm.llms.github_copilot.common_utils import (
+                GITHUB_COPILOT_API_BASE,
+                get_copilot_default_headers,
+            )
+
+            # NOTE: get_copilot_default_headers(token) returns the FULL header
+            # dict including Authorization. Calling it without the token raises
+            # TypeError (missing required positional arg) and used to silently
+            # fail via the bare except below, returning 0 models — bot then
+            # hallucinated from training data. Fixed 2026-04-25.
+            headers = get_copilot_default_headers(token)
+            url = f"{GITHUB_COPILOT_API_BASE.rstrip('/')}/models"
+            async with httpx.AsyncClient(timeout=timeout) as c:
+                r = await c.get(url, headers=headers)
+                r.raise_for_status()
+                data = r.json()
+            entries = data.get("data", data if isinstance(data, list) else [])
+            for m in entries:
+                mid = m.get("id") if isinstance(m, dict) else str(m)
+                if mid:
+                    models.append(f"github_copilot/{mid}")
+    except Exception:
+        pass  # Copilot unreachable — keep going
+
+    # --- Ollama /api/tags ---
+    try:
+        base = os.environ.get("OLLAMA_BASE", "http://localhost:11434")
+        async with httpx.AsyncClient(timeout=timeout) as c:
+            r = await c.get(f"{base.rstrip('/')}/api/tags")
+            r.raise_for_status()
+            data = r.json()
+        for m in data.get("models", []):
+            name = m.get("name") if isinstance(m, dict) else None
+            if name:
+                models.append(f"ollama_chat/{name}")
+    except Exception:
+        pass  # Ollama unreachable — keep going
+
+    deduped = sorted(set(models))
+    _models_cache["models"] = deduped
+    _models_cache["expires_at"] = now + _MODELS_CACHE_TTL_S
+    # Mark the cache as fetched-within-TTL even when ``deduped`` is empty so
+    # offline callers don't re-query both endpoints (~6s round trip) on every
+    # subsequent call. TTL expiry still triggers a refetch.
+    _models_cache["fetched"] = True
+    return list(deduped)
+
+
+_VERSION_DIGIT_RE = re.compile(r"\d+")
+
+
+def _version_digits(s: str) -> tuple[str, ...]:
+    """Extract digit-only tokens from a model name as a version signature.
+
+    ``"gemini-2.0-flash"`` → ``("2", "0")``
+    ``"gemini-2.5-flash"`` → ``("2", "5")``
+    ``"gemini-2.0-flash-001"`` → ``("2", "0", "001")``
+    ``"gpt-4o-mini"`` → ``("4",)``
+
+    Used to guard against silently auto-applying a different-version model
+    (the SequenceMatcher ratio is too tolerant of single-digit version diffs).
+    """
+    return tuple(_VERSION_DIGIT_RE.findall(s))
+
+
+def _digit_compat(req: str, cand: str) -> bool:
+    """Return True if ``req`` and ``cand`` have compatible version digits.
+
+    Compatible = req's digits are a prefix of cand's digits, OR identical.
+    This catches the common "drop the build suffix" pattern
+    (``gemini-2.0-flash`` is compatible with ``gemini-2.0-flash-001``)
+    while flagging cross-version confusion
+    (``gemini-2.0-flash`` is NOT compatible with ``gemini-2.5-flash``).
+
+    If req has no digits, anything is compatible (fall back to similarity alone).
+    """
+    rd = _version_digits(req)
+    cd = _version_digits(cand)
+    if not rd:
+        return True
+    if len(rd) > len(cd):
+        return False
+    return cd[: len(rd)] == rd
+
+
+def _fuzzy_match_model(value: str, reachable: list[str]) -> tuple[list[str], str | None, float]:
+    """Fuzzy-match ``value`` against ``reachable`` model strings.
+
+    Returns ``(suggestions, top_match, similarity)`` where:
+        * suggestions: deduped, ordered list of up to ``_FUZZY_MAX_SUGGESTIONS``
+          closest matches against both full strings and bare model suffixes.
+        * top_match: the highest-scoring candidate that has *compatible*
+          version digits with the request (see ``_digit_compat``). If no
+          digit-compatible candidate exists, falls back to the highest
+          similarity overall but reports ``similarity`` capped below the
+          auto-apply threshold so the caller treats it as ambiguous.
+        * similarity: SequenceMatcher ratio for the top match (0..1).
+
+    Pure function — no I/O, no side effects.
+    """
+    if not reachable:
+        return ([], None, 0.0)
+
+    # Match against full "provider/model" strings.
+    close_full = difflib.get_close_matches(
+        value, reachable, n=_FUZZY_MAX_SUGGESTIONS, cutoff=_FUZZY_SUGGESTION_CUTOFF
+    )
+
+    # Also match against bare model names (suffix after last "/") — user may
+    # type "gemini-2.0-flash-001" without the "github_copilot/" prefix.
+    suffix_map: dict[str, str] = {}
+    for m in reachable:
+        suffix = m.rsplit("/", 1)[-1]
+        # First-wins so we don't accidentally collapse two providers' models
+        # with identical local names.
+        suffix_map.setdefault(suffix, m)
+    value_suffix = value.rsplit("/", 1)[-1]
+    close_suffix_keys = difflib.get_close_matches(
+        value_suffix,
+        list(suffix_map.keys()),
+        n=_FUZZY_MAX_SUGGESTIONS,
+        cutoff=_FUZZY_SUGGESTION_CUTOFF,
+    )
+    close_from_suffix = [suffix_map[s] for s in close_suffix_keys]
+
+    # Score every candidate by max(full-similarity, suffix-similarity) and
+    # remember whether its version digits are compatible with the request.
+    scored: list[tuple[float, bool, str]] = []  # (similarity, digit_compat, model)
+    seen_for_score: set[str] = set()
+    for cand in close_full + close_from_suffix:
+        if cand in seen_for_score:
+            continue
+        seen_for_score.add(cand)
+        cand_suffix = cand.rsplit("/", 1)[-1]
+        s = max(
+            difflib.SequenceMatcher(None, value, cand).ratio(),
+            difflib.SequenceMatcher(None, value_suffix, cand_suffix).ratio(),
+        )
+        compat = _digit_compat(value_suffix, cand_suffix)
+        scored.append((s, compat, cand))
+
+    if not scored:
+        return ([], None, 0.0)
+
+    # Build the suggestions list ordered by score (compat-first, then similarity).
+    # Compat candidates always rank above non-compat ones — version sanity
+    # beats raw similarity when picking what to surface to the LLM.
+    scored.sort(key=lambda t: (t[1], t[0]), reverse=True)
+    suggestions = [m for _, _, m in scored][:_FUZZY_MAX_SUGGESTIONS]
+
+    # Pick the top match with care:
+    #   * if any candidate is digit-compatible, take the highest-similarity
+    #     compatible one and report its real similarity.
+    #   * otherwise, the request is asking for a different version that we
+    #     don't have. Return the closest by similarity but cap reported
+    #     similarity below the auto-apply threshold so the caller surfaces
+    #     suggestions instead of silently swapping versions.
+    compatible = [(s, m) for s, ok, m in scored if ok]
+    if compatible:
+        compatible.sort(reverse=True)
+        top_sim, top = compatible[0]
+        return (suggestions, top, top_sim)
+
+    # No digit-compatible candidate. Surface the closest by similarity, but
+    # report a capped similarity so the caller treats this as ambiguous.
+    top_sim, _, top = scored[0]
+    capped = min(top_sim, _FUZZY_AUTO_APPLY_THRESHOLD - 0.01)
+    return (suggestions, top, capped)
+
+
+# ---------------------------------------------------------------------------
+# RT3.6: trust-prefix fallback — configured-provider awareness
+# ---------------------------------------------------------------------------
+
+# Placeholder patterns that indicate a provider key was never set to a real value.
+# Keys starting with these or matching these literal strings are NOT considered
+# configured — provider stays out of the trusted set.
+_PLACEHOLDER_KEY_PREFIXES = ("YOUR_",)
+_PLACEHOLDER_KEY_LITERALS = frozenset({"PLACEHOLDER", "changeme"})
+
+# Providers that always live in the trusted set regardless of synapse.json keys:
+#   * github_copilot — uses JWT exchange in llm_router, not a synapse.json key
+#   * ollama / ollama_chat — local daemon, no API key required
+# These are the providers the fuzzy-match fast-path already queries for live
+# models, so trust-prefix should accept them unconditionally.
+_ALWAYS_TRUSTED_PROVIDERS = frozenset({"github_copilot", "ollama_chat", "ollama"})
+
+
+def _get_configured_providers() -> set[str]:
+    """Return the set of provider names trusted by the trust-prefix fallback.
+
+    A provider is "configured" if:
+      * Its ``api_key`` in ``synapse.json → providers.<name>`` is a non-empty
+        string that is not a placeholder (does not start with ``YOUR_`` and is
+        not literal ``PLACEHOLDER`` / ``changeme``), OR
+      * It is one of the always-trusted special-auth providers
+        (``github_copilot``, ``ollama_chat``, ``ollama``) — Copilot exchanges a
+        JWT from ``~/.config/litellm/github_copilot/api-key.json`` and Ollama
+        runs locally, so neither is gated by a synapse.json key.
+
+    Intentionally NOT cached — ``synapse.json`` may be mutated by this very tool
+    during a session, and we want the next call to see the new provider state.
+
+    Returns the always-trusted set on any failure (config missing / malformed /
+    import error), so trust-prefix degrades gracefully to "Copilot+Ollama only".
+    """
+    configured: set[str] = set(_ALWAYS_TRUSTED_PROVIDERS)
+
+    try:
+        from synapse_config import SynapseConfig  # local import — avoid cycles
+        cfg = SynapseConfig.load()
+        providers = getattr(cfg, "providers", None) or {}
+    except Exception:
+        return configured
+
+    for name, provider_cfg in providers.items():
+        if not isinstance(provider_cfg, dict):
+            continue
+        key = provider_cfg.get("api_key", "")
+        if not isinstance(key, str):
+            continue
+        key = key.strip()
+        if not key:
+            continue
+        if any(key.startswith(p) for p in _PLACEHOLDER_KEY_PREFIXES):
+            continue
+        if key in _PLACEHOLDER_KEY_LITERALS:
+            continue
+        configured.add(name)
+
+    return configured
+
+
+def _trust_prefix_error(value: str, fuzzy_suggestions: list[str] | None = None) -> str | None:
+    """Validate ``value`` via the trust-prefix fallback.
+
+    Returns an error message if the value should be rejected, or ``None`` if
+    the value's provider prefix is a configured provider (silently accept).
+
+    Inputs without a ``/`` separator are rejected — we cannot infer which
+    provider is intended. Inputs whose prefix is not a configured provider are
+    rejected with an actionable hint pointing at synapse.json providers config
+    and TOOLS.md's curl recipes.
+
+    The optional ``fuzzy_suggestions`` list is surfaced in the unknown-provider
+    error so the LLM still sees Copilot/Ollama alternatives it might want to
+    pick instead (e.g. user typed ``deepseek/foo`` but a close Copilot model
+    exists).
+    """
+    configured = _get_configured_providers()
+    configured_list = ", ".join(sorted(configured))
+
+    if "/" not in value:
+        return (
+            f"model value {value!r} is missing a provider prefix. "
+            f"Configured providers: {configured_list}. "
+            f"Format is 'provider/model-name' — e.g. 'anthropic/claude-3-5-sonnet-20241022'. "
+            f"For unknown providers, run bash_exec with the provider's /models endpoint "
+            f"(see TOOLS.md → Provider Model Discovery)."
+        )
+
+    prefix = value.split("/", 1)[0]
+    if prefix not in configured:
+        hint = ""
+        if fuzzy_suggestions:
+            hint = (
+                f" Closest reachable models (Copilot/Ollama): "
+                f"{', '.join(fuzzy_suggestions)}."
+            )
+        return (
+            f"unknown provider {prefix!r} in {value!r}. "
+            f"Configured providers (synapse.json): {configured_list}. "
+            f"To use {prefix}, first add a real api_key to synapse.json → providers.{prefix}, "
+            f"then verify the model name exists (see TOOLS.md → Provider Model Discovery "
+            f"for the curl recipe).{hint}"
+        )
+
+    # Prefix matches a configured provider — accept. Runtime LLM call validates
+    # the specific model name.
+    return None
+
 
 # ---------------------------------------------------------------------------
 # Shared safety primitives
@@ -441,21 +784,57 @@ def _edit_synapse_config_factory(ctx: ToolContext) -> SynapseTool | None:
             if not key_path:
                 return error_result("key_path required for set")
 
-            # Validate model mapping values — format check only (provider/model).
-            # Real "is this model real" check happens at LLM call time via litellm
-            # router. For discovery of what models are actually available, use the
-            # list_available_models tool first.
+            # Validate model mapping values. Two-stage pipeline:
+            #   1. Fuzzy-match fast-path against reachable (Copilot + Ollama)
+            #        * exact match      → apply as-is
+            #        * close match ≥0.85 → auto-apply closest + surface note
+            #   2. Trust-prefix fallback (RT3.6) for everything else
+            #        * prefix is a configured provider     → accept silently
+            #        * prefix unknown or missing           → reject with hint
+            #
+            # The fallback lets non-Copilot/Ollama providers (anthropic, openai,
+            # gemini, etc.) through without ever touching their /models HTTP
+            # endpoints — we trust the user's choice once we've confirmed the
+            # provider is actually configured with a real key. Runtime LLM call
+            # will catch mistyped model names.
+            auto_applied_note: str | None = None
             if key_path.startswith("model_mappings.") and key_path.endswith(".model"):
-                if not isinstance(value, str) or "/" not in value:
+                if not isinstance(value, str):
                     return error_result(
-                        f"model value {value!r} is missing a provider prefix. "
-                        "Format is 'provider/model-name' — e.g. "
-                        "'gemini/gemini-2.5-flash', 'github_copilot/gpt-4o', "
-                        "'github_copilot/gemini-2.0-flash-001', "
-                        "'ollama_chat/llama3.2:3b'. "
-                        "Call list_available_models to see what's actually "
-                        "reachable on this host before guessing."
+                        f"model value must be a string, got {type(value).__name__}"
                     )
+
+                reachable = await _discover_reachable_models()
+
+                if reachable and value not in reachable:
+                    suggestions, top, similarity = _fuzzy_match_model(value, reachable)
+
+                    if similarity >= _FUZZY_AUTO_APPLY_THRESHOLD and top is not None:
+                        # Auto-apply the closest match — record what we changed
+                        # so the success response can carry a note to the LLM.
+                        auto_applied_note = (
+                            f"requested model {value!r} was not reachable; "
+                            f"auto-applied closest match {top!r} "
+                            f"(similarity {similarity:.2f})"
+                        )
+                        value = top
+                    else:
+                        # No confident Copilot/Ollama match — fall back to the
+                        # trust-prefix check. If the user's prefix is a configured
+                        # provider, accept the value (runtime LLM call validates
+                        # the specific model name). Otherwise surface an error
+                        # that lists real configured providers and, when we have
+                        # them, the closest Copilot/Ollama suggestions too.
+                        trust_error = _trust_prefix_error(value, suggestions)
+                        if trust_error:
+                            return error_result(trust_error)
+                elif not reachable:
+                    # Copilot + Ollama both unreachable (offline or no token) —
+                    # trust-prefix is the only safety net available. Same rules:
+                    # accept configured providers, reject unknown ones.
+                    trust_error = _trust_prefix_error(value)
+                    if trust_error:
+                        return error_result(trust_error)
 
             parts = key_path.split(".")
             node = cfg
@@ -488,9 +867,16 @@ def _edit_synapse_config_factory(ctx: ToolContext) -> SynapseTool | None:
             except Exception as e:
                 reload_msg = f" — hot-reload failed ({e}); restart server to apply."
 
-            return text_result(
-                f"set {key_path} = {value!r} (backup: {backup.name}).{reload_msg}"
-            )
+            payload: dict = {
+                "status": "applied",
+                "key_path": key_path,
+                "value": value,
+                "backup": backup.name,
+                "reload": reload_msg.strip(" —") or "ok",
+            }
+            if auto_applied_note:
+                payload["note"] = auto_applied_note
+            return text_result(json.dumps(payload, ensure_ascii=False))
 
         return error_result(f"unknown action: {action}")
 
@@ -499,8 +885,17 @@ def _edit_synapse_config_factory(ctx: ToolContext) -> SynapseTool | None:
         description=(
             "Read or set values in ~/.synapse/synapse.json. action=get returns the "
             "config (or a sub-path via key_path like 'model_mappings.code.model'). "
-            "action=set writes a new value at key_path with JSON validation and a "
-            "timestamped backup. Restart server after set. Owner only."
+            "action=set writes a new value with JSON validation, a timestamped "
+            "backup, and a hot-reload of the LLM router (no server restart needed). "
+            "For model keys (model_mappings.*.model), the value is fuzzy-matched "
+            "against reachable Copilot + Ollama models — if your input is close to "
+            "a real model name, the closest match auto-applies and the response "
+            "includes a 'note' field explaining what was applied. If no close "
+            "Copilot/Ollama match, the value is accepted as-is when its "
+            "'provider/' prefix names a provider with a real api_key in "
+            "synapse.json (anthropic, openai, gemini, etc.). Unknown or missing "
+            "prefixes are rejected with an error listing the configured "
+            "providers. Owner only."
         ),
         parameters={
             "type": "object",
@@ -574,56 +969,25 @@ def _list_available_models_factory(_ctx: ToolContext) -> SynapseTool:
 
         out: dict = {"providers": {}}
 
-        # --- GitHub Copilot /models ---
+        # Reuse the shared discovery helper so both tools see the same view of
+        # reachable models AND share the 5-minute cache (avoids re-hitting
+        # Copilot /models when the LLM calls list → fuzzy-fail → list again).
+        # Use a longer timeout here since callers explicitly invoke this tool
+        # to discover what's available.
+        all_reachable = await _discover_reachable_models(timeout=15.0)
+
+        copilot_models = sorted(m for m in all_reachable if m.startswith("github_copilot/"))
+        ollama_models = sorted(m for m in all_reachable if m.startswith("ollama_chat/"))
+
         if not provider_filter or provider_filter == "github_copilot":
-            try:
-                import httpx  # type: ignore[import]
+            out["providers"]["github_copilot"] = copilot_models or {
+                "error": "no copilot models reachable (token missing or endpoint down)"
+            }
 
-                from sci_fi_dashboard.llm_router import _get_copilot_token
-
-                token = _get_copilot_token()
-                if token and token != "missing":
-                    from litellm.llms.github_copilot.common_utils import (
-                        GITHUB_COPILOT_API_BASE,
-                        get_copilot_default_headers,
-                    )
-
-                    headers = {
-                        "Authorization": f"Bearer {token}",
-                        **get_copilot_default_headers(),
-                    }
-                    url = f"{GITHUB_COPILOT_API_BASE.rstrip('/')}/models"
-                    async with httpx.AsyncClient(timeout=15.0) as c:
-                        r = await c.get(url, headers=headers)
-                        r.raise_for_status()
-                        data = r.json()
-                    entries = data.get("data", data if isinstance(data, list) else [])
-                    models = []
-                    for m in entries:
-                        mid = m.get("id") if isinstance(m, dict) else str(m)
-                        if mid:
-                            models.append(f"github_copilot/{mid}")
-                    out["providers"]["github_copilot"] = sorted(set(models))
-                else:
-                    out["providers"]["github_copilot"] = {"error": "no copilot token"}
-            except Exception as e:
-                out["providers"]["github_copilot"] = {"error": str(e)}
-
-        # --- Ollama /api/tags ---
         if not provider_filter or provider_filter == "ollama":
-            try:
-                import httpx  # type: ignore[import]
-                import os
-
-                base = os.environ.get("OLLAMA_BASE", "http://localhost:11434")
-                async with httpx.AsyncClient(timeout=5.0) as c:
-                    r = await c.get(f"{base.rstrip('/')}/api/tags")
-                    r.raise_for_status()
-                    data = r.json()
-                models = [f"ollama_chat/{m['name']}" for m in data.get("models", [])]
-                out["providers"]["ollama"] = sorted(set(models))
-            except Exception as e:
-                out["providers"]["ollama"] = {"error": str(e)}
+            out["providers"]["ollama"] = ollama_models or {
+                "error": "no ollama models reachable (daemon down or no models pulled)"
+            }
 
         # --- Configured (synapse.json) providers as hints ---
         try:

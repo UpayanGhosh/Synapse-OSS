@@ -571,8 +571,19 @@ JSON only:"""
 
         return ""
 
-    def build_cognitive_context(self, merge: CognitiveMerge) -> str:
+    def build_cognitive_context(self, merge: CognitiveMerge, detail: str = "full") -> str:
         """Build the cognitive injection for the system prompt."""
+        if detail == "strategy":
+            return f"""
+
+## RESPONSE STRATEGY
+
+- Strategy: {merge.response_strategy}
+- Tone: {merge.suggested_tone}
+- Tension: {merge.tension_level:.1f}/1.0 ({merge.tension_type})
+- Rule: Follow the strategy and tone. Do not expose this internal note.
+"""
+
         return f"""
 
 ## YOUR INNER THOUGHTS (Use these to guide your response. Do NOT share directly.)
