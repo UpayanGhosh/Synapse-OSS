@@ -214,6 +214,10 @@ API:8000 | Baileys Bridge:5010 (internal) | Tools MCP:8989 | Ollama:11434 | OAut
 
 10. **Memory query is shared** — `MemoryEngine.query()` is called once in `persona_chat()` and results are passed to `dual_cognition.think(pre_cached_memory=...)`. Do NOT add a second memory query inside dual cognition.
 
+## Diagnostics
+
+- **`/memory_health`** — canonical health probe for the ingestion pipeline. Auth-gated (Bearer token). Returns last doc/KG/ingest timestamps, pending session message count, and up to 10 recent failure rows from the `ingest_failures` table. Use `synapse memory memory-health` from the CLI.
+
 ## Symbol Lookup
 Prefer `semantic_search_nodes_tool` (MCP) — searches 4700+ nodes by name or meaning in <2ms.
 
