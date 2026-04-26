@@ -131,7 +131,9 @@
 
   "session": {
     "dual_cognition_enabled": true,
-    "dual_cognition_timeout": 5.0
+    "dual_cognition_timeout": 5.0,
+    "_tier_strict_mode_comment": "When true, refuse to boot if any role's prompt_tier is two or more tiers above the model's inferred tier (e.g. frontier prompt on a 4B model). Default false (warn-only).",
+    "tier_strict_mode": false
   },
 
   "embedding": {

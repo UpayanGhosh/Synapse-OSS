@@ -128,6 +128,13 @@ class SynapseConfig:
         Layer 2: synapse.json in data_root → providers, channels, model_mappings
         Layer 3 (defaults): empty dicts for providers/channels/model_mappings
 
+        After model_mappings is populated a prompt-tier validation pass runs
+        (Phase 5) — each role's explicit ``prompt_tier`` is compared against the
+        tier inferred from its model string via ``prompt_tiers.MODEL_TIER_MAP``.
+        Mismatches emit WARNING (downgrade) or INFO (upgrade).  Set
+        ``session.tier_strict_mode=true`` in synapse.json to turn two-tier
+        downgrades into boot-blocking ``ConfigError`` exceptions.
+
         Returns a frozen dataclass.  Calling load() twice with different env vars
         returns different configs — this method is NOT cached.
         """
@@ -198,6 +205,24 @@ class SynapseConfig:
                 if k in KGExtractionConfig.__dataclass_fields__
             }
         )
+
+        # Phase 5: validate each role's prompt_tier against the model string.
+        # strict=True raises ConfigError on a two-tier downgrade; default is warn-only.
+        tier_strict = bool(session.get("tier_strict_mode", False))
+        try:
+            from sci_fi_dashboard.prompt_tiers import ConfigError as _TierConfigError
+            from sci_fi_dashboard.prompt_tiers import validate_role_tier as _validate_role_tier
+
+            for _role, _role_cfg in model_mappings.items():
+                if not isinstance(_role_cfg, dict) or _role.startswith("_"):
+                    continue  # skip comment keys and non-dict entries
+                try:
+                    _validate_role_tier(_role, _role_cfg, strict=tier_strict)
+                except _TierConfigError:
+                    if tier_strict:
+                        raise
+        except ImportError:
+            _logger.debug("prompt_tiers unavailable — skipping tier validation", exc_info=True)
 
         return cls(
             data_root=data_root,

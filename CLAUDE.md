@@ -188,6 +188,7 @@ Primary runtime config. Key sections:
 - `session.dual_cognition_enabled` — boolean (default `true`), disables DualCognitionEngine when `false`
 - `session.dual_cognition_timeout` — float seconds (default `5.0`), `asyncio.wait_for` timeout on `think()`
 - `session.dual_cognition_role` — string (default `"oracle"`), overrides which `model_mappings` role `call_ag_oracle()` dispatches to; falls back to `"analysis"` if the named role is absent
+- `model_mappings.<role>.prompt_tier` is auto-validated at load against the model string — see `prompt_tiers.MODEL_TIER_MAP`. Set `session.tier_strict_mode=true` to make two-tier downgrades boot-blocking.
 
 ### Environment Variables
 `GEMINI_API_KEY`, `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `GROQ_API_KEY`, `WHATSAPP_BRIDGE_TOKEN`, `SYNAPSE_GATEWAY_TOKEN`
