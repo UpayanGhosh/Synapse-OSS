@@ -46,12 +46,13 @@ from litellm import (  # noqa: E402
     ServiceUnavailableError,
     Timeout,
 )
+from synapse_config import SynapseConfig  # noqa: E402
+
 from sci_fi_dashboard.claude_cli_provider import (  # noqa: E402
     ClaudeCliClient,
     ClaudeCliResponse,
     is_claude_cli_model,
 )
-from synapse_config import SynapseConfig  # noqa: E402
 
 try:
     from litellm.exceptions import BudgetExceededError
@@ -79,6 +80,10 @@ except ImportError:
     # observability package is pure stdlib so this branch should
     # never actually trigger in production).
     _log = logger  # type: ignore[assignment]
+
+# Once-per-process set: tracks which role fallbacks have already been logged
+# so we emit exactly one INFO line per fallback path per process lifetime.
+_ROLE_FALLBACK_LOGGED: set[str] = set()
 
 
 @dataclass
@@ -1782,6 +1787,17 @@ class SynapseLLMRouter:
 
         stream=False enforced — Phase 2 does not stream (see 02-RESEARCH.md Pitfall 4).
         """
+        # traffic_cop role: fall back to 'casual' when not configured in model_mappings.
+        # Logs once per process lifetime to avoid log spam.
+        if role == "traffic_cop" and role not in self._config.model_mappings:
+            if "traffic_cop" not in _ROLE_FALLBACK_LOGGED:
+                _ROLE_FALLBACK_LOGGED.add("traffic_cop")
+                logger.info(
+                    "traffic_cop role not found in model_mappings — falling back to 'casual'. "
+                    "Add a 'traffic_cop' entry to synapse.json model_mappings for a dedicated "
+                    "classifier model (see synapse.json.example)."
+                )
+            role = "casual"
         if role in getattr(self, "_claude_cli_roles", set()):
             result = await self.call_with_metadata(
                 role, messages, temperature, max_tokens, **kwargs

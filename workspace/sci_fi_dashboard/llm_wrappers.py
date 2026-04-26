@@ -29,7 +29,7 @@ async def call_or_fallback(prompt: str) -> str:
 async def call_gemini_flash(
     input_messages: list, temperature: float = 0.7, max_tokens: int = 500
 ) -> str:
-    """AG_CASUAL / TRAFFIC COP: routes to 'casual' role in model_mappings."""
+    """AG_CASUAL: routes to 'casual' role in model_mappings."""
     return await deps.synapse_llm_router.call("casual", input_messages, temperature, max_tokens)
 
 
@@ -72,6 +72,13 @@ async def translate_banglish(text: str) -> str:
         return text
 
 
+async def call_traffic_cop_classifier(
+    messages: list, *, temperature: float = 0.0, max_tokens: int = 100
+) -> str:
+    """Calls 'traffic_cop' role in model_mappings. Falls back to 'casual'."""
+    return await deps.synapse_llm_router.call("traffic_cop", messages, temperature, max_tokens)
+
+
 # --- Routing Logic ---
 
 # Maps dual-cognition response_strategy -> traffic-cop classification.
@@ -105,8 +112,7 @@ async def route_traffic_cop(user_message: str) -> str:
         {"role": "user", "content": user_message},
     ]
     try:
-        # Use Flash for speed; Increase tokens for thinking
-        resp = await call_gemini_flash(messages, temperature=0.0, max_tokens=100)
+        resp = await call_traffic_cop_classifier(messages, temperature=0.0, max_tokens=100)
         decision = resp.strip().upper()
         # Clean up punctuation
         decision = re.sub(r"[^A-Z]", "", decision)
