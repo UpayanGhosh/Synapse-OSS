@@ -114,6 +114,38 @@ def _ensure_jarvis_tables(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+def _ensure_ingest_failures_table(conn: sqlite3.Connection) -> None:
+    """Create ingest_failures table and indexes (idempotent).
+
+    Records every failure (and completion) from _ingest_session_background so
+    that silent vector/KG ingest errors become user-queryable.
+    Called on both first boot and existing-DB migration so the table is always
+    present regardless of install order.
+    """
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS ingest_failures (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            session_key     TEXT,
+            agent_id        TEXT,
+            archived_path   TEXT,
+            batch_index     INTEGER,
+            total_batches   INTEGER,
+            phase           TEXT NOT NULL,
+            exception_type  TEXT,
+            exception_msg   TEXT,
+            traceback       TEXT,
+            ingested_vec    INTEGER,
+            ingested_kg     INTEGER
+        );
+        CREATE INDEX IF NOT EXISTS idx_ingest_failures_created_at
+            ON ingest_failures(created_at);
+        CREATE INDEX IF NOT EXISTS idx_ingest_failures_phase
+            ON ingest_failures(phase);
+    """)
+    conn.commit()
+
+
 def _ensure_kg_processed_column(conn: sqlite3.Connection) -> None:
     """Add kg_processed column to documents table if missing (idempotent).
 
@@ -254,6 +286,7 @@ class DatabaseManager:
                 _ensure_embedding_metadata(conn)
                 _ensure_jarvis_tables(conn)
                 _ensure_kg_processed_column(conn)
+                _ensure_ingest_failures_table(conn)
                 conn.commit()
                 conn.close()
                 print("[OK] Memory database initialized successfully.")
@@ -264,6 +297,7 @@ class DatabaseManager:
                     _ensure_embedding_metadata(_mig)
                     _ensure_jarvis_tables(_mig)
                     _ensure_kg_processed_column(_mig)
+                    _ensure_ingest_failures_table(_mig)
 
             DatabaseManager._initialized = True
 
