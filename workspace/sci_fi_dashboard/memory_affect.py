@@ -172,7 +172,6 @@ def ensure_memory_affect_table(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_memory_affect_need
             ON memory_affect(user_need);
     """)
-    conn.commit()
 
 
 def _pattern_scores(text: str, groups: dict[str, list[str]]) -> dict[str, int]:

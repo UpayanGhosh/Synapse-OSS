@@ -64,11 +64,26 @@ sys.path.append(WORKSPACE_ROOT)
 import contextlib  # noqa: E402
 
 from sci_fi_dashboard.embedding import get_provider  # noqa: E402
+from sci_fi_dashboard.memory_affect import (  # noqa: E402
+    extract_affect,
+    format_affect_hints,
+    load_affect_for_doc_ids,
+    score_affect_match,
+    tags_to_public_dict,
+    upsert_memory_affect,
+)
 from sci_fi_dashboard.pipeline_emitter import get_emitter as _get_emitter  # noqa: E402
 from sci_fi_dashboard.vector_store import LanceDBVectorStore  # noqa: E402
 
 # Configuration
 RERANK_MODEL_NAME = "ms-marco-TinyBERT-L-2-v2"
+
+
+def _coerce_doc_id(value) -> int | None:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _get_db_path() -> str:
@@ -256,6 +271,22 @@ class MemoryEngine:
             q_results = self.vector_store.search(
                 query_vec, limit=limit * 3, query_filter=hemisphere_filter
             )
+            query_affect = extract_affect(text)
+            affect_by_doc = {}
+            doc_ids = [
+                doc_id
+                for doc_id in (_coerce_doc_id(r.get("id")) for r in q_results)
+                if doc_id is not None
+            ]
+            if doc_ids:
+                try:
+                    _affect_conn = get_db_connection()
+                    try:
+                        affect_by_doc = load_affect_for_doc_ids(_affect_conn, doc_ids)
+                    finally:
+                        _affect_conn.close()
+                except Exception as affect_err:
+                    print(f"[WARN] memory_affect load failed: {affect_err}")
             with contextlib.suppress(Exception):
                 _get_emitter().emit(
                     "memory.lancedb_search_done",
@@ -269,11 +300,27 @@ class MemoryEngine:
             for r in q_results:
                 ts = r["metadata"].get("unix_timestamp")
                 importance = r["metadata"].get("importance", 5)
+                doc_id = _coerce_doc_id(r.get("id"))
+                affect = affect_by_doc.get(doc_id) if doc_id is not None else None
+                affect_score = score_affect_match(query_affect, affect)
+                if affect is not None:
+                    r["affect"] = tags_to_public_dict(affect, score=affect_score)
                 r["combined_score"] = (
-                    (r["score"] * 0.4) + (self._temporal_score(ts) * 0.3) + (importance / 10 * 0.3)
+                    (r["score"] * 0.35)
+                    + (self._temporal_score(ts) * 0.20)
+                    + (importance / 10 * 0.20)
+                    + (affect_score * 0.25)
                 )
+                r["affect_score"] = affect_score
 
             q_results.sort(key=lambda x: x["combined_score"], reverse=True)
+            affect_hints = format_affect_hints(
+                [
+                    r.get("affect", {})
+                    for r in q_results[: max(limit, 3)]
+                    if r.get("affect", {}).get("score", 0) > 0
+                ]
+            )
             try:
                 _top_scored = q_results[:5]
                 _get_emitter().emit(
@@ -284,6 +331,7 @@ class MemoryEngine:
                                 "text": r.get("metadata", {}).get("text", "")[:60],
                                 "score": round(r.get("combined_score", 0), 3),
                                 "semantic": round(r.get("score", 0), 3),
+                                "affect": round(r.get("affect_score", 0), 3),
                             }
                             for r in _top_scored
                         ]
@@ -320,12 +368,14 @@ class MemoryEngine:
                             "content": x["metadata"]["text"],
                             "score": x["combined_score"],
                             "source": "lancedb_fast",
+                            "affect": x.get("affect"),
                         }
                         for x in high_conf[:limit]
                     ],
                     "tier": "fast_gate",
                     "entities": entities,
                     "graph_context": graph_context,
+                    "affect_hints": affect_hints,
                     "routing": routing,
                 }
 
@@ -338,7 +388,10 @@ class MemoryEngine:
                     {
                         "id": r["id"],
                         "text": r["metadata"]["text"],
-                        "meta": {"score": r["combined_score"]},
+                        "meta": {
+                            "score": r["combined_score"],
+                            "affect": r.get("affect"),
+                        },
                     }
                     for r in q_results
                 ]
@@ -349,12 +402,14 @@ class MemoryEngine:
                             "content": x["text"],
                             "score": float(x["score"]),
                             "source": "lancedb_reranked",
+                            "affect": (x.get("meta") or {}).get("affect"),
                         }
                         for x in ranked[:limit]
                     ],
                     "tier": "reranked",
                     "entities": entities,
                     "graph_context": graph_context,
+                    "affect_hints": affect_hints,
                     "elapsed": f"{time.time() - start:.4f}s",
                     "routing": routing,
                 }
@@ -366,12 +421,14 @@ class MemoryEngine:
                             "content": r["metadata"]["text"],
                             "score": r["combined_score"],
                             "source": "lancedb_scored",
+                            "affect": r.get("affect"),
                         }
                         for r in q_results[:limit]
                     ],
                     "tier": "scored_fallback",
                     "entities": entities,
                     "graph_context": graph_context,
+                    "affect_hints": affect_hints,
                     "elapsed": f"{time.time() - start:.4f}s",
                     "routing": routing,
                 }
@@ -406,6 +463,10 @@ class MemoryEngine:
                 (category, content, hemisphere, int(time.time()), importance),
             )
             doc_id = cursor.lastrowid
+            try:
+                upsert_memory_affect(conn, doc_id, extract_affect(content))
+            except Exception as affect_err:
+                print(f"[WARN] memory_affect upsert failed for doc {doc_id}: {affect_err}")
 
             # Generate embedding and store in vec_items so doc is visible
             # to semantic search immediately
