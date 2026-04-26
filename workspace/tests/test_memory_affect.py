@@ -1,5 +1,6 @@
 import sqlite3
 import sys
+import importlib.util
 from pathlib import Path
 
 _WORKSPACE = Path(__file__).parent.parent
@@ -14,6 +15,16 @@ from sci_fi_dashboard.memory_affect import (
     score_affect_match,
     upsert_memory_affect,
 )
+
+
+def _load_backfill_module():
+    script = _WORKSPACE / "scripts" / "personal" / "backfill_memory_affect.py"
+    assert script.exists(), f"missing script: {script}"
+    spec = importlib.util.spec_from_file_location("backfill_memory_affect", script)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
 
 
 def test_schema_created():
@@ -91,3 +102,36 @@ def test_affect_match_beats_neutral_only_when_query_emotional():
 
     assert score_affect_match(query, matching) > score_affect_match(query, neutral)
     assert score_affect_match(AffectTags(), matching) == 0.0
+
+
+def test_backfill_select_documents_without_affect_excludes_existing():
+    module = _load_backfill_module()
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE documents (id INTEGER PRIMARY KEY, content TEXT)")
+    ensure_memory_affect_table(conn)
+    conn.execute("INSERT INTO documents (id, content) VALUES (1, 'hurt'), (2, 'neutral')")
+    upsert_memory_affect(conn, 1, extract_affect("hurt"))
+
+    rows = module.select_documents_without_affect(conn, limit=10, since_id=0)
+
+    assert [row["id"] for row in rows] == [2]
+
+
+def test_backfill_dry_run_writes_no_affect_rows(tmp_path):
+    module = _load_backfill_module()
+    db_path = tmp_path / "memory.db"
+    conn = sqlite3.connect(str(db_path))
+    conn.execute("CREATE TABLE documents (id INTEGER PRIMARY KEY, content TEXT)")
+    ensure_memory_affect_table(conn)
+    conn.execute("INSERT INTO documents (id, content) VALUES (1, 'I feel ignored')")
+    conn.commit()
+    conn.close()
+
+    result = module.backfill(db_path, limit=10, dry_run=True, force=False, since_id=0)
+
+    conn = sqlite3.connect(str(db_path))
+    count = conn.execute("SELECT COUNT(*) FROM memory_affect").fetchone()[0]
+    conn.close()
+    assert result["dry_run"] is True
+    assert result["candidates"] == 1
+    assert count == 0
