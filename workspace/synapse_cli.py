@@ -22,6 +22,88 @@ app = typer.Typer(
 )
 
 # ---------------------------------------------------------------------------
+# Memory diagnostics subcommand group
+# ---------------------------------------------------------------------------
+memory_app = typer.Typer(name="memory", help="Memory pipeline diagnostics", no_args_is_help=True)
+app.add_typer(memory_app)
+
+
+@memory_app.command("memory-health")
+def memory_health(
+    port: int = typer.Option(8000, "--port", help="Gateway port"),
+) -> None:
+    """Show ingestion pipeline health: last ingest times, failure counts, pending messages."""
+    import sys  # noqa: PLC0415
+
+    import httpx  # noqa: PLC0415
+    from rich.console import Console  # noqa: PLC0415
+    from rich.table import Table  # noqa: PLC0415
+    from synapse_config import SynapseConfig  # noqa: PLC0415
+
+    cfg = SynapseConfig.load()
+    token = cfg.gateway.get("token") if cfg.gateway else None
+
+    headers = {}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+
+    console = Console()
+    try:
+        resp = httpx.get(f"http://127.0.0.1:{port}/memory_health", headers=headers, timeout=10)
+        resp.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        console.print(f"[red]HTTP {exc.response.status_code}:[/red] {exc.response.text}")
+        raise typer.Exit(1) from None
+    except httpx.RequestError as exc:
+        console.print(f"[red]Could not reach gateway on port {port}:[/red] {exc}")
+        raise typer.Exit(1) from None
+
+    data = resp.json()
+
+    # Summary table
+    summary = Table(title="Memory Pipeline Health", show_header=True, header_style="bold cyan")
+    summary.add_column("Metric", style="dim")
+    summary.add_column("Value")
+    summary.add_row("Last doc added", data.get("last_doc_added_at") or "(none)")
+    summary.add_row("Last KG extraction", data.get("last_kg_extraction_at") or "(none)")
+    summary.add_row("Last ingest completed", data.get("last_ingest_completed_at") or "(none)")
+    summary.add_row("Last ingest failure", data.get("last_ingest_failure_at") or "(none)")
+    summary.add_row("Pending session messages", str(data.get("pending_session_message_count", 0)))
+    console.print(summary)
+
+    # Recent failures table
+    recent = data.get("recent_failures", [])
+    if recent:
+        fail_table = Table(title="Recent Failures (up to 10)", header_style="bold red")
+        fail_table.add_column("created_at")
+        fail_table.add_column("session_key")
+        fail_table.add_column("phase")
+        fail_table.add_column("exception_type")
+        fail_table.add_column("exception_msg")
+        for row in recent:
+            fail_table.add_row(
+                row.get("created_at") or "",
+                row.get("session_key") or "",
+                row.get("phase") or "",
+                row.get("exception_type") or "",
+                row.get("exception_msg") or "",
+            )
+        console.print(fail_table)
+    else:
+        console.print("[green]No recent failures.[/green]")
+
+    # Exit 1 if last failure is more recent than last completion
+    last_failure = data.get("last_ingest_failure_at")
+    last_completed = data.get("last_ingest_completed_at")
+    if last_failure and last_completed and last_failure > last_completed:
+        console.print("[yellow]WARNING: last failure is more recent than last completion.[/yellow]")
+        raise typer.Exit(1)
+    if last_failure and not last_completed:
+        console.print("[yellow]WARNING: failures recorded but no successful completion.[/yellow]")
+        raise typer.Exit(1)
+
+
+# ---------------------------------------------------------------------------
 # WhatsApp subcommand group
 # ---------------------------------------------------------------------------
 wa_app = typer.Typer(name="whatsapp", help="WhatsApp channel management", no_args_is_help=True)
