@@ -139,7 +139,7 @@ MODEL_TIER_MAP: list[tuple[re.Pattern[str], PromptTier]] = [
     (re.compile(r"llama[- _]?3[. _]?[12]?[: _]?(13|34)[b]"), "mid_open"),  # 13B / 34B
     (re.compile(r"llama[- _]?3[. _]?[12]?[: _]?[1-9][b]"), "small"),  # 1B–9B
     (re.compile(r"llama.*70b"), "frontier"),  # llama-guard-70b etc.
-    (re.compile(r"llama.*[1-9]b"), "small"),  # other llama small
+    (re.compile(r"llama.*(?<!\d)[1-9]b"), "small"),  # other llama small
     # ── Mistral family ───────────────────────────────────────────────────────
     (re.compile(r"mistral-large"), "frontier"),  # mistral-large-latest
     (re.compile(r"mistral-medium"), "mid_open"),  # mistral-medium
@@ -155,12 +155,12 @@ MODEL_TIER_MAP: list[tuple[re.Pattern[str], PromptTier]] = [
     # ── Gemma family ─────────────────────────────────────────────────────────
     (re.compile(r"gemma.*27b"), "frontier"),  # gemma2:27b
     (re.compile(r"gemma.*9b"), "mid_open"),  # gemma2:9b
-    (re.compile(r"gemma.*[1-4][b.]"), "small"),  # gemma2:2b, gemma:4b
+    (re.compile(r"gemma.*(?<!\d)[1-4][b.]"), "small"),  # gemma2:2b, gemma:4b
     # ── DeepSeek ─────────────────────────────────────────────────────────────
     (re.compile(r"deepseek-r[12]"), "frontier"),  # deepseek-r1 / r2 reasoning
     (re.compile(r"deepseek-v3"), "frontier"),  # deepseek-v3
     (re.compile(r"deepseek.*67b"), "frontier"),  # deepseek-coder-33b / 67b
-    (re.compile(r"deepseek.*[1-9]b"), "small"),  # deepseek-coder-6.7b
+    (re.compile(r"deepseek.*(?<!\d)[1-9]b"), "small"),  # deepseek-coder-6.7b
     # ── Phi / Microsoft small models ─────────────────────────────────────────
     (re.compile(r"phi-?4"), "mid_open"),  # phi-4 (14B class)
     (re.compile(r"phi-?3-medium"), "mid_open"),  # phi-3-medium-14b

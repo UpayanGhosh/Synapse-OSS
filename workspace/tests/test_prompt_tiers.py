@@ -232,6 +232,15 @@ def test_validate_role_tier_strict_off_by_one_only_warns(caplog):
         ("openai/o1-2024-12-17", "frontier"),  # date-versioned o1
         ("openai/o3-mini-2025-01-31", "frontier"),  # date-versioned o3-mini
         ("gemini/gemini-2.0-flash-thinking-exp", "mid_open"),  # compound suffix
+        # ── Lookbehind regression: multi-digit sizes must not hit small rules ──
+        # llama: 33B must NOT match llama.*(?<!\d)[1-9]b (would match '3b')
+        ("ollama_chat/llama:33b", "mid_open"),
+        ("ollama_chat/llama:22b", "mid_open"),
+        # gemma: 22B must NOT match gemma.*(?<!\d)[1-4][b.] (would match '2b')
+        ("ollama_chat/gemma:22b", "mid_open"),
+        # deepseek: 33B must NOT match deepseek.*(?<!\d)[1-9]b (would match '3b')
+        ("ollama_chat/deepseek:33b", "mid_open"),
+        ("ollama_chat/deepseek-coder:33b", "mid_open"),
     ],
 )
 def test_infer_tier_versioned_and_size_real_world_ids(model, expected_tier):
