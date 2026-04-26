@@ -110,10 +110,13 @@ MODEL_TIER_MAP: list[tuple[re.Pattern[str], PromptTier]] = [
     # ── Gemini family ────────────────────────────────────────────────────────
     # flash-lite is smaller than flash; must appear first
     (re.compile(r"gemini-.*-flash-lite"), "small"),  # e.g. gemini-2.5-flash-lite-preview
-    (re.compile(r"gemini-3-flash(-preview)?$"), "mid_open"),  # gemini-3-flash
-    (re.compile(r"gemini-.*-flash(-preview)?$"), "mid_open"),  # gemini-1.5/2.0/2.5-flash
-    (re.compile(r"gemini-3-pro(-preview)?$"), "frontier"),  # gemini-3-pro
-    (re.compile(r"gemini-.*-pro(-preview)?$"), "frontier"),  # gemini-1.5/2.0/2.5-pro
+    # Allow version/date/experiment suffixes: -001, -2024-11-20, -thinking-exp, etc.
+    # Uses (-[a-z0-9]+)* to capture any dash-separated suffix segments (e.g.
+    # -thinking-exp, -002, -preview).  flash-lite is safe: guarded by the rule above.
+    (re.compile(r"gemini-3-flash(-[a-z0-9]+)*$"), "mid_open"),
+    (re.compile(r"gemini-.*-flash(-[a-z0-9]+)*$"), "mid_open"),
+    (re.compile(r"gemini-3-pro(-[a-z0-9]+)*$"), "frontier"),
+    (re.compile(r"gemini-.*-pro(-[a-z0-9]+)*$"), "frontier"),
     (re.compile(r"gemini-.*-ultra"), "frontier"),  # gemini-ultra variants
     # ── Claude family ────────────────────────────────────────────────────────
     # haiku is smaller than sonnet/opus; must appear first
@@ -126,10 +129,11 @@ MODEL_TIER_MAP: list[tuple[re.Pattern[str], PromptTier]] = [
     (re.compile(r"gpt-(4|5)[o]?(-turbo)?$"), "frontier"),  # gpt-4, gpt-4o, gpt-5, gpt-4-turbo
     (re.compile(r"gpt-(4|5)"), "frontier"),  # catch-all for gpt-4* / gpt-5*
     # ── OpenAI o-series reasoning ────────────────────────────────────────────
+    # Allow date/version suffixes: o1-2024-12-17, o3-mini-2025-01-31, etc.
     (
-        re.compile(r"o[1-4](-mini|-preview|-high|-low)?$"),
+        re.compile(r"o[1-4](-mini|-preview|-high|-low)?(-\d{4}-\d{2}-\d{2}|-\d{3,})?$"),
         "frontier",
-    ),  # o1, o3, o4, o4-mini — frontier context
+    ),  # o1, o3, o4, o4-mini, o1-2024-12-17, o3-mini-2025-01-31 — frontier context
     # ── Llama by parameter count ─────────────────────────────────────────────
     (re.compile(r"llama[- _]?3[. _]?[12]?[: _]?(405|70)[b]"), "frontier"),  # 70B / 405B
     (re.compile(r"llama[- _]?3[. _]?[12]?[: _]?(13|34)[b]"), "mid_open"),  # 13B / 34B
@@ -147,7 +151,7 @@ MODEL_TIER_MAP: list[tuple[re.Pattern[str], PromptTier]] = [
     (re.compile(r"qwen.*32b"), "frontier"),  # qwen2.5:32b
     (re.compile(r"qwen.*14b"), "mid_open"),  # qwen2.5:14b
     (re.compile(r"qwen.*7b"), "mid_open"),  # qwen2.5:7b
-    (re.compile(r"qwen.*[1-4]b"), "small"),  # qwen2.5:1.5b / 3b
+    (re.compile(r"qwen.*(?<!\d)[1-4]b"), "small"),  # qwen2.5:1.5b / 3b
     # ── Gemma family ─────────────────────────────────────────────────────────
     (re.compile(r"gemma.*27b"), "frontier"),  # gemma2:27b
     (re.compile(r"gemma.*9b"), "mid_open"),  # gemma2:9b
@@ -173,8 +177,12 @@ MODEL_TIER_MAP: list[tuple[re.Pattern[str], PromptTier]] = [
     # Groq is an inference provider; tier comes from the underlying model above.
     # ── Generic size catch-alls (lowest priority) ─────────────────────────────
     (re.compile(r":?70b\b"), "frontier"),  # any :70b tag
-    (re.compile(r":?(14|13|32|34)b\b"), "mid_open"),  # 13–34B range
-    (re.compile(r":?[1-9](\.\d+)?b\b"), "small"),  # 1B–9B range
+    # 13–35B mid-weight range — enumerate sizes explicitly to avoid first-digit
+    # mismatches (e.g. the digit-greedy pattern would match '2b' inside '22b').
+    (re.compile(r":?(13|14|22|27|32|33|34|35)b\b"), "mid_open"),
+    # 1B–9B range — (?<!\d) prevents matching the leading digit of multi-digit
+    # sizes like 22b or 33b where the catch-all above did not apply.
+    (re.compile(r"(?<!\d):?[1-9](\.\d+)?b\b"), "small"),
 ]
 
 # Ordered tier names for two-tier gap detection

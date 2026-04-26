@@ -215,6 +215,34 @@ def test_validate_role_tier_strict_off_by_one_only_warns(caplog):
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize(
+    "model,expected_tier",
+    [
+        # Bug 1 — generic size catch-alls misclassifying 22B/33B/35B as small
+        # The (?<!\d) lookbehind on the small pattern, plus explicit mid_open
+        # enumeration for 22/27/33/35B, prevent first-digit-greedy mismatches.
+        ("ollama_chat/codestral:22b", "mid_open"),  # was: small (matched '2b')
+        ("ollama_chat/yi:34b", "mid_open"),  # already correct via explicit list
+        ("ollama_chat/qwen:33b", "mid_open"),  # was: small via qwen.*[1-4]b '3b' hit
+        ("ollama_chat/mistral:7b", "mid_open"),  # family rule fires before size catch-all
+        # Bug 2 — versioned cloud IDs returning None due to strict $ anchors
+        ("gemini/gemini-2.0-flash-001", "mid_open"),  # -001 version suffix
+        ("gemini/gemini-2.5-pro-002", "frontier"),  # -002 version suffix
+        ("openai/gpt-4o-2024-11-20", "frontier"),  # date-versioned GPT-4o
+        ("openai/o1-2024-12-17", "frontier"),  # date-versioned o1
+        ("openai/o3-mini-2025-01-31", "frontier"),  # date-versioned o3-mini
+        ("gemini/gemini-2.0-flash-thinking-exp", "mid_open"),  # compound suffix
+    ],
+)
+def test_infer_tier_versioned_and_size_real_world_ids(model, expected_tier):
+    """Regression: versioned cloud IDs and multi-digit local sizes resolve correctly."""
+    result = infer_tier_from_any_model(model)
+    assert (
+        result == expected_tier
+    ), f"infer_tier_from_any_model({model!r}) returned {result!r}, expected {expected_tier!r}"
+
+
+@pytest.mark.unit
 def test_smoke_google_antigravity_gemini3_flash_no_false_positive(caplog):
     """google_antigravity/gemini-3-flash with mid_open config → zero warnings.
 
