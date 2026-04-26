@@ -6,6 +6,7 @@ import sys
 import threading
 import time
 from functools import lru_cache, wraps
+from pathlib import Path
 
 from flashrank import Ranker, RerankRequest
 
@@ -77,7 +78,17 @@ def _get_db_path() -> str:
 
 
 DB_PATH = _get_db_path()
-BACKUP_FILE = os.path.join(WORKSPACE_ROOT, "_archived_memories", "persistent_log.jsonl")
+
+
+def _resolve_backup_path() -> str:
+    """Resolve the persistent backup log path under the user data root.
+
+    Using SynapseConfig.data_root (i.e. ~/.synapse/) rather than the repo
+    workspace root avoids Windows path/permission races and survives repo
+    clean-ups that remove workspace/_archived_memories/.
+    """
+    cfg = SynapseConfig.load()
+    return str(Path(cfg.data_root) / "workspace" / "_archived_memories" / "persistent_log.jsonl")
 
 
 class MemoryEngine:
@@ -110,6 +121,16 @@ class MemoryEngine:
                 "[WARN] MemoryEngine: No embedding provider available -- semantic search disabled"
             )
         print("[OK] MemoryEngine initialized (shared graph, no duplication)")
+
+        # Resolve backup path once at init and pre-create the file.
+        # Done here (not lazily in add_memory) so any permission error surfaces
+        # at startup rather than silently swallowing the first memory write.
+        self._backup_file = _resolve_backup_path()
+        try:
+            os.makedirs(os.path.dirname(self._backup_file), exist_ok=True)
+            Path(self._backup_file).touch()
+        except OSError as _backup_init_err:
+            print(f"[WARN] MemoryEngine: could not pre-create backup log: {_backup_init_err}")
 
     @lru_cache(maxsize=500)  # noqa: B019
     def get_embedding(self, text: str) -> tuple:
@@ -369,10 +390,9 @@ class MemoryEngine:
         self, content: str, category: str = "direct_entry", hemisphere: str = "safe"
     ) -> dict:
         try:
-            # Backup
-            os.makedirs(os.path.dirname(BACKUP_FILE), exist_ok=True)
+            # Backup — path resolved at __init__ time under ~/.synapse/ (not repo root)
             entry = {"timestamp": time.time(), "category": category, "content": content}
-            with open(BACKUP_FILE, "a", encoding="utf-8") as f:
+            with open(self._backup_file, "a", encoding="utf-8") as f:
                 f.write(json.dumps(entry) + "\n")
 
             # Store - Unified connection path

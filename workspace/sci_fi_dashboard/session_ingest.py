@@ -202,24 +202,43 @@ async def _ingest_session_background(
 
         # ── 1. Vector ingestion ──
         try:
-            deps.memory_engine.add_memory(
+            result = deps.memory_engine.add_memory(
                 content=text,
                 category="session",
                 hemisphere=hemisphere,
             )
-            ingested_vec += 1
         except Exception as exc:
-            log.error("[session_ingest] vector batch %d/%d failed: %s", i + 1, len(batches), exc)
             _record_ingest_failure(
                 memory_db_path,
                 phase="vector",
                 session_key=session_key,
                 agent_id=agent_id,
                 archived_path=archived_path,
-                batch_index=i,
+                batch_index=i + 1,
                 total_batches=len(batches),
                 exc=exc,
             )
+            log.error("[session_ingest] vector batch %d/%d raised: %s", i + 1, len(batches), exc)
+            continue
+        if isinstance(result, dict) and "error" in result:
+            _record_ingest_failure(
+                memory_db_path,
+                phase="vector",
+                session_key=session_key,
+                agent_id=agent_id,
+                archived_path=archived_path,
+                batch_index=i + 1,
+                total_batches=len(batches),
+                exc=RuntimeError(result["error"]),
+            )
+            log.error(
+                "[session_ingest] vector batch %d/%d returned error: %s",
+                i + 1,
+                len(batches),
+                result["error"],
+            )
+            continue
+        ingested_vec += 1
 
         # ── 2. KG extraction + triple writes ──
         if extractor is not None:
