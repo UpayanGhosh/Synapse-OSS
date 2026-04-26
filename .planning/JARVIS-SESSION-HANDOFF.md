@@ -1,174 +1,158 @@
-# Jarvis Architecture Refactor — Session Handoff (2026-04-26 02:00–04:00)
+# Jarvis Architecture Refactor — Session Handoff (2026-04-26 04:00–08:00)
 
-**Previous handoff (2026-04-26 W1+W2+W3+W4 close-out) is superseded.** Today's session shipped the **Google Antigravity / Gemini 3 OAuth provider** — a 20th LLM provider in Synapse-OSS that gives free-or-paid Gemini 3 Pro/Flash access via the same CodeAssist OAuth flow the official `gemini` CLI and Antigravity IDE use. End-to-end usable on Telegram with the user's Google AI Pro subscription.
+**Previous handoff is superseded.** This session shipped: (1) `claude_cli` provider — Pro/Max subscription auth via local `claude` binary subprocess; (2) `claude_max` → `claude_cli` router refactor; (3) OSS-distributable wizard wiring for both new providers; (4) merge `feat/jarvis-architecture` → `develop`; (5) B-scope `/review` of today's diff; (6) two P0 fixes from review; (7) push `develop` to `origin`.
 
-## Today's commits (in order, all on `feat/jarvis-architecture`)
+## Today's commits (in order, all on `develop`)
 
 ```
+9cfc610  fix(claude_cli+antigravity): unbreak OSS onboarding for both providers ← P0 review fixes
+2a03b45  merge: feat/jarvis-architecture → antigravity + claude_cli + OSS wiring
+39b7b9c  feat(claude_cli): wire into onboarding wizard for OSS-distributable setup
+7a4c2c0  fix(claude_cli): replace default system prompt instead of appending
+689b62d  feat(router): replace claude_max direct-API path with claude_cli subprocess
+9186001  fix(claude_cli): pass system prompt via temp file to dodge Win32 32k arg cap
+6ba9e03  docs(handoff): close out antigravity provider session — Gemini 3 OAuth shipped
 ba3d663  test(antigravity): align with OpenClaw + cover new envelope/refresh paths
 b73fce1  feat(antigravity): engage paid tier via enabled_credit_types
 e0e0d06  fix(antigravity): correct CodeAssist v1internal envelope + OAuth resilience
 f47400e  feat(provider): add Google Antigravity (Gemini 3 via OAuth) as 20th provider
 ```
 
-4 commits + 1 codex-side patch (folded into ba3d663). Branch is **23 commits ahead of `develop`, not pushed yet.** No remote tracking.
+**Branch state:** `develop` is ~105 commits ahead of `origin/main`. Pushed to `origin/develop` at HEAD `9cfc610` this session.
 
-## What shipped
+## What shipped in addition to antigravity (which was covered in prior handoff)
 
-### New modules
-- `workspace/sci_fi_dashboard/google_oauth.py` (~870 lines) — PKCE OAuth flow + Gemini CLI credential extraction + token refresh + project/tier discovery (loadCodeAssist + onboardUser) + atomic state file at `~/.synapse/state/google-oauth.json` + WSL2 detection + EADDRINUSE fallback + friendly callback URL parser.
-- `workspace/sci_fi_dashboard/antigravity_provider.py` (~700 lines) — `AntigravityClient` posting to `cloudcode-pa.googleapis.com/v1internal:generateContent` with the CodeAssist envelope. Translates OpenAI messages → Gemini contents + tools. Auto-refreshes 401/403. Maps 429 → `litellm.RateLimitError`. Engages paid Pro tier via `enabled_credit_types: ["GOOGLE_ONE_AI"]`. Pro reasoning level via `thinkingConfig.thinkingLevel = LOW|HIGH`.
-- `workspace/tests/test_antigravity_provider.py` (8 tests) — model resolution, schema cleanup, envelope shape, G1 credit injection, response parsing, 401 refresh retry.
+### Claude Code CLI subscription provider — `claude_cli`
 
-### Wizard + CLI integration
-- `workspace/cli/provider_steps.py` — `google_antigravity` registered in `PROVIDER_GROUPS` (Self-Hosted/Special). New `google_antigravity_oauth_flow()` mirrors the Copilot device-flow pattern, surfaces OpenClaw's account-suspension warning verbatim.
-- `workspace/cli/onboard.py` — Gemini 3 model variants in `_KNOWN_MODELS["google_antigravity"]`. Provider added to per-role priority lists (casual/analysis/review/kg). OAuth branch in `_collect_provider_keys`.
-- `workspace/synapse_cli.py` — new `antigravity login | status | logout` Typer subcommand group.
-- `synapse.json.example` — `providers.google_antigravity` placeholder block populated by the wizard.
+- `workspace/sci_fi_dashboard/claude_cli_provider.py` (498 lines) — `ClaudeCliClient` with `asyncio.create_subprocess_exec` shell-out to local `claude` binary (Pro/Max subscription auth lives inside Claude Code, no API key in synapse.json, no OAuth dance from Synapse).
+- Win32 32k arg-cap workaround: system prompt written to `tempfile.NamedTemporaryFile` and passed via `--system-prompt-file` (REPLACE, not APPEND — `--append-system-prompt-file` produced terse/agentic output because Claude Code's default agent prompt biased the model).
+- Token-trim flags: `--exclude-dynamic-system-prompt-sections`, `--mcp-config '{"mcpServers":{}}'`, ephemeral cwd via `tempfile.mkdtemp()` to skip CLAUDE.md auto-walk.
+- `CLAUDE_CLI_PREFIXES = ("claude_cli/", "claude-cli/", "claude_max/")` — last is legacy alias.
+- 9 tests in `workspace/tests/test_claude_cli_provider.py`, all green.
 
-### Router integration
-- `workspace/sci_fi_dashboard/llm_router.py` — `_GOOGLE_ANTIGRAVITY_PREFIX` detection, `_antigravity_roles` set, `_invoke_antigravity()` dispatcher, `_build_antigravity_response_shim()` to return litellm-shaped responses so `call`, `call_with_metadata`, and `call_with_tools` all work uniformly. Branches added at top of `_do_call()` and after `normalize_tool_schemas` in `call_with_tools`.
+### Router refactor — `claude_max` direct-API → `claude_cli` subprocess
 
-## Critical wire-format discoveries (vs OpenClaw / Gemini CLI)
+- Removed `_get_claude_max_token`, `_claude_max_litellm_params`, `_CLAUDE_MAX_BETA_HEADERS`.
+- Added `_CLAUDE_CLI_PROVIDER_KEYS = ("claude_cli", "claude-cli", "claude_max")`, `is_claude_cli_model()`, `_claude_cli_roles` set, `_invoke_claude_cli()` dispatcher.
+- Branches in `_do_call()` and `call_with_tools()` for both antigravity and claude_cli.
 
-The provider went through **3 wrong wire formats** before landing:
+### Wizard + config wiring (the OSS-readiness pass)
 
-1. **First attempt** — OpenClaw's HTTP path lifted naively → 404/403. OpenClaw's `google-transport-stream.ts` posts to `/v1beta/models/{id}:generateContent` (the public Generative AI path) which requires `x-goog-api-key`, not OAuth Bearer.
+- `workspace/cli/provider_steps.py` — `claude_cli_setup()` verifies `claude` binary is on PATH (no OAuth dance, points user to `claude /login`).
+- `workspace/cli/onboard.py` — `_KNOWN_MODELS["claude_cli"]` lists `claude_cli/sonnet`, `opus`, `haiku`. Provider added to per-role priority lists (casual #2 / code, analysis, review #1).
+- `synapse.json.example` — `providers.claude_cli` block with `binary_path: "claude"` + comment about ~50k token system-prompt overhead (subscription = unlimited tokens, only message-count limit applies).
 
-2. **Second attempt** — bare body without envelope → 404 NOT_FOUND. The OAuth path requires the **CodeAssist envelope** `{model, project, user_prompt_id, request: {contents, ..., session_id}}` posted to `cloudcode-pa.googleapis.com/v1internal:generateContent`. Confirmed by reading the actual `@google/gemini-cli` bundle source (`packages/core/dist/src/code_assist/server.js`).
+### Live verification
 
-3. **Third attempt** — envelope correct but no identification headers → 403 PERMISSION_DENIED. Google whitelists known clients via `User-Agent: google-api-nodejs-client/9.15.1` + `X-Goog-Api-Client: gl-node/22.0.0` + `Client-Metadata: {"ideType":"IDE_UNSPECIFIED","platform":"PLATFORM_UNSPECIFIED","pluginType":"GEMINI"}`.
+- Telegram chat E2E with `casual → claude_cli/sonnet` worked on real subscription auth.
+- CLI `/chat/the_creator` SBS persona + RAG returned the right "Upayan bhai is my master..." identity response.
+- Gemini 3 Flash A/B vs Sonnet 4.6 done via Brave + Claude in Chrome MCP (depth questions modeled on `WhatsApp Chat with Jarvis.txt`).
 
-4. **Final correctness** — `enabled_credit_types: ["GOOGLE_ONE_AI"]` required to engage paid tier. Without it, Pro accounts bill against `standard-tier` quota. With it, requests bill against `g1-pro-tier`.
+## /review B-scope verdict (today's antigravity + claude_cli, 12 files / 3,507 lines)
 
-## Live verification
+**49 findings: 2 P0 (fixed in `9cfc610`), 17 P1, 30 P2.**
 
-User has Google One AI Pro subscription. `loadCodeAssist` reports:
-- `currentTier.id: "standard-tier"`
-- `paidTier.id: "g1-pro-tier"`
-- `paidTier.name: "Gemini Code Assist in Google One AI Pro"`
-- Project: `root-shadow-ffvtg` (auto-discovered)
+### P0 fixes already applied
 
-Live model coverage (verified on this account):
-| API model id | User-facing alias | Status |
-|---|---|---|
-| `gemini-3-flash-preview` | `gemini-3-flash` / `gemini-3-flash-lite` | ✓ 200 |
-| `gemini-3.1-pro-preview` | `gemini-3-pro-low` / `gemini-3-pro-high` | ✓ 200 |
-| `gemini-3-pro-preview` | `gemini-3-pro` (legacy) | ⚠ 429-prone (separate quota pool) |
+1. **`llm_router.py:1515`** — wizard saved `binary_path`, router read `command` → custom paths silently ignored. Fixed: read both, prefer `binary_path`.
+2. **`provider_steps.py:451-466`** — `google_antigravity_oauth_flow` never passed `code_input` callback to `login_pkce` → WSL2 + port-busy users got hard `OAuthCallbackBindError`. Fixed: wired `_paste_fallback(url)` using `console.input`.
 
-Bare aliases (`gemini-3-pro`, `gemini-3.1-pro`, `gemini-3.1-flash-preview`) return 404 NOT_FOUND. Only `-preview`-suffixed IDs are valid.
+40/40 unit tests green after both fixes.
 
-### Telegram E2E
-First message ("Hiii") → "Hii bhai!" via gemini-3-flash-preview, 4.1s, 18,998 in / 53 out.
+### P1 mechanical cleanups (still owed, ~30 min total)
 
-### CLI tests via `/chat/the_creator`
+| File:line | Problem |
+|-----------|---------|
+| `antigravity_provider.py:191` | `resolve_inference_model_id` is "backward-compat helper" but new file has no callers — dead from day 1 |
+| `antigravity_provider.py:796` | `shutdown_default_client` defined, never wired into FastAPI lifespan — httpx pool leaks on shutdown |
+| `llm_router.py:1785` | `call()` early-branches to `call_with_metadata` for claude_cli roles, but `_do_call()` already routes there — redundant indirection |
+| `_flatten_message_content` | Duplicated in `antigravity_provider.py:201` + `claude_cli_provider.py:145`, subtle behavioral drift on non-string blocks. Extract to shared `_message_utils.py` |
+| `claude_cli_provider.py:428` | NamedTemporaryFile created BEFORE try/finally cleanup. Leak risk if `create_subprocess_exec` raises (rare) |
+| `antigravity_provider.py:629` | `_build_envelope` docstring claims tier-gated `enabled_credit_types`, code unconditionally adds it for `_G1_OVERAGE_MODELS`. Fix docstring or add tier gate |
 
-| Test | Component | Time | Status |
-|---|---|---|---|
-| T1 — "Who is your master?" | SBS persona + RAG | 6.1s | ✓ "Upayan bhai is my master..." |
-| T2 — "What do you remember about Shreya?" | KG + vector RAG | 2.9s | ✓ "Shreya, or Boumuni... fan of momos and pastries... heart of your high-agency partnership" |
-| T4 — "Tell me about my partner" | KG-augmented recall | 3.3s | ✓ "...your Rapido rides... 'love as an act of active defense'..." |
-| Dual Cognition | Inner monologue + tension | n/a | ⚠ Architecture works; pro-high RPM (1 RPM) blocks merge call |
-| T3 — Tool execution | bash_exec via tool loop | 27.5s | ✗ Tool loop fires 12 immediate retries on 429 |
+### P2 test coverage gaps (specialist generated 13 stubs ready to drop in)
 
-## Recommended local model picks (verified live)
+- **`google_oauth.py` (999 lines, security-critical) has zero direct tests.** Uncovered: `parse_oauth_callback_input` (state-mismatch CSRF defense), `refresh_access_token` (token rotation), `save_credentials` atomic-write + chmod 0600, `OAuthCallbackBindError` EADDRINUSE fallback, `_is_vpc_sc_violation`, `_onboard_user` LRO polling.
+- **`_raise_for_status()`** in `antigravity_provider.py:490` — central HTTP-error mapper, only the 401-then-200 retry path is tested. 400 / 403 / 429 / 500 / quota-hint mappings unverified.
+- **`claude_cli_provider.py`** subprocess error / timeout / temp-file-cleanup paths all untested. The 32k arg-cap workaround is asserted only by path-substring; the actual >32k system-prompt scenario is never executed.
+- **Concurrent refresh dedup** (`_refresh_if_needed` double-checked locking) untested.
+- **Mocks in `test_antigravity_provider.py`** use lambdas that ignore arguments — would pass even if production code refreshed with stale creds.
 
-User's role mapping in `~/.synapse/synapse.json`:
-```
-casual    → google_antigravity/gemini-3-flash
-code      → google_antigravity/gemini-3-pro-low  (fallback: flash)
-analysis  → google_antigravity/gemini-3-pro-high (fallback: pro-low)
-review    → google_antigravity/gemini-3-pro-high (fallback: pro-low)
-vault     → ollama_chat/gemma4:e4b               (local, unchanged)
-translate → google_antigravity/gemini-3-flash
-```
+Specialist's stubs are reproducible from this session's transcript (search "test_stub" in the security/maintainability/testing agent outputs).
 
-`session.dual_cognition_enabled: false` — disabled because each chat fires 14+ LLM calls (2 dual-cog + 12 tool-loop + 1 main) which immediately exhausts even Pro Flash's RPM cap.
+## Outstanding work — priority order for next session
 
-## What's left
+### W6 — Tool loop convergence guard (P0, blocks main merge)
 
-### W6 — Tool loop convergence guard (P0 next session)
-
-**Problem:** `pipeline.chat.call_with_tools` fires up to 12 immediate retries on 429. Each round spaced ~2s flat. No backoff. Burns through Pro Flash quota in 28s.
+**Problem:** `pipeline.chat.call_with_tools` fires up to 12 immediate retries on 429. Each round ~2s flat, no backoff. Burns through any tier with RPM < 14 in 28s.
 
 **Fix shape:**
 - Cap `max_rounds` 12 → 3 (configurable)
-- On 429 / `RateLimitError`: parse `Retry-After` header, wait min(parsed, 30s) instead of immediate retry
-- Add jittered exponential backoff between rounds (1s → 2s → 5s)
-- After 2 consecutive 429s, fall through to fallback model (configured via `model_mappings.<role>.fallback`)
+- On 429 / `RateLimitError`: parse `Retry-After` header, wait `min(parsed, 30s)` instead of immediate retry
+- Jittered exponential backoff between rounds (1s → 2s → 5s)
+- After 2 consecutive 429s, fall through to `model_mappings.<role>.fallback`
 
-Reference: `D:/Shorty/openclaw/src/agents/provider-transport-fetch.ts` for OpenClaw's retry/backoff pattern. (Audit dispatched but not delivered this session — re-spawn next time.)
+Reference: `D:/Shorty/openclaw/src/agents/provider-transport-fetch.ts` for OpenClaw's pattern.
 
-### W7 — Dual cognition off Antigravity
+### W7 — Dual cognition off antigravity (currently disabled)
 
-**Problem:** DualCognitionEngine fires 2 calls to the analysis role per chat. With analysis=pro-high (1 RPM), instant 429.
+**Problem:** `DualCognitionEngine.think()` fires 2 calls to the analysis role per chat. With analysis=pro-high (1 RPM), instant 429.
+
+**Workaround active:** `session.dual_cognition_enabled: false` in synapse.json.
 
 **Fix options:**
-- **A:** Route `call_ag_oracle` (in `llm_wrappers.py:42`) at a dedicated cheap model — local Ollama or `google_antigravity/gemini-3-flash-lite-preview` with `thinkingLevel: LOW`.
+- **A:** Route `call_ag_oracle` (`llm_wrappers.py:42`) at `google_antigravity/gemini-3-flash-lite-preview` with `thinkingLevel: LOW`, or local Ollama.
 - **B:** Consolidate stream + merge into one prompt (single LLM call, two output sections).
-- **C:** Use Gemini 3 Pro's native `thoughtSignature` instead of separate LLM call (per OpenClaw's `google-transport-stream.ts:134-139`).
+- **C:** Use Gemini 3 Pro's native `thoughtSignature` instead of separate LLM call (per OpenClaw `google-transport-stream.ts:134-139`).
 
-Recommend A short-term (cheap), C long-term (architecturally cleanest).
+Recommend A short-term, C long-term.
 
-### W8 — gpt-5-mini residue in traffic cop
+### W8 — `gpt-5-mini` residue in traffic cop
 
-Telegram first-message context block showed two model entries:
-```
-**Context Usage:** 15.6% / 1,048,576 ... **Model:** gpt-5-mini
-**Context Usage:** 19,205 / 1,048,576 (1.8%) ... **Model:** gemini-3-flash-preview
-```
-
-The `gpt-5-mini` is the legacy traffic cop classifier model. With Copilot detached from synapse.json, this should fall back to a configured antigravity model. Find + fix the hardcoded reference in `route_traffic_cop` (api_gateway.py).
+Telegram first-message context block showed two model entries — one is `gpt-5-mini` (legacy classifier model). With Copilot detached from synapse.json, this should fall back to a configured antigravity model. Find + fix the hardcoded reference in `route_traffic_cop` (api_gateway.py).
 
 ### Other follow-ups
 
 | # | Item | Severity |
 |---|---|---|
-| 1 | Push branch to remote (`git push -u origin feat/jarvis-architecture`) | low |
-| 2 | Rebase / merge to `develop` once W6+W7 land | low |
-| 3 | W5 (capability-tier auto-detect + warnings) — last item from MODEL-AGNOSTIC-ROADMAP | low |
-| 4 | Write `docs/antigravity-setup.md` walkthrough | medium |
-| 5 | Add gemini CLI subprocess as parallel provider (`google_gemini_cli/<model>`) — different concurrency model, fallback target | low |
+| 1 | `docs/antigravity-setup.md` walkthrough | medium (OSS blocker) |
+| 2 | `docs/claude-cli-setup.md` walkthrough | medium (OSS blocker) |
+| 3 | `workspace/tests/test_google_oauth.py` from specialist stubs | medium |
+| 4 | `_raise_for_status` parametrized tests | medium |
+| 5 | `claude_cli_provider` subprocess-error tests | medium |
+| 6 | 4 mechanical P1 cleanups (table above) | low (~30 min) |
+| 7 | Open PR `develop → main` | low (after W6) |
+| 8 | W5 (capability-tier auto-detect + warnings) — last item from MODEL-AGNOSTIC-ROADMAP | low |
+| 9 | Add `google_gemini_cli/<model>` provider in parallel — different concurrency model | low |
 
-### Deferred bugs (carried from previous sessions)
+### Deferred bugs (carried)
 
 1. **Claude via Copilot broken** — `llm_router` rewrites `github_copilot/claude-...` → `openai/...`, Copilot OpenAI endpoint refuses Claude. Workaround now moot (Copilot detached). Real fix still wanted.
 2. **`/reload_config` endpoint missing** — referenced in `CORE.md` as T6+, returns 404. Restart works fine. Low priority.
 3. **sqlite3 CLI not on Windows PATH** — bot needs `python -c "import sqlite3"` fallback. Documented in TOOLS.md.
-4. **WhatsApp bridge crashloop** — Baileys 7.x exits code 1 on each restart attempt. Synapse keeps trying with backoff. Not blocking; investigate next session.
+4. **WhatsApp bridge crashloop** — Baileys 7.x exits code 1 on each restart attempt. Synapse keeps trying with backoff. Not blocking.
 
-## Branch state
+## Confidence levels (post-push)
 
-**Branch:** `feat/jarvis-architecture` — 23 commits ahead of `develop`, not pushed.
+- **Push to `origin/develop`:** ✓ done (HEAD `9cfc610`)
+- **Open PR `develop → main`:** 8/10 — pending W6 + W7
+- **OSS release tag:** 7/10 — pending W6 + setup docs + `google_oauth.py` tests
+- **Daily Telegram use:** ✓ verified
+- **Fresh-fork OSS install (Linux/Mac/Windows):** P0s caught in review now fixed; not yet validated on a clean checkout
 
-Recent commits:
-```
-ba3d663  test(antigravity): align with OpenClaw + cover new envelope/refresh paths
-b73fce1  feat(antigravity): engage paid tier via enabled_credit_types
-e0e0d06  fix(antigravity): correct CodeAssist v1internal envelope + OAuth resilience
-f47400e  feat(provider): add Google Antigravity (Gemini 3 via OAuth) as 20th provider
-c7389ba  docs(handoff): close out 2026-04-25/26 session — W1+W2+W3+W4 shipped
-f672989  feat(parity): W4 golden behavior test suite + CI
-57c2451  docs(planning): roadmap reflects W1+W2+W3 shipped same day
-37a1dea  feat(runtime): wire tier-aware prompt compilation into chat pipeline
-eb1ffc0  Add local tool-call resilience
-bdaa25a  fix(runtime): set Ollama num_ctx default — unbreak local-mode chat
-```
-
-## Working tree (clean per OSS rules)
+## Working tree state
 
 ```
- M workspace/sci_fi_dashboard/entities.json   ← personal data, intentionally skipped
-?? .planning/JARVIS-ARCH-PLAN.md             ← separate doc, untracked
+ M workspace/sci_fi_dashboard/entities.json   ← personal data, intentionally skipped per OSS rules
+?? .planning/JARVIS-ARCH-PLAN.md             ← separate planning doc, untracked
 ?? workspace/tests/state/                    ← test scratch, untracked
 ```
 
-## DB state (from previous session, not advanced)
+## DB state
 
 - `memory.db`: 10,401 documents
 - `knowledge_graph.db`: 876 nodes / 703 edges
-- SBS `persistent_log.jsonl`: alive
-- 8-layer profile JSONs: alive at `~/.synapse/workspace/sci_fi_dashboard/synapse_data/the_creator/profiles/current/`
+- SBS profiles + KG triples: alive at `~/.synapse/workspace/sci_fi_dashboard/synapse_data/the_creator/profiles/current/`
 
 ## Architecture principles (unchanged)
 
@@ -178,45 +162,35 @@ bdaa25a  fix(runtime): set Ollama num_ctx default — unbreak local-mode chat
 4. Self-evolution via CORE.md writes
 5. 1st-person voice in md templates
 6. **OSS-friendliness:** every default must work on 4 GB VRAM. No personal-rig tuning for global defaults.
-7. **NEW:** Antigravity OAuth client_id/secret are NEVER shipped in repo — extracted from local `@google/gemini-cli` install OR sourced from env vars (`SYNAPSE_GEMINI_OAUTH_CLIENT_ID`/_SECRET).
+7. Antigravity OAuth client_id/secret are NEVER shipped in repo — extracted from local `@google/gemini-cli` install OR sourced from env vars (`SYNAPSE_GEMINI_OAUTH_CLIENT_ID`/_SECRET).
+8. Claude Code CLI auth NEVER reaches Synapse — subprocess hands off to local `claude` binary, subscription auth stays inside Claude Code.
 
 ## User preferences (unchanged)
 
-- **English only, no Banglish** — for documentation, commits, comments. Bot persona may use Banglish per CORE.md.
-- **Local-hostable Synapse** on 8 GB VRAM hardware — proven with qwen2.5:7b at mid_open tier (vault role).
-- **OSS-distributable defaults** — example files must work on a fresh fork without personal data.
+- English only, no Banglish for documentation, commits, comments. Bot persona may use Banglish per CORE.md.
+- Local-hostable Synapse on 8 GB VRAM hardware — proven with qwen2.5:7b at mid_open tier (vault role).
+- OSS-distributable defaults — example files must work on a fresh fork without personal data.
 
 ## Resume checklist (first thing next session)
 
 ```bash
-# 1. Server state
-curl -s http://127.0.0.1:8000/health
+# 1. Verify pushed state
+git log --oneline -5
+# expect: 9cfc610 at HEAD on develop, also on origin/develop
 
-# 2. Read this handoff
+# 2. Verify tests still green
+cd workspace && pytest tests/test_antigravity_provider.py tests/test_claude_cli_provider.py tests/test_llm_router_tools.py -q
+# expect: 40/40 pass
+
+# 3. Read this handoff
 cat .planning/JARVIS-SESSION-HANDOFF.md
 
-# 3. Verify antigravity creds
-cd D:/Shorty/Synapse-OSS/workspace && python synapse_cli.py antigravity status
+# 4. Verify antigravity creds (if testing antigravity path)
+cd workspace && python synapse_cli.py antigravity status
 
-# 4. Check git state
-git status --short
-git log --oneline -10
+# 5. Verify claude binary still on PATH (if testing claude_cli path)
+where claude  # Windows
+which claude  # Mac/Linux
 
-# 5. Pick next:
-#    - W6 tool-loop convergence (P0): cap max_rounds + Retry-After header parsing + jittered backoff
-#    - W7 dual cognition off antigravity (P0): route call_ag_oracle at flash-lite or local Ollama
-#    - W8 gpt-5-mini residue: find hardcoded reference in route_traffic_cop
-#    - Push branch + open PR
+# 6. Pick: W6 (tool-loop guard, P0), or P1 cleanup PR, or setup docs.
 ```
-
-## Known limitations (transparent to user)
-
-- **Pro RPM caps are real and tight.** Per-account observation:
-  - `gemini-3-pro-preview` (used by pro-high): ~1 RPM
-  - `gemini-3.1-pro-preview` (used by pro-low/high): tighter than expected
-  - `gemini-3-flash-preview`: ~30 RPM burst, sustains under spaced load
-  - `enabled_credit_types: ["GOOGLE_ONE_AI"]` engages paid tier billing but does NOT raise per-minute caps — those are tier-defined limits Google enforces server-side.
-- **TOS gray area.** Both OpenClaw and our integration warn that some users have reported account restrictions/suspensions after using third-party Gemini CLI / Antigravity OAuth clients.
-- **WhatsApp bridge currently crashlooping** (Baileys 7.x). Telegram works fine; investigate next session.
-
-Total session output: 4 commits + 1 codex patch, ~2200 lines added, full antigravity provider + tests + wizard + CLI integration, live-verified end-to-end on Telegram with Google One AI Pro account.
