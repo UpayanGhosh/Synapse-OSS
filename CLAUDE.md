@@ -214,6 +214,8 @@ API:8000 | Baileys Bridge:5010 (internal) | Tools MCP:8989 | Ollama:11434 | OAut
 
 10. **Memory query is shared** — `MemoryEngine.query()` is called once in `persona_chat()` and results are passed to `dual_cognition.think(pre_cached_memory=...)`. Do NOT add a second memory query inside dual cognition.
 
+11. **`add_memory` returns `{"error": str(e)}`, does not raise** — any caller that ignores the return value will silently count failures as successes. Always check `isinstance(result, dict) and "error" in result` after calling `add_memory`. See `session_ingest.py` for the reference pattern. Do NOT refactor `add_memory` to raise instead — it has too many callers and the `@with_retry` decorator interacts with raise semantics.
+
 ## Diagnostics
 
 - **`/memory_health`** — canonical health probe for the ingestion pipeline. Auth-gated (Bearer token). Returns last doc/KG/ingest timestamps, pending session message count, and up to 10 recent failure rows from the `ingest_failures` table. Use `synapse memory memory-health` from the CLI.
