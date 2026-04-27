@@ -154,13 +154,54 @@ def _expires_at_from_token_or_delta(access_token: str, expires_in: int | float |
     return time.time() + delta
 
 
+def _json_error_code(resp: Any) -> str:
+    with contextlib.suppress(ValueError, TypeError, json.JSONDecodeError):
+        data = resp.json()
+        if isinstance(data, dict):
+            raw = data.get("error") or data.get("code")
+            if isinstance(raw, dict):
+                raw = raw.get("code") or raw.get("type")
+            if isinstance(raw, str):
+                return raw.strip().lower()
+    return ""
+
+
+def _error_detail(resp: Any) -> str:
+    with contextlib.suppress(ValueError, TypeError, json.JSONDecodeError):
+        data = resp.json()
+        if isinstance(data, dict):
+            error = data.get("error")
+            if isinstance(error, str) and error.strip():
+                return error.strip()
+            if isinstance(error, dict):
+                message = error.get("message")
+                code = error.get("code")
+                if isinstance(message, str) and message.strip():
+                    return message.strip()
+                if isinstance(code, str) and code.strip():
+                    return code.strip()
+            message = data.get("message")
+            if isinstance(message, str) and message.strip():
+                return message.strip()
+    text = getattr(resp, "text", "")
+    if isinstance(text, str) and text.strip():
+        return text.strip()
+    return "request failed"
+
+
 def _ensure_success(resp: Any) -> None:
-    if int(getattr(resp, "status_code", 0)) < 400:
+    status = int(getattr(resp, "status_code", 0))
+    if status < 400:
         return
+    detail = _error_detail(resp)
     try:
         resp.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        raise RuntimeError(f"OpenAI OAuth HTTP {status}: {detail}") from exc
     except RuntimeError as exc:
-        raise RuntimeError(f"OpenAI OAuth HTTP {resp.status_code}") from exc
+        # httpx.Response objects used in unit tests can lack a bound request.
+        raise RuntimeError(f"OpenAI OAuth HTTP {status}: {detail}") from exc
+    raise RuntimeError(f"OpenAI OAuth HTTP {status}: {detail}")
 
 
 def request_device_code(*, http_client: Any | None = None) -> OpenAICodexDeviceCode:
@@ -188,6 +229,7 @@ def poll_device_code(
     sleep_fn=time.sleep,
 ) -> tuple[str, str]:
     client = http_client or httpx
+    wait_interval = max(1, int(code.interval))
     deadline = time.time() + min(float(code.expires_in), float(DEVICE_TIMEOUT_SEC))
     while time.time() < deadline:
         resp = client.post(
@@ -203,8 +245,17 @@ def poll_device_code(
             data = resp.json()
             return str(data["authorization_code"]), str(data["code_verifier"])
         if resp.status_code in (403, 404):
-            sleep_fn(code.interval)
+            sleep_fn(wait_interval)
             continue
+        if resp.status_code == 400:
+            error_code = _json_error_code(resp)
+            if error_code == "authorization_pending":
+                sleep_fn(wait_interval)
+                continue
+            if error_code == "slow_down":
+                wait_interval += 5
+                sleep_fn(wait_interval)
+                continue
         _ensure_success(resp)
     raise RuntimeError("OpenAI Codex device authorization timed out")
 
