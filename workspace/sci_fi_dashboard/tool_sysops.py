@@ -287,6 +287,14 @@ _PLACEHOLDER_KEY_LITERALS = frozenset({"PLACEHOLDER", "changeme"})
 #   * github_copilot — uses JWT exchange in llm_router, not a synapse.json key
 #   * ollama / ollama_chat — local daemon, no API key required
 _ALWAYS_TRUSTED_PROVIDERS = frozenset({"github_copilot", "ollama_chat", "ollama"})
+_OPENAI_CODEX_PROVIDER_ALIASES = frozenset({"openai_codex", "openai-codex", "codex"})
+
+
+def _canonical_provider_name(name: str) -> str:
+    lowered = str(name or "").strip().lower()
+    if lowered in _OPENAI_CODEX_PROVIDER_ALIASES:
+        return "openai_codex"
+    return lowered
 
 
 def _has_openai_codex_oauth_credentials() -> bool:
@@ -339,8 +347,9 @@ def _get_configured_providers() -> set[str]:
     for name, provider_cfg in providers.items():
         if not isinstance(provider_cfg, dict):
             continue
+        canonical_name = _canonical_provider_name(name)
         # OpenAI Codex trust is OAuth-state only; never trust it from api_key.
-        if name == "openai_codex":
+        if canonical_name == "openai_codex":
             continue
         key = provider_cfg.get("api_key", "")
         if not isinstance(key, str):
@@ -352,7 +361,7 @@ def _get_configured_providers() -> set[str]:
             continue
         if key in _PLACEHOLDER_KEY_LITERALS:
             continue
-        configured.add(name)
+        configured.add(canonical_name)
 
     return configured
 
@@ -385,7 +394,8 @@ def _trust_prefix_error(value: str, fuzzy_suggestions: list[str] | None = None) 
             f"(see TOOLS.md → Provider Model Discovery)."
         )
 
-    prefix = value.split("/", 1)[0]
+    raw_prefix = value.split("/", 1)[0]
+    prefix = _canonical_provider_name(raw_prefix)
     if prefix not in configured:
         hint = ""
         if fuzzy_suggestions:
@@ -393,10 +403,11 @@ def _trust_prefix_error(value: str, fuzzy_suggestions: list[str] | None = None) 
                 f" Closest reachable models (Copilot/Ollama): "
                 f"{', '.join(fuzzy_suggestions)}."
             )
+        config_prefix = "openai_codex" if prefix == "openai_codex" else raw_prefix
         return (
-            f"unknown provider {prefix!r} in {value!r}. "
+            f"unknown provider {raw_prefix!r} in {value!r}. "
             f"Configured providers (synapse.json): {configured_list}. "
-            f"To use {prefix}, configure providers.{prefix} "
+            f"To use {raw_prefix}, configure providers.{config_prefix} "
             f"(real api_key, or complete local OAuth for subscription providers like openai_codex), "
             f"then verify the model name exists (see TOOLS.md → Provider Model Discovery "
             f"for the curl recipe).{hint}"

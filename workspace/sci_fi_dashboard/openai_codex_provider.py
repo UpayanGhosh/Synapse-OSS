@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+import time
 from dataclasses import dataclass
 from typing import Any
 
@@ -411,7 +412,19 @@ class OpenAICodexClient:
             creds = self._ensure_creds_loaded()
             if not creds.is_expired():
                 return creds
-            new_creds = await asyncio.to_thread(openai_codex_oauth.refresh_access_token, creds)
+            try:
+                new_creds = await asyncio.to_thread(openai_codex_oauth.refresh_access_token, creds)
+            except Exception as exc:
+                access_token = str(getattr(creds, "access_token", "") or "").strip()
+                if access_token and time.time() < float(getattr(creds, "expires_at", 0.0) or 0.0):
+                    return creds
+                if isinstance(exc, AuthenticationError):
+                    raise
+                raise AuthenticationError(
+                    message=f"OpenAI Codex token refresh failed: {exc}",
+                    llm_provider="openai_codex",
+                    model="<unknown>",
+                ) from exc
             await asyncio.to_thread(openai_codex_oauth.save_credentials, new_creds)
             self._creds = new_creds
             return new_creds

@@ -108,6 +108,25 @@ def test_non_interactive_missing_api_key_exits_1(tmp_path, monkeypatch):
     assert "GEMINI_API_KEY" in combined, f"Expected GEMINI_API_KEY in output: {combined}"
 
 
+def test_non_interactive_openai_codex_unsupported_exits_1(tmp_path, monkeypatch):
+    """openai_codex non-interactive setup must fail clearly (OAuth device flow only)."""
+    monkeypatch.setenv("SYNAPSE_HOME", str(tmp_path))
+    result = runner.invoke(
+        app,
+        ["onboard", "--non-interactive", "--accept-risk"],
+        env={
+            "SYNAPSE_HOME": str(tmp_path),
+            "SYNAPSE_PRIMARY_PROVIDER": "openai_codex",
+            "OPENAI_CODEX_API_KEY": "ignored-if-present",
+        },
+    )
+    assert result.exit_code == 1
+    combined = result.output or ""
+    assert "openai_codex" in combined
+    assert "non-interactive" in combined.lower()
+    assert "oauth" in combined.lower()
+
+
 def test_non_interactive_success_writes_config(tmp_path, monkeypatch):
     """ONB-09 + ONB-01: --non-interactive with all vars set → exit 0, synapse.json written."""
     monkeypatch.setenv("SYNAPSE_HOME", str(tmp_path))

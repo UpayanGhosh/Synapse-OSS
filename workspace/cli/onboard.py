@@ -207,6 +207,14 @@ def _run_non_interactive(
             )
             raise typer.Exit(1)
 
+    elif provider == "openai_codex":
+        typer.echo(
+            "ERROR: Non-interactive onboarding for 'openai_codex' is not supported. "
+            "Run interactive onboarding to complete ChatGPT OAuth device login first.",
+            err=True,
+        )
+        raise typer.Exit(1)
+
     else:
         env_var = _KEY_MAP.get(provider, f"{provider.upper()}_API_KEY")
         api_key = os.environ.get(env_var, "").strip()
