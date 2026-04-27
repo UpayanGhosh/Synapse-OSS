@@ -15,6 +15,7 @@ import ast
 import asyncio
 import copy
 import difflib
+import inspect
 import json
 import logging
 import os
@@ -52,6 +53,10 @@ from sci_fi_dashboard.claude_cli_provider import (  # noqa: E402
     ClaudeCliClient,
     ClaudeCliResponse,
     is_claude_cli_model,
+)
+from sci_fi_dashboard.openai_codex_provider import (  # noqa: E402
+    OpenAICodexResponse,
+    is_openai_codex_model,
 )
 
 try:
@@ -990,7 +995,11 @@ _CLAUDE_CLI_PROVIDER_KEYS = ("claude_cli", "claude-cli", "claude_max")
 def _is_direct_provider_model(model: str | None) -> bool:
     """Models Synapse dispatches itself instead of registering with litellm."""
     model = model or ""
-    return model.startswith(_GOOGLE_ANTIGRAVITY_PREFIX) or is_claude_cli_model(model)
+    return (
+        model.startswith(_GOOGLE_ANTIGRAVITY_PREFIX)
+        or is_claude_cli_model(model)
+        or is_openai_codex_model(model)
+    )
 
 
 def build_router(model_mappings: dict, providers: dict) -> Router:
@@ -1412,6 +1421,56 @@ def _build_claude_cli_response_shim(claude_response: ClaudeCliResponse):
     )
 
 
+def _build_openai_codex_response_shim(codex_response: OpenAICodexResponse):
+    """Wrap OpenAI Codex output in litellm's response shape."""
+    from types import SimpleNamespace
+
+    tool_calls = [
+        SimpleNamespace(
+            id=tc.get("id", ""),
+            type="function",
+            function=SimpleNamespace(
+                name=tc.get("name", ""),
+                arguments=tc.get("arguments", "{}"),
+            ),
+        )
+        for tc in codex_response.tool_calls
+    ]
+    message = SimpleNamespace(
+        content=codex_response.text or "",
+        tool_calls=tool_calls or None,
+        role="assistant",
+    )
+    choice = SimpleNamespace(
+        message=message,
+        finish_reason=codex_response.finish_reason or "stop",
+        index=0,
+    )
+    usage = SimpleNamespace(
+        prompt_tokens=codex_response.prompt_tokens,
+        completion_tokens=codex_response.completion_tokens,
+        total_tokens=codex_response.total_tokens,
+    )
+    return SimpleNamespace(
+        choices=[choice],
+        model=codex_response.model,
+        usage=usage,
+    )
+
+
+def _call_accepts_kwarg(fn: Callable[..., Any], kwarg: str) -> bool:
+    """Return True when *fn* can accept named kwarg."""
+    try:
+        sig = inspect.signature(fn)
+    except (TypeError, ValueError):
+        return True
+    if kwarg in sig.parameters:
+        return True
+    return any(
+        param.kind == inspect.Parameter.VAR_KEYWORD for param in sig.parameters.values()
+    )
+
+
 class SynapseLLMRouter:
     """
     Unified litellm.Router wrapper. One instance per FastAPI lifespan.
@@ -1443,13 +1502,19 @@ class SynapseLLMRouter:
             for role, cfg in self._config.model_mappings.items()
             if is_claude_cli_model(cfg.get("model", ""))
         }
+        self._openai_codex_roles: set[str] = {
+            role
+            for role, cfg in self._config.model_mappings.items()
+            if is_openai_codex_model(cfg.get("model", ""))
+        }
         # C-09: Lock to prevent concurrent Copilot token refresh races
         self._copilot_refresh_lock = asyncio.Lock()
         logger.info(
-            "SynapseLLMRouter initialized with %d roles (antigravity: %d, claude_cli: %d)",
+            "SynapseLLMRouter initialized with %d roles (antigravity: %d, claude_cli: %d, openai_codex: %d)",
             len(self._config.model_mappings),
             len(self._antigravity_roles),
             len(self._claude_cli_roles),
+            len(self._openai_codex_roles),
         )
 
     async def _invoke_antigravity(
@@ -1548,6 +1613,53 @@ class SynapseLLMRouter:
         except Exception as session_exc:  # noqa: BLE001
             logger.debug("Session write failed (non-fatal): %s", session_exc)
         return _build_claude_cli_response_shim(cli_response)
+
+    async def _invoke_openai_codex(
+        self,
+        *,
+        role: str,
+        messages: list[dict],
+        temperature: float,
+        max_tokens: int,
+        tools: list[dict] | None = None,
+        tool_choice: str | dict | None = None,
+    ):
+        """Dispatch a chat completion through the OpenAI Codex client."""
+        from sci_fi_dashboard.openai_codex_provider import (  # noqa: PLC0415
+            get_default_client,
+        )
+
+        model_str = self._model_string_for_role(role) or "openai_codex/gpt-5-codex"
+        client = await get_default_client()
+        request_kwargs: dict[str, Any] = {
+            "messages": messages,
+            "model": model_str,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+        }
+        if tools is not None:
+            request_kwargs["tools"] = tools
+        if tool_choice is not None and _call_accepts_kwarg(client.chat_completion, "tool_choice"):
+            request_kwargs["tool_choice"] = tool_choice
+
+        codex_response = await client.chat_completion(**request_kwargs)
+        try:
+            _write_session(
+                role=role,
+                model=codex_response.model,
+                usage=type(
+                    "U",
+                    (),
+                    {
+                        "prompt_tokens": codex_response.prompt_tokens,
+                        "completion_tokens": codex_response.completion_tokens,
+                        "total_tokens": codex_response.total_tokens,
+                    },
+                )(),
+            )
+        except Exception as session_exc:  # noqa: BLE001
+            logger.debug("Session write failed (non-fatal): %s", session_exc)
+        return _build_openai_codex_response_shim(codex_response)
 
     def _rebuild_router(self) -> None:
         """Rebuild the litellm Router (e.g. after a Copilot token refresh)."""
@@ -1667,6 +1779,34 @@ class SynapseLLMRouter:
                             "Claude CLI failed for role '%s' (%s); falling back to '%s'",
                             role,
                             cli_exc,
+                            fallback_role,
+                        )
+                        return await self._router.acompletion(
+                            model=fallback_role,
+                            messages=messages,
+                            temperature=temperature,
+                            max_tokens=max_tokens,
+                            **kwargs,
+                        )
+                    raise
+            if role in getattr(self, "_openai_codex_roles", set()):
+                try:
+                    return await self._invoke_openai_codex(
+                        role=role,
+                        messages=messages,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                        tools=kwargs.get("tools"),
+                        tool_choice=kwargs.get("tool_choice"),
+                    )
+                except Exception as codex_exc:
+                    fallback_cfg = self._config.model_mappings.get(role, {}).get("fallback")
+                    if fallback_cfg and not _is_direct_provider_model(fallback_cfg):
+                        fallback_role = f"{role}_fallback"
+                        logger.warning(
+                            "OpenAI Codex failed for role '%s' (%s); falling back to '%s'",
+                            role,
+                            codex_exc,
                             fallback_role,
                         )
                         return await self._router.acompletion(
@@ -1939,6 +2079,48 @@ class SynapseLLMRouter:
                     "claude CLI failed in call_with_tools (%s)\n%s", cli_exc, traceback.format_exc()
                 )
                 raise
+
+        if role in getattr(self, "_openai_codex_roles", set()):
+            response = await self._invoke_openai_codex(
+                role=role,
+                messages=messages,
+                tools=tools,
+                tool_choice=tool_choice,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+            message = response.choices[0].message
+            usage = (
+                getattr(response, "usage", None)
+                or type(
+                    "U",
+                    (),
+                    {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+                )()
+            )
+            tool_calls, _malformed, recovery_events = _normalize_tool_calls_with_report(
+                message.tool_calls,
+                tools=tools,
+                text=message.content,
+            )
+            for tool_call in tool_calls:
+                try:
+                    tool_call.arguments = json.dumps(
+                        json.loads(tool_call.arguments),
+                        separators=(",", ":"),
+                    )
+                except (TypeError, ValueError):
+                    pass
+            _log_tool_recovery_events(recovery_events)
+            return LLMToolResult(
+                text=message.content or "",
+                tool_calls=tool_calls,
+                model=response.model or role,
+                prompt_tokens=getattr(usage, "prompt_tokens", 0) or 0,
+                completion_tokens=getattr(usage, "completion_tokens", 0) or 0,
+                total_tokens=getattr(usage, "total_tokens", 0) or 0,
+                finish_reason=response.choices[0].finish_reason,
+            )
 
         provider = self._resolve_provider(role)
         normalized_tools = normalize_tool_schemas(tools, provider)
