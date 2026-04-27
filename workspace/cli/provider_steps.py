@@ -421,7 +421,12 @@ async def openai_codex_device_flow(console) -> dict | None:
         console.print(f"[red]Cannot import openai_codex_oauth: {exc}[/red]")
         return None
 
+    def _env_truthy(name: str) -> bool:
+        raw = os.environ.get(name, "")
+        return raw.strip().lower() in {"1", "true", "yes", "on"}
+
     printed_code = {"done": False}
+    force_reauth = _env_truthy("SYNAPSE_OPENAI_CODEX_FORCE_REAUTH")
 
     try:
         existing = await asyncio.to_thread(
@@ -429,7 +434,7 @@ async def openai_codex_device_flow(console) -> dict | None:
         )
     except Exception:
         existing = None
-    if existing and existing.access_token and existing.refresh_token:
+    if existing and existing.access_token and existing.refresh_token and not force_reauth:
         console.print(
             "[green]Using existing OpenAI Codex OAuth credentials.[/green] "
             f"{existing.email or '(email unavailable)'}"
@@ -439,20 +444,11 @@ async def openai_codex_device_flow(console) -> dict | None:
             "profile_name": existing.profile_name,
             "account_id": existing.account_id,
         }
-    try:
-        imported = await asyncio.to_thread(openai_codex_oauth.import_codex_cli_credentials)
-    except Exception:
-        imported = None
-    if imported and imported.access_token and imported.refresh_token:
+    if force_reauth and existing and existing.access_token and existing.refresh_token:
         console.print(
-            "[green]Imported OpenAI Codex credentials from local Codex CLI auth state.[/green] "
-            f"{imported.email or '(email unavailable)'}"
+            "[yellow]Ignoring existing OpenAI Codex credentials due to "
+            "SYNAPSE_OPENAI_CODEX_FORCE_REAUTH=1.[/yellow]"
         )
-        return {
-            "email": imported.email,
-            "profile_name": imported.profile_name,
-            "account_id": imported.account_id,
-        }
 
     def _code_sink(code) -> None:
         verification_uri = (
@@ -500,11 +496,34 @@ async def openai_codex_device_flow(console) -> dict | None:
                     "[yellow]OpenAI auth endpoint returned a Cloudflare challenge "
                     "page to this terminal session.[/yellow]"
                 )
+                allow_codex_import = _env_truthy("SYNAPSE_OPENAI_CODEX_IMPORT_FROM_CODEX")
+                if allow_codex_import:
+                    try:
+                        imported = await asyncio.to_thread(
+                            openai_codex_oauth.import_codex_cli_credentials
+                        )
+                    except Exception:
+                        imported = None
+                    if imported and imported.access_token and imported.refresh_token:
+                        console.print(
+                            "[green]Imported OpenAI Codex credentials from local Codex CLI auth state.[/green] "
+                            f"{imported.email or '(email unavailable)'}"
+                        )
+                        return {
+                            "email": imported.email,
+                            "profile_name": imported.profile_name,
+                            "account_id": imported.account_id,
+                        }
                 console.print(
                     "[yellow]Retry from a normal browser-authenticated network "
                     "(disable strict bot-blocking/VPN/proxy), then rerun "
                     "this Synapse setup flow for a fresh device code.[/yellow]"
                 )
+                if not allow_codex_import:
+                    console.print(
+                        "[dim]Tip: set SYNAPSE_OPENAI_CODEX_IMPORT_FROM_CODEX=1 "
+                        "only if you want to reuse your local Codex CLI account.[/dim]"
+                    )
             console.print(f"[red]OpenAI Codex authorization failed: {exc}[/red]")
             return None
 
