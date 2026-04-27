@@ -231,6 +231,7 @@ def poll_device_code(
     client = http_client or httpx
     wait_interval = max(1, int(code.interval))
     deadline = time.time() + min(float(code.expires_in), float(DEVICE_TIMEOUT_SEC))
+    unknown_auth_streak = 0
     while time.time() < deadline:
         resp = client.post(
             f"{OPENAI_AUTH_BASE}/api/accounts/deviceauth/token",
@@ -246,12 +247,25 @@ def poll_device_code(
             return str(data["authorization_code"]), str(data["code_verifier"])
         error_code = _json_error_code(resp)
         if error_code == "authorization_pending":
+            unknown_auth_streak = 0
             sleep_fn(wait_interval)
             continue
         if error_code == "slow_down":
+            unknown_auth_streak = 0
             wait_interval += 5
             sleep_fn(wait_interval)
             continue
+        error_detail = _error_detail(resp).lower()
+        if "device authorization is unknown" in error_detail:
+            unknown_auth_streak += 1
+            if unknown_auth_streak <= 3:
+                sleep_fn(wait_interval)
+                continue
+            raise RuntimeError(
+                "OpenAI OAuth device authorization is unknown. "
+                "Use a fresh code and ensure Device Code Authorization for Codex "
+                "is enabled in ChatGPT Security Settings."
+            )
         _ensure_success(resp)
     raise RuntimeError("OpenAI Codex device authorization timed out")
 

@@ -1570,13 +1570,23 @@ def _collect_provider_keys(
 
         # OpenAI Codex (ChatGPT subscription) — OAuth device flow, no API key.
         if provider == "openai_codex":
-            metadata = asyncio.run(openai_codex_device_flow(console))
-            if metadata:
-                config["providers"]["openai_codex"] = {
-                    "oauth_email": metadata.get("email") or "",
-                    "profile_name": metadata.get("profile_name") or "",
-                    "account_id": metadata.get("account_id") or "",
-                }
+            while True:
+                metadata = asyncio.run(openai_codex_device_flow(console))
+                if metadata:
+                    config["providers"]["openai_codex"] = {
+                        "oauth_email": metadata.get("email") or "",
+                        "profile_name": metadata.get("profile_name") or "",
+                        "account_id": metadata.get("account_id") or "",
+                    }
+                    break
+                retry = prompter.confirm(  # type: ignore[attr-defined]
+                    "OpenAI Codex authorization incomplete. Retry device auth now?",
+                    default=True,
+                )
+                if retry:
+                    continue
+                _print("[yellow]  Skipping OpenAI Codex (authorization incomplete).[/]")
+                break
             continue
 
         # Claude Code CLI — no API key, no OAuth from Synapse. Synapse just

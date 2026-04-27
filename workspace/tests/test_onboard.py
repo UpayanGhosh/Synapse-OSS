@@ -606,6 +606,67 @@ def test_openai_codex_device_flow_shows_security_guidance_on_repeated_unknown_de
     assert any("device code authorization for codex" in m.lower() for m in console.messages)
 
 
+def test_collect_provider_keys_openai_codex_retries_until_success():
+    """openai_codex onboarding should retry failed auth before proceeding."""
+    from cli import onboard
+
+    config = {"providers": {}, "model_mappings": {}, "channels": {}}
+    prompter = MagicMock()
+    prompter.confirm.side_effect = [True]
+    mock_codex_flow = AsyncMock(
+        side_effect=[
+            None,
+            {
+                "email": "me@example.com",
+                "profile_name": "me@example.com",
+                "account_id": "acct-123",
+            },
+        ]
+    )
+
+    with patch(
+        "cli.onboard.openai_codex_device_flow",
+        new=mock_codex_flow,
+    ):
+        onboard._collect_provider_keys(
+            prompter=prompter,
+            config=config,
+            selected_providers=["openai_codex"],
+        )
+
+    assert mock_codex_flow.await_count == 2
+    prompter.confirm.assert_called_once()
+    assert config["providers"]["openai_codex"] == {
+        "oauth_email": "me@example.com",
+        "profile_name": "me@example.com",
+        "account_id": "acct-123",
+    }
+
+
+def test_collect_provider_keys_openai_codex_can_skip_after_failed_auth():
+    """openai_codex onboarding allows explicit skip after failed auth."""
+    from cli import onboard
+
+    config = {"providers": {}, "model_mappings": {}, "channels": {}}
+    prompter = MagicMock()
+    prompter.confirm.side_effect = [False]
+    mock_codex_flow = AsyncMock(return_value=None)
+
+    with patch(
+        "cli.onboard.openai_codex_device_flow",
+        new=mock_codex_flow,
+    ):
+        onboard._collect_provider_keys(
+            prompter=prompter,
+            config=config,
+            selected_providers=["openai_codex"],
+        )
+
+    assert mock_codex_flow.await_count == 1
+    prompter.confirm.assert_called_once()
+    assert "openai_codex" not in config["providers"]
+
+
 def test_verify_openai_codex_missing_credentials_fails():
     """verify_steps: openai_codex must fail when local OAuth state is missing."""
     import asyncio
