@@ -3,7 +3,6 @@ import json
 import time
 
 import httpx
-import pytest
 
 from sci_fi_dashboard.openai_codex_oauth import (
     OpenAICodexCredentials,
