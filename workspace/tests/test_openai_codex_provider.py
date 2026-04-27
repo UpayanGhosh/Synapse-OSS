@@ -1,15 +1,11 @@
 import json
-import sys
 import time
-from pathlib import Path
 
 import httpx
 import pytest
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
-from sci_fi_dashboard import openai_codex_oauth
-from sci_fi_dashboard import openai_codex_provider as codex
+from workspace.sci_fi_dashboard import openai_codex_oauth
+from workspace.sci_fi_dashboard import openai_codex_provider as codex
 
 
 class _FakeAsyncClient:
