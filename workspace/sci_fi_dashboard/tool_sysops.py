@@ -312,7 +312,8 @@ def _get_configured_providers() -> set[str]:
     A provider is "configured" if:
       * Its ``api_key`` in ``synapse.json → providers.<name>`` is a non-empty
         string that is not a placeholder (does not start with ``YOUR_`` and is
-        not literal ``PLACEHOLDER`` / ``changeme``), OR
+        not literal ``PLACEHOLDER`` / ``changeme``), except ``openai_codex``
+        which is OAuth-only, OR
       * It is one of the always-trusted special-auth providers
         (``github_copilot``, ``ollama_chat``, ``ollama``), OR
       * It is ``openai_codex`` and local OAuth credentials exist in
@@ -337,6 +338,9 @@ def _get_configured_providers() -> set[str]:
 
     for name, provider_cfg in providers.items():
         if not isinstance(provider_cfg, dict):
+            continue
+        # OpenAI Codex trust is OAuth-state only; never trust it from api_key.
+        if name == "openai_codex":
             continue
         key = provider_cfg.get("api_key", "")
         if not isinstance(key, str):

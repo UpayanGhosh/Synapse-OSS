@@ -851,6 +851,52 @@ class TestTrustPrefixFallback:
 
     @pytest.mark.unit
     @pytest.mark.asyncio
+    async def test_openai_codex_api_key_does_not_bypass_oauth_requirement(
+        self, tmp_path, monkeypatch
+    ):
+        """Regression: providers.openai_codex.api_key alone must not trust codex."""
+        home = tmp_path / "home"
+        synapse_dir = home / ".synapse"
+        synapse_dir.mkdir(parents=True)
+        (synapse_dir / "synapse.json").write_text(
+            json.dumps(
+                {
+                    "model_mappings": {
+                        "casual": {"model": "github_copilot/gpt-4o-mini"},
+                    },
+                    "providers": {
+                        "openai_codex": {"api_key": "anything"},
+                    },
+                },
+                indent=2,
+            )
+        )
+        monkeypatch.setattr("pathlib.Path.home", lambda: home)
+        monkeypatch.delenv("SYNAPSE_HOME", raising=False)
+        monkeypatch.setattr(
+            "sci_fi_dashboard.openai_codex_oauth.load_credentials",
+            lambda: None,
+        )
+
+        async def _stub(timeout: float = 3.0):
+            return []  # offline — force trust-prefix path
+
+        monkeypatch.setattr(tool_sysops, "_discover_reachable_models", _stub)
+
+        configured = tool_sysops._get_configured_providers()
+        assert "openai_codex" not in configured
+
+        tool = _edit_synapse_config_factory(_make_ctx(owner=True))
+        result = await _call_set(
+            tool, "model_mappings.casual.model", "openai_codex/gpt-5-codex"
+        )
+        assert result.is_error
+        err = json.loads(result.content)["error"]
+        assert "unknown provider" in err
+        assert "openai_codex" in err
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
     async def test_offline_configured_provider_accepted(
         self, configured_synapse_config, monkeypatch
     ):
