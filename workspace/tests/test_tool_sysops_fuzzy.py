@@ -63,6 +63,15 @@ def reset_models_cache():
     tool_sysops._models_cache["fetched"] = False
 
 
+@pytest.fixture(autouse=True)
+def default_openai_codex_oauth_missing(monkeypatch):
+    """Keep OpenAI Codex trust-prefix deterministic unless a test opts in."""
+    monkeypatch.setattr(
+        "sci_fi_dashboard.openai_codex_oauth.load_credentials",
+        lambda: None,
+    )
+
+
 @pytest.fixture
 def fake_synapse_config(tmp_path, monkeypatch):
     """Patch Path.home() to a tmp dir holding a minimal synapse.json so the
@@ -551,7 +560,8 @@ def configured_synapse_config(tmp_path, monkeypatch):
         * gemini             → placeholder "YOUR_..." (not trusted)
         * groq               → empty string (not trusted)
         * github_copilot     → present but no api_key (always trusted anyway)
-        * openai_codex       → present but no api_key (always trusted anyway)
+        * openai_codex       → present but no api_key (trusted only when local
+                               OAuth credentials exist)
         * ollama             → present but no api_key (always trusted anyway)
     """
     home = tmp_path / "home"
@@ -597,13 +607,34 @@ class TestGetConfiguredProviders:
     @pytest.mark.unit
     def test_always_trusted_providers_always_present(self, configured_synapse_config):
         configured = tool_sysops._get_configured_providers()
-        # github_copilot (JWT auth) + openai_codex (subscription OAuth)
-        # + ollama_chat / ollama (local daemon)
+        # github_copilot (JWT auth) + ollama_chat / ollama (local daemon)
         # are always in the trusted set regardless of synapse.json keys.
         assert "github_copilot" in configured
-        assert "openai_codex" in configured
         assert "ollama_chat" in configured
         assert "ollama" in configured
+
+    @pytest.mark.unit
+    def test_openai_codex_included_when_oauth_credentials_present(
+        self, configured_synapse_config, monkeypatch
+    ):
+        fake_creds = type(
+            "_Creds",
+            (),
+            {"access_token": "access-token", "refresh_token": "refresh-token"},
+        )()
+        monkeypatch.setattr(
+            "sci_fi_dashboard.openai_codex_oauth.load_credentials",
+            lambda: fake_creds,
+        )
+        configured = tool_sysops._get_configured_providers()
+        assert "openai_codex" in configured
+
+    @pytest.mark.unit
+    def test_openai_codex_filtered_when_oauth_credentials_missing(
+        self, configured_synapse_config
+    ):
+        configured = tool_sysops._get_configured_providers()
+        assert "openai_codex" not in configured
 
     @pytest.mark.unit
     def test_placeholder_key_filtered(self, configured_synapse_config):
@@ -659,7 +690,6 @@ class TestGetConfiguredProviders:
         configured = tool_sysops._get_configured_providers()
         assert configured == {
             "github_copilot",
-            "openai_codex",
             "ollama_chat",
             "ollama",
         }
@@ -766,6 +796,58 @@ class TestTrustPrefixFallback:
             tool, "model_mappings.casual.model", "github_copilot/gpt-5-future"
         )
         assert not result.is_error, f"expected success, got: {result.content}"
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_openai_codex_prefix_accepted_with_oauth_credentials(
+        self, configured_synapse_config, monkeypatch
+    ):
+        """openai_codex/... is accepted when local OAuth state is present."""
+        async def _stub(timeout: float = 3.0):
+            return []  # offline — force trust-prefix path
+
+        monkeypatch.setattr(tool_sysops, "_discover_reachable_models", _stub)
+        fake_creds = type(
+            "_Creds",
+            (),
+            {"access_token": "access-token", "refresh_token": "refresh-token"},
+        )()
+        monkeypatch.setattr(
+            "sci_fi_dashboard.openai_codex_oauth.load_credentials",
+            lambda: fake_creds,
+        )
+
+        tool = _edit_synapse_config_factory(_make_ctx(owner=True))
+        result = await _call_set(
+            tool, "model_mappings.casual.model", "openai_codex/gpt-5-codex"
+        )
+        assert not result.is_error, f"expected success, got: {result.content}"
+        payload = json.loads(result.content)
+        assert payload["value"] == "openai_codex/gpt-5-codex"
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_openai_codex_prefix_rejected_without_oauth_credentials(
+        self, configured_synapse_config, monkeypatch
+    ):
+        """openai_codex/... is rejected when OAuth state is missing locally."""
+        async def _stub(timeout: float = 3.0):
+            return []  # offline — force trust-prefix path
+
+        monkeypatch.setattr(tool_sysops, "_discover_reachable_models", _stub)
+        monkeypatch.setattr(
+            "sci_fi_dashboard.openai_codex_oauth.load_credentials",
+            lambda: None,
+        )
+
+        tool = _edit_synapse_config_factory(_make_ctx(owner=True))
+        result = await _call_set(
+            tool, "model_mappings.casual.model", "openai_codex/gpt-5-codex"
+        )
+        assert result.is_error
+        err = json.loads(result.content)["error"]
+        assert "unknown provider" in err
+        assert "openai_codex" in err
 
     @pytest.mark.unit
     @pytest.mark.asyncio

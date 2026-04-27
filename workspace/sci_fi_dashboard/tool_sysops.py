@@ -285,13 +285,25 @@ _PLACEHOLDER_KEY_LITERALS = frozenset({"PLACEHOLDER", "changeme"})
 
 # Providers that always live in the trusted set regardless of synapse.json keys:
 #   * github_copilot — uses JWT exchange in llm_router, not a synapse.json key
-#   * openai_codex — ChatGPT subscription OAuth; credentials live in local OAuth state
 #   * ollama / ollama_chat — local daemon, no API key required
-# These are the providers the fuzzy-match fast-path already queries for live
-# models, so trust-prefix should accept them unconditionally.
-_ALWAYS_TRUSTED_PROVIDERS = frozenset(
-    {"github_copilot", "openai_codex", "ollama_chat", "ollama"}
-)
+_ALWAYS_TRUSTED_PROVIDERS = frozenset({"github_copilot", "ollama_chat", "ollama"})
+
+
+def _has_openai_codex_oauth_credentials() -> bool:
+    """Return True when local OpenAI Codex OAuth state is present and usable."""
+    try:
+        from sci_fi_dashboard import openai_codex_oauth
+
+        creds = openai_codex_oauth.load_credentials()
+    except Exception:
+        return False
+
+    if not creds:
+        return False
+
+    access = getattr(creds, "access_token", "")
+    refresh = getattr(creds, "refresh_token", "")
+    return bool(str(access).strip() and str(refresh).strip())
 
 
 def _get_configured_providers() -> set[str]:
@@ -302,19 +314,19 @@ def _get_configured_providers() -> set[str]:
         string that is not a placeholder (does not start with ``YOUR_`` and is
         not literal ``PLACEHOLDER`` / ``changeme``), OR
       * It is one of the always-trusted special-auth providers
-        (``github_copilot``, ``openai_codex``, ``ollama_chat``, ``ollama``) —
-        Copilot exchanges a JWT from
-        ``~/.config/litellm/github_copilot/api-key.json``, OpenAI Codex uses
-        ChatGPT subscription OAuth state, and Ollama runs locally, so none are
-        gated by a synapse.json key.
+        (``github_copilot``, ``ollama_chat``, ``ollama``), OR
+      * It is ``openai_codex`` and local OAuth credentials exist in
+        ``~/.synapse/state/openai-codex-oauth.json``.
 
     Intentionally NOT cached — ``synapse.json`` may be mutated by this very tool
     during a session, and we want the next call to see the new provider state.
 
-    Returns the always-trusted set on any failure (config missing / malformed /
-    import error), so trust-prefix degrades gracefully to "Copilot+Ollama only".
+    Returns the special-auth baseline on config-load failure so trust-prefix
+    degrades gracefully to "Copilot+Ollama (+Codex if OAuth state exists)".
     """
     configured: set[str] = set(_ALWAYS_TRUSTED_PROVIDERS)
+    if _has_openai_codex_oauth_credentials():
+        configured.add("openai_codex")
 
     try:
         from synapse_config import SynapseConfig  # local import — avoid cycles
@@ -380,7 +392,8 @@ def _trust_prefix_error(value: str, fuzzy_suggestions: list[str] | None = None) 
         return (
             f"unknown provider {prefix!r} in {value!r}. "
             f"Configured providers (synapse.json): {configured_list}. "
-            f"To use {prefix}, first add a real api_key to synapse.json → providers.{prefix}, "
+            f"To use {prefix}, configure providers.{prefix} "
+            f"(real api_key, or complete local OAuth for subscription providers like openai_codex), "
             f"then verify the model name exists (see TOOLS.md → Provider Model Discovery "
             f"for the curl recipe).{hint}"
         )
@@ -897,8 +910,10 @@ def _edit_synapse_config_factory(ctx: ToolContext) -> SynapseTool | None:
             "a real model name, the closest match auto-applies and the response "
             "includes a 'note' field explaining what was applied. If no close "
             "Copilot/Ollama match, the value is accepted as-is when its "
-            "'provider/' prefix names a provider with a real api_key in "
-            "synapse.json (anthropic, openai, gemini, etc.). Unknown or missing "
+            "'provider/' prefix names a configured provider: either one with a "
+            "real api_key in synapse.json (anthropic, openai, gemini, etc.) or "
+            "a special-auth provider (github_copilot/ollama always; openai_codex "
+            "when local OAuth state exists). Unknown or missing "
             "prefixes are rejected with an error listing the configured "
             "providers. Owner only."
         ),
