@@ -480,6 +480,42 @@ def test_github_copilot_device_flow_polls_github(tmp_path):
     assert token == "gho_fake_token", f"Expected token, got: {token}"
 
 
+def test_collect_provider_keys_openai_codex_device_flow(monkeypatch):
+    """openai_codex onboarding should map device-flow metadata into provider config."""
+    from cli import onboard
+
+    config = {"providers": {}, "model_mappings": {}, "channels": {}}
+    prompter = MagicMock()
+    prompter.text.return_value = "unused-key"
+
+    monkeypatch.setattr(
+        onboard,
+        "openai_codex_device_flow",
+        lambda console: {
+            "email": "me@example.com",
+            "profile_name": "me@example.com",
+            "account_id": "acct-123",
+        },
+        raising=False,
+    )
+
+    with patch(
+        "cli.onboard.validate_provider",
+        return_value=MagicMock(ok=True, error=None, detail=None),
+    ):
+        onboard._collect_provider_keys(
+            prompter=prompter,
+            config=config,
+            selected_providers=["openai_codex"],
+        )
+
+    assert config["providers"]["openai_codex"] == {
+        "oauth_email": "me@example.com",
+        "profile_name": "me@example.com",
+        "account_id": "acct-123",
+    }
+
+
 # ===========================================================================
 # Interactive flow tests using force_interactive=True
 # ===========================================================================

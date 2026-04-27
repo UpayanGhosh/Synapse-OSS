@@ -141,7 +141,7 @@ class TestProviderMaps:
         Exceptions: ollama (uses validate_ollama()), github_copilot (OAuth device flow),
         vllm (httpx health check) — none of these do litellm validation pings.
         """
-        _NO_VALIDATION_NEEDED = {"ollama", "github_copilot", "vllm"}  # noqa: N806
+        _NO_VALIDATION_NEEDED = {"ollama", "github_copilot", "openai_codex", "vllm"}  # noqa: N806
 
         missing = []
         for group in PROVIDER_GROUPS:
@@ -155,6 +155,22 @@ class TestProviderMaps:
             f"Add the cheapest/fastest model string for each provider so the wizard can "
             f"validate API keys."
         )
+
+
+class TestProviderExpansion:
+    @pytest.mark.unit
+    def test_openai_codex_subscription_provider_is_in_onboarding_group(self):
+        """openai_codex should be selectable in onboarding and should not use API-key maps."""
+        providers = _flat_provider_keys_from_groups()
+        assert (
+            "openai_codex" in providers
+        ), "openai_codex must be present in PROVIDER_GROUPS for onboarding selection"
+        assert (
+            "openai_codex" not in ps_KEY_MAP
+        ), "openai_codex is OAuth/subscription-backed and must not be in provider_steps._KEY_MAP"
+        assert (
+            "openai_codex" not in router_KEY_MAP
+        ), "openai_codex is OAuth/subscription-backed and must not be in llm_router._KEY_MAP"
 
 
 # ---------------------------------------------------------------------------
