@@ -561,12 +561,18 @@ def test_openai_codex_device_flow_retries_once_on_unknown_device_auth():
 
     console = _CaptureConsole()
     with patch(
+        "sci_fi_dashboard.openai_codex_oauth.get_active_credentials",
+        return_value=None,
+    ), patch(
         "sci_fi_dashboard.openai_codex_oauth.login_device_code",
         side_effect=[
             RuntimeError("OpenAI OAuth HTTP 403: Device authorization is unknown. Please try again."),
             fake_creds,
         ],
-    ) as mock_login:
+    ) as mock_login, patch(
+        "sci_fi_dashboard.openai_codex_oauth.import_codex_cli_credentials",
+        return_value=None,
+    ):
         metadata = asyncio.run(openai_codex_device_flow(console))
 
     assert mock_login.call_count == 2
@@ -593,12 +599,18 @@ def test_openai_codex_device_flow_shows_security_guidance_on_repeated_unknown_de
 
     console = _CaptureConsole()
     with patch(
+        "sci_fi_dashboard.openai_codex_oauth.get_active_credentials",
+        return_value=None,
+    ), patch(
         "sci_fi_dashboard.openai_codex_oauth.login_device_code",
         side_effect=[
             RuntimeError("OpenAI OAuth HTTP 403: Device authorization is unknown. Please try again."),
             RuntimeError("OpenAI OAuth HTTP 403: Device authorization is unknown. Please try again."),
         ],
-    ) as mock_login:
+    ) as mock_login, patch(
+        "sci_fi_dashboard.openai_codex_oauth.import_codex_cli_credentials",
+        return_value=None,
+    ):
         metadata = asyncio.run(openai_codex_device_flow(console))
 
     assert mock_login.call_count == 2
@@ -646,6 +658,50 @@ def test_openai_codex_device_flow_reuses_existing_credentials_before_new_device_
     assert any("using existing openai codex oauth credentials" in m.lower() for m in console.messages)
 
 
+def test_openai_codex_device_flow_imports_codex_cli_credentials():
+    """openai_codex device flow should import from Codex CLI auth state when available."""
+    import asyncio
+    from types import SimpleNamespace
+
+    from cli.provider_steps import openai_codex_device_flow
+
+    class _CaptureConsole:
+        def __init__(self):
+            self.messages = []
+
+        def print(self, msg):
+            self.messages.append(str(msg))
+
+    imported = SimpleNamespace(
+        access_token="tok",
+        refresh_token="ref",
+        email="me@example.com",
+        profile_name="me@example.com",
+        account_id="acct-123",
+    )
+    console = _CaptureConsole()
+    with patch(
+        "sci_fi_dashboard.openai_codex_oauth.get_active_credentials",
+        return_value=None,
+    ) as mock_get_active, patch(
+        "sci_fi_dashboard.openai_codex_oauth.import_codex_cli_credentials",
+        return_value=imported,
+    ) as mock_import, patch(
+        "sci_fi_dashboard.openai_codex_oauth.login_device_code"
+    ) as mock_login:
+        metadata = asyncio.run(openai_codex_device_flow(console))
+
+    mock_get_active.assert_called_once_with(refresh_if_needed=True)
+    mock_import.assert_called_once()
+    mock_login.assert_not_called()
+    assert metadata == {
+        "email": "me@example.com",
+        "profile_name": "me@example.com",
+        "account_id": "acct-123",
+    }
+    assert any("imported openai codex credentials" in m.lower() for m in console.messages)
+
+
 def test_openai_codex_device_flow_cloudflare_error_shows_guidance():
     """openai_codex device flow should classify cloudflare challenge errors clearly."""
     import asyncio
@@ -662,6 +718,9 @@ def test_openai_codex_device_flow_cloudflare_error_shows_guidance():
     console = _CaptureConsole()
     with patch(
         "sci_fi_dashboard.openai_codex_oauth.get_active_credentials",
+        return_value=None,
+    ), patch(
+        "sci_fi_dashboard.openai_codex_oauth.import_codex_cli_credentials",
         return_value=None,
     ), patch(
         "sci_fi_dashboard.openai_codex_oauth.login_device_code",

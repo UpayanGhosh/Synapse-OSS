@@ -11,6 +11,7 @@ from sci_fi_dashboard.openai_codex_oauth import (
     _decode_jwt_payload,
     delete_credentials,
     extract_identity,
+    import_codex_cli_credentials,
     load_credentials,
     poll_device_code,
     refresh_access_token,
@@ -250,3 +251,43 @@ def test_request_device_code_cloudflare_html_is_sanitized():
 
     with pytest.raises(RuntimeError, match="Cloudflare challenge blocked OpenAI OAuth request"):
         request_device_code(http_client=fake)
+
+
+def test_import_codex_cli_credentials_reads_local_auth_json(tmp_path, monkeypatch):
+    now = int(time.time())
+    access = _jwt(
+        {
+            "exp": now + 3600,
+            "https://api.openai.com/profile.email": "me@example.com",
+            "chatgpt_account_user_id": "acct-jwt",
+        }
+    )
+    codex_home = tmp_path / ".codex"
+    codex_home.mkdir(parents=True)
+    (codex_home / "auth.json").write_text(
+        json.dumps(
+            {
+                "auth_mode": "chatgpt",
+                "tokens": {
+                    "access_token": access,
+                    "refresh_token": "refresh-123",
+                    "account_id": "acct-file",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setenv("CODEX_HOME", str(codex_home))
+    monkeypatch.setenv("SYNAPSE_HOME", str(tmp_path / ".synapse"))
+    creds = import_codex_cli_credentials()
+
+    assert creds is not None
+    assert creds.access_token == access
+    assert creds.refresh_token == "refresh-123"
+    # Identity from JWT should win over file-level account_id.
+    assert creds.account_id == "acct-jwt"
+    assert creds.email == "me@example.com"
+    saved = load_credentials()
+    assert saved is not None
+    assert saved.access_token == access

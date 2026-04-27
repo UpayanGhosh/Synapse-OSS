@@ -439,6 +439,20 @@ async def openai_codex_device_flow(console) -> dict | None:
             "profile_name": existing.profile_name,
             "account_id": existing.account_id,
         }
+    try:
+        imported = await asyncio.to_thread(openai_codex_oauth.import_codex_cli_credentials)
+    except Exception:
+        imported = None
+    if imported and imported.access_token and imported.refresh_token:
+        console.print(
+            "[green]Imported OpenAI Codex credentials from local Codex CLI auth state.[/green] "
+            f"{imported.email or '(email unavailable)'}"
+        )
+        return {
+            "email": imported.email,
+            "profile_name": imported.profile_name,
+            "account_id": imported.account_id,
+        }
 
     def _code_sink(code) -> None:
         verification_uri = (

@@ -75,6 +75,12 @@ def _state_file() -> Path:
     return _state_dir() / "openai-codex-oauth.json"
 
 
+def _codex_auth_file() -> Path:
+    codex_home_env = os.environ.get("CODEX_HOME", "").strip()
+    codex_home = Path(codex_home_env) if codex_home_env else Path.home() / ".codex"
+    return codex_home / "auth.json"
+
+
 def save_credentials(creds: OpenAICodexCredentials) -> Path:
     target = _state_file()
     tmp = target.with_suffix(".tmp")
@@ -110,6 +116,49 @@ def delete_credentials() -> bool:
         target.unlink()
         return True
     return False
+
+
+def import_codex_cli_credentials(*, persist: bool = True) -> OpenAICodexCredentials | None:
+    """Import OAuth credentials from local Codex CLI auth.json if available.
+
+    Returns None when the file is missing/unreadable or lacks required token fields.
+    """
+    auth_file = _codex_auth_file()
+    if not auth_file.exists():
+        return None
+
+    try:
+        raw = json.loads(auth_file.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, TypeError, ValueError) as exc:
+        _logger.warning("codex auth.json unreadable: %s", exc)
+        return None
+    if not isinstance(raw, dict):
+        return None
+
+    tokens = raw.get("tokens")
+    if not isinstance(tokens, dict):
+        return None
+
+    access_token = str(tokens.get("access_token") or "").strip()
+    refresh_token = str(tokens.get("refresh_token") or "").strip()
+    if not access_token or not refresh_token:
+        return None
+
+    identity = extract_identity(access_token)
+    raw_account_id = str(tokens.get("account_id") or "").strip()
+    account_id = identity.account_id or raw_account_id
+    profile_name = identity.profile_name or _profile_name_for_subject(account_id or "default")
+    creds = OpenAICodexCredentials(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        expires_at=_expires_at_from_token_or_delta(access_token, None),
+        email=identity.email,
+        account_id=account_id,
+        profile_name=profile_name,
+    )
+    if persist:
+        save_credentials(creds)
+    return creds
 
 
 def _decode_jwt_payload(token: str) -> dict[str, Any]:
