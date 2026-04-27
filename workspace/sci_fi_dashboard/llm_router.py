@@ -1458,17 +1458,25 @@ def _build_openai_codex_response_shim(codex_response: OpenAICodexResponse):
     )
 
 
-def _call_accepts_kwarg(fn: Callable[..., Any], kwarg: str) -> bool:
-    """Return True when *fn* can accept named kwarg."""
+def _supported_call_kwargs(fn: Callable[..., Any]) -> tuple[set[str], bool]:
+    """Return (named kwargs, accepts **kwargs) for *fn*."""
     try:
         sig = inspect.signature(fn)
     except (TypeError, ValueError):
-        return True
-    if kwarg in sig.parameters:
-        return True
-    return any(
+        return set(), True
+    named = {
+        name
+        for name, param in sig.parameters.items()
+        if param.kind
+        in (
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            inspect.Parameter.KEYWORD_ONLY,
+        )
+    }
+    accepts_var_kwargs = any(
         param.kind == inspect.Parameter.VAR_KEYWORD for param in sig.parameters.values()
     )
+    return named, accepts_var_kwargs
 
 
 class SynapseLLMRouter:
@@ -1622,7 +1630,7 @@ class SynapseLLMRouter:
         temperature: float,
         max_tokens: int,
         tools: list[dict] | None = None,
-        tool_choice: str | dict | None = None,
+        **kwargs: Any,
     ):
         """Dispatch a chat completion through the OpenAI Codex client."""
         from sci_fi_dashboard.openai_codex_provider import (  # noqa: PLC0415
@@ -1631,6 +1639,11 @@ class SynapseLLMRouter:
 
         model_str = self._model_string_for_role(role) or "openai_codex/gpt-5-codex"
         client = await get_default_client()
+        named_kwargs, accepts_var_kwargs = _supported_call_kwargs(client.chat_completion)
+
+        def _can_forward(name: str) -> bool:
+            return accepts_var_kwargs or name in named_kwargs
+
         request_kwargs: dict[str, Any] = {
             "messages": messages,
             "model": model_str,
@@ -1639,8 +1652,37 @@ class SynapseLLMRouter:
         }
         if tools is not None:
             request_kwargs["tools"] = tools
-        if tool_choice is not None and _call_accepts_kwarg(client.chat_completion, "tool_choice"):
-            request_kwargs["tool_choice"] = tool_choice
+
+        tool_choice = kwargs.pop("tool_choice", None)
+        if tool_choice is not None:
+            if tool_choice != "auto":
+                raise BadRequestError(
+                    message=(
+                        "OpenAI Codex path only supports tool_choice='auto'. "
+                        f"Got: {tool_choice!r}"
+                    ),
+                    llm_provider="openai_codex",
+                    model=model_str,
+                )
+            if _can_forward("tool_choice"):
+                request_kwargs["tool_choice"] = tool_choice
+
+        unsupported_kwargs = [
+            key for key, value in kwargs.items() if value is not None and not _can_forward(key)
+        ]
+        if unsupported_kwargs:
+            raise BadRequestError(
+                message=(
+                    "Unsupported OpenAI Codex kwargs: "
+                    + ", ".join(sorted(set(unsupported_kwargs)))
+                ),
+                llm_provider="openai_codex",
+                model=model_str,
+            )
+
+        for key, value in kwargs.items():
+            if value is not None and _can_forward(key):
+                request_kwargs[key] = value
 
         codex_response = await client.chat_completion(**request_kwargs)
         try:
@@ -1796,8 +1838,7 @@ class SynapseLLMRouter:
                         messages=messages,
                         temperature=temperature,
                         max_tokens=max_tokens,
-                        tools=kwargs.get("tools"),
-                        tool_choice=kwargs.get("tool_choice"),
+                        **kwargs,
                     )
                 except Exception as codex_exc:
                     fallback_cfg = self._config.model_mappings.get(role, {}).get("fallback")
@@ -2051,6 +2092,9 @@ class SynapseLLMRouter:
         Returns:
             :class:`LLMToolResult` with text, parsed tool calls, and usage.
         """
+        provider = self._resolve_provider(role)
+        normalized_tools = normalize_tool_schemas(tools, provider)
+
         # Claude Code CLI headless mode does not expose native tool calls; use
         # it as a text fallback for tool-bearing chat paths.
         if role in getattr(self, "_claude_cli_roles", set()):
@@ -2084,7 +2128,7 @@ class SynapseLLMRouter:
             response = await self._invoke_openai_codex(
                 role=role,
                 messages=messages,
-                tools=tools,
+                tools=normalized_tools,
                 tool_choice=tool_choice,
                 temperature=temperature,
                 max_tokens=max_tokens,
@@ -2100,7 +2144,7 @@ class SynapseLLMRouter:
             )
             tool_calls, _malformed, recovery_events = _normalize_tool_calls_with_report(
                 message.tool_calls,
-                tools=tools,
+                tools=normalized_tools,
                 text=message.content,
             )
             for tool_call in tool_calls:
@@ -2121,9 +2165,6 @@ class SynapseLLMRouter:
                 total_tokens=getattr(usage, "total_tokens", 0) or 0,
                 finish_reason=response.choices[0].finish_reason,
             )
-
-        provider = self._resolve_provider(role)
-        normalized_tools = normalize_tool_schemas(tools, provider)
 
         # Google Antigravity is dispatched directly — feed normalized tools
         # straight into the antigravity client and reuse the litellm-shaped

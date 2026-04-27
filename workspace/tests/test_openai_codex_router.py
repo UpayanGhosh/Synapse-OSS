@@ -3,9 +3,10 @@ import types
 from unittest.mock import AsyncMock
 
 import pytest
+from litellm import BadRequestError
 
 from sci_fi_dashboard import openai_codex_provider
-from sci_fi_dashboard.llm_router import SynapseLLMRouter
+from sci_fi_dashboard.llm_router import SynapseLLMRouter, normalize_tool_schemas
 
 
 def _assert_codex_model_ref(model_ref: str) -> None:
@@ -64,7 +65,15 @@ async def test_call_with_metadata_openai_codex_bypasses_litellm(monkeypatch):
     )
     monkeypatch.setattr("sci_fi_dashboard.llm_router._write_session", lambda **_kwargs: None)
 
-    result = await router.call_with_metadata("code", messages, temperature=0.2, max_tokens=512)
+    result = await router.call_with_metadata(
+        "code",
+        messages,
+        temperature=0.2,
+        max_tokens=512,
+        top_p=0.9,
+        stop=["END"],
+        response_format={"type": "json_object"},
+    )
 
     get_default_client.assert_awaited_once()
     fake_client.chat_completion.assert_awaited_once()
@@ -73,6 +82,9 @@ async def test_call_with_metadata_openai_codex_bypasses_litellm(monkeypatch):
     assert kwargs["messages"] == messages
     assert kwargs["temperature"] == 0.2
     assert kwargs["max_tokens"] == 512
+    assert kwargs["top_p"] == 0.9
+    assert kwargs["stop"] == ["END"]
+    assert kwargs["response_format"] == {"type": "json_object"}
 
     assert result.model == "gpt-5-codex"
     assert result.prompt_tokens == 31
@@ -127,16 +139,18 @@ async def test_call_with_tools_openai_codex_hyphen_dispatch_and_fields(monkeypat
         tools=tools,
         temperature=0.0,
         max_tokens=256,
-        tool_choice="required",
+        tool_choice="auto",
     )
 
     get_default_client.assert_awaited_once()
     fake_client.chat_completion.assert_awaited_once()
     kwargs = fake_client.chat_completion.await_args.kwargs
+    expected_tools = normalize_tool_schemas(tools, provider="openai-codex")
     _assert_codex_model_ref(kwargs["model"])
     assert kwargs["messages"] == messages
-    assert kwargs["tools"] == tools
-    assert kwargs["tool_choice"] == "required"
+    assert kwargs["tools"] == expected_tools
+    assert kwargs["tool_choice"] == "auto"
+    assert kwargs["tools"][0]["function"]["parameters"]["additionalProperties"] is False
     assert kwargs["temperature"] == 0.0
     assert kwargs["max_tokens"] == 256
 
@@ -151,4 +165,52 @@ async def test_call_with_tools_openai_codex_hyphen_dispatch_and_fields(monkeypat
     assert tool_call.id == "call_lookup_42"
     assert tool_call.name == "lookup_issue"
     assert tool_call.arguments == '{"id":"42"}'
+    router._router.acompletion.assert_not_awaited()
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_call_with_tools_openai_codex_rejects_non_default_tool_choice(monkeypatch):
+    router = _build_router(monkeypatch, "openai_codex/gpt-5-codex")
+    messages = [{"role": "user", "content": "Lookup issue 42."}]
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "lookup_issue",
+                "parameters": {
+                    "type": "object",
+                    "properties": {"id": {"type": "string"}},
+                    "required": ["id"],
+                },
+            },
+        }
+    ]
+    codex_response = openai_codex_provider.OpenAICodexResponse(
+        text="",
+        tool_calls=[],
+        model="gpt-5-codex",
+        prompt_tokens=1,
+        completion_tokens=1,
+        total_tokens=2,
+        finish_reason="completed",
+    )
+    fake_client = types.SimpleNamespace(chat_completion=AsyncMock(return_value=codex_response))
+    get_default_client = AsyncMock(return_value=fake_client)
+    monkeypatch.setattr(
+        "sci_fi_dashboard.openai_codex_provider.get_default_client",
+        get_default_client,
+    )
+    monkeypatch.setattr("sci_fi_dashboard.llm_router._write_session", lambda **_kwargs: None)
+
+    with pytest.raises(BadRequestError, match="tool_choice='auto'"):
+        await router.call_with_tools(
+            "code",
+            messages,
+            tools=tools,
+            temperature=0.0,
+            max_tokens=256,
+            tool_choice="required",
+        )
+    fake_client.chat_completion.assert_not_awaited()
     router._router.acompletion.assert_not_awaited()
