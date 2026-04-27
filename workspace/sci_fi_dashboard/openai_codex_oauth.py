@@ -244,18 +244,14 @@ def poll_device_code(
         if resp.status_code == 200:
             data = resp.json()
             return str(data["authorization_code"]), str(data["code_verifier"])
-        if resp.status_code in (403, 404):
+        error_code = _json_error_code(resp)
+        if error_code == "authorization_pending":
             sleep_fn(wait_interval)
             continue
-        if resp.status_code == 400:
-            error_code = _json_error_code(resp)
-            if error_code == "authorization_pending":
-                sleep_fn(wait_interval)
-                continue
-            if error_code == "slow_down":
-                wait_interval += 5
-                sleep_fn(wait_interval)
-                continue
+        if error_code == "slow_down":
+            wait_interval += 5
+            sleep_fn(wait_interval)
+            continue
         _ensure_success(resp)
     raise RuntimeError("OpenAI Codex device authorization timed out")
 
@@ -352,6 +348,14 @@ def get_active_credentials(*, refresh_if_needed: bool = True) -> OpenAICodexCred
         return None
     if not refresh_if_needed or not creds.is_expired():
         return creds
-    refreshed = refresh_access_token(creds)
+    try:
+        refreshed = refresh_access_token(creds)
+    except Exception:
+        if time.time() < creds.expires_at:
+            _logger.warning(
+                "OpenAI Codex token refresh failed but access token is still valid; using existing credentials"
+            )
+            return creds
+        raise
     save_credentials(refreshed)
     return refreshed
