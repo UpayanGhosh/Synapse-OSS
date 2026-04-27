@@ -488,8 +488,8 @@ async def openai_codex_device_flow(console) -> dict | None:
                 )
                 console.print(
                     "[yellow]Retry from a normal browser-authenticated network "
-                    "(disable strict bot-blocking/VPN/proxy), or run "
-                    "`codex login --device-auth` in your own terminal, then rerun setup.[/yellow]"
+                    "(disable strict bot-blocking/VPN/proxy), then rerun "
+                    "this Synapse setup flow for a fresh device code.[/yellow]"
                 )
             console.print(f"[red]OpenAI Codex authorization failed: {exc}[/red]")
             return None
