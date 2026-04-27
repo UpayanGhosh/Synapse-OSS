@@ -139,10 +139,18 @@ class TestProviderMaps:
         must have a VALIDATION_MODELS entry.
 
         Exceptions: ollama (uses validate_ollama()), github_copilot (OAuth device flow),
-        openai_codex (subscription OAuth device flow), vllm (httpx health check) —
+        openai_codex (subscription OAuth device flow), google_antigravity (OAuth),
+        claude_cli (local subscription CLI), vllm (httpx health check) —
         none of these do litellm validation pings.
         """
-        _NO_VALIDATION_NEEDED = {"ollama", "github_copilot", "openai_codex", "vllm"}  # noqa: N806
+        _NO_VALIDATION_NEEDED = {  # noqa: N806
+            "ollama",
+            "github_copilot",
+            "openai_codex",
+            "google_antigravity",
+            "claude_cli",
+            "vllm",
+        }
 
         missing = []
         for group in PROVIDER_GROUPS:

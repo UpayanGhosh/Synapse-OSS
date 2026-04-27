@@ -755,6 +755,10 @@ def _pick_model_fuzzy(
         return str(result)
     except ImportError:
         pass
+    except Exception:
+        # Non-interactive Windows test runners can raise console-buffer errors
+        # here (e.g., NoConsoleScreenBufferError). Fall through to safer prompts.
+        pass
 
     # --- Fallback: questionary.autocomplete (type-to-match, no visual list) ---
     try:
@@ -780,6 +784,9 @@ def _pick_model_fuzzy(
             return _prompt_manual_model(role, prompter)
         return display_to_value.get(result, result)
     except ImportError:
+        pass
+    except Exception:
+        # Headless/CI environments may not support interactive terminal controls.
         pass
 
     # --- Last resort: plain select via prompter (test stubs / no TTY) ---
