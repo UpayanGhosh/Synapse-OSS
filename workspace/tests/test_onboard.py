@@ -480,35 +480,38 @@ def test_github_copilot_device_flow_polls_github(tmp_path):
     assert token == "gho_fake_token", f"Expected token, got: {token}"
 
 
-def test_collect_provider_keys_openai_codex_device_flow(monkeypatch):
+def test_collect_provider_keys_openai_codex_device_flow():
     """openai_codex onboarding should map device-flow metadata into provider config."""
     from cli import onboard
 
     config = {"providers": {}, "model_mappings": {}, "channels": {}}
     prompter = MagicMock()
-    prompter.text.return_value = "unused-key"
-
-    monkeypatch.setattr(
-        onboard,
-        "openai_codex_device_flow",
-        lambda console: {
+    mock_codex_flow = AsyncMock(
+        return_value={
             "email": "me@example.com",
             "profile_name": "me@example.com",
             "account_id": "acct-123",
-        },
-        raising=False,
+        }
     )
 
     with patch(
+        "cli.onboard.openai_codex_device_flow",
+        new=mock_codex_flow,
+    ), patch(
         "cli.onboard.validate_provider",
         return_value=MagicMock(ok=True, error=None, detail=None),
-    ):
+    ) as mock_validate_provider:
+        # openai_codex should use device flow only (no API key prompt/validation).
         onboard._collect_provider_keys(
             prompter=prompter,
             config=config,
             selected_providers=["openai_codex"],
         )
 
+    mock_validate_provider.assert_not_called()
+    prompter.text.assert_not_called()
+    prompter.confirm.assert_not_called()
+    mock_codex_flow.assert_called_once()
     assert config["providers"]["openai_codex"] == {
         "oauth_email": "me@example.com",
         "profile_name": "me@example.com",
