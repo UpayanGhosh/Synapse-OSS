@@ -8,30 +8,42 @@ from sci_fi_dashboard import openai_codex_provider
 from sci_fi_dashboard.llm_router import SynapseLLMRouter
 
 
-def _build_router(model: str) -> SynapseLLMRouter:
-    router = object.__new__(SynapseLLMRouter)
-    router._config = types.SimpleNamespace(
-        model_mappings={"code": {"model": model}},
-        providers={},
-    )
-    router._router = types.SimpleNamespace(
+def _assert_codex_model_ref(model_ref: str) -> None:
+    assert isinstance(model_ref, str) and model_ref.strip()
+    assert openai_codex_provider.is_openai_codex_model(
+        model_ref
+    ), f"Expected OpenAI Codex provider-prefixed model ref, got: {model_ref}"
+
+
+def _build_router(monkeypatch: pytest.MonkeyPatch, model: str) -> SynapseLLMRouter:
+    litellm_router = types.SimpleNamespace(
         acompletion=AsyncMock(
             side_effect=AssertionError(
                 "litellm.Router.acompletion must be bypassed for OpenAI Codex models"
             )
         )
     )
-    router._uses_copilot = False
-    router._copilot_refresh_lock = asyncio.Lock()
-    router._antigravity_roles = set()
-    router._claude_cli_roles = set()
+    monkeypatch.setattr("sci_fi_dashboard.llm_router._inject_provider_keys", lambda _providers: None)
+    monkeypatch.setattr(
+        "sci_fi_dashboard.llm_router.build_router",
+        lambda _model_mappings, _providers: litellm_router,
+    )
+    config = types.SimpleNamespace(
+        model_mappings={"code": {"model": model}},
+        providers={},
+    )
+    router = SynapseLLMRouter(config=config)
+    assert router._router is litellm_router
+    assert router._uses_copilot is False
+    assert router._copilot_refresh_lock is not None
+    assert isinstance(router._copilot_refresh_lock, asyncio.Lock)
     return router
 
 
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_call_with_metadata_openai_codex_bypasses_litellm(monkeypatch):
-    router = _build_router("openai_codex/gpt-5-codex")
+    router = _build_router(monkeypatch, "openai_codex/gpt-5-codex")
     messages = [{"role": "user", "content": "Ship the fix."}]
 
     codex_response = openai_codex_provider.OpenAICodexResponse(
@@ -57,7 +69,7 @@ async def test_call_with_metadata_openai_codex_bypasses_litellm(monkeypatch):
     get_default_client.assert_awaited_once()
     fake_client.chat_completion.assert_awaited_once()
     kwargs = fake_client.chat_completion.await_args.kwargs
-    assert kwargs["model"] == "openai_codex/gpt-5-codex"
+    _assert_codex_model_ref(kwargs["model"])
     assert kwargs["messages"] == messages
     assert kwargs["temperature"] == 0.2
     assert kwargs["max_tokens"] == 512
@@ -73,7 +85,7 @@ async def test_call_with_metadata_openai_codex_bypasses_litellm(monkeypatch):
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_call_with_tools_openai_codex_hyphen_dispatch_and_fields(monkeypatch):
-    router = _build_router("openai-codex/gpt-5")
+    router = _build_router(monkeypatch, "openai-codex/gpt-5")
     messages = [{"role": "user", "content": "Lookup issue 42."}]
     tools = [
         {
@@ -115,15 +127,16 @@ async def test_call_with_tools_openai_codex_hyphen_dispatch_and_fields(monkeypat
         tools=tools,
         temperature=0.0,
         max_tokens=256,
-        tool_choice="auto",
+        tool_choice="required",
     )
 
     get_default_client.assert_awaited_once()
     fake_client.chat_completion.assert_awaited_once()
     kwargs = fake_client.chat_completion.await_args.kwargs
-    assert kwargs["model"] == "openai-codex/gpt-5"
+    _assert_codex_model_ref(kwargs["model"])
     assert kwargs["messages"] == messages
     assert kwargs["tools"] == tools
+    assert kwargs["tool_choice"] == "required"
     assert kwargs["temperature"] == 0.0
     assert kwargs["max_tokens"] == 256
 
