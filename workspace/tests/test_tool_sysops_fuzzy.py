@@ -551,6 +551,7 @@ def configured_synapse_config(tmp_path, monkeypatch):
         * gemini             → placeholder "YOUR_..." (not trusted)
         * groq               → empty string (not trusted)
         * github_copilot     → present but no api_key (always trusted anyway)
+        * openai_codex       → present but no api_key (always trusted anyway)
         * ollama             → present but no api_key (always trusted anyway)
     """
     home = tmp_path / "home"
@@ -569,6 +570,7 @@ def configured_synapse_config(tmp_path, monkeypatch):
                     "gemini": {"api_key": "YOUR_GEMINI_API_KEY"},
                     "groq": {"api_key": ""},
                     "github_copilot": {},
+                    "openai_codex": {},
                     "ollama": {},
                 },
             },
@@ -595,9 +597,11 @@ class TestGetConfiguredProviders:
     @pytest.mark.unit
     def test_always_trusted_providers_always_present(self, configured_synapse_config):
         configured = tool_sysops._get_configured_providers()
-        # github_copilot (JWT auth) + ollama_chat / ollama (local daemon)
+        # github_copilot (JWT auth) + openai_codex (subscription OAuth)
+        # + ollama_chat / ollama (local daemon)
         # are always in the trusted set regardless of synapse.json keys.
         assert "github_copilot" in configured
+        assert "openai_codex" in configured
         assert "ollama_chat" in configured
         assert "ollama" in configured
 
@@ -653,7 +657,12 @@ class TestGetConfiguredProviders:
         monkeypatch.delenv("SYNAPSE_HOME", raising=False)
 
         configured = tool_sysops._get_configured_providers()
-        assert configured == {"github_copilot", "ollama_chat", "ollama"}
+        assert configured == {
+            "github_copilot",
+            "openai_codex",
+            "ollama_chat",
+            "ollama",
+        }
 
 
 class TestTrustPrefixFallback:

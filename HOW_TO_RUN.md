@@ -340,6 +340,39 @@ notepad "%USERPROFILE%\.synapse\synapse.json"
 }
 ```
 
+### 5.5.1 - OpenAI Codex subscription onboarding (OAuth)
+
+`openai_codex/*` models are subscription-backed and use OAuth device flow, not an API key.
+
+1. Run onboarding and select `openai_codex` in provider selection.
+2. Complete the device flow at `https://auth.openai.com/codex/device` when prompted.
+3. Verify OAuth state file exists:
+   - macOS / Linux: `~/.synapse/state/openai-codex-oauth.json`
+   - Windows: `%USERPROFILE%\.synapse\state\openai-codex-oauth.json`
+
+Sample config using both OpenAI API-key and OpenAI Codex subscription providers:
+
+```json
+{
+  "providers": {
+    "openai_codex": {
+      "oauth_email": "me@example.com",
+      "profile_name": "me@example.com",
+      "account_id": "acct-123"
+    },
+    "openai": {"api_key": "sk-proj-..."}
+  },
+  "model_mappings": {
+    "code": {"model": "openai_codex/gpt-5-codex", "fallback": "openai/gpt-4o-mini"},
+    "casual": {"model": "openai/gpt-4o-mini", "fallback": null}
+  }
+}
+```
+
+Auth split summary:
+- `openai_codex/*` -> ChatGPT subscription OAuth
+- `openai/*` -> OpenAI API key (`providers.openai.api_key`)
+
 > **Why is this separate from `.env`?**
 > `synapse.json` controls per-role model routing (which model handles casual chat,
 > code, deep analysis, etc.) while `.env` contains infrastructure config. Keeping them

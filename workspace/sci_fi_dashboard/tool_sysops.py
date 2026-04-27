@@ -285,10 +285,13 @@ _PLACEHOLDER_KEY_LITERALS = frozenset({"PLACEHOLDER", "changeme"})
 
 # Providers that always live in the trusted set regardless of synapse.json keys:
 #   * github_copilot — uses JWT exchange in llm_router, not a synapse.json key
+#   * openai_codex — ChatGPT subscription OAuth; credentials live in local OAuth state
 #   * ollama / ollama_chat — local daemon, no API key required
 # These are the providers the fuzzy-match fast-path already queries for live
 # models, so trust-prefix should accept them unconditionally.
-_ALWAYS_TRUSTED_PROVIDERS = frozenset({"github_copilot", "ollama_chat", "ollama"})
+_ALWAYS_TRUSTED_PROVIDERS = frozenset(
+    {"github_copilot", "openai_codex", "ollama_chat", "ollama"}
+)
 
 
 def _get_configured_providers() -> set[str]:
@@ -299,9 +302,11 @@ def _get_configured_providers() -> set[str]:
         string that is not a placeholder (does not start with ``YOUR_`` and is
         not literal ``PLACEHOLDER`` / ``changeme``), OR
       * It is one of the always-trusted special-auth providers
-        (``github_copilot``, ``ollama_chat``, ``ollama``) — Copilot exchanges a
-        JWT from ``~/.config/litellm/github_copilot/api-key.json`` and Ollama
-        runs locally, so neither is gated by a synapse.json key.
+        (``github_copilot``, ``openai_codex``, ``ollama_chat``, ``ollama``) —
+        Copilot exchanges a JWT from
+        ``~/.config/litellm/github_copilot/api-key.json``, OpenAI Codex uses
+        ChatGPT subscription OAuth state, and Ollama runs locally, so none are
+        gated by a synapse.json key.
 
     Intentionally NOT cached — ``synapse.json`` may be mutated by this very tool
     during a session, and we want the next call to see the new provider state.

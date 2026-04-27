@@ -110,6 +110,13 @@ The real product is the persistent system around the model:
 
 This is the real moat.
 
+## Developer Note
+
+For repository graph exploration, `code-review-graph` is the primary graph used
+by local agent workflows and MCP tooling. `graphify` / `graphify-out/` are
+secondary export artifacts for offline inspection or custom scripting, not the
+default graph surface for day-to-day work in this repo.
+
 ## Founder Note
 
 Synapse started from a very simple frustration:
@@ -684,6 +691,8 @@ Messages enter through a multi-stage async pipeline (`gateway/`) that prevents w
 ### Multi-Model Intent Router (Mixture of Agents)
 
 A lightweight intent classifier routes each message to the best-fit model through `litellm.Router`: Gemini Flash for casual chat, Claude Sonnet for code generation, Gemini Pro for deep analysis, Claude Opus for critical review, Groq for voice transcription, or a local Ollama instance for private conversations. All LLM calls use provider-prefixed model strings from `~/.synapse/synapse.json`. The router is completely vendor-agnostic -- swap providers by editing `model_mappings` in config, no code changes required. Per-role fallback models handle provider outages and rate limits automatically.
+
+- Provider auth note: `openai_codex/*` uses ChatGPT subscription OAuth (device flow, no `providers.openai_codex.api_key`), while `openai/*` uses a standard OpenAI API key at `providers.openai.api_key`.
 
 ### Hybrid Memory Retrieval (RAG)
 
