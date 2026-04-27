@@ -10,6 +10,7 @@ Defines:
   - validate_provider(): litellm.acompletion validation call for cloud providers
   - validate_ollama(): httpx GET /api/version health check (no litellm)
   - github_copilot_device_flow(): OAuth device code flow for GitHub Copilot
+  - openai_codex_device_flow(): OAuth device code flow for OpenAI Codex (ChatGPT subscription)
 
 All validation functions return ValidationResult — never raise exceptions.
 """
@@ -78,6 +79,7 @@ VALIDATION_MODELS: dict[str, str] = {
     "deepseek": "deepseek/deepseek-chat",
     # ollama: no litellm call — use validate_ollama() instead
     # github_copilot: no live call — OAuth device flow IS the validation
+    # openai_codex: no live call — OAuth device flow IS the validation
     # vllm: no litellm call — httpx health check
 }
 
@@ -145,6 +147,7 @@ PROVIDER_GROUPS: list[dict] = [
             {"key": "huggingface", "label": "HuggingFace Inference Endpoints"},
             {"key": "nvidia_nim", "label": "NVIDIA NIM"},
             {"key": "github_copilot", "label": "GitHub Copilot (OAuth device flow)"},
+            {"key": "openai_codex", "label": "OpenAI Codex (ChatGPT subscription OAuth)"},
             {"key": "google_antigravity", "label": "Google Antigravity (Gemini 3 via OAuth)"},
             {"key": "claude_cli", "label": "Claude Code CLI (Pro/Max subscription via local `claude` binary)"},
         ],
@@ -396,6 +399,68 @@ async def github_copilot_device_flow(console) -> str | None:
 
     console.print("[red]GitHub Copilot authorization timed out or was denied.[/red]")
     return None
+
+
+async def openai_codex_device_flow(console) -> dict | None:
+    """Run OpenAI Codex OAuth device flow and persist credentials locally.
+
+    This wraps ``openai_codex_oauth.login_device_code`` in ``asyncio.to_thread``
+    because the OAuth helper is synchronous and blocks while polling.
+
+    Args:
+      console: Rich Console (or compatible object with ``print``/``input``).
+
+    Returns:
+      Metadata dict on success:
+        {"email": str, "profile_name": str, "account_id": str}
+      None on failure.
+    """
+    try:
+        from sci_fi_dashboard import openai_codex_oauth  # noqa: PLC0415
+    except ImportError as exc:
+        console.print(f"[red]Cannot import openai_codex_oauth: {exc}[/red]")
+        return None
+
+    printed_code = {"done": False}
+
+    def _code_sink(code) -> None:
+        verification_uri = (
+            getattr(code, "verification_uri", None)
+            or openai_codex_oauth.OPENAI_CODEX_DEVICE_VERIFY_URL
+        )
+        user_code = getattr(code, "user_code", None) or ""
+        console.print("\nOpenAI Codex uses ChatGPT subscription OAuth (no API key).")
+        console.print(f"Visit [bold]{verification_uri}[/bold]")
+        if user_code:
+            console.print(f"Enter code: [bold yellow]{user_code}[/bold yellow]\n")
+        printed_code["done"] = True
+
+    try:
+        creds = await asyncio.to_thread(
+            openai_codex_oauth.login_device_code,
+            open_browser=True,
+            code_sink=_code_sink,
+        )
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[red]OpenAI Codex authorization failed: {exc}[/red]")
+        return None
+
+    if not printed_code["done"]:
+        # Defensive fallback: login helper normally calls code_sink before polling.
+        console.print(
+            f"\nVisit [bold]{openai_codex_oauth.OPENAI_CODEX_DEVICE_VERIFY_URL}[/bold] "
+            "to complete OpenAI Codex login."
+        )
+
+    console.print(
+        "[green]OpenAI Codex OAuth complete.[/green] "
+        f"{creds.email or '(email unavailable)'}"
+    )
+    return {
+        "email": creds.email,
+        "profile_name": creds.profile_name,
+        "account_id": creds.account_id,
+    }
 
 
 # ---------------------------------------------------------------------------

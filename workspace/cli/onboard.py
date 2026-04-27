@@ -66,6 +66,7 @@ from cli.provider_steps import (  # noqa: E402
     claude_cli_setup,
     github_copilot_device_flow,
     google_antigravity_oauth_flow,
+    openai_codex_device_flow,
     validate_ollama,
     validate_provider,
 )
@@ -830,6 +831,16 @@ _KNOWN_MODELS: dict[str, list[dict[str, str]]] = {
         {"value": "github_copilot/claude-sonnet-4", "label": "Claude Sonnet 4"},
         {"value": "github_copilot/gemini-2.0-flash", "label": "Gemini 2.0 Flash"},
     ],
+    "openai_codex": [
+        {
+            "value": "openai_codex/gpt-5-codex",
+            "label": "GPT-5 Codex (ChatGPT subscription, strongest coding)",
+        },
+        {
+            "value": "openai_codex/gpt-5-codex-mini",
+            "label": "GPT-5 Codex Mini (ChatGPT subscription, faster/cheaper)",
+        },
+    ],
     "google_antigravity": [
         {
             "value": "google_antigravity/gemini-3-flash",
@@ -995,6 +1006,7 @@ _ROLES: list[tuple[str, str, list[str]]] = [
         [
             "claude_cli",
             "anthropic",
+            "openai_codex",
             "openai",
             "github_copilot",
             "nvidia_nim",
@@ -1007,6 +1019,7 @@ _ROLES: list[tuple[str, str, list[str]]] = [
         [
             "claude_cli",
             "google_antigravity",
+            "openai_codex",
             "gemini",
             "openai",
             "github_copilot",
@@ -1020,6 +1033,7 @@ _ROLES: list[tuple[str, str, list[str]]] = [
         [
             "claude_cli",
             "anthropic",
+            "openai_codex",
             "openai",
             "github_copilot",
             "google_antigravity",
@@ -1506,6 +1520,17 @@ def _collect_provider_keys(
                 config["providers"]["github_copilot"] = {"token": token}
             else:
                 _print("[yellow]  Skipping GitHub Copilot (auth failed or timed out).[/]")
+            continue
+
+        # OpenAI Codex (ChatGPT subscription) — OAuth device flow, no API key.
+        if provider == "openai_codex":
+            metadata = asyncio.run(openai_codex_device_flow(console))
+            if metadata:
+                config["providers"]["openai_codex"] = {
+                    "oauth_email": metadata.get("email") or "",
+                    "profile_name": metadata.get("profile_name") or "",
+                    "account_id": metadata.get("account_id") or "",
+                }
             continue
 
         # Claude Code CLI — no API key, no OAuth from Synapse. Synapse just

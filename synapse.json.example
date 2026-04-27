@@ -52,6 +52,13 @@
       "tier": ""
     },
 
+    "_openai_codex_comment": "OpenAI Codex subscription provider — uses ChatGPT OAuth device flow (no API key in synapse.json). Run `python workspace/synapse_cli.py onboard` and pick 'OpenAI Codex' to populate this metadata. Access/refresh tokens are stored in ~/.synapse/state/openai-codex-oauth.json (chmod 600); this block only stores profile/account metadata so runtime can detect configuration.",
+    "openai_codex": {
+      "oauth_email": "",
+      "profile_name": "",
+      "account_id": ""
+    },
+
     "_claude_cli_comment": "Claude Code CLI subscription provider — spawns the local `claude` binary headlessly so your Pro/Max subscription auth stays inside Claude Code (no API key in synapse.json, no OAuth dance from Synapse). Install Claude Code from https://docs.anthropic.com/en/docs/claude-code, run `claude /login` once to authorize, then run the onboarding wizard and pick 'Claude Code CLI'. Use model strings like `claude_cli/sonnet`, `claude_cli/opus`, or `claude_cli/haiku` in model_mappings. Heads-up: each call carries Claude Code's own ~50k-token system prompt overhead, so context usage is high — but unlimited tokens under subscription, only the message-count limit applies.",
     "claude_cli": {
       "binary_path": "claude"
@@ -72,6 +79,7 @@
   },
 
   "model_mappings": {
+    "_openai_codex_model_refs_comment": "For OpenAI Codex, use model refs like `openai_codex/gpt-5-codex` or `openai_codex/gpt-5-codex-mini` for code/analysis/review roles.",
     "casual": {
       "model": "gemini/gemini-2.0-flash",
       "prompt_tier": "frontier",

@@ -97,8 +97,9 @@ async def _validate_all_providers(
 ) -> list[tuple[str, bool, str]]:
     """Run all provider validations in parallel via ``asyncio.gather``.
 
-    Skips ``github_copilot`` (token is auto-managed via OAuth device flow — no
-    static API key to validate).
+    Subscription-backed providers (``github_copilot``, ``openai_codex``) skip
+    API-key validation and report a PASS note because auth is managed via
+    OAuth device flow + local token state.
 
     Args:
         providers: Dict of ``{provider_name: {api_key: ..., ...}}`` from
@@ -109,10 +110,12 @@ async def _validate_all_providers(
     """
     coros = []
     names: list[str] = []
+    results: list[tuple[str, bool, str]] = []
+    subscription_msg = "Subscription provider (OAuth device flow) — API-key validation skipped"
 
     for provider_name, cfg in providers.items():
-        if provider_name == "github_copilot":
-            # Token is auto-managed via OAuth device flow — skip static validation
+        if provider_name in {"github_copilot", "openai_codex"}:
+            results.append((provider_name, True, subscription_msg))
             continue
         if provider_name == "ollama":
             api_base = cfg.get("api_base", "http://localhost:11434")
@@ -124,11 +127,10 @@ async def _validate_all_providers(
             names.append(provider_name)
 
     if not coros:
-        return []
+        return results
 
     raw_results = await asyncio.gather(*coros, return_exceptions=True)
 
-    results: list[tuple[str, bool, str]] = []
     for i, raw in enumerate(raw_results):
         if isinstance(raw, Exception):
             results.append((names[i], False, str(raw)))
