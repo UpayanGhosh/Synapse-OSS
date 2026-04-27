@@ -242,14 +242,14 @@ def build_responses_request(
 
 
 def _usage_int(usage: dict[str, Any], *names: str) -> int:
-    total = 0
+    """Return the first present numeric usage field from a priority list."""
     for name in names:
         value = usage.get(name)
         if isinstance(value, bool):
             continue
         if isinstance(value, (int, float)):
-            total += int(value)
-    return total
+            return int(value)
+    return 0
 
 
 def parse_responses_payload(payload: dict[str, Any], *, requested_model: str) -> OpenAICodexResponse:
@@ -529,4 +529,3 @@ async def shutdown_default_client() -> None:
     if _singleton is not None:
         await _singleton.aclose()
         _singleton = None
-

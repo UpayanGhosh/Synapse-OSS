@@ -88,8 +88,9 @@ def test_parse_responses_payload_text_tool_calls_and_usage():
         ],
         "usage": {
             "input_tokens": 3,
+            "prompt_tokens": 30,
             "output_tokens": 4,
-            "total_tokens": 7,
+            "completion_tokens": 40,
         },
     }
 
