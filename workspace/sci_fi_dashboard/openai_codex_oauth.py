@@ -185,7 +185,18 @@ def _error_detail(resp: Any) -> str:
                 return message.strip()
     text = getattr(resp, "text", "")
     if isinstance(text, str) and text.strip():
-        return text.strip()
+        cleaned = text.strip()
+        lowered = cleaned.lower()
+        is_html = "<html" in lowered or "<!doctype html" in lowered
+        is_cloudflare = "cloudflare" in lowered or "challenge-platform" in lowered
+        if is_html and is_cloudflare:
+            return (
+                "Cloudflare challenge blocked OpenAI OAuth request "
+                "(requires browser JavaScript/cookies)."
+            )
+        if len(cleaned) > 300:
+            return cleaned[:300] + "..."
+        return cleaned
     return "request failed"
 
 
@@ -209,6 +220,11 @@ def request_device_code(*, http_client: Any | None = None) -> OpenAICodexDeviceC
     resp = client.post(
         f"{OPENAI_AUTH_BASE}/api/accounts/deviceauth/usercode",
         json={"client_id": OPENAI_CODEX_CLIENT_ID},
+        headers={
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "User-Agent": "Mozilla/5.0 (Synapse OpenAI Codex OAuth)",
+        },
         timeout=DEFAULT_TIMEOUT_SEC,
     )
     _ensure_success(resp)
@@ -239,6 +255,11 @@ def poll_device_code(
                 "client_id": OPENAI_CODEX_CLIENT_ID,
                 "device_auth_id": code.device_auth_id,
                 "user_code": code.user_code,
+            },
+            headers={
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+                "User-Agent": "Mozilla/5.0 (Synapse OpenAI Codex OAuth)",
             },
             timeout=DEFAULT_TIMEOUT_SEC,
         )
@@ -286,7 +307,11 @@ def exchange_authorization_code(
             "redirect_uri": OPENAI_CODEX_DEVICE_REDIRECT_URI,
             "code_verifier": code_verifier,
         },
-        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        headers={
+            "Accept": "application/json",
+            "Content-Type": "application/x-www-form-urlencoded",
+            "User-Agent": "Mozilla/5.0 (Synapse OpenAI Codex OAuth)",
+        },
         timeout=DEFAULT_TIMEOUT_SEC,
     )
     _ensure_success(resp)
@@ -317,7 +342,11 @@ def refresh_access_token(
             "client_id": OPENAI_CODEX_CLIENT_ID,
             "refresh_token": creds.refresh_token,
         },
-        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        headers={
+            "Accept": "application/json",
+            "Content-Type": "application/x-www-form-urlencoded",
+            "User-Agent": "Mozilla/5.0 (Synapse OpenAI Codex OAuth)",
+        },
         timeout=DEFAULT_TIMEOUT_SEC,
     )
     _ensure_success(resp)

@@ -423,6 +423,23 @@ async def openai_codex_device_flow(console) -> dict | None:
 
     printed_code = {"done": False}
 
+    try:
+        existing = await asyncio.to_thread(
+            openai_codex_oauth.get_active_credentials, refresh_if_needed=True
+        )
+    except Exception:
+        existing = None
+    if existing and existing.access_token and existing.refresh_token:
+        console.print(
+            "[green]Using existing OpenAI Codex OAuth credentials.[/green] "
+            f"{existing.email or '(email unavailable)'}"
+        )
+        return {
+            "email": existing.email,
+            "profile_name": existing.profile_name,
+            "account_id": existing.account_id,
+        }
+
     def _code_sink(code) -> None:
         verification_uri = (
             getattr(code, "verification_uri", None)
@@ -463,6 +480,16 @@ async def openai_codex_device_flow(console) -> dict | None:
                     "[yellow]Enable Device Code Authorization for Codex in "
                     "ChatGPT Security Settings, then retry this flow with a "
                     "fresh device code.[/yellow]"
+                )
+            if "cloudflare challenge" in lowered:
+                console.print(
+                    "[yellow]OpenAI auth endpoint returned a Cloudflare challenge "
+                    "page to this terminal session.[/yellow]"
+                )
+                console.print(
+                    "[yellow]Retry from a normal browser-authenticated network "
+                    "(disable strict bot-blocking/VPN/proxy), or run "
+                    "`codex login --device-auth` in your own terminal, then rerun setup.[/yellow]"
                 )
             console.print(f"[red]OpenAI Codex authorization failed: {exc}[/red]")
             return None

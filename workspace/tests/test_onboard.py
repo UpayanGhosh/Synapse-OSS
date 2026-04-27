@@ -606,6 +606,73 @@ def test_openai_codex_device_flow_shows_security_guidance_on_repeated_unknown_de
     assert any("device code authorization for codex" in m.lower() for m in console.messages)
 
 
+def test_openai_codex_device_flow_reuses_existing_credentials_before_new_device_flow():
+    """openai_codex device flow should short-circuit when active local creds already exist."""
+    import asyncio
+    from types import SimpleNamespace
+
+    from cli.provider_steps import openai_codex_device_flow
+
+    class _CaptureConsole:
+        def __init__(self):
+            self.messages = []
+
+        def print(self, msg):
+            self.messages.append(str(msg))
+
+    existing = SimpleNamespace(
+        access_token="tok",
+        refresh_token="ref",
+        email="me@example.com",
+        profile_name="me@example.com",
+        account_id="acct-123",
+    )
+    console = _CaptureConsole()
+    with patch(
+        "sci_fi_dashboard.openai_codex_oauth.get_active_credentials",
+        return_value=existing,
+    ) as mock_get_active, patch(
+        "sci_fi_dashboard.openai_codex_oauth.login_device_code"
+    ) as mock_login:
+        metadata = asyncio.run(openai_codex_device_flow(console))
+
+    mock_get_active.assert_called_once_with(refresh_if_needed=True)
+    mock_login.assert_not_called()
+    assert metadata == {
+        "email": "me@example.com",
+        "profile_name": "me@example.com",
+        "account_id": "acct-123",
+    }
+    assert any("using existing openai codex oauth credentials" in m.lower() for m in console.messages)
+
+
+def test_openai_codex_device_flow_cloudflare_error_shows_guidance():
+    """openai_codex device flow should classify cloudflare challenge errors clearly."""
+    import asyncio
+
+    from cli.provider_steps import openai_codex_device_flow
+
+    class _CaptureConsole:
+        def __init__(self):
+            self.messages = []
+
+        def print(self, msg):
+            self.messages.append(str(msg))
+
+    console = _CaptureConsole()
+    with patch(
+        "sci_fi_dashboard.openai_codex_oauth.get_active_credentials",
+        return_value=None,
+    ), patch(
+        "sci_fi_dashboard.openai_codex_oauth.login_device_code",
+        side_effect=RuntimeError("OpenAI OAuth HTTP 403: Cloudflare challenge blocked OpenAI OAuth request"),
+    ):
+        metadata = asyncio.run(openai_codex_device_flow(console))
+
+    assert metadata is None
+    assert any("cloudflare challenge" in m.lower() for m in console.messages)
+
+
 def test_collect_provider_keys_openai_codex_retries_until_success():
     """openai_codex onboarding should retry failed auth before proceeding."""
     from cli import onboard

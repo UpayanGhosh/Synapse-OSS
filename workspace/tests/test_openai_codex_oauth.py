@@ -233,3 +233,20 @@ def test_poll_device_code_unknown_device_authorization_repeated_raises_helpful_e
         )
 
     assert sleeps == [1, 1, 1]
+
+
+def test_request_device_code_cloudflare_html_is_sanitized():
+    fake = _FakeSyncClient(
+        [
+            httpx.Response(
+                403,
+                text=(
+                    "<!DOCTYPE html><html><head><title>Just a moment...</title></head>"
+                    "<body>cloudflare challenge-platform</body></html>"
+                ),
+            )
+        ]
+    )
+
+    with pytest.raises(RuntimeError, match="Cloudflare challenge blocked OpenAI OAuth request"):
+        request_device_code(http_client=fake)
