@@ -435,14 +435,40 @@ async def openai_codex_device_flow(console) -> dict | None:
             console.print(f"Enter code: [bold yellow]{user_code}[/bold yellow]\n")
         printed_code["done"] = True
 
-    try:
-        creds = await asyncio.to_thread(
-            openai_codex_oauth.login_device_code,
-            open_browser=True,
-            code_sink=_code_sink,
-        )
-    except Exception as exc:  # noqa: BLE001
-        console.print(f"[red]OpenAI Codex authorization failed: {exc}[/red]")
+    creds = None
+    for attempt in range(2):
+        try:
+            creds = await asyncio.to_thread(
+                openai_codex_oauth.login_device_code,
+                open_browser=True,
+                code_sink=_code_sink,
+            )
+            break
+        except Exception as exc:  # noqa: BLE001
+            detail = str(exc)
+            lowered = detail.lower()
+            unknown_device_auth = (
+                "device authorization is unknown" in lowered
+                or "device authorization unknown" in lowered
+            )
+            if unknown_device_auth and attempt == 0:
+                console.print(
+                    "[yellow]OpenAI device authorization was not recognized. "
+                    "Requesting a fresh code and retrying once...[/yellow]"
+                )
+                printed_code["done"] = False
+                continue
+            if unknown_device_auth:
+                console.print(
+                    "[yellow]Enable Device Code Authorization for Codex in "
+                    "ChatGPT Security Settings, then retry this flow with a "
+                    "fresh device code.[/yellow]"
+                )
+            console.print(f"[red]OpenAI Codex authorization failed: {exc}[/red]")
+            return None
+
+    if creds is None:
+        console.print("[red]OpenAI Codex authorization failed: unknown OAuth error[/red]")
         return None
 
     if not printed_code["done"]:
