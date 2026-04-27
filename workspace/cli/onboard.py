@@ -724,6 +724,26 @@ def _pick_model_fuzzy(
     """
     manual_label = "[Enter model manually]"
 
+    def _is_terminal_capability_error(exc: Exception) -> bool:
+        """Return True for headless/non-TTY UI errors that should trigger fallback."""
+        if isinstance(exc, EOFError):
+            return True
+
+        name = type(exc).__name__
+        module = type(exc).__module__
+        text = str(exc).lower()
+
+        if name == "NoConsoleScreenBufferError":
+            return True
+        if module.startswith("prompt_toolkit") and "screen buffer" in text:
+            return True
+        if isinstance(exc, OSError):
+            if getattr(exc, "errno", None) == 25:  # ENOTTY
+                return True
+            if "not a tty" in text or "inappropriate ioctl" in text:
+                return True
+        return False
+
     # --- Preferred: InquirerPy fuzzy (best UX, matches openclaw) ---
     try:
         from InquirerPy import inquirer  # noqa: PLC0415
@@ -755,10 +775,15 @@ def _pick_model_fuzzy(
         return str(result)
     except ImportError:
         pass
-    except Exception:
-        # Non-interactive Windows test runners can raise console-buffer errors
-        # here (e.g., NoConsoleScreenBufferError). Fall through to safer prompts.
-        pass
+    except Exception as exc:
+        from cli.wizard_prompter import WizardCancelledError  # noqa: PLC0415
+
+        if isinstance(exc, WizardCancelledError):
+            raise
+        if _is_terminal_capability_error(exc):
+            pass
+        else:
+            raise
 
     # --- Fallback: questionary.autocomplete (type-to-match, no visual list) ---
     try:
@@ -785,9 +810,15 @@ def _pick_model_fuzzy(
         return display_to_value.get(result, result)
     except ImportError:
         pass
-    except Exception:
-        # Headless/CI environments may not support interactive terminal controls.
-        pass
+    except Exception as exc:
+        from cli.wizard_prompter import WizardCancelledError  # noqa: PLC0415
+
+        if isinstance(exc, WizardCancelledError):
+            raise
+        if _is_terminal_capability_error(exc):
+            pass
+        else:
+            raise
 
     # --- Last resort: plain select via prompter (test stubs / no TTY) ---
     plain_choices = [manual_label] + [str(m["value"]) for m in flat]

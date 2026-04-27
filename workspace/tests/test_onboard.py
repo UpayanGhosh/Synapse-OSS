@@ -21,6 +21,7 @@ no real terminal, no real Baileys bridge.
 import json
 import os
 import sys
+import types
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -517,6 +518,68 @@ def test_collect_provider_keys_openai_codex_device_flow():
         "profile_name": "me@example.com",
         "account_id": "acct-123",
     }
+
+
+def test_verify_openai_codex_missing_credentials_fails():
+    """verify_steps: openai_codex must fail when local OAuth state is missing."""
+    import asyncio
+
+    from cli.verify_steps import _validate_all_providers
+
+    with patch("sci_fi_dashboard.openai_codex_oauth.load_credentials", return_value=None):
+        results = asyncio.run(_validate_all_providers({"openai_codex": {}}))
+
+    assert len(results) == 1
+    name, ok, msg = results[0]
+    assert name == "openai_codex"
+    assert ok is False
+    assert "credentials missing" in msg.lower()
+
+
+def test_verify_openai_codex_credentials_present_passes():
+    """verify_steps: openai_codex passes when OAuth credentials exist locally."""
+    import asyncio
+
+    from cli.verify_steps import _validate_all_providers
+
+    fake_creds = MagicMock(access_token="tok", refresh_token="ref")
+    with patch("sci_fi_dashboard.openai_codex_oauth.load_credentials", return_value=fake_creds):
+        results = asyncio.run(_validate_all_providers({"openai_codex": {}}))
+
+    assert len(results) == 1
+    name, ok, msg = results[0]
+    assert name == "openai_codex"
+    assert ok is True
+    assert "credentials present" in msg.lower()
+
+
+def test_pick_model_fuzzy_reraises_wizard_cancelled_error(monkeypatch):
+    """_pick_model_fuzzy must propagate WizardCancelledError from fuzzy UI path."""
+    from cli.onboard import _pick_model_fuzzy
+    from cli.wizard_prompter import WizardCancelledError
+
+    class _FakePrompt:
+        def execute(self):
+            raise WizardCancelledError()
+
+    class _FakeInquirer:
+        @staticmethod
+        def fuzzy(**kwargs):
+            return _FakePrompt()
+
+    monkeypatch.setitem(
+        sys.modules,
+        "InquirerPy",
+        types.SimpleNamespace(inquirer=_FakeInquirer),
+    )
+
+    with pytest.raises(WizardCancelledError):
+        _pick_model_fuzzy(
+            role="code",
+            desc="Code generation",
+            flat=[{"value": "openai/gpt-4o", "label": "GPT-4o"}],
+            prompter=MagicMock(),
+        )
 
 
 # ===========================================================================

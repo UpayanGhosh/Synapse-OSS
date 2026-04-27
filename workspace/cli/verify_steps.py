@@ -97,25 +97,48 @@ async def _validate_all_providers(
 ) -> list[tuple[str, bool, str]]:
     """Run all provider validations in parallel via ``asyncio.gather``.
 
-    Subscription-backed providers (``github_copilot``, ``openai_codex``) skip
-    API-key validation and report a PASS note because auth is managed via
-    OAuth device flow + local token state.
+    Subscription-backed providers are handled specially:
+      - ``github_copilot``: skip API-key validation (token managed externally).
+      - ``openai_codex``: validate local OAuth credential presence.
 
     Args:
         providers: Dict of ``{provider_name: {api_key: ..., ...}}`` from
                    ``SynapseConfig.providers``.
 
     Returns:
-        List of ``(name, success, error_message)`` tuples — one per provider.
+        List of ``(name, success, error_message)`` tuples - one per provider.
     """
     coros = []
     names: list[str] = []
     results: list[tuple[str, bool, str]] = []
-    subscription_msg = "Subscription provider (OAuth device flow) — API-key validation skipped"
+    subscription_msg = "Subscription provider (OAuth device flow) - API-key validation skipped"
+
+    def _validate_openai_codex_state() -> tuple[str, bool, str]:
+        """Check whether OpenAI Codex OAuth credentials are present locally."""
+        try:
+            from sci_fi_dashboard import openai_codex_oauth  # noqa: PLC0415
+        except Exception as exc:  # noqa: BLE001
+            return ("openai_codex", False, f"OpenAI Codex OAuth module unavailable: {exc}")
+
+        try:
+            creds = openai_codex_oauth.load_credentials()
+        except Exception as exc:  # noqa: BLE001
+            return ("openai_codex", False, f"OpenAI Codex OAuth state unreadable: {exc}")
+
+        if creds and getattr(creds, "access_token", "") and getattr(creds, "refresh_token", ""):
+            return ("openai_codex", True, "OpenAI Codex OAuth credentials present")
+        return (
+            "openai_codex",
+            False,
+            "OpenAI Codex OAuth credentials missing - rerun `synapse setup` and complete device flow.",
+        )
 
     for provider_name, cfg in providers.items():
-        if provider_name in {"github_copilot", "openai_codex"}:
+        if provider_name == "github_copilot":
             results.append((provider_name, True, subscription_msg))
+            continue
+        if provider_name == "openai_codex":
+            results.append(_validate_openai_codex_state())
             continue
         if provider_name == "ollama":
             api_base = cfg.get("api_base", "http://localhost:11434")
@@ -350,3 +373,4 @@ def run_verify(non_interactive: bool = False) -> int:
 
     _print(f"\n[green]All {len(all_results)} component(s) verified successfully.[/green]")
     return 0
+
