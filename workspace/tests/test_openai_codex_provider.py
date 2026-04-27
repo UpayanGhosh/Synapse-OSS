@@ -180,7 +180,7 @@ async def test_chat_completion_posts_responses_payload_shape(monkeypatch):
     assert len(fake_http.calls) == 1
     call = fake_http.calls[0]
     payload = _payload_from_call(call)
-    assert call["url"].endswith("/v1/responses")
+    assert call["url"].endswith("/backend-api/codex/responses")
     assert call["headers"]["Authorization"] == "Bearer access-token"
     assert payload["model"] == "gpt-5-codex"
     assert payload["temperature"] == 0
