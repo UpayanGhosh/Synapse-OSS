@@ -1549,12 +1549,13 @@ def _run_advanced_flow(
         import questionary  # noqa: PLC0415
 
         channel_choices = [
+            questionary.Choice("WhatsApp (QR pairing)", value="whatsapp"),
             questionary.Choice("Telegram (bot token)", value="telegram"),
             questionary.Choice("Discord (bot token + MESSAGE_CONTENT intent)", value="discord"),
             questionary.Choice("Slack (xoxb- + xapp- tokens)", value="slack"),
         ]
     except ImportError:
-        channel_choices = ["telegram", "discord", "slack"]
+        channel_choices = ["whatsapp", "telegram", "discord", "slack"]
 
     selected_channels = prompter.multiselect(  # type: ignore[attr-defined]
         "Select additional channels to configure (optional — can be added later):",
@@ -2055,49 +2056,45 @@ def _run_interactive_impl(
 
     if flow == "quickstart":
         _run_quickstart_flow(prompter=prompter, config=config, data_root=data_root)
-        # QuickStart: no channel prompt (user can add later)
+        if prompter.confirm(  # type: ignore[attr-defined]
+            "Configure WhatsApp now? You can skip this and use CLI chat.", default=False
+        ):
+            selected_channels = ["whatsapp"]
     else:
         selected_channels, workspace_dir = _run_advanced_flow(
             prompter=prompter, config=config, data_root=data_root
         )
 
-    # --- Step 7: Per-channel setup (ONB-05, ONB-06) ---
+    # --- Step 7: Optional channel setup (ONB-05, ONB-06) ---
     _this_file = Path(__file__).resolve()
     bridge_dir = _this_file.parent.parent.parent / "baileys-bridge"
     if not bridge_dir.exists():
         bridge_dir = _this_file.parent.parent / "baileys-bridge"
 
-    # --- Step 7a: WhatsApp (mandatory) ---
-    from cli.channel_steps import NodeJsMissingError  # noqa: PLC0415
+    if "whatsapp" in selected_channels:
+        from cli.channel_steps import NodeJsMissingError  # noqa: PLC0415
 
-    _print("\n[bold cyan]--- WhatsApp (required) ---[/]")
-    _MAX_WA_RETRIES = 3  # noqa: N806
-    _wa_paired = False
-    for _attempt in range(1, _MAX_WA_RETRIES + 1):
-        try:
-            wa_cfg = setup_whatsapp(bridge_dir, non_interactive=False)
-        except NodeJsMissingError as exc:
-            _print(f"\n[red bold]{exc}[/]")
-            raise typer.Exit(1) from None
+        _print("\n[bold cyan]--- WhatsApp ---[/]")
+        _MAX_WA_RETRIES = 3  # noqa: N806
+        for _attempt in range(1, _MAX_WA_RETRIES + 1):
+            try:
+                wa_cfg = setup_whatsapp(bridge_dir, non_interactive=False)
+            except NodeJsMissingError as exc:
+                _print(f"\n[red bold]{exc}[/]")
+                raise typer.Exit(1) from None
 
-        if wa_cfg is not None:
-            config["channels"]["whatsapp"] = wa_cfg
-            _wa_paired = True
-            break
-
-        if _attempt < _MAX_WA_RETRIES:
-            _retry = prompter.confirm(  # type: ignore[attr-defined]
-                f"WhatsApp pairing failed (attempt {_attempt}/{_MAX_WA_RETRIES}). Retry?",
-                default=True,
-            )
-            if not _retry:
+            if wa_cfg is not None:
+                config["channels"]["whatsapp"] = wa_cfg
                 break
 
-    if not _wa_paired:
-        _print("[red bold]WhatsApp is required for Synapse to work. Cannot continue.[/]")
-        raise typer.Exit(1)
+            if _attempt < _MAX_WA_RETRIES:
+                _retry = prompter.confirm(  # type: ignore[attr-defined]
+                    f"WhatsApp pairing failed (attempt {_attempt}/{_MAX_WA_RETRIES}). Retry?",
+                    default=True,
+                )
+                if not _retry:
+                    break
 
-    # --- Step 7b: Optional channels ---
     channel_config_map = {
         "telegram": lambda: setup_telegram(non_interactive=False),
         "discord": lambda: setup_discord(non_interactive=False),

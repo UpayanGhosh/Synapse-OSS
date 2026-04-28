@@ -150,7 +150,7 @@ def test_interactive_launch_chat_propagates_chat_exit_code(tmp_path, monkeypatch
         patch(
             "cli.onboard.setup_whatsapp",
             return_value={"enabled": True, "bridge_port": 5010, "dm_policy": "pairing"},
-        ),
+        ) as setup_wa,
         patch(
             "cli.gateway_steps.configure_gateway",
             return_value={"port": 9013, "bind": "loopback", "token": "a" * 48},
@@ -169,6 +169,7 @@ def test_interactive_launch_chat_propagates_chat_exit_code(tmp_path, monkeypatch
             _run_interactive(prompter=stub, flow="quickstart", launch_chat=True)
 
     assert exc_info.value.exit_code == 7
+    setup_wa.assert_not_called()
     run_chat.assert_called_once()
     assert run_chat.call_args.args[0].port == 9013
 
