@@ -782,7 +782,7 @@ def test_openai_codex_device_flow_reuses_existing_credentials_before_new_device_
     ) as mock_login:
         metadata = asyncio.run(openai_codex_device_flow(console))
 
-    mock_get_active.assert_called_once_with(refresh_if_needed=True)
+    mock_get_active.assert_called_once_with(refresh_if_needed=False)
     mock_login.assert_not_called()
     assert metadata == {
         "email": "me@example.com",
@@ -832,7 +832,7 @@ def test_openai_codex_device_flow_imports_codex_cli_credentials_on_cloudflare_wh
     ) as mock_login:
         metadata = asyncio.run(openai_codex_device_flow(console))
 
-    mock_get_active.assert_called_once_with(refresh_if_needed=True)
+    mock_get_active.assert_called_once_with(refresh_if_needed=False)
     mock_import.assert_called_once()
     mock_login.assert_called_once()
     assert metadata == {

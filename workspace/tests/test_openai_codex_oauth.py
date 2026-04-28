@@ -11,6 +11,7 @@ from sci_fi_dashboard.openai_codex_oauth import (
     _decode_jwt_payload,
     delete_credentials,
     extract_identity,
+    get_active_credentials,
     import_codex_cli_credentials,
     load_credentials,
     poll_device_code,
@@ -43,6 +44,29 @@ def test_save_load_delete_credentials_round_trip(tmp_path, monkeypatch):
 
     assert delete_credentials() is True
     assert load_credentials() is None
+
+
+def test_get_active_credentials_never_refreshes_by_expiry(tmp_path, monkeypatch):
+    monkeypatch.setenv("SYNAPSE_HOME", str(tmp_path))
+    creds = OpenAICodexCredentials(
+        access_token="expired-access",
+        refresh_token="refresh",
+        expires_at=time.time() - 3600,
+        email="",
+        account_id="acct-123",
+        profile_name="default",
+    )
+    save_credentials(creds)
+
+    def _refresh_must_not_run(*args, **kwargs):
+        raise AssertionError("Codex credentials refresh only after an auth error")
+
+    monkeypatch.setattr(
+        "sci_fi_dashboard.openai_codex_oauth.refresh_access_token",
+        _refresh_must_not_run,
+    )
+
+    assert get_active_credentials(refresh_if_needed=True) == creds
 
 
 def test_decode_jwt_payload_handles_base64url_without_padding():

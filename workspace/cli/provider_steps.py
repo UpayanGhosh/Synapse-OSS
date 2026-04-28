@@ -435,7 +435,7 @@ async def openai_codex_device_flow(console) -> dict | None:
 
     try:
         existing = await asyncio.to_thread(
-            openai_codex_oauth.get_active_credentials, refresh_if_needed=True
+            openai_codex_oauth.get_active_credentials, refresh_if_needed=False
         )
     except Exception:
         existing = None
