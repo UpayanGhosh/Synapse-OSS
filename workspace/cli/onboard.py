@@ -2101,6 +2101,8 @@ def _run_interactive_impl(
         "slack": lambda: setup_slack(non_interactive=False),
     }
     for ch in selected_channels or []:
+        if ch == "whatsapp":
+            continue
         ch_cfg = channel_config_map[ch]()
         if ch_cfg is not None:
             config["channels"][ch] = ch_cfg

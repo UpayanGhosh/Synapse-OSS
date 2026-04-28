@@ -1075,6 +1075,40 @@ def test_interactive_provider_selection_writes_config(tmp_path, monkeypatch):
     ), f"Expected 'gemini' in providers, got: {config.get('providers')}"
 
 
+def test_quickstart_whatsapp_opt_in_configures_once(tmp_path, monkeypatch):
+    """Selecting optional WhatsApp must not fall through to generic channel setup."""
+    from cli.onboard import _run_interactive
+
+    monkeypatch.setenv("SYNAPSE_HOME", str(tmp_path))
+
+    mock_acomp = _make_mock_acompletion()
+    stub = MagicMock()
+    stub.multiselect.return_value = ["gemini"]
+    stub.text.return_value = "fake-gemini-key"
+    stub.confirm.side_effect = (
+        lambda message, default=True: message
+        == "Configure WhatsApp now? You can skip this and use CLI chat."
+    )
+    fake_wa = {"enabled": True, "bridge_port": 5010, "dm_policy": "pairing"}
+
+    with (
+        patch("litellm.acompletion", mock_acomp),
+        patch("cli.onboard._check_for_legacy_install", return_value=None),
+        patch("cli.onboard.setup_whatsapp", return_value=fake_wa) as setup_wa,
+        patch("cli.onboard._wizard_daemon_install"),
+        patch("cli.workspace_seeding.ensure_agent_workspace", return_value={}),
+        patch(
+            "cli.gateway_steps.configure_gateway",
+            return_value={"port": 8000, "bind": "loopback", "token": "a" * 48},
+        ),
+    ):
+        _run_interactive(prompter=stub)
+
+    setup_wa.assert_called_once()
+    config = json.loads((tmp_path / "synapse.json").read_text())
+    assert config["channels"]["whatsapp"] == fake_wa
+
+
 def test_interactive_aborts_on_no_providers(tmp_path, monkeypatch):
     """Interactive flow: selecting zero providers → wizard exits 0 without writing config."""
     import typer
