@@ -97,6 +97,80 @@ def test_post_onboard_chat_nonzero_exit_raises():
     assert exc_info.value.exit_code == 7
 
 
+def test_non_interactive_launch_chat_propagates_chat_exit_code(tmp_path, monkeypatch):
+    """Regression: --launch-chat must return the chat loop exit code."""
+    monkeypatch.setenv("SYNAPSE_HOME", str(tmp_path))
+
+    with (
+        patch(
+            "cli.onboard.validate_provider",
+            return_value=MagicMock(ok=True, error=None, detail=None),
+        ),
+        patch(
+            "cli.gateway_steps.configure_gateway",
+            return_value={"port": 9012, "bind": "loopback", "token": "a" * 48},
+        ),
+        patch("cli.onboard._validate_environment"),
+        patch("cli.chat_loop.run_cli_chat", return_value=7) as run_chat,
+    ):
+        result = runner.invoke(
+            app,
+            ["onboard", "--non-interactive", "--accept-risk", "--launch-chat"],
+            env={
+                "SYNAPSE_HOME": str(tmp_path),
+                "SYNAPSE_PRIMARY_PROVIDER": "gemini",
+                "GEMINI_API_KEY": "fake-test-key",
+            },
+        )
+
+    assert result.exit_code == 7
+    run_chat.assert_called_once()
+    assert run_chat.call_args.args[0].port == 9012
+
+
+def test_interactive_launch_chat_propagates_chat_exit_code(tmp_path, monkeypatch):
+    """Regression: accepted post-onboard chat prompt must propagate failures."""
+    import typer
+    from cli.onboard import _run_interactive
+
+    monkeypatch.setenv("SYNAPSE_HOME", str(tmp_path))
+
+    stub = MagicMock()
+    stub.multiselect.return_value = ["gemini"]
+    stub.confirm.side_effect = lambda message, default=True: message == "Start local CLI chat now?"
+
+    def seed_provider(_prompter, config, _selected):
+        config["providers"]["gemini"] = {"api_key": "fake-test-key"}
+
+    with (
+        patch("cli.onboard._check_for_legacy_install", return_value=None),
+        patch("cli.onboard._collect_provider_keys", side_effect=seed_provider),
+        patch(
+            "cli.onboard.setup_whatsapp",
+            return_value={"enabled": True, "bridge_port": 5010, "dm_policy": "pairing"},
+        ),
+        patch(
+            "cli.gateway_steps.configure_gateway",
+            return_value={"port": 9013, "bind": "loopback", "token": "a" * 48},
+        ),
+        patch(
+            "cli.onboard._build_model_mappings_interactive",
+            return_value={"chat": {"model": "gemini/gemini-pro", "fallback": None}},
+        ),
+        patch("cli.onboard._run_sbs_questions"),
+        patch("cli.onboard._wizard_daemon_install"),
+        patch("cli.onboard._validate_environment"),
+        patch("cli.workspace_seeding.ensure_agent_workspace", return_value={}),
+        patch("cli.chat_loop.run_cli_chat", return_value=7) as run_chat,
+    ):
+        with pytest.raises(typer.Exit) as exc_info:
+            _run_interactive(prompter=stub, flow="quickstart", launch_chat=True)
+
+    assert exc_info.value.exit_code == 7
+    run_chat.assert_called_once()
+    assert run_chat.call_args.args[0].port == 9013
+
+
 # ===========================================================================
 # ONB-09: non-interactive mode exit codes
 # ===========================================================================
