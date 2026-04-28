@@ -11,11 +11,16 @@ import httpx
 
 class GatewayProcessManager:
     def __init__(
-        self, port: int = 8000, host: str = "127.0.0.1", timeout_sec: float = 30.0
+        self,
+        port: int = 8000,
+        host: str = "127.0.0.1",
+        timeout_sec: float = 30.0,
+        stop_timeout_sec: float = 5.0,
     ):
         self.port = int(port)
         self.host = host
         self.timeout_sec = float(timeout_sec)
+        self.stop_timeout_sec = float(stop_timeout_sec)
         self._owned_process: subprocess.Popen | None = None
 
     @property
@@ -25,7 +30,7 @@ class GatewayProcessManager:
     def is_reachable(self) -> bool:
         try:
             response = httpx.get(f"{self.base_url}/health", timeout=2.0)
-            return int(response.status_code) < 500
+            return int(response.status_code) == 200
         except Exception:
             return False
 
@@ -51,7 +56,14 @@ class GatewayProcessManager:
             cwd=str(cwd),
         )
         if not self.wait_until_ready():
+            return_code = self._owned_process.poll()
             self.stop()
+            if return_code is not None:
+                raise RuntimeError(
+                    f"Gateway exited early with return code {return_code} while "
+                    f"starting on {self.base_url}. Check gateway dependencies, "
+                    "import errors, and port configuration."
+                )
             raise RuntimeError(f"Gateway failed to start on {self.base_url}")
         return self._owned_process
 
@@ -60,11 +72,26 @@ class GatewayProcessManager:
         while time.monotonic() < deadline:
             if self.is_reachable():
                 return True
+            if (
+                self._owned_process is not None
+                and self._owned_process.poll() is not None
+            ):
+                return False
             time.sleep(0.25)
+        if self._owned_process is not None and self._owned_process.poll() is not None:
+            return False
         return False
 
     def stop(self) -> None:
         if self._owned_process is None:
             return
-        self._owned_process.terminate()
-        self._owned_process = None
+        process = self._owned_process
+        try:
+            process.terminate()
+            try:
+                process.wait(timeout=self.stop_timeout_sec)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=self.stop_timeout_sec)
+        finally:
+            self._owned_process = None
