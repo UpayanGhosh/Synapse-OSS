@@ -29,5 +29,5 @@ def bootstrap_kickoff_message() -> str:
         "Hi Synapse. I just finished installing you in the CLI. "
         "Please start the first-run ritual from BOOTSTRAP.md, ask one question at a time, "
         "learn who you are, who I am, and What should I call you. "
-        "Update IDENTITY.md, USER.md, CORE.md, and CODE.md as needed, then delete BOOTSTRAP.md after the ritual completes."
+        "Update IDENTITY.md, USER.md, SOUL.md, and AGENTS.md as needed, then delete BOOTSTRAP.md after the ritual completes."
     )

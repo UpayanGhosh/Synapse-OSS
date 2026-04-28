@@ -40,6 +40,6 @@ def test_kickoff_message_mentions_bootstrap_and_one_question():
     assert "What should I call you" in msg
     assert "IDENTITY.md" in msg
     assert "USER.md" in msg
-    assert "CORE.md" in msg
-    assert "CODE.md" in msg
+    assert "SOUL.md" in msg
+    assert "AGENTS.md" in msg
     assert "delete BOOTSTRAP.md" in msg or "deleted BOOTSTRAP.md" in msg
