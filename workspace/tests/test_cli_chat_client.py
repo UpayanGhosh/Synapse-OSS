@@ -1,6 +1,13 @@
+import os
 import sys
 from types import ModuleType
 from unittest.mock import Mock
+
+import pytest
+from fastapi import HTTPException
+from starlette.requests import Request
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from cli.chat_client import ChatClient, gateway_headers
 from cli.chat_types import ChatLaunchOptions, ChatTurn
@@ -90,3 +97,46 @@ def test_gateway_headers_returns_empty_when_config_fails(monkeypatch):
     monkeypatch.delenv("SYNAPSE_GATEWAY_TOKEN", raising=False)
 
     assert gateway_headers() == {}
+
+
+def _request(headers: dict[str, str]) -> Request:
+    return Request(
+        {
+            "type": "http",
+            "method": "POST",
+            "path": "/chat/the_creator",
+            "headers": [(key.lower().encode(), value.encode()) for key, value in headers.items()],
+        }
+    )
+
+
+def test_server_api_key_accepts_env_token_when_config_missing(monkeypatch):
+    from synapse_config import SynapseConfig
+    from sci_fi_dashboard.middleware import validate_api_key
+
+    monkeypatch.setenv("SYNAPSE_GATEWAY_TOKEN", "env-token")
+    monkeypatch.setattr(SynapseConfig, "load", Mock(side_effect=RuntimeError("missing config")))
+
+    validate_api_key(_request({"x-api-key": "env-token"}))
+
+
+def test_server_api_key_rejects_wrong_env_token_when_config_missing(monkeypatch):
+    from synapse_config import SynapseConfig
+    from sci_fi_dashboard.middleware import validate_api_key
+
+    monkeypatch.setenv("SYNAPSE_GATEWAY_TOKEN", "env-token")
+    monkeypatch.setattr(SynapseConfig, "load", Mock(side_effect=RuntimeError("missing config")))
+
+    with pytest.raises(HTTPException) as exc_info:
+        validate_api_key(_request({"x-api-key": "wrong"}))
+    assert exc_info.value.status_code == 401
+
+
+def test_server_api_key_open_when_no_token_configured(monkeypatch):
+    from synapse_config import SynapseConfig
+    from sci_fi_dashboard.middleware import validate_api_key
+
+    monkeypatch.delenv("SYNAPSE_GATEWAY_TOKEN", raising=False)
+    monkeypatch.setattr(SynapseConfig, "load", Mock(side_effect=RuntimeError("missing config")))
+
+    validate_api_key(_request({}))

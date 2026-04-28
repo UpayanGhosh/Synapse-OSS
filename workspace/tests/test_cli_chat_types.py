@@ -1,3 +1,8 @@
+import os
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
 from cli.chat_types import ChatLaunchOptions, ChatTurn, normalize_session_type
 
 
