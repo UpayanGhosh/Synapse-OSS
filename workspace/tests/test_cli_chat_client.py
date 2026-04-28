@@ -136,6 +136,21 @@ def test_server_api_key_prefers_env_token_over_config(monkeypatch):
     SynapseConfig.load.assert_not_called()
 
 
+def test_server_api_key_ignores_blank_env_and_uses_config(monkeypatch):
+    from synapse_config import SynapseConfig
+    from sci_fi_dashboard.middleware import validate_api_key
+
+    config = Mock()
+    config.gateway = {"token": "config-token"}
+    monkeypatch.setenv("SYNAPSE_GATEWAY_TOKEN", "   ")
+    monkeypatch.setattr(SynapseConfig, "load", Mock(return_value=config))
+
+    validate_api_key(_request({"x-api-key": "config-token"}))
+    with pytest.raises(HTTPException) as exc_info:
+        validate_api_key(_request({}))
+    assert exc_info.value.status_code == 401
+
+
 def test_server_api_key_rejects_wrong_env_token_when_config_missing(monkeypatch):
     from synapse_config import SynapseConfig
     from sci_fi_dashboard.middleware import validate_api_key

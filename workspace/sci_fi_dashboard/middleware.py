@@ -61,9 +61,9 @@ def _check_rate_limit(request: Request) -> None:
 
 
 def _expected_gateway_token() -> str:
-    env_token = os.environ.get("SYNAPSE_GATEWAY_TOKEN")
-    if env_token is not None:
-        return env_token.strip()
+    env_token = os.environ.get("SYNAPSE_GATEWAY_TOKEN", "").strip()
+    if env_token:
+        return env_token
 
     try:
         from synapse_config import SynapseConfig  # noqa: PLC0415
