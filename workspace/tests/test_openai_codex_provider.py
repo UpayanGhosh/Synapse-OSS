@@ -351,11 +351,11 @@ async def test_chat_completion_refreshes_once_after_401_and_saves_token(monkeypa
 
 
 @pytest.mark.asyncio
-async def test_chat_completion_reuses_current_token_when_proactive_refresh_fails(monkeypatch):
+async def test_chat_completion_uses_loaded_token_without_expiry_refresh(monkeypatch):
     creds = openai_codex_oauth.OpenAICodexCredentials(
-        access_token="still-valid-token",
+        access_token="stored-token",
         refresh_token="refresh-token",
-        expires_at=time.time() + 120,
+        expires_at=time.time() - 120,
         email="user@example.com",
         account_id="acct-1",
         profile_name="user@example.com",
@@ -364,10 +364,10 @@ async def test_chat_completion_reuses_current_token_when_proactive_refresh_fails
 
     monkeypatch.setattr(codex.openai_codex_oauth, "load_credentials", lambda: creds)
 
-    def _refresh_raises(_creds):
-        raise RuntimeError("refresh endpoint down")
+    def _refresh_must_not_run(_creds):
+        raise AssertionError("Codex token must refresh only after an auth error")
 
-    monkeypatch.setattr(codex.openai_codex_oauth, "refresh_access_token", _refresh_raises)
+    monkeypatch.setattr(codex.openai_codex_oauth, "refresh_access_token", _refresh_must_not_run)
     monkeypatch.setattr(codex.openai_codex_oauth, "save_credentials", lambda c: saved.append(c))
 
     fake_http = _FakeAsyncClient(
@@ -380,7 +380,7 @@ async def test_chat_completion_reuses_current_token_when_proactive_refresh_fails
                         {
                             "type": "message",
                             "role": "assistant",
-                            "content": [{"type": "output_text", "text": "ok-with-old-token"}],
+                            "content": [{"type": "output_text", "text": "ok-with-stored-token"}],
                         }
                     ],
                     "usage": {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
@@ -395,10 +395,10 @@ async def test_chat_completion_reuses_current_token_when_proactive_refresh_fails
         model="openai_codex/gpt-5-codex",
     )
 
-    assert result.text == "ok-with-old-token"
+    assert result.text == "ok-with-stored-token"
     assert saved == []
     assert len(fake_http.calls) == 1
-    assert fake_http.calls[0]["headers"]["Authorization"] == "Bearer still-valid-token"
+    assert fake_http.calls[0]["headers"]["Authorization"] == "Bearer stored-token"
 
 
 @pytest.mark.asyncio
@@ -420,7 +420,7 @@ async def test_chat_completion_raises_auth_error_when_refresh_fails_and_token_ex
     monkeypatch.setattr(codex.openai_codex_oauth, "refresh_access_token", _refresh_raises)
     monkeypatch.setattr(codex.openai_codex_oauth, "save_credentials", lambda _c: None)
 
-    fake_http = _FakeAsyncClient([])
+    fake_http = _FakeAsyncClient([httpx.Response(401, json={"error": {"message": "expired"}})])
     client = codex.OpenAICodexClient(http_client=fake_http)
 
     with pytest.raises(codex.AuthenticationError) as exc_info:
@@ -430,4 +430,5 @@ async def test_chat_completion_raises_auth_error_when_refresh_fails_and_token_ex
         )
 
     assert "token refresh failed" in str(exc_info.value).lower()
-    assert fake_http.calls == []
+    assert len(fake_http.calls) == 1
+    assert fake_http.calls[0]["headers"]["Authorization"] == "Bearer expired-token"

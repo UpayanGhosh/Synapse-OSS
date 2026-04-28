@@ -434,20 +434,12 @@ def login_device_code(
     return creds
 
 
-def get_active_credentials(*, refresh_if_needed: bool = True) -> OpenAICodexCredentials | None:
-    creds = load_credentials()
-    if creds is None:
-        return None
-    if not refresh_if_needed or not creds.is_expired():
-        return creds
-    try:
-        refreshed = refresh_access_token(creds)
-    except Exception:
-        if time.time() < creds.expires_at:
-            _logger.warning(
-                "OpenAI Codex token refresh failed but access token is still valid; using existing credentials"
-            )
-            return creds
-        raise
-    save_credentials(refreshed)
-    return refreshed
+def get_active_credentials(*, refresh_if_needed: bool = False) -> OpenAICodexCredentials | None:
+    """Return stored credentials.
+
+    Codex runtime should try the stored access token first and refresh only
+    after the API returns an auth error. ``refresh_if_needed`` is retained only
+    for API compatibility; timer-based refresh is disabled.
+    """
+    _ = refresh_if_needed  # Backwards-compatible argument; timer refresh is disabled.
+    return load_credentials()

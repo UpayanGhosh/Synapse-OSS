@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import json
 import re
-import time
 from dataclasses import dataclass
 from typing import Any
 
@@ -501,30 +500,8 @@ class OpenAICodexClient:
             self._creds = creds
         return self._creds
 
-    async def _refresh_if_needed(self) -> openai_codex_oauth.OpenAICodexCredentials:
-        creds = self._ensure_creds_loaded()
-        if not creds.is_expired():
-            return creds
-        async with self._refresh_lock:
-            creds = self._ensure_creds_loaded()
-            if not creds.is_expired():
-                return creds
-            try:
-                new_creds = await asyncio.to_thread(openai_codex_oauth.refresh_access_token, creds)
-            except Exception as exc:
-                access_token = str(getattr(creds, "access_token", "") or "").strip()
-                if access_token and time.time() < float(getattr(creds, "expires_at", 0.0) or 0.0):
-                    return creds
-                if isinstance(exc, AuthenticationError):
-                    raise
-                raise AuthenticationError(
-                    message=f"OpenAI Codex token refresh failed: {exc}",
-                    llm_provider="openai_codex",
-                    model="<unknown>",
-                ) from exc
-            await asyncio.to_thread(openai_codex_oauth.save_credentials, new_creds)
-            self._creds = new_creds
-            return new_creds
+    def _current_credentials(self) -> openai_codex_oauth.OpenAICodexCredentials:
+        return self._ensure_creds_loaded()
 
     async def _force_refresh(self) -> openai_codex_oauth.OpenAICodexCredentials:
         creds = self._ensure_creds_loaded()
@@ -561,7 +538,7 @@ class OpenAICodexClient:
         max_tokens: int | None = None,
         stop: list[str] | str | None = None,
     ) -> OpenAICodexResponse:
-        creds = await self._refresh_if_needed()
+        creds = self._current_credentials()
         normalized_model = normalize_openai_codex_model(model)
         payload = build_responses_request(
             messages=messages,
