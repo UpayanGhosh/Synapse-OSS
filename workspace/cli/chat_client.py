@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 
 import httpx
@@ -9,12 +10,14 @@ from cli.chat_types import ChatLaunchOptions, ChatTurn
 
 def gateway_headers() -> dict[str, str]:
     headers: dict[str, str] = {}
-    try:
-        from synapse_config import SynapseConfig, gateway_token
+    token = os.environ.get("SYNAPSE_GATEWAY_TOKEN", "")
+    if not token:
+        try:
+            from synapse_config import SynapseConfig, gateway_token
 
-        token = gateway_token(SynapseConfig.load())
-    except Exception:
-        token = ""
+            token = gateway_token(SynapseConfig.load())
+        except Exception:
+            token = ""
     if token:
         headers["x-api-key"] = token
     return headers

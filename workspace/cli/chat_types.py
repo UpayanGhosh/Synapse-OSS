@@ -24,7 +24,7 @@ class ChatTurn:
 @dataclass(frozen=True)
 class ChatLaunchOptions:
     target: str = "the_creator"
-    user_id: str = "local_cli"
+    user_id: str = "the_creator"
     session_type: str = "safe"
     session_key: str | None = None
     port: int = 8000
