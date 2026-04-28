@@ -308,13 +308,18 @@ def chat(
 ) -> None:
     """Start Synapse's local CLI chat."""
     from cli.chat_loop import run_cli_chat
-    from cli.chat_types import ChatLaunchOptions
+    from cli.chat_types import ChatLaunchOptions, normalize_session_type
+
+    try:
+        session_type = normalize_session_type(session)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc), param_hint="--session") from exc
 
     code = run_cli_chat(
         ChatLaunchOptions(
             target=target,
             user_id=user_id,
-            session_type=session,
+            session_type=session_type,
             port=port,
             auto_start_gateway=not no_auto_start,
             initial_message=message,
