@@ -24,6 +24,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import httpx
+
+# LiteLLM fetches a remote model cost map at import time unless this is set.
+# Onboarding must start without waiting on GitHub/raw network access.
+os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")
+
 from litellm import (
     APIConnectionError,
     AuthenticationError,

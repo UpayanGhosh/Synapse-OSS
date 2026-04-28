@@ -89,6 +89,16 @@ def test_onboard_command_passes_launch_chat_option(monkeypatch):
     assert captured["launch_chat"] is False
 
 
+def test_provider_steps_forces_local_litellm_cost_map(monkeypatch):
+    """Onboard import must not fetch LiteLLM's remote model cost map."""
+    monkeypatch.delenv("LITELLM_LOCAL_MODEL_COST_MAP", raising=False)
+    sys.modules.pop("cli.provider_steps", None)
+
+    import cli.provider_steps  # noqa: F401, PLC0415
+
+    assert os.environ["LITELLM_LOCAL_MODEL_COST_MAP"] == "True"
+
+
 def test_post_onboard_chat_nonzero_exit_raises():
     import typer
     from cli.onboard import _raise_for_chat_exit_code
