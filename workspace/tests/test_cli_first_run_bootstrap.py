@@ -12,9 +12,24 @@ def test_needs_bootstrap_when_bootstrap_exists_and_identity_empty(tmp_path):
     assert needs_first_run_bootstrap(tmp_path)
 
 
+def test_needs_bootstrap_with_seeded_markdown_identity_template(tmp_path):
+    (tmp_path / "BOOTSTRAP.md").write_text("ritual", encoding="utf-8")
+    (tmp_path / "IDENTITY.md").write_text(
+        "# IDENTITY.md - Who Am I?\n\n- **Name:**\n- **Creature:**\n",
+        encoding="utf-8",
+    )
+    assert needs_first_run_bootstrap(tmp_path)
+
+
 def test_no_bootstrap_when_identity_has_name(tmp_path):
     (tmp_path / "BOOTSTRAP.md").write_text("ritual", encoding="utf-8")
     (tmp_path / "IDENTITY.md").write_text("- Name: Synapse\n", encoding="utf-8")
+    assert not needs_first_run_bootstrap(tmp_path)
+
+
+def test_no_bootstrap_when_markdown_identity_has_name(tmp_path):
+    (tmp_path / "BOOTSTRAP.md").write_text("ritual", encoding="utf-8")
+    (tmp_path / "IDENTITY.md").write_text("- **Name:** Synapse\n", encoding="utf-8")
     assert not needs_first_run_bootstrap(tmp_path)
 
 

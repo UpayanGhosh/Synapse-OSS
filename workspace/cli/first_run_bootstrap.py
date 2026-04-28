@@ -8,7 +8,7 @@ def _identity_has_values(content: str) -> bool:
         stripped = line.strip()
         if not stripped.startswith("-") or ":" not in stripped:
             continue
-        value = stripped.split(":", 1)[1].strip()
+        value = stripped.split(":", 1)[1].strip().strip("*_` ")
         if value:
             return True
     return False
