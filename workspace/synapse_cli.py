@@ -297,11 +297,31 @@ def setup(
 
 
 @app.command()
-def chat() -> None:
-    """Start the AI Gateway interactive chat interface."""
-    from main import start_chat
+def chat(
+    target: str = typer.Option("the_creator", "--target", help="Persona id to chat with."),
+    user_id: str = typer.Option("local_cli", "--user-id", help="Local CLI user id."),
+    session: str = typer.Option("safe", "--session", help="Initial session type: safe or spicy."),
+    port: int = typer.Option(8000, "--port", help="Gateway port."),
+    no_auto_start: bool = typer.Option(False, "--no-auto-start", help="Do not start the gateway."),
+    message: str | None = typer.Option(None, "--message", help="Send an initial message."),
+    exit_after_message: bool = typer.Option(False, "--exit-after-message", help="Exit after --message reply."),
+) -> None:
+    """Start Synapse's local CLI chat."""
+    from cli.chat_loop import run_cli_chat
+    from cli.chat_types import ChatLaunchOptions
 
-    start_chat()
+    code = run_cli_chat(
+        ChatLaunchOptions(
+            target=target,
+            user_id=user_id,
+            session_type=session,
+            port=port,
+            auto_start_gateway=not no_auto_start,
+            initial_message=message,
+            exit_after_initial=exit_after_message,
+        )
+    )
+    raise typer.Exit(code)
 
 
 @app.command()
