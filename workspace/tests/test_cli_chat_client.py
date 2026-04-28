@@ -69,7 +69,7 @@ def test_gateway_headers_uses_env_token_first(monkeypatch):
     config_module.SynapseConfig = Mock()
     config_module.gateway_token = Mock(return_value="config-token")
     monkeypatch.setitem(sys.modules, "synapse_config", config_module)
-    monkeypatch.setenv("SYNAPSE_GATEWAY_TOKEN", "env-token")
+    monkeypatch.setenv("SYNAPSE_GATEWAY_TOKEN", " env-token ")
 
     assert gateway_headers() == {"x-api-key": "env-token"}
     config_module.gateway_token.assert_not_called()
@@ -80,7 +80,7 @@ def test_gateway_headers_falls_back_to_config_token(monkeypatch):
     config_module = ModuleType("synapse_config")
     config_module.SynapseConfig = Mock()
     config_module.SynapseConfig.load.return_value = config
-    config_module.gateway_token = Mock(return_value="config-token")
+    config_module.gateway_token = Mock(return_value=" config-token ")
     monkeypatch.setitem(sys.modules, "synapse_config", config_module)
     monkeypatch.delenv("SYNAPSE_GATEWAY_TOKEN", raising=False)
 

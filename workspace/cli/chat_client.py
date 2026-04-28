@@ -10,12 +10,12 @@ from cli.chat_types import ChatLaunchOptions, ChatTurn
 
 def gateway_headers() -> dict[str, str]:
     headers: dict[str, str] = {}
-    token = os.environ.get("SYNAPSE_GATEWAY_TOKEN", "")
+    token = os.environ.get("SYNAPSE_GATEWAY_TOKEN", "").strip()
     if not token:
         try:
             from synapse_config import SynapseConfig, gateway_token
 
-            token = gateway_token(SynapseConfig.load())
+            token = (gateway_token(SynapseConfig.load()) or "").strip()
         except Exception:
             token = ""
     if token:
