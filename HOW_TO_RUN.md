@@ -7,14 +7,15 @@ No prior experience required. Every command is shown for **Windows**, **macOS**,
 
 ## What You Are Setting Up
 
-Synapse is a self-hosted AI assistant that lives in WhatsApp. It has persistent memory,
-an evolving personality, and routes private conversations to a local model with zero
-cloud exposure. Here is how the pieces fit together:
+Synapse is a self-hosted AI assistant you can use from the terminal or from chat
+apps such as WhatsApp. It has persistent memory, an evolving personality, and
+routes private conversations to a local model with zero cloud exposure. Here is
+how the pieces fit together:
 
 ```
-Your Phone (WhatsApp)
+Terminal CLI or Your Phone (WhatsApp)
         ↓
-  Baileys Bridge (internal)  ← spawned automatically by the gateway; bridges WhatsApp to your computer
+  CLI chat or Baileys Bridge  ← WhatsApp bridge is optional and spawned by the gateway
         ↓
   Synapse API Gateway        ← the brain: memory, routing, persona
         ↓
@@ -44,7 +45,7 @@ Your Phone (WhatsApp)
 | Installing prerequisites | 15–30 min (mostly downloads) |
 | Pulling Ollama model (`nomic-embed-text`, ~900 MB) | 5–15 min depending on connection |
 | First-time onboarding | 5–10 min |
-| Scanning WhatsApp QR code | 2 min |
+| Optional WhatsApp QR code | 2 min |
 | **Total** | **~30–60 min** |
 
 ---
@@ -270,6 +271,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 
 pip install -r requirements.txt
+pip install -e .
 
 # Install browser for web browsing feature (Mac/Linux only)
 crawl4ai-setup
@@ -282,6 +284,7 @@ python -m venv .venv
 .venv\Scripts\activate.bat
 
 pip install -r requirements.txt
+pip install -e .
 ```
 
 > **Windows web browsing:** The onboarding script installs Playwright (the Windows browser
@@ -388,7 +391,7 @@ Auth split summary:
 ## Part 6 — Run the Onboarding Script (One Time Only)
 
 The onboarding script does everything else: creates required directories, configures the
-workspace, guides you through WhatsApp setup, and starts all services. **Run it once on
+workspace, optionally guides you through WhatsApp setup, and starts all services. **Run it once on
 first setup. Never run it again after that** — use the start script for daily use instead.
 
 ### macOS / Linux
@@ -421,7 +424,10 @@ Fails with a clear message if anything else is missing.
 **Step 2: Creates your `.env`**
 Auto-creates `.env` from `.env.example` if it does not already exist. No manual file copy needed.
 
-**Step 3: Asks your WhatsApp setup preference**
+**Step 3: Choose whether to configure WhatsApp**
+
+You can skip WhatsApp and use the terminal CLI chat instead. If you configure
+WhatsApp now, choose one of these modes:
 
 ```
 [1] Dedicated Number (recommended)
@@ -433,13 +439,14 @@ Auto-creates `.env` from `.env.example` if it does not already exist. No manual 
     Chat with Synapse by "messaging yourself"
 ```
 
-Enter `1` or `2`. Either works — personal number is the simplest way to get started.
+Enter `1` or `2` only if you chose to configure WhatsApp. Either works —
+personal number is the simplest way to get started.
 
-**Step 4: Takes your phone number**
+**Step 4: Takes your phone number (WhatsApp only)**
 Enter your WhatsApp number in E.164 format (same as `ADMIN_PHONE` in `.env`). This is
 saved so Synapse only responds to you.
 
-**Step 5: Shows the WhatsApp QR code**
+**Step 5: Shows the WhatsApp QR code (WhatsApp only)**
 A QR code appears in your terminal, served by the Baileys bridge that is spawned by the
 gateway. On your phone:
 1. Open **WhatsApp**
@@ -476,9 +483,27 @@ Polls the health endpoints for up to 15 seconds. Reports which services are runn
 
 ---
 
+### CLI-only mode
+
+If you do not want a third-party chat app, run:
+
+```bash
+synapse chat
+```
+
+Use `/safe`, `/spicy`, and `/quit` inside the CLI chat.
+
+---
+
 ## Part 7 — Say Hello
 
-After onboarding completes, send Synapse a message on WhatsApp:
+After onboarding completes, either use CLI chat:
+
+```bash
+synapse chat
+```
+
+Or send Synapse a message on WhatsApp if you configured it:
 
 | Setup | Where to find Synapse |
 |-------|-----------------------|

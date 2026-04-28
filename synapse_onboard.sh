@@ -118,6 +118,10 @@ echo "   Installing core dependencies (this takes a minute on first run)..."
 "$VENV_PIP" install -r "$SCRIPT_DIR/requirements.txt" -q
 echo "   [OK] Core dependencies installed."
 
+echo "   Installing Synapse CLI..."
+"$VENV_PIP" install -e "$SCRIPT_DIR" -q
+echo "   [OK] Synapse CLI installed."
+
 if [ -f "$SCRIPT_DIR/requirements-channels.txt" ]; then
     echo "   Installing channel dependencies..."
     "$VENV_PIP" install -r "$SCRIPT_DIR/requirements-channels.txt" -q || \

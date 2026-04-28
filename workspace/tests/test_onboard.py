@@ -21,7 +21,9 @@ no real terminal, no real Baileys bridge.
 import json
 import os
 import sys
+import tomllib
 import types
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -73,6 +75,128 @@ def test_onboard_command_registered():
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0
     assert "onboard" in result.output
+
+
+def test_onboard_command_passes_launch_chat_option(monkeypatch):
+    from typer.testing import CliRunner
+    from synapse_cli import app
+
+    captured = {}
+    monkeypatch.setattr("cli.onboard.run_wizard", lambda **kwargs: captured.update(kwargs))
+    result = CliRunner().invoke(app, ["onboard", "--no-launch-chat"])
+
+    assert result.exit_code == 0
+    assert captured["launch_chat"] is False
+
+
+def test_post_onboard_chat_nonzero_exit_raises():
+    import typer
+    from cli.onboard import _raise_for_chat_exit_code
+
+    with pytest.raises(typer.Exit) as exc_info:
+        _raise_for_chat_exit_code(7)
+
+    assert exc_info.value.exit_code == 7
+
+
+def test_non_interactive_launch_chat_propagates_chat_exit_code(tmp_path, monkeypatch):
+    """Regression: --launch-chat must return the chat loop exit code."""
+    monkeypatch.setenv("SYNAPSE_HOME", str(tmp_path))
+
+    with (
+        patch(
+            "cli.onboard.validate_provider",
+            return_value=MagicMock(ok=True, error=None, detail=None),
+        ),
+        patch(
+            "cli.gateway_steps.configure_gateway",
+            return_value={"port": 9012, "bind": "loopback", "token": "a" * 48},
+        ),
+        patch("cli.onboard._validate_environment"),
+        patch("cli.chat_loop.run_cli_chat", return_value=7) as run_chat,
+    ):
+        result = runner.invoke(
+            app,
+            ["onboard", "--non-interactive", "--accept-risk", "--launch-chat"],
+            env={
+                "SYNAPSE_HOME": str(tmp_path),
+                "SYNAPSE_PRIMARY_PROVIDER": "gemini",
+                "GEMINI_API_KEY": "fake-test-key",
+            },
+        )
+
+    assert result.exit_code == 7
+    run_chat.assert_called_once()
+    assert run_chat.call_args.args[0].port == 9012
+
+
+def test_interactive_launch_chat_propagates_chat_exit_code(tmp_path, monkeypatch):
+    """Regression: accepted post-onboard chat prompt must propagate failures."""
+    import typer
+    from cli.onboard import _run_interactive
+
+    monkeypatch.setenv("SYNAPSE_HOME", str(tmp_path))
+
+    stub = MagicMock()
+    stub.multiselect.return_value = ["gemini"]
+    stub.confirm.side_effect = lambda message, default=True: message == "Start local CLI chat now?"
+
+    def seed_provider(_prompter, config, _selected):
+        config["providers"]["gemini"] = {"api_key": "fake-test-key"}
+
+    with (
+        patch("cli.onboard._check_for_legacy_install", return_value=None),
+        patch("cli.onboard._collect_provider_keys", side_effect=seed_provider),
+        patch(
+            "cli.onboard.setup_whatsapp",
+            return_value={"enabled": True, "bridge_port": 5010, "dm_policy": "pairing"},
+        ) as setup_wa,
+        patch(
+            "cli.gateway_steps.configure_gateway",
+            return_value={"port": 9013, "bind": "loopback", "token": "a" * 48},
+        ),
+        patch(
+            "cli.onboard._build_model_mappings_interactive",
+            return_value={"chat": {"model": "gemini/gemini-pro", "fallback": None}},
+        ),
+        patch("cli.onboard._run_sbs_questions"),
+        patch("cli.onboard._wizard_daemon_install"),
+        patch("cli.onboard._validate_environment"),
+        patch("cli.workspace_seeding.ensure_agent_workspace", return_value={}),
+        patch("cli.chat_loop.run_cli_chat", return_value=7) as run_chat,
+    ):
+        with pytest.raises(typer.Exit) as exc_info:
+            _run_interactive(prompter=stub, flow="quickstart", launch_chat=True)
+
+    assert exc_info.value.exit_code == 7
+    setup_wa.assert_not_called()
+    run_chat.assert_called_once()
+    assert run_chat.call_args.args[0].port == 9013
+
+
+def test_cli_chat_modules_are_part_of_workspace_package():
+    pyproject_path = Path(__file__).resolve().parents[2] / "pyproject.toml"
+    data = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
+    packages = data["tool"]["setuptools"]["packages"]["find"]["where"]
+    package_data = data["tool"]["setuptools"]["package-data"]
+
+    assert packages == ["workspace"]
+    assert "templates/*.md" in package_data["cli"]
+    assert "agent_workspace/*.md.template" in package_data["sci_fi_dashboard"]
+
+
+def test_setup_paths_install_synapse_console_script():
+    repo_root = Path(__file__).resolve().parents[2]
+
+    readme = (repo_root / "README.md").read_text(encoding="utf-8")
+    how_to_run = (repo_root / "HOW_TO_RUN.md").read_text(encoding="utf-8")
+    onboard_bat = (repo_root / "synapse_onboard.bat").read_text(encoding="utf-8")
+    onboard_sh = (repo_root / "synapse_onboard.sh").read_text(encoding="utf-8")
+
+    assert "pip install -e ." in readme
+    assert "pip install -e ." in how_to_run
+    assert 'pip.exe" install -e "%PROJECT_ROOT%"' in onboard_bat
+    assert '"$VENV_PIP" install -e "$SCRIPT_DIR"' in onboard_sh
 
 
 # ===========================================================================
@@ -951,6 +1075,40 @@ def test_interactive_provider_selection_writes_config(tmp_path, monkeypatch):
     assert "gemini" in config.get(
         "providers", {}
     ), f"Expected 'gemini' in providers, got: {config.get('providers')}"
+
+
+def test_quickstart_whatsapp_opt_in_configures_once(tmp_path, monkeypatch):
+    """Selecting optional WhatsApp must not fall through to generic channel setup."""
+    from cli.onboard import _run_interactive
+
+    monkeypatch.setenv("SYNAPSE_HOME", str(tmp_path))
+
+    mock_acomp = _make_mock_acompletion()
+    stub = MagicMock()
+    stub.multiselect.return_value = ["gemini"]
+    stub.text.return_value = "fake-gemini-key"
+    stub.confirm.side_effect = (
+        lambda message, default=True: message
+        == "Configure WhatsApp now? You can skip this and use CLI chat."
+    )
+    fake_wa = {"enabled": True, "bridge_port": 5010, "dm_policy": "pairing"}
+
+    with (
+        patch("litellm.acompletion", mock_acomp),
+        patch("cli.onboard._check_for_legacy_install", return_value=None),
+        patch("cli.onboard.setup_whatsapp", return_value=fake_wa) as setup_wa,
+        patch("cli.onboard._wizard_daemon_install"),
+        patch("cli.workspace_seeding.ensure_agent_workspace", return_value={}),
+        patch(
+            "cli.gateway_steps.configure_gateway",
+            return_value={"port": 8000, "bind": "loopback", "token": "a" * 48},
+        ),
+    ):
+        _run_interactive(prompter=stub)
+
+    setup_wa.assert_called_once()
+    config = json.loads((tmp_path / "synapse.json").read_text())
+    assert config["channels"]["whatsapp"] == fake_wa
 
 
 def test_interactive_aborts_on_no_providers(tmp_path, monkeypatch):

@@ -60,16 +60,29 @@ def _check_rate_limit(request: Request) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _expected_gateway_token() -> str:
+    env_token = os.environ.get("SYNAPSE_GATEWAY_TOKEN", "").strip()
+    if env_token:
+        return env_token
+
+    try:
+        from synapse_config import SynapseConfig  # noqa: PLC0415
+
+        _cfg = SynapseConfig.load()
+        token = _cfg.gateway.get("token", "")
+    except Exception as exc:
+        logger.warning("Failed to load gateway auth config", exc_info=exc)
+        raise HTTPException(status_code=401, detail="Unauthorized") from exc
+    return str(token or "").strip()
+
+
 def _require_gateway_auth(request: Request) -> None:
     """
     Dependency that enforces SYNAPSE_GATEWAY_TOKEN on sensitive endpoints.
     Reads token from Authorization header (Bearer) or x-api-key header.
     Uses hmac.compare_digest for timing-safe comparison.
     """
-    from synapse_config import SynapseConfig  # noqa: PLC0415
-
-    _cfg = SynapseConfig.load()
-    expected = _cfg.gateway.get("token", "") or os.environ.get("SYNAPSE_GATEWAY_TOKEN", "")
+    expected = _expected_gateway_token()
     if not expected:
         return  # No token configured — skip auth (dev mode)
     provided = ""
@@ -99,10 +112,7 @@ def validate_bridge_token(request: Request) -> None:
 def validate_api_key(request: Request) -> None:
     """Validates the gateway token for protected endpoints."""
     # C-03: Use hmac.compare_digest for timing-safe token comparison
-    from synapse_config import SynapseConfig  # noqa: PLC0415
-
-    _cfg = SynapseConfig.load()
-    api_key = _cfg.gateway.get("token", "")
+    api_key = _expected_gateway_token()
     if api_key:
         provided = request.headers.get("x-api-key") or ""
         if not hmac.compare_digest(str(provided), str(api_key)):

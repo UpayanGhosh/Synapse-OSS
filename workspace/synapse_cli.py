@@ -233,6 +233,11 @@ def onboard(
             "Values: config | config+creds+sessions | full"
         ),
     ),
+    launch_chat: bool | None = typer.Option(
+        None,
+        "--launch-chat/--no-launch-chat",
+        help="Launch local CLI chat after setup completes.",
+    ),
 ) -> None:
     """Interactive setup wizard — configure LLM providers, channels, and write synapse.json."""
     from cli.onboard import run_wizard
@@ -242,6 +247,7 @@ def onboard(
         flow=flow,
         accept_risk=accept_risk,
         reset=reset,
+        launch_chat=launch_chat,
     )
 
 
@@ -279,6 +285,11 @@ def setup(
             "Values: config | config+creds+sessions | full"
         ),
     ),
+    launch_chat: bool | None = typer.Option(
+        None,
+        "--launch-chat/--no-launch-chat",
+        help="Launch local CLI chat after setup completes.",
+    ),
 ) -> None:
     """Setup Synapse — configure providers, channels, and persona profile."""
     if verify:
@@ -293,15 +304,41 @@ def setup(
             flow=flow,
             accept_risk=accept_risk,
             reset=reset,
+            launch_chat=launch_chat,
         )
 
 
 @app.command()
-def chat() -> None:
-    """Start the AI Gateway interactive chat interface."""
-    from main import start_chat
+def chat(
+    target: str = typer.Option("the_creator", "--target", help="Persona id to chat with."),
+    user_id: str = typer.Option("local_cli", "--user-id", help="Local CLI user id."),
+    session: str = typer.Option("safe", "--session", help="Initial session type: safe or spicy."),
+    port: int = typer.Option(8000, "--port", help="Gateway port."),
+    no_auto_start: bool = typer.Option(False, "--no-auto-start", help="Do not start the gateway."),
+    message: str | None = typer.Option(None, "--message", help="Send an initial message."),
+    exit_after_message: bool = typer.Option(False, "--exit-after-message", help="Exit after --message reply."),
+) -> None:
+    """Start Synapse's local CLI chat."""
+    from cli.chat_loop import run_cli_chat
+    from cli.chat_types import ChatLaunchOptions, normalize_session_type
 
-    start_chat()
+    try:
+        session_type = normalize_session_type(session)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc), param_hint="--session") from exc
+
+    code = run_cli_chat(
+        ChatLaunchOptions(
+            target=target,
+            user_id=user_id,
+            session_type=session_type,
+            port=port,
+            auto_start_gateway=not no_auto_start,
+            initial_message=message,
+            exit_after_initial=exit_after_message,
+        )
+    )
+    raise typer.Exit(code)
 
 
 @app.command()

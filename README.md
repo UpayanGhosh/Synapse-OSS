@@ -610,11 +610,13 @@ cd Synapse-OSS
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+pip install -e .
 
 # Windows
 python -m venv .venv
 .venv\Scripts\activate.bat
 pip install -r requirements.txt
+pip install -e .
 ```
 
 ### 3. Run onboarding
@@ -627,6 +629,18 @@ chmod +x synapse_onboard.sh
 # Windows
 synapse_onboard.bat
 ```
+
+### CLI chat
+
+You can use Synapse without WhatsApp, Telegram, Discord, or Slack:
+
+```bash
+synapse chat
+```
+
+After `synapse onboard`, choose `Start local CLI chat now` to hatch the bot in
+the same terminal. On a fresh workspace, Synapse sends an initial bootstrap
+message so the bot asks who it is, who you are, and what it should call you.
 
 ### 4. Start Synapse
 

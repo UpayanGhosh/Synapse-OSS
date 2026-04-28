@@ -92,6 +92,7 @@ def run_wizard(
     flow: str = "quickstart",
     accept_risk: bool = False,
     reset: str | None = None,
+    launch_chat: bool | None = None,
 ) -> None:
     """Entry point — dispatches to interactive or non-interactive wizard.
 
@@ -107,9 +108,14 @@ def run_wizard(
             or "full". Backed-up data before wizard starts.
     """
     if non_interactive or (not force_interactive and not _is_tty()):
-        _run_non_interactive(accept_risk=accept_risk, reset=reset, flow=flow)
+        _run_non_interactive(
+            accept_risk=accept_risk,
+            reset=reset,
+            flow=flow,
+            launch_chat=launch_chat,
+        )
     else:
-        _run_interactive(flow=flow, reset=reset)
+        _run_interactive(flow=flow, reset=reset, launch_chat=launch_chat)
 
 
 def _is_tty() -> bool:
@@ -118,6 +124,11 @@ def _is_tty() -> bool:
         return sys.stdin.isatty()
     except AttributeError:
         return False
+
+
+def _raise_for_chat_exit_code(code: int) -> None:
+    if code != 0:
+        raise typer.Exit(code)
 
 
 # ---------------------------------------------------------------------------
@@ -129,6 +140,7 @@ def _run_non_interactive(
     accept_risk: bool = False,
     reset: str | None = None,
     flow: str = "quickstart",
+    launch_chat: bool | None = None,
 ) -> None:
     """Non-interactive wizard: reads all inputs from environment variables.
 
@@ -344,6 +356,22 @@ def _run_non_interactive(
 
     # --- Environment validation ---
     _validate_environment(config)
+
+    if launch_chat is True:
+        from cli.chat_loop import run_cli_chat  # noqa: PLC0415
+        from cli.post_onboard_launch import (  # noqa: PLC0415
+            build_post_onboard_chat_options,
+            should_offer_cli_chat,
+        )
+
+        if should_offer_cli_chat(non_interactive=True, launch_chat=launch_chat):
+            port = int((config.get("gateway") or {}).get("port") or 8000)
+            options = build_post_onboard_chat_options(
+                workspace_dir=data_root / "workspace",
+                port=port,
+            )
+            code = run_cli_chat(options)
+            _raise_for_chat_exit_code(code)
 
 
 # ---------------------------------------------------------------------------
@@ -1521,12 +1549,13 @@ def _run_advanced_flow(
         import questionary  # noqa: PLC0415
 
         channel_choices = [
+            questionary.Choice("WhatsApp (QR pairing)", value="whatsapp"),
             questionary.Choice("Telegram (bot token)", value="telegram"),
             questionary.Choice("Discord (bot token + MESSAGE_CONTENT intent)", value="discord"),
             questionary.Choice("Slack (xoxb- + xapp- tokens)", value="slack"),
         ]
     except ImportError:
-        channel_choices = ["telegram", "discord", "slack"]
+        channel_choices = ["whatsapp", "telegram", "discord", "slack"]
 
     selected_channels = prompter.multiselect(  # type: ignore[attr-defined]
         "Select additional channels to configure (optional — can be added later):",
@@ -1931,6 +1960,7 @@ def _run_interactive(  # noqa: C901 — linear wizard, complexity is intentional
     prompter: "object | None" = None,
     flow: str = "quickstart",
     reset: str | None = None,
+    launch_chat: bool | None = None,
 ) -> None:
     """Full interactive wizard flow.
 
@@ -1963,7 +1993,12 @@ def _run_interactive(  # noqa: C901 — linear wizard, complexity is intentional
             prompter = QuestionaryPrompter()
 
     try:
-        _run_interactive_impl(prompter=prompter, flow=flow, reset=reset)
+        _run_interactive_impl(
+            prompter=prompter,
+            flow=flow,
+            reset=reset,
+            launch_chat=launch_chat,
+        )
     except WizardCancelledError:
         _print("[yellow]Wizard cancelled.[/]")
         raise typer.Exit(1) from None
@@ -1973,6 +2008,7 @@ def _run_interactive_impl(
     prompter: "object",
     flow: str,
     reset: str | None,
+    launch_chat: bool | None,
 ) -> None:  # noqa: C901 — linear wizard, complexity is intentional
     """Inner implementation of the interactive wizard (separated for exception isolation)."""
     # --- Step 1: Welcome banner ---
@@ -2020,55 +2056,53 @@ def _run_interactive_impl(
 
     if flow == "quickstart":
         _run_quickstart_flow(prompter=prompter, config=config, data_root=data_root)
-        # QuickStart: no channel prompt (user can add later)
+        if prompter.confirm(  # type: ignore[attr-defined]
+            "Configure WhatsApp now? You can skip this and use CLI chat.", default=False
+        ):
+            selected_channels = ["whatsapp"]
     else:
         selected_channels, workspace_dir = _run_advanced_flow(
             prompter=prompter, config=config, data_root=data_root
         )
 
-    # --- Step 7: Per-channel setup (ONB-05, ONB-06) ---
+    # --- Step 7: Optional channel setup (ONB-05, ONB-06) ---
     _this_file = Path(__file__).resolve()
     bridge_dir = _this_file.parent.parent.parent / "baileys-bridge"
     if not bridge_dir.exists():
         bridge_dir = _this_file.parent.parent / "baileys-bridge"
 
-    # --- Step 7a: WhatsApp (mandatory) ---
-    from cli.channel_steps import NodeJsMissingError  # noqa: PLC0415
+    if "whatsapp" in selected_channels:
+        from cli.channel_steps import NodeJsMissingError  # noqa: PLC0415
 
-    _print("\n[bold cyan]--- WhatsApp (required) ---[/]")
-    _MAX_WA_RETRIES = 3  # noqa: N806
-    _wa_paired = False
-    for _attempt in range(1, _MAX_WA_RETRIES + 1):
-        try:
-            wa_cfg = setup_whatsapp(bridge_dir, non_interactive=False)
-        except NodeJsMissingError as exc:
-            _print(f"\n[red bold]{exc}[/]")
-            raise typer.Exit(1) from None
+        _print("\n[bold cyan]--- WhatsApp ---[/]")
+        _MAX_WA_RETRIES = 3  # noqa: N806
+        for _attempt in range(1, _MAX_WA_RETRIES + 1):
+            try:
+                wa_cfg = setup_whatsapp(bridge_dir, non_interactive=False)
+            except NodeJsMissingError as exc:
+                _print(f"\n[red bold]{exc}[/]")
+                raise typer.Exit(1) from None
 
-        if wa_cfg is not None:
-            config["channels"]["whatsapp"] = wa_cfg
-            _wa_paired = True
-            break
-
-        if _attempt < _MAX_WA_RETRIES:
-            _retry = prompter.confirm(  # type: ignore[attr-defined]
-                f"WhatsApp pairing failed (attempt {_attempt}/{_MAX_WA_RETRIES}). Retry?",
-                default=True,
-            )
-            if not _retry:
+            if wa_cfg is not None:
+                config["channels"]["whatsapp"] = wa_cfg
                 break
 
-    if not _wa_paired:
-        _print("[red bold]WhatsApp is required for Synapse to work. Cannot continue.[/]")
-        raise typer.Exit(1)
+            if _attempt < _MAX_WA_RETRIES:
+                _retry = prompter.confirm(  # type: ignore[attr-defined]
+                    f"WhatsApp pairing failed (attempt {_attempt}/{_MAX_WA_RETRIES}). Retry?",
+                    default=True,
+                )
+                if not _retry:
+                    break
 
-    # --- Step 7b: Optional channels ---
     channel_config_map = {
         "telegram": lambda: setup_telegram(non_interactive=False),
         "discord": lambda: setup_discord(non_interactive=False),
         "slack": lambda: setup_slack(non_interactive=False),
     }
     for ch in selected_channels or []:
+        if ch == "whatsapp":
+            continue
         ch_cfg = channel_config_map[ch]()
         if ch_cfg is not None:
             config["channels"][ch] = ch_cfg
@@ -2145,6 +2179,26 @@ def _run_interactive_impl(
 
     # --- Step 13: Environment validation ---
     _validate_environment(config)
+
+    from cli.post_onboard_launch import should_offer_cli_chat  # noqa: PLC0415
+
+    if should_offer_cli_chat(non_interactive=False, launch_chat=launch_chat):
+        start_now = prompter.confirm(  # type: ignore[attr-defined]
+            "Start local CLI chat now?", default=True
+        )
+        if start_now:
+            from cli.chat_loop import run_cli_chat  # noqa: PLC0415
+            from cli.post_onboard_launch import (  # noqa: PLC0415
+                build_post_onboard_chat_options,
+            )
+
+            port = int((config.get("gateway") or {}).get("port") or 8000)
+            options = build_post_onboard_chat_options(
+                workspace_dir=workspace_dir,
+                port=port,
+            )
+            code = run_cli_chat(options)
+            _raise_for_chat_exit_code(code)
 
 
 # ---------------------------------------------------------------------------

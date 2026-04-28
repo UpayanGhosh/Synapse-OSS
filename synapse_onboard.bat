@@ -124,6 +124,15 @@ if %ERRORLEVEL% NEQ 0 (
 )
 echo    [OK] Core dependencies installed.
 
+echo    Installing Synapse CLI...
+call "%PROJECT_ROOT%\.venv\Scripts\pip.exe" install -e "%PROJECT_ROOT%" -q
+if %ERRORLEVEL% NEQ 0 (
+    echo    [X] Synapse CLI install failed. Check pyproject.toml and try again.
+    pause
+    exit /b 1
+)
+echo    [OK] Synapse CLI installed.
+
 echo    Installing channel dependencies...
 call "%PROJECT_ROOT%\.venv\Scripts\pip.exe" install -r "%PROJECT_ROOT%\requirements-channels.txt" -q
 if %ERRORLEVEL% NEQ 0 (
