@@ -19,14 +19,14 @@ def test_should_offer_cli_chat_accepts_positional_args():
     assert not should_offer_cli_chat(True, None)
 
 
-def test_build_options_uses_bootstrap_message_when_needed(tmp_path, monkeypatch):
+def test_build_options_keeps_bootstrap_pending_without_auto_message(tmp_path, monkeypatch):
     (tmp_path / "BOOTSTRAP.md").write_text("ritual", encoding="utf-8")
     (tmp_path / "IDENTITY.md").write_text("- Name:\n", encoding="utf-8")
     opts = build_post_onboard_chat_options(workspace_dir=tmp_path, port=8123)
     assert isinstance(opts, ChatLaunchOptions)
     assert opts.port == 8123
-    assert opts.initial_message is not None
-    assert "BOOTSTRAP.md" in opts.initial_message
+    assert opts.initial_message is None
+    assert opts.workspace_dir == tmp_path
 
 
 def test_build_options_accepts_positional_workspace_and_port(tmp_path):

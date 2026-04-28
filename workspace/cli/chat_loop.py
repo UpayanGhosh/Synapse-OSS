@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from dataclasses import replace
 
 from cli.chat_client import ChatClient
 from cli.chat_types import ChatLaunchOptions, ChatTurn
 from cli.gateway_process import GatewayProcessManager
-
+from cli.startup_overview import build_startup_overview, collect_startup_diagnostics
 
 InputFn = Callable[[str], str]
 OutputFn = Callable[[str], None]
@@ -31,8 +32,8 @@ def run_cli_chat(
 
         history: list[ChatTurn] = []
 
-        if options.show_startup_greeting and not options.initial_message:
-            _emit(output_fn, _format_startup_greeting(options, client))
+        if options.show_startup_greeting:
+            _emit(output_fn, _format_status(options, client))
 
         if options.initial_message:
             if not _send_message(options.initial_message, options, client, history, output_fn):
@@ -66,7 +67,13 @@ def run_cli_chat(
                 _emit(output_fn, "SPICY mode")
                 continue
             if command == "/help":
-                _emit(output_fn, "Commands: /safe, /spicy, /quit, /exit")
+                _emit(output_fn, _format_help())
+                continue
+            if command == "/status":
+                _emit(output_fn, _format_status(options, client))
+                continue
+            if command == "/model":
+                _emit(output_fn, _format_model(options, client))
                 continue
 
             _send_message(message, options, client, history, output_fn)
@@ -82,54 +89,32 @@ def _emit(output_fn: OutputFn, text: str) -> None:
         output_fn(text.encode("ascii", errors="replace").decode("ascii"))
 
 
-def _format_startup_greeting(options: ChatLaunchOptions, client: ChatClient) -> str:
-    model = "not configured"
-    config_status = "missing"
-    try:
-        from synapse_config import SynapseConfig  # noqa: PLC0415
+def _format_status(options: ChatLaunchOptions, client: ChatClient) -> str:
+    return build_startup_overview(collect_startup_diagnostics(options, client=client))
 
-        cfg = SynapseConfig.load()
-        config_status = "valid"
-        mappings = cfg.model_mappings or {}
-        role_cfg = mappings.get("casual") or next(iter(mappings.values()), {})
-        if isinstance(role_cfg, dict):
-            model = str(role_cfg.get("model") or model)
-            try:
-                from sci_fi_dashboard.openai_codex_provider import (  # noqa: PLC0415
-                    is_openai_codex_model,
-                    normalize_openai_codex_model,
-                )
 
-                if is_openai_codex_model(model):
-                    model = f"openai_codex/{normalize_openai_codex_model(model)}"
-            except Exception:
-                pass
-    except Exception:
-        config_status = "unavailable"
-
-    gateway_url = f"http://127.0.0.1:{options.port}"
-    reachable = False
-    detail = "not probed"
-    probe = getattr(client, "probe_health", None)
-    if callable(probe):
-        reachable, detail = probe()
-
-    gateway_line = (
-        f"Gateway: reachable at {gateway_url} ({detail})."
-        if reachable
-        else f"Gateway: not reachable at {gateway_url}; first probe said {detail}."
-    )
-
+def _format_help() -> str:
     return "\n".join(
         [
-            "## Hi, I'm Synapse.",
-            "",
-            "- Start here when setup, model routing, Gateway, or local chat feels off.",
-            f"- Using: {model} for safe chat.",
-            f"- Config: {config_status}. Persona: {options.target}.",
-            f"- {gateway_line}",
-            "",
-            "Send a message, or use `/help` for local commands.",
+            "Commands:",
+            "  /safe    switch to safe chat",
+            "  /spicy   switch to spicy chat",
+            "  /status  show config, model, gateway, first-run status",
+            "  /model   show selected safe-chat model",
+            "  /quit    exit",
+            "  /exit    exit",
+        ]
+    )
+
+
+def _format_model(options: ChatLaunchOptions, client: ChatClient) -> str:
+    diagnostics = collect_startup_diagnostics(options, client=client)
+    model = diagnostics.safe_chat_model or "not configured"
+    return "\n".join(
+        [
+            f"Safe-chat model: {model}",
+            f"Target: {diagnostics.target}",
+            f"Config: {diagnostics.config_path}",
         ]
     )
 
@@ -145,8 +130,69 @@ def _send_message(
         reply = client.send_turn(message, options=options, history=history)
     except Exception as exc:
         _emit(output_fn, f"Error: {exc}")
+        _emit(output_fn, _diagnostic_hint(str(exc)))
         return False
     _emit(output_fn, reply.reply)
+    reply_hint = _diagnostic_hint_for_reply(reply)
+    if reply_hint:
+        _emit(output_fn, reply_hint)
     history.append(ChatTurn(role="user", content=message))
     history.append(ChatTurn(role="assistant", content=reply.reply))
     return True
+
+
+def _diagnostic_hint(error: str) -> str:
+    lowered = error.lower()
+    if "unknown model" in lowered:
+        return "Diagnostic hint: model route failed. Run /status, then synapse verify."
+    return "Diagnostic hint: run /status, then synapse verify."
+
+
+def _diagnostic_hint_for_reply(reply: object) -> str | None:
+    raw = getattr(reply, "raw", None)
+    if _total_tokens(raw) == 0:
+        return "Diagnostic hint: gateway returned zero tokens. Run /status, then synapse verify."
+
+    text = str(getattr(reply, "reply", "") or "").strip()
+    if _total_tokens_from_reply_text(text) == 0:
+        return "Diagnostic hint: gateway returned zero tokens. Run /status, then synapse verify."
+
+    lowered = text.lower()
+    if not text:
+        return "Diagnostic hint: gateway returned an empty reply. Run /status, then synapse verify."
+    if "try again" in lowered and any(word in lowered for word in ("error", "failed", "failure")):
+        return "Diagnostic hint: generic bot failure. Run /status, then synapse verify."
+    return None
+
+
+_TOKENS_FOOTER_RE = re.compile(
+    r"\*\*Tokens:\*\*\s*[\d,]+\s+in\s*/\s*[\d,]+\s+out\s*/\s*([\d,]+)\s+total",
+    re.IGNORECASE,
+)
+
+
+def _total_tokens_from_reply_text(text: str) -> int | None:
+    match = _TOKENS_FOOTER_RE.search(text)
+    if not match:
+        return None
+    try:
+        return int(match.group(1).replace(",", ""))
+    except ValueError:
+        return None
+
+
+def _total_tokens(raw: object) -> int | None:
+    if not isinstance(raw, dict):
+        return None
+    usage = raw.get("usage")
+    if isinstance(usage, dict) and "total_tokens" in usage:
+        try:
+            return int(usage["total_tokens"])
+        except (TypeError, ValueError):
+            return None
+    if "total_tokens" in raw:
+        try:
+            return int(raw["total_tokens"])
+        except (TypeError, ValueError):
+            return None
+    return None

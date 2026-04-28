@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 
 def normalize_session_type(value: str | None) -> str:
@@ -32,6 +33,7 @@ class ChatLaunchOptions:
     initial_message: str | None = None
     exit_after_initial: bool = False
     show_startup_greeting: bool = True
+    workspace_dir: Path | None = None
 
     def resolved_session_type(self) -> str:
         return normalize_session_type(self.session_type)

@@ -131,6 +131,65 @@ def _raise_for_chat_exit_code(code: int) -> None:
         raise typer.Exit(code)
 
 
+def _format_ready_summary(config: dict, config_path: Path) -> str:
+    gateway = config.get("gateway") or {}
+    port = int(gateway.get("port") or 8000)
+    safe_model = _selected_safe_model(config)
+    next_command = _chat_next_command(port)
+    return "\n".join(
+        [
+            "[bold green]Setup complete![/]",
+            "",
+            f"Config: {config_path}",
+            f"Gateway: http://127.0.0.1:{port}",
+            f"Safe-chat model: {safe_model or 'not configured'}",
+            f"Providers: {', '.join(config.get('providers', {}).keys()) or '(none)'}",
+            f"Channels: {', '.join(config.get('channels', {}).keys()) or '(none)'}",
+            f"Next: {next_command}",
+        ]
+    )
+
+
+def _chat_next_command(port: int) -> str:
+    command = "python workspace\\synapse_cli.py chat"
+    if port != 8000:
+        command = f"{command} --port {port}"
+    return command
+
+
+def _selected_safe_model(config: dict) -> str | None:
+    mappings = config.get("model_mappings") or {}
+    if not isinstance(mappings, dict):
+        return None
+    for key in ("casual", "chat", "safe"):
+        model = _model_value(mappings.get(key))
+        if model:
+            return _normalize_overview_model(model)
+    for value in mappings.values():
+        model = _model_value(value)
+        if model:
+            return _normalize_overview_model(model)
+    return None
+
+
+def _model_value(value: object) -> str | None:
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        model = value.get("model")
+        return str(model) if model else None
+    return None
+
+
+def _normalize_overview_model(model: str) -> str:
+    try:
+        from cli.startup_overview import normalize_safe_chat_model  # noqa: PLC0415
+
+        return normalize_safe_chat_model(model) or model
+    except Exception:
+        return model
+
+
 # ---------------------------------------------------------------------------
 # Non-interactive mode
 # ---------------------------------------------------------------------------
@@ -2187,12 +2246,9 @@ def _run_interactive_impl(
         with contextlib.suppress(OSError):
             mode_str = f"\nPermissions: {oct(cfg_file.stat().st_mode & 0o777)}"
 
-    summary = (
-        f"[bold green]Setup complete![/]\n\n"
-        f"Config: {cfg_file}{mode_str}\n"
-        f"Providers: {', '.join(config['providers'].keys()) or '(none)'}\n"
-        f"Channels: {', '.join(config['channels'].keys()) or '(none)'}"
-    )
+    summary = _format_ready_summary(config, cfg_file)
+    if mode_str:
+        summary = f"{summary}{mode_str}"
 
     if _RICH_AVAILABLE and Panel is not None and console is not None:
         console.print(Panel(summary, title="Synapse-OSS Ready", expand=False))

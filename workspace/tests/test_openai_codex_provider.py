@@ -1,3 +1,4 @@
+import asyncio
 import json
 import time
 
@@ -24,6 +25,54 @@ class _FakeAsyncClient:
             }
         )
         return self._responses.pop(0)
+
+
+class _Concurrent401ThenSuccessClient:
+    def __init__(self, *, old_token: str, new_token: str):
+        self._old_token = old_token
+        self._new_token = new_token
+        self._old_attempts = 0
+        self._old_attempts_ready = asyncio.Event()
+        self._lock = asyncio.Lock()
+        self.calls = []
+
+    async def post(self, url, *, headers=None, json=None, content=None, timeout=None):
+        call = {
+            "url": url,
+            "headers": headers or {},
+            "json": json,
+            "content": content,
+            "timeout": timeout,
+        }
+        self.calls.append(call)
+
+        auth = call["headers"].get("Authorization", "")
+        token = auth.removeprefix("Bearer ").strip()
+        if token == self._old_token:
+            async with self._lock:
+                self._old_attempts += 1
+                if self._old_attempts >= 2:
+                    self._old_attempts_ready.set()
+            await asyncio.wait_for(self._old_attempts_ready.wait(), timeout=1.0)
+            return httpx.Response(401, json={"error": {"message": "expired"}})
+
+        if token == self._new_token:
+            return httpx.Response(
+                200,
+                json={
+                    "status": "completed",
+                    "output": [
+                        {
+                            "type": "message",
+                            "role": "assistant",
+                            "content": [{"type": "output_text", "text": "retried-ok"}],
+                        }
+                    ],
+                    "usage": {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
+                },
+            )
+
+        return httpx.Response(500, json={"error": {"message": f"unexpected token {token}"}})
 
 
 def _payload_from_call(call: dict) -> dict:
@@ -85,7 +134,7 @@ def test_parse_responses_payload_text_tool_calls_and_usage():
                 "id": "fc_1",
                 "call_id": "call_lookup_1",
                 "name": "lookup",
-                "arguments": "{\"q\":\"synapse\"}",
+                "arguments": '{"q":"synapse"}',
             },
         ],
         "usage": {
@@ -108,7 +157,7 @@ def test_parse_responses_payload_text_tool_calls_and_usage():
         {
             "id": "call_lookup_1",
             "name": "lookup",
-            "arguments": "{\"q\":\"synapse\"}",
+            "arguments": '{"q":"synapse"}',
         }
     ]
 
@@ -315,7 +364,9 @@ async def test_chat_completion_refreshes_once_after_401_and_saves_token(monkeypa
         "refresh_access_token",
         lambda creds: refresh_calls.append(creds) or new_creds,
     )
-    monkeypatch.setattr(codex.openai_codex_oauth, "save_credentials", lambda creds: saved.append(creds))
+    monkeypatch.setattr(
+        codex.openai_codex_oauth, "save_credentials", lambda creds: saved.append(creds)
+    )
 
     fake_http = _FakeAsyncClient(
         [
@@ -349,6 +400,96 @@ async def test_chat_completion_refreshes_once_after_401_and_saves_token(monkeypa
     assert len(fake_http.calls) == 2
     assert fake_http.calls[0]["headers"]["Authorization"] == "Bearer old-token"
     assert fake_http.calls[1]["headers"]["Authorization"] == "Bearer new-token"
+
+
+@pytest.mark.asyncio
+async def test_chat_completion_concurrent_401_refreshes_once_and_reuses_new_token(monkeypatch):
+    old_creds = openai_codex_oauth.OpenAICodexCredentials(
+        access_token="old-token",
+        refresh_token="old-refresh-token",
+        expires_at=time.time() + 3600,
+        email="user@example.com",
+        account_id="acct-1",
+        profile_name="user@example.com",
+    )
+    new_creds = openai_codex_oauth.OpenAICodexCredentials(
+        access_token="new-token",
+        refresh_token="new-refresh-token",
+        expires_at=time.time() + 7200,
+        email="user@example.com",
+        account_id="acct-1",
+        profile_name="user@example.com",
+    )
+    refresh_calls = []
+    saved = []
+
+    monkeypatch.setattr(codex.openai_codex_oauth, "load_credentials", lambda: old_creds)
+
+    def _refresh_once(creds):
+        refresh_calls.append(creds)
+        if len(refresh_calls) > 1:
+            raise RuntimeError("refresh token already rotated")
+        return new_creds
+
+    monkeypatch.setattr(codex.openai_codex_oauth, "refresh_access_token", _refresh_once)
+    monkeypatch.setattr(
+        codex.openai_codex_oauth, "save_credentials", lambda creds: saved.append(creds)
+    )
+
+    fake_http = _Concurrent401ThenSuccessClient(old_token="old-token", new_token="new-token")
+    client = codex.OpenAICodexClient(http_client=fake_http)
+
+    results = await asyncio.gather(
+        client.chat_completion(
+            messages=[{"role": "user", "content": "Ping A"}],
+            model="openai_codex/custom-future-model",
+        ),
+        client.chat_completion(
+            messages=[{"role": "user", "content": "Ping B"}],
+            model="openai_codex/custom-future-model",
+        ),
+    )
+
+    assert [result.text for result in results] == ["retried-ok", "retried-ok"]
+    assert refresh_calls == [old_creds]
+    assert saved == [new_creds]
+    auths = [call["headers"]["Authorization"] for call in fake_http.calls]
+    assert auths.count("Bearer old-token") == 2
+    assert auths.count("Bearer new-token") == 2
+
+
+@pytest.mark.asyncio
+async def test_force_refresh_skips_refresh_when_another_call_already_updated_creds(monkeypatch):
+    old_creds = openai_codex_oauth.OpenAICodexCredentials(
+        access_token="old-token",
+        refresh_token="old-refresh-token",
+        expires_at=time.time() + 3600,
+        email="user@example.com",
+        account_id="acct-1",
+        profile_name="user@example.com",
+    )
+    new_creds = openai_codex_oauth.OpenAICodexCredentials(
+        access_token="new-token",
+        refresh_token="new-refresh-token",
+        expires_at=time.time() + 7200,
+        email="user@example.com",
+        account_id="acct-1",
+        profile_name="user@example.com",
+    )
+    client = codex.OpenAICodexClient(http_client=_FakeAsyncClient([]))
+    client._creds = new_creds
+
+    monkeypatch.setattr(codex.openai_codex_oauth, "load_credentials", lambda: old_creds)
+
+    def _refresh_must_not_run(_creds):
+        raise AssertionError("already refreshed token must be reused")
+
+    monkeypatch.setattr(codex.openai_codex_oauth, "refresh_access_token", _refresh_must_not_run)
+    monkeypatch.setattr(codex.openai_codex_oauth, "save_credentials", lambda _creds: None)
+
+    refreshed = await client._force_refresh(failed_access_token="old-token")
+
+    assert refreshed == new_creds
 
 
 @pytest.mark.asyncio

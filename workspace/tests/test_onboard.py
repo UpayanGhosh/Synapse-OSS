@@ -109,6 +109,25 @@ def test_post_onboard_chat_nonzero_exit_raises():
     assert exc_info.value.exit_code == 7
 
 
+def test_onboarding_ready_summary_includes_next_command(tmp_path):
+    from cli.onboard import _format_ready_summary
+
+    config = {
+        "providers": {"gemini": {"api_key": "fake"}},
+        "channels": {},
+        "gateway": {"port": 8123},
+        "model_mappings": {"casual": {"model": "gemini/gemini-2.0-flash"}},
+    }
+
+    summary = _format_ready_summary(config, tmp_path / "synapse.json")
+
+    assert "Setup complete" in summary
+    assert f"Config: {tmp_path / 'synapse.json'}" in summary
+    assert "Gateway: http://127.0.0.1:8123" in summary
+    assert "Safe-chat model: gemini/gemini-2.0-flash" in summary
+    assert "Next: python workspace\\synapse_cli.py chat --port 8123" in summary
+
+
 def test_non_interactive_launch_chat_propagates_chat_exit_code(tmp_path, monkeypatch):
     """Regression: --launch-chat must return the chat loop exit code."""
     monkeypatch.setenv("SYNAPSE_HOME", str(tmp_path))

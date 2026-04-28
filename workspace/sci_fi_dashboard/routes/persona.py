@@ -34,6 +34,6 @@ def persona_status():
 
 @router.get("/sbs/status", dependencies=[Depends(_require_gateway_auth)])
 def sbs_status():
-    """Show live SBS stats for sci-fi dashboard."""
+    """Show live SBS stats for Synapse dashboard."""
     stats = {pid: sbs.get_profile_summary() for pid, sbs in deps.sbs_registry.items()}
     return {"profiles": stats}

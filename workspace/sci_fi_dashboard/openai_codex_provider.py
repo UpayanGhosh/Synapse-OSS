@@ -293,7 +293,9 @@ def _usage_int(usage: dict[str, Any], *names: str) -> int:
     return 0
 
 
-def parse_responses_payload(payload: dict[str, Any], *, requested_model: str) -> OpenAICodexResponse:
+def parse_responses_payload(
+    payload: dict[str, Any], *, requested_model: str
+) -> OpenAICodexResponse:
     text_chunks: list[str] = []
     tool_calls: list[dict[str, Any]] = []
 
@@ -503,9 +505,14 @@ class OpenAICodexClient:
     def _current_credentials(self) -> openai_codex_oauth.OpenAICodexCredentials:
         return self._ensure_creds_loaded()
 
-    async def _force_refresh(self) -> openai_codex_oauth.OpenAICodexCredentials:
-        creds = self._ensure_creds_loaded()
+    async def _force_refresh(
+        self, *, failed_access_token: str | None = None
+    ) -> openai_codex_oauth.OpenAICodexCredentials:
+        self._ensure_creds_loaded()
         async with self._refresh_lock:
+            creds = self._ensure_creds_loaded()
+            if failed_access_token and creds.access_token != failed_access_token:
+                return creds
             new_creds = await asyncio.to_thread(openai_codex_oauth.refresh_access_token, creds)
             await asyncio.to_thread(openai_codex_oauth.save_credentials, new_creds)
             self._creds = new_creds
@@ -562,7 +569,7 @@ class OpenAICodexClient:
 
             if resp.status_code in (401, 403) and attempt == 1:
                 try:
-                    creds = await self._force_refresh()
+                    creds = await self._force_refresh(failed_access_token=creds.access_token)
                 except Exception as exc:
                     if isinstance(exc, AuthenticationError):
                         raise

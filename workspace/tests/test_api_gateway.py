@@ -495,6 +495,15 @@ class TestFastAPIEndpoints:
         except Exception:
             pytest.skip("Cannot import api_gateway app")
 
+    def _auth_headers(self):
+        try:
+            from sci_fi_dashboard.middleware import _expected_gateway_token
+
+            token = _expected_gateway_token()
+        except Exception:
+            token = ""
+        return {"x-api-key": token} if token else {}
+
     def test_root_endpoint(self):
         """GET / should return status online."""
         client = self._get_client()
@@ -523,7 +532,7 @@ class TestFastAPIEndpoints:
     def test_persona_status(self):
         """GET /persona/status should return profile stats."""
         client = self._get_client()
-        resp = client.get("/persona/status")
+        resp = client.get("/persona/status", headers=self._auth_headers())
         assert resp.status_code == 200
         data = resp.json()
         assert "profiles" in data
@@ -531,8 +540,18 @@ class TestFastAPIEndpoints:
     def test_sbs_status(self):
         """GET /sbs/status should return SBS stats."""
         client = self._get_client()
-        resp = client.get("/sbs/status")
+        resp = client.get("/sbs/status", headers=self._auth_headers())
         assert resp.status_code == 200
+
+    def test_sbs_status_openapi_uses_synapse_dashboard_name(self):
+        """OpenAPI docs should use the current Synapse dashboard name."""
+        client = self._get_client()
+        resp = client.get("/openapi.json")
+        assert resp.status_code == 200
+        operation = resp.json()["paths"]["/sbs/status"]["get"]
+        description = operation.get("description", "")
+        assert "Synapse dashboard" in description
+        assert "sci-fi dashboard" not in description.lower()
 
     def test_chat_webhook_empty_body(self):
         """POST /chat with empty body should return error."""

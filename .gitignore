@@ -15,6 +15,8 @@ htmlcov/
 junit*.xml
 test-results/
 workspace/tests/.codex-pytest-run/
+codex_pytest_tmp/
+workspace/tests/codex_pytest_tmp/
 tmp_pytest*/
 tmp_pytest_local/
 workspace/.tmp_pytest*/
@@ -188,6 +190,7 @@ landing/
 # ──────────────────────────────────────────────────────────────
 # Codex agent scratch — not for GitHub
 # ──────────────────────────────────────────────────────────────
+.codex/
 .codex-*/
 
 # MemPalace per-project files (issue #185)

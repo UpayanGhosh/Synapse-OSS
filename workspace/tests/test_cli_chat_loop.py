@@ -12,6 +12,9 @@ class FakeClient:
     def __init__(self):
         self.messages = []
 
+    def probe_health(self):
+        return True, "ok"
+
     def send_turn(self, message, *, options, history):
         self.messages.append((message, options.resolved_session_type(), list(history)))
         return type("Reply", (), {"reply": f"reply:{message}", "model": "fake"})()
@@ -83,9 +86,7 @@ def test_cli_loop_prints_startup_greeting(tmp_path, monkeypatch, capsys):
         json.dumps(
             {
                 "providers": {"openai_codex": {}},
-                "model_mappings": {
-                    "casual": {"model": "openai_codex/codex-mini-latest"}
-                },
+                "model_mappings": {"casual": {"model": "openai_codex/codex-mini-latest"}},
             }
         ),
         encoding="utf-8",
@@ -105,6 +106,118 @@ def test_cli_loop_prints_startup_greeting(tmp_path, monkeypatch, capsys):
     assert "Hi, I'm Synapse" in out
     assert "openai_codex/gpt-5.4" in out
     assert "Gateway:" in out
+
+
+def test_cli_loop_help_status_and_model_commands(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("SYNAPSE_HOME", str(tmp_path))
+    (tmp_path / "synapse.json").write_text(
+        json.dumps(
+            {
+                "providers": {"gemini": {"api_key": "fake"}},
+                "model_mappings": {"casual": {"model": "gemini/gemini-2.0-flash"}},
+                "gateway": {"port": 8123},
+            }
+        ),
+        encoding="utf-8",
+    )
+    client = FakeClient()
+    inputs = iter(["/help", "/status", "/model", "/quit"])
+
+    run_cli_chat(
+        ChatLaunchOptions(port=8123),
+        client=client,
+        gateway_manager=None,
+        input_fn=lambda prompt: next(inputs),
+        output_fn=print,
+    )
+
+    out = capsys.readouterr().out
+    assert "/status" in out
+    assert "/model" in out
+    assert "Safe-chat model: gemini/gemini-2.0-flash" in out
+    assert "Target: the_creator" in out
+    assert f"Config: {tmp_path / 'synapse.json'}" in out
+    assert "Gateway: reachable at http://127.0.0.1:8123 (ok)" in out
+
+
+def test_cli_loop_error_hint_for_unknown_model(capsys):
+    class UnknownModelClient(FakeClient):
+        def send_turn(self, message, *, options, history):
+            raise RuntimeError("Gateway chat failed: HTTP 500: unknown model: gpt-missing")
+
+    inputs = iter(["hello", "/quit"])
+    code = run_cli_chat(
+        ChatLaunchOptions(),
+        client=UnknownModelClient(),
+        gateway_manager=None,
+        input_fn=lambda prompt: next(inputs),
+        output_fn=print,
+    )
+
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "unknown model" in out
+    assert "Diagnostic hint" in out
+    assert "/status" in out
+    assert "synapse verify" in out
+
+
+def test_cli_loop_error_hint_for_zero_token_reply(capsys):
+    class ZeroTokenClient(FakeClient):
+        def send_turn(self, message, *, options, history):
+            return type(
+                "Reply",
+                (),
+                {
+                    "reply": "",
+                    "model": "gemini/gemini-2.0-flash",
+                    "raw": {"usage": {"total_tokens": 0}},
+                },
+            )()
+
+    inputs = iter(["hello", "/quit"])
+    code = run_cli_chat(
+        ChatLaunchOptions(),
+        client=ZeroTokenClient(),
+        gateway_manager=None,
+        input_fn=lambda prompt: next(inputs),
+        output_fn=print,
+    )
+
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "Diagnostic hint" in out
+    assert "zero tokens" in out.lower()
+    assert "/status" in out
+
+
+def test_cli_loop_error_hint_for_zero_token_footer(capsys):
+    class ZeroFooterClient(FakeClient):
+        def send_turn(self, message, *, options, history):
+            return type(
+                "Reply",
+                (),
+                {
+                    "reply": "I encountered an error processing your request. Please try again.\n\n---\n**Tokens:** 0 in / 0 out / 0 total",
+                    "model": "gemini/gemini-2.0-flash",
+                    "raw": {"reply": "same footer only"},
+                },
+            )()
+
+    inputs = iter(["hello", "/quit"])
+    code = run_cli_chat(
+        ChatLaunchOptions(),
+        client=ZeroFooterClient(),
+        gateway_manager=None,
+        input_fn=lambda prompt: next(inputs),
+        output_fn=print,
+    )
+
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "Diagnostic hint" in out
+    assert "zero tokens" in out.lower()
+    assert "/status" in out
 
 
 def test_cli_loop_reports_turn_error_and_continues(capsys):
@@ -155,7 +268,8 @@ def test_cli_loop_degrades_unicode_when_console_encoding_rejects_it():
     )
 
     assert code == 0
-    assert outputs == ["hi ?"]
+    assert "Hi, I'm Synapse" in outputs[0]
+    assert outputs[-1] == "hi ?"
 
 
 def test_cli_loop_returns_nonzero_when_initial_message_fails(capsys):
