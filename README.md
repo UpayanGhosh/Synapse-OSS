@@ -610,11 +610,13 @@ cd Synapse-OSS
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+pip install -e .
 
 # Windows
 python -m venv .venv
 .venv\Scripts\activate.bat
 pip install -r requirements.txt
+pip install -e .
 ```
 
 ### 3. Run onboarding

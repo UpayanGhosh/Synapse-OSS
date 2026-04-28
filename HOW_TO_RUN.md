@@ -270,6 +270,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 
 pip install -r requirements.txt
+pip install -e .
 
 # Install browser for web browsing feature (Mac/Linux only)
 crawl4ai-setup
@@ -282,6 +283,7 @@ python -m venv .venv
 .venv\Scripts\activate.bat
 
 pip install -r requirements.txt
+pip install -e .
 ```
 
 > **Windows web browsing:** The onboarding script installs Playwright (the Windows browser

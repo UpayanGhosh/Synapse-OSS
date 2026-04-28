@@ -182,6 +182,20 @@ def test_cli_chat_modules_are_part_of_workspace_package():
     assert "templates/*.md" in data["tool"]["setuptools"]["package-data"]["cli"]
 
 
+def test_setup_paths_install_synapse_console_script():
+    repo_root = Path(__file__).resolve().parents[2]
+
+    readme = (repo_root / "README.md").read_text(encoding="utf-8")
+    how_to_run = (repo_root / "HOW_TO_RUN.md").read_text(encoding="utf-8")
+    onboard_bat = (repo_root / "synapse_onboard.bat").read_text(encoding="utf-8")
+    onboard_sh = (repo_root / "synapse_onboard.sh").read_text(encoding="utf-8")
+
+    assert "pip install -e ." in readme
+    assert "pip install -e ." in how_to_run
+    assert 'pip.exe" install -e "%PROJECT_ROOT%"' in onboard_bat
+    assert '"$VENV_PIP" install -e "$SCRIPT_DIR"' in onboard_sh
+
+
 # ===========================================================================
 # ONB-09: non-interactive mode exit codes
 # ===========================================================================
