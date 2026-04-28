@@ -476,6 +476,18 @@ Polls the health endpoints for up to 15 seconds. Reports which services are runn
 
 ---
 
+### CLI-only mode
+
+If you do not want a third-party chat app, run:
+
+```bash
+synapse chat
+```
+
+Use `/safe`, `/spicy`, and `/quit` inside the CLI chat.
+
+---
+
 ## Part 7 — Say Hello
 
 After onboarding completes, send Synapse a message on WhatsApp:

@@ -21,7 +21,9 @@ no real terminal, no real Baileys bridge.
 import json
 import os
 import sys
+import tomllib
 import types
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -169,6 +171,15 @@ def test_interactive_launch_chat_propagates_chat_exit_code(tmp_path, monkeypatch
     assert exc_info.value.exit_code == 7
     run_chat.assert_called_once()
     assert run_chat.call_args.args[0].port == 9013
+
+
+def test_cli_chat_modules_are_part_of_workspace_package():
+    pyproject_path = Path(__file__).resolve().parents[2] / "pyproject.toml"
+    data = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
+    packages = data["tool"]["setuptools"]["packages"]["find"]["where"]
+
+    assert packages == ["workspace"]
+    assert "templates/*.md" in data["tool"]["setuptools"]["package-data"]["cli"]
 
 
 # ===========================================================================

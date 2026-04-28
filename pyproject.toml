@@ -37,6 +37,29 @@ synapse = "synapse_cli:app"
 requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
+[tool.setuptools]
+package-dir = {"" = "workspace"}
+py-modules = [
+    "__main__",
+    "change_tracker",
+    "change_viewer",
+    "config",
+    "do_transcribe",
+    "finish_facts",
+    "main",
+    "monitor",
+    "purge_trash",
+    "scrape_threads",
+    "synapse_cli",
+    "synapse_config",
+]
+
+[tool.setuptools.packages.find]
+where = ["workspace"]
+
+[tool.setuptools.package-data]
+cli = ["templates/*.md"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py311"

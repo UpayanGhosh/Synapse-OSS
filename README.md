@@ -628,6 +628,18 @@ chmod +x synapse_onboard.sh
 synapse_onboard.bat
 ```
 
+### CLI chat
+
+You can use Synapse without WhatsApp, Telegram, Discord, or Slack:
+
+```bash
+synapse chat
+```
+
+After `synapse onboard`, choose `Start local CLI chat now` to hatch the bot in
+the same terminal. On a fresh workspace, Synapse sends an initial bootstrap
+message so the bot asks who it is, who you are, and what it should call you.
+
 ### 4. Start Synapse
 
 ```bash
