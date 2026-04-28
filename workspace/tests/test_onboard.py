@@ -87,6 +87,16 @@ def test_onboard_command_passes_launch_chat_option(monkeypatch):
     assert captured["launch_chat"] is False
 
 
+def test_post_onboard_chat_nonzero_exit_raises():
+    import typer
+    from cli.onboard import _raise_for_chat_exit_code
+
+    with pytest.raises(typer.Exit) as exc_info:
+        _raise_for_chat_exit_code(7)
+
+    assert exc_info.value.exit_code == 7
+
+
 # ===========================================================================
 # ONB-09: non-interactive mode exit codes
 # ===========================================================================

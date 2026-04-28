@@ -126,6 +126,11 @@ def _is_tty() -> bool:
         return False
 
 
+def _raise_for_chat_exit_code(code: int) -> None:
+    if code != 0:
+        raise typer.Exit(code)
+
+
 # ---------------------------------------------------------------------------
 # Non-interactive mode
 # ---------------------------------------------------------------------------
@@ -365,7 +370,8 @@ def _run_non_interactive(
                 workspace_dir=data_root / "workspace",
                 port=port,
             )
-            run_cli_chat(options)
+            code = run_cli_chat(options)
+            _raise_for_chat_exit_code(code)
 
 
 # ---------------------------------------------------------------------------
@@ -2192,7 +2198,8 @@ def _run_interactive_impl(
                 workspace_dir=workspace_dir,
                 port=port,
             )
-            run_cli_chat(options)
+            code = run_cli_chat(options)
+            _raise_for_chat_exit_code(code)
 
 
 # ---------------------------------------------------------------------------
