@@ -114,10 +114,26 @@ def test_server_api_key_accepts_env_token_when_config_missing(monkeypatch):
     from synapse_config import SynapseConfig
     from sci_fi_dashboard.middleware import validate_api_key
 
-    monkeypatch.setenv("SYNAPSE_GATEWAY_TOKEN", "env-token")
+    monkeypatch.setenv("SYNAPSE_GATEWAY_TOKEN", " env-token ")
     monkeypatch.setattr(SynapseConfig, "load", Mock(side_effect=RuntimeError("missing config")))
 
     validate_api_key(_request({"x-api-key": "env-token"}))
+
+
+def test_server_api_key_prefers_env_token_over_config(monkeypatch):
+    from synapse_config import SynapseConfig
+    from sci_fi_dashboard.middleware import validate_api_key
+
+    config = Mock()
+    config.gateway = {"token": "config-token"}
+    monkeypatch.setenv("SYNAPSE_GATEWAY_TOKEN", "env-token")
+    monkeypatch.setattr(SynapseConfig, "load", Mock(return_value=config))
+
+    validate_api_key(_request({"x-api-key": "env-token"}))
+    with pytest.raises(HTTPException) as exc_info:
+        validate_api_key(_request({"x-api-key": "config-token"}))
+    assert exc_info.value.status_code == 401
+    SynapseConfig.load.assert_not_called()
 
 
 def test_server_api_key_rejects_wrong_env_token_when_config_missing(monkeypatch):
@@ -132,11 +148,37 @@ def test_server_api_key_rejects_wrong_env_token_when_config_missing(monkeypatch)
     assert exc_info.value.status_code == 401
 
 
-def test_server_api_key_open_when_no_token_configured(monkeypatch):
+def test_server_api_key_rejects_when_config_load_fails_without_env(monkeypatch):
     from synapse_config import SynapseConfig
     from sci_fi_dashboard.middleware import validate_api_key
 
     monkeypatch.delenv("SYNAPSE_GATEWAY_TOKEN", raising=False)
     monkeypatch.setattr(SynapseConfig, "load", Mock(side_effect=RuntimeError("missing config")))
 
+    with pytest.raises(HTTPException) as exc_info:
+        validate_api_key(_request({}))
+    assert exc_info.value.status_code == 401
+
+
+def test_server_api_key_open_when_no_token_configured(monkeypatch):
+    from synapse_config import SynapseConfig
+    from sci_fi_dashboard.middleware import validate_api_key
+
+    config = Mock()
+    config.gateway = {}
+    monkeypatch.delenv("SYNAPSE_GATEWAY_TOKEN", raising=False)
+    monkeypatch.setattr(SynapseConfig, "load", Mock(return_value=config))
+
     validate_api_key(_request({}))
+
+
+def test_require_gateway_auth_rejects_when_config_load_fails_without_env(monkeypatch):
+    from synapse_config import SynapseConfig
+    from sci_fi_dashboard.middleware import _require_gateway_auth
+
+    monkeypatch.delenv("SYNAPSE_GATEWAY_TOKEN", raising=False)
+    monkeypatch.setattr(SynapseConfig, "load", Mock(side_effect=RuntimeError("missing config")))
+
+    with pytest.raises(HTTPException) as exc_info:
+        _require_gateway_auth(_request({}))
+    assert exc_info.value.status_code == 401

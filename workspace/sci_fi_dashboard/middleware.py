@@ -61,14 +61,19 @@ def _check_rate_limit(request: Request) -> None:
 
 
 def _expected_gateway_token() -> str:
+    env_token = os.environ.get("SYNAPSE_GATEWAY_TOKEN")
+    if env_token is not None:
+        return env_token.strip()
+
     try:
         from synapse_config import SynapseConfig  # noqa: PLC0415
 
         _cfg = SynapseConfig.load()
         token = _cfg.gateway.get("token", "")
-    except Exception:
-        token = ""
-    return token or os.environ.get("SYNAPSE_GATEWAY_TOKEN", "")
+    except Exception as exc:
+        logger.warning("Failed to load gateway auth config", exc_info=exc)
+        raise HTTPException(status_code=401, detail="Unauthorized") from exc
+    return str(token or "").strip()
 
 
 def _require_gateway_auth(request: Request) -> None:
