@@ -30,6 +30,7 @@ def test_chat_command_passes_options(monkeypatch):
             "8123",
             "--message",
             "Wake up",
+            "--no-auto-start",
             "--exit-after-message",
         ],
     )
@@ -40,5 +41,6 @@ def test_chat_command_passes_options(monkeypatch):
     assert opts.user_id == "tester"
     assert opts.session_type == "spicy"
     assert opts.port == 8123
+    assert opts.auto_start_gateway is False
     assert opts.initial_message == "Wake up"
     assert opts.exit_after_initial is True
