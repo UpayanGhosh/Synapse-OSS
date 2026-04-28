@@ -40,11 +40,12 @@ def _payload_from_call(call: dict) -> dict:
 @pytest.mark.parametrize(
     ("model_ref", "expected"),
     [
-        ("openai_codex/gpt-5-codex", "gpt-5-codex"),
-        ("openai-codex/gpt-5", "gpt-5-codex"),
-        ("codex/gpt-5-mini", "codex-mini-latest"),
-        ("openai_codex/codex-mini-latest", "codex-mini-latest"),
-        ("openai_codex/gpt-5-codex-mini", "codex-mini-latest"),
+        ("openai_codex/gpt-5.4", "gpt-5.4"),
+        ("openai_codex/gpt-5-codex", "gpt-5.4"),
+        ("openai-codex/gpt-5", "gpt-5.4"),
+        ("codex/gpt-5-mini", "gpt-5.4"),
+        ("openai_codex/codex-mini-latest", "gpt-5.4"),
+        ("openai_codex/gpt-5-codex-mini", "gpt-5.4"),
         ("openai_codex/custom-future-model", "custom-future-model"),
     ],
 )
@@ -161,7 +162,7 @@ async def test_chat_completion_posts_responses_payload_shape(monkeypatch):
             {"role": "system", "content": "Be terse."},
             {"role": "user", "content": "Use lookup."},
         ],
-        model="openai_codex/gpt-5",
+        model="openai_codex/custom-future-model",
         tools=[
             {
                 "type": "function",
@@ -184,7 +185,7 @@ async def test_chat_completion_posts_responses_payload_shape(monkeypatch):
     )
 
     assert result.text == "ok"
-    assert result.model == "gpt-5-codex"
+    assert result.model == "custom-future-model"
     assert result.prompt_tokens == 2
     assert result.completion_tokens == 3
     assert result.total_tokens == 5
@@ -194,7 +195,7 @@ async def test_chat_completion_posts_responses_payload_shape(monkeypatch):
     payload = _payload_from_call(call)
     assert call["url"].endswith("/backend-api/codex/responses")
     assert call["headers"]["Authorization"] == "Bearer access-token"
-    assert payload["model"] == "gpt-5-codex"
+    assert payload["model"] == "custom-future-model"
     assert payload["temperature"] == 0
     assert payload["top_p"] == 0.5
     assert payload["max_output_tokens"] == 256
@@ -339,7 +340,7 @@ async def test_chat_completion_refreshes_once_after_401_and_saves_token(monkeypa
 
     result = await client.chat_completion(
         messages=[{"role": "user", "content": "Ping"}],
-        model="openai_codex/gpt-5-codex",
+        model="openai_codex/custom-future-model",
     )
 
     assert result.text == "retried-ok"
@@ -392,7 +393,7 @@ async def test_chat_completion_uses_loaded_token_without_expiry_refresh(monkeypa
 
     result = await client.chat_completion(
         messages=[{"role": "user", "content": "Ping"}],
-        model="openai_codex/gpt-5-codex",
+        model="openai_codex/custom-future-model",
     )
 
     assert result.text == "ok-with-stored-token"

@@ -35,6 +35,21 @@ class ChatClient:
         self.base_url = base_url.rstrip("/")
         self.timeout_sec = timeout_sec
 
+    def probe_health(self) -> tuple[bool, str]:
+        try:
+            response = httpx.get(
+                f"{self.base_url}/health",
+                headers=gateway_headers(),
+                timeout=min(self.timeout_sec, 5.0),
+            )
+            if int(response.status_code) >= 400:
+                return False, f"HTTP {response.status_code}"
+            body = response.json()
+            status = str(body.get("status", "unknown"))
+            return status in {"ok", "degraded"}, status
+        except Exception as exc:
+            return False, str(exc)
+
     def send_turn(
         self,
         message: str,

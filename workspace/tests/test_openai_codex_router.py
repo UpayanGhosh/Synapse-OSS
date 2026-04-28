@@ -44,13 +44,13 @@ def _build_router(monkeypatch: pytest.MonkeyPatch, model: str) -> SynapseLLMRout
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_call_with_metadata_openai_codex_bypasses_litellm(monkeypatch):
-    router = _build_router(monkeypatch, "openai_codex/gpt-5-codex")
+    router = _build_router(monkeypatch, "openai_codex/gpt-5.4")
     messages = [{"role": "user", "content": "Ship the fix."}]
 
     codex_response = openai_codex_provider.OpenAICodexResponse(
         text="done",
         tool_calls=[],
-        model="gpt-5-codex",
+        model="gpt-5.4",
         prompt_tokens=31,
         completion_tokens=9,
         total_tokens=40,
@@ -86,7 +86,7 @@ async def test_call_with_metadata_openai_codex_bypasses_litellm(monkeypatch):
     assert kwargs["stop"] == ["END"]
     assert kwargs["response_format"] == {"type": "json_object"}
 
-    assert result.model == "gpt-5-codex"
+    assert result.model == "openai_codex/gpt-5.4"
     assert result.prompt_tokens == 31
     assert result.completion_tokens == 9
     assert result.total_tokens == 40
@@ -118,7 +118,7 @@ async def test_call_with_tools_openai_codex_hyphen_dispatch_and_fields(monkeypat
         tool_calls=[
             {"id": "call_lookup_42", "name": "lookup_issue", "arguments": '{"id":"42"}'}
         ],
-        model="gpt-5-codex",
+        model="gpt-5.4",
         prompt_tokens=12,
         completion_tokens=4,
         total_tokens=16,
@@ -154,7 +154,7 @@ async def test_call_with_tools_openai_codex_hyphen_dispatch_and_fields(monkeypat
     assert kwargs["temperature"] == 0.0
     assert kwargs["max_tokens"] == 256
 
-    assert result.model == "gpt-5-codex"
+    assert result.model == "openai_codex/gpt-5.4"
     assert result.prompt_tokens == 12
     assert result.completion_tokens == 4
     assert result.total_tokens == 16

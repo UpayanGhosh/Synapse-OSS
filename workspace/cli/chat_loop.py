@@ -31,6 +31,9 @@ def run_cli_chat(
 
         history: list[ChatTurn] = []
 
+        if options.show_startup_greeting and not options.initial_message:
+            _emit(output_fn, _format_startup_greeting(options, client))
+
         if options.initial_message:
             if not _send_message(options.initial_message, options, client, history, output_fn):
                 return 1
@@ -44,7 +47,7 @@ def run_cli_chat(
             except EOFError:
                 return 0
             except KeyboardInterrupt:
-                output_fn("")
+                _emit(output_fn, "")
                 return 0
 
             message = message.strip()
@@ -56,20 +59,79 @@ def run_cli_chat(
                 return 0
             if command == "/safe":
                 options = replace(options, session_type="safe")
-                output_fn("SAFE mode")
+                _emit(output_fn, "SAFE mode")
                 continue
             if command == "/spicy":
                 options = replace(options, session_type="spicy")
-                output_fn("SPICY mode")
+                _emit(output_fn, "SPICY mode")
                 continue
             if command == "/help":
-                output_fn("Commands: /safe, /spicy, /quit, /exit")
+                _emit(output_fn, "Commands: /safe, /spicy, /quit, /exit")
                 continue
 
             _send_message(message, options, client, history, output_fn)
     finally:
         if manager is not None:
             manager.stop()
+
+
+def _emit(output_fn: OutputFn, text: str) -> None:
+    try:
+        output_fn(text)
+    except UnicodeEncodeError:
+        output_fn(text.encode("ascii", errors="replace").decode("ascii"))
+
+
+def _format_startup_greeting(options: ChatLaunchOptions, client: ChatClient) -> str:
+    model = "not configured"
+    config_status = "missing"
+    try:
+        from synapse_config import SynapseConfig  # noqa: PLC0415
+
+        cfg = SynapseConfig.load()
+        config_status = "valid"
+        mappings = cfg.model_mappings or {}
+        role_cfg = mappings.get("casual") or next(iter(mappings.values()), {})
+        if isinstance(role_cfg, dict):
+            model = str(role_cfg.get("model") or model)
+            try:
+                from sci_fi_dashboard.openai_codex_provider import (  # noqa: PLC0415
+                    is_openai_codex_model,
+                    normalize_openai_codex_model,
+                )
+
+                if is_openai_codex_model(model):
+                    model = f"openai_codex/{normalize_openai_codex_model(model)}"
+            except Exception:
+                pass
+    except Exception:
+        config_status = "unavailable"
+
+    gateway_url = f"http://127.0.0.1:{options.port}"
+    reachable = False
+    detail = "not probed"
+    probe = getattr(client, "probe_health", None)
+    if callable(probe):
+        reachable, detail = probe()
+
+    gateway_line = (
+        f"Gateway: reachable at {gateway_url} ({detail})."
+        if reachable
+        else f"Gateway: not reachable at {gateway_url}; first probe said {detail}."
+    )
+
+    return "\n".join(
+        [
+            "## Hi, I'm Synapse.",
+            "",
+            "- Start here when setup, model routing, Gateway, or local chat feels off.",
+            f"- Using: {model} for safe chat.",
+            f"- Config: {config_status}. Persona: {options.target}.",
+            f"- {gateway_line}",
+            "",
+            "Send a message, or use `/help` for local commands.",
+        ]
+    )
 
 
 def _send_message(
@@ -82,9 +144,9 @@ def _send_message(
     try:
         reply = client.send_turn(message, options=options, history=history)
     except Exception as exc:
-        output_fn(f"Error: {exc}")
+        _emit(output_fn, f"Error: {exc}")
         return False
-    output_fn(reply.reply)
+    _emit(output_fn, reply.reply)
     history.append(ChatTurn(role="user", content=message))
     history.append(ChatTurn(role="assistant", content=reply.reply))
     return True

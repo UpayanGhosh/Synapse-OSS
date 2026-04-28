@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 
@@ -76,6 +77,36 @@ def test_cli_loop_prompt_shows_current_mode():
     assert prompts[2] == "[SPICY] > "
 
 
+def test_cli_loop_prints_startup_greeting(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("SYNAPSE_HOME", str(tmp_path))
+    (tmp_path / "synapse.json").write_text(
+        json.dumps(
+            {
+                "providers": {"openai_codex": {}},
+                "model_mappings": {
+                    "casual": {"model": "openai_codex/codex-mini-latest"}
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    client = FakeClient()
+    inputs = iter(["/quit"])
+
+    run_cli_chat(
+        ChatLaunchOptions(),
+        client=client,
+        gateway_manager=None,
+        input_fn=lambda prompt: next(inputs),
+        output_fn=print,
+    )
+
+    out = capsys.readouterr().out
+    assert "Hi, I'm Synapse" in out
+    assert "openai_codex/gpt-5.4" in out
+    assert "Gateway:" in out
+
+
 def test_cli_loop_reports_turn_error_and_continues(capsys):
     class FlakyClient:
         def __init__(self):
@@ -102,6 +133,29 @@ def test_cli_loop_reports_turn_error_and_continues(capsys):
     assert code == 0
     assert "Error: gateway offline" in out
     assert "reply:second" in out
+
+
+def test_cli_loop_degrades_unicode_when_console_encoding_rejects_it():
+    class EmojiClient:
+        def send_turn(self, message, *, options, history):
+            return type("Reply", (), {"reply": "hi \U0001f604", "model": "fake"})()
+
+    outputs = []
+
+    def cp1252_output(text):
+        text.encode("cp1252")
+        outputs.append(text)
+
+    code = run_cli_chat(
+        ChatLaunchOptions(initial_message="hello", exit_after_initial=True),
+        client=EmojiClient(),
+        gateway_manager=None,
+        input_fn=input,
+        output_fn=cp1252_output,
+    )
+
+    assert code == 0
+    assert outputs == ["hi ?"]
 
 
 def test_cli_loop_returns_nonzero_when_initial_message_fails(capsys):

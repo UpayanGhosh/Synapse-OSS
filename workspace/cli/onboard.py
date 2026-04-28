@@ -937,12 +937,8 @@ _KNOWN_MODELS: dict[str, list[dict[str, str]]] = {
     ],
     "openai_codex": [
         {
-            "value": "openai_codex/gpt-5-codex",
-            "label": "GPT-5 Codex (ChatGPT subscription, strongest coding)",
-        },
-        {
-            "value": "openai_codex/codex-mini-latest",
-            "label": "Codex Mini Latest (ChatGPT subscription, faster/cheaper)",
+            "value": "openai_codex/gpt-5.4",
+            "label": "GPT-5.4 (ChatGPT subscription Codex backend)",
         },
     ],
     "google_antigravity": [
@@ -2272,21 +2268,16 @@ def _validate_environment(config: dict) -> None:
         _print("  [green]✓[/] python-magic: OK")
     except ImportError:
         _print("  [yellow]![/] python-magic: not installed (media MIME detection degraded)")
-        if sys.platform == "win32":
-            issues.append("  Fix: pip install python-magic-bin")
-        else:
-            issues.append("  Fix: pip install python-magic")
+        _print(
+            "  [dim]Optional: install python-magic-bin on Windows or python-magic elsewhere "
+            "for stronger MIME detection.[/]"
+        )
     except Exception as exc:  # noqa: BLE001
         _print(f"  [yellow]![/] python-magic: import error ({exc})")
-        if sys.platform == "win32":
-            issues.append(
-                "  Fix: pip install python-magic-bin  (Windows requires the -bin variant)"
-            )
-        else:
-            issues.append(
-                "  Fix: pip install python-magic"
-                "  (may also need: brew install libmagic  OR  apt install libmagic1)"
-            )
+        _print(
+            "  [dim]Optional: reinstall python-magic-bin on Windows or python-magic "
+            "elsewhere if media MIME detection matters.[/]"
+        )
 
     # --- Check 3: channel SDKs for configured channels ---
     _channel_sdk_map: dict[str, tuple[str, str]] = {

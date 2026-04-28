@@ -1095,7 +1095,9 @@ def test_subscription_provider_fallback_catalog_uses_reachable_model_ids():
     def values(provider):
         return {m["value"] for m in _KNOWN_MODELS[provider]}
 
-    assert "openai_codex/codex-mini-latest" in values("openai_codex")
+    assert values("openai_codex") == {"openai_codex/gpt-5.4"}
+    assert "openai_codex/codex-mini-latest" not in values("openai_codex")
+    assert "openai_codex/gpt-5-codex" not in values("openai_codex")
     assert "openai_codex/gpt-5-codex-mini" not in values("openai_codex")
 
     assert "google_antigravity/gemini-3.1-pro-low" in values("google_antigravity")
@@ -1104,6 +1106,32 @@ def test_subscription_provider_fallback_catalog_uses_reachable_model_ids():
 
     assert "github_copilot/gpt-5.4" in values("github_copilot")
     assert "github_copilot/gpt-4.1-nano" not in values("github_copilot")
+
+
+def test_environment_check_treats_python_magic_as_optional(monkeypatch, capsys):
+    """Missing python-magic should not block local chat after onboarding."""
+    import builtins
+    import types
+
+    from cli.onboard import _validate_environment
+
+    fake_sqlite_vec = types.SimpleNamespace(load=lambda conn: None)
+    monkeypatch.setitem(sys.modules, "sqlite_vec", fake_sqlite_vec)
+
+    real_import = builtins.__import__
+
+    def fake_import(name, *args, **kwargs):
+        if name == "magic":
+            raise ImportError("missing magic")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+
+    _validate_environment({"providers": {}, "channels": {}})
+
+    out = capsys.readouterr().out
+    assert "python-magic: not installed" in out
+    assert "Environment issues detected" not in out
 
 
 def test_provider_validation_uses_current_anthropic_model():

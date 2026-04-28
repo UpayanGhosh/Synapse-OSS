@@ -25,21 +25,21 @@ except ImportError:  # pragma: no cover - litellm is a hard dependency in prod
 from . import openai_codex_oauth
 
 OPENAI_CODEX_MODEL_PREFIXES = ("openai_codex/", "openai-codex/", "codex/")
-DEFAULT_OPENAI_CODEX_MODEL = "gpt-5-codex"
+DEFAULT_OPENAI_CODEX_MODEL = "gpt-5.4"
 OPENAI_CODEX_RESPONSES_URL = "https://chatgpt.com/backend-api/codex/responses"
 DEFAULT_TIMEOUT_SEC = 60.0
 
 OPENAI_CODEX_MODEL_ALIASES: dict[str, str] = {
-    "gpt-5": "gpt-5-codex",
-    "gpt5": "gpt-5-codex",
-    "codex": "gpt-5-codex",
-    "codex-latest": "gpt-5-codex",
-    "gpt-5-codex": "gpt-5-codex",
-    "gpt-5-mini": "codex-mini-latest",
-    "gpt5-mini": "codex-mini-latest",
-    "codex-mini": "codex-mini-latest",
-    "codex-mini-latest": "codex-mini-latest",
-    "gpt-5-codex-mini": "codex-mini-latest",
+    "gpt-5": "gpt-5.4",
+    "gpt5": "gpt-5.4",
+    "codex": "gpt-5.4",
+    "codex-latest": "gpt-5.4",
+    "gpt-5-codex": "gpt-5.4",
+    "gpt-5-mini": "gpt-5.4",
+    "gpt5-mini": "gpt-5.4",
+    "codex-mini": "gpt-5.4",
+    "codex-mini-latest": "gpt-5.4",
+    "gpt-5-codex-mini": "gpt-5.4",
 }
 
 _QUOTA_HINTS = re.compile(r"quota|rate[\s_-]?limit|too many requests|resource_exhausted", re.I)

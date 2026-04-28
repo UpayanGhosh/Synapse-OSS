@@ -31,6 +31,7 @@ class ChatLaunchOptions:
     auto_start_gateway: bool = True
     initial_message: str | None = None
     exit_after_initial: bool = False
+    show_startup_greeting: bool = True
 
     def resolved_session_type(self) -> str:
         return normalize_session_type(self.session_type)
