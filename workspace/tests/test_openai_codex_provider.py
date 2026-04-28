@@ -42,8 +42,9 @@ def _payload_from_call(call: dict) -> dict:
     [
         ("openai_codex/gpt-5-codex", "gpt-5-codex"),
         ("openai-codex/gpt-5", "gpt-5-codex"),
-        ("codex/gpt-5-mini", "gpt-5-codex-mini"),
-        ("openai_codex/codex-mini-latest", "gpt-5-codex-mini"),
+        ("codex/gpt-5-mini", "codex-mini-latest"),
+        ("openai_codex/codex-mini-latest", "codex-mini-latest"),
+        ("openai_codex/gpt-5-codex-mini", "codex-mini-latest"),
         ("openai_codex/custom-future-model", "custom-future-model"),
     ],
 )

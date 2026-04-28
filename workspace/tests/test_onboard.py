@@ -1047,6 +1047,84 @@ def test_pick_model_fuzzy_reraises_wizard_cancelled_error(monkeypatch):
         )
 
 
+def test_pick_model_fuzzy_falls_back_after_prompt_library_error(monkeypatch):
+    """Onboarding should not abort if the fuzzy prompt library fails."""
+    from cli.onboard import _pick_model_fuzzy
+
+    class _BrokenPrompt:
+        def execute(self):
+            raise RuntimeError("prompt renderer failed")
+
+    class _BrokenAutocomplete:
+        def ask(self):
+            raise RuntimeError("autocomplete failed")
+
+    class _FakeInquirer:
+        @staticmethod
+        def fuzzy(**kwargs):
+            return _BrokenPrompt()
+
+    monkeypatch.setitem(
+        sys.modules,
+        "InquirerPy",
+        types.SimpleNamespace(inquirer=_FakeInquirer),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "questionary",
+        types.SimpleNamespace(autocomplete=lambda *args, **kwargs: _BrokenAutocomplete()),
+    )
+
+    prompter = MagicMock()
+    prompter.select.return_value = "openai/gpt-4o"
+
+    selected = _pick_model_fuzzy(
+        role="code",
+        desc="Code generation",
+        flat=[{"value": "openai/gpt-4o", "label": "GPT-4o"}],
+        prompter=prompter,
+    )
+
+    assert selected == "openai/gpt-4o"
+
+
+def test_subscription_provider_fallback_catalog_uses_reachable_model_ids():
+    """Fallback models are real user-facing IDs, not stale synthetic aliases."""
+    from cli.onboard import _KNOWN_MODELS
+
+    def values(provider):
+        return {m["value"] for m in _KNOWN_MODELS[provider]}
+
+    assert "openai_codex/codex-mini-latest" in values("openai_codex")
+    assert "openai_codex/gpt-5-codex-mini" not in values("openai_codex")
+
+    assert "google_antigravity/gemini-3.1-pro-low" in values("google_antigravity")
+    assert "google_antigravity/gemini-3.1-pro-high" in values("google_antigravity")
+    assert "google_antigravity/gemini-3-flash-lite" not in values("google_antigravity")
+
+    assert "github_copilot/gpt-5.4" in values("github_copilot")
+    assert "github_copilot/gpt-4.1-nano" not in values("github_copilot")
+
+
+def test_provider_validation_uses_current_anthropic_model():
+    """Anthropic validation must not ping a stale synthetic Claude model id."""
+    from cli.provider_steps import VALIDATION_MODELS
+
+    assert VALIDATION_MODELS["anthropic"] == "anthropic/claude-3-5-haiku-latest"
+
+
+def test_fetch_copilot_models_without_token_quietly_falls_back(monkeypatch):
+    """No token means no local token refresh side effects during onboarding."""
+    from cli.onboard import _fetch_provider_models
+
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("httpx.get should not be called without a Copilot token")
+
+    monkeypatch.setattr("httpx.get", fail_if_called)
+
+    assert _fetch_provider_models("github_copilot", api_key=None) == []
+
+
 # ===========================================================================
 # Interactive flow tests using force_interactive=True
 # ===========================================================================

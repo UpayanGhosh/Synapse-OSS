@@ -63,7 +63,7 @@ class ValidationResult:
 # ---------------------------------------------------------------------------
 
 VALIDATION_MODELS: dict[str, str] = {
-    "anthropic": "anthropic/claude-haiku-4-5",
+    "anthropic": "anthropic/claude-3-5-haiku-latest",
     "openai": "openai/gpt-4o-mini",
     "gemini": "gemini/gemini-2.0-flash",
     "groq": "groq/llama-3.3-70b-versatile",

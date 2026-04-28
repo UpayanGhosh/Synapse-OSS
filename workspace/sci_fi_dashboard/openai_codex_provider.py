@@ -36,11 +36,11 @@ OPENAI_CODEX_MODEL_ALIASES: dict[str, str] = {
     "codex": "gpt-5-codex",
     "codex-latest": "gpt-5-codex",
     "gpt-5-codex": "gpt-5-codex",
-    "gpt-5-mini": "gpt-5-codex-mini",
-    "gpt5-mini": "gpt-5-codex-mini",
-    "codex-mini": "gpt-5-codex-mini",
-    "codex-mini-latest": "gpt-5-codex-mini",
-    "gpt-5-codex-mini": "gpt-5-codex-mini",
+    "gpt-5-mini": "codex-mini-latest",
+    "gpt5-mini": "codex-mini-latest",
+    "codex-mini": "codex-mini-latest",
+    "codex-mini-latest": "codex-mini-latest",
+    "gpt-5-codex-mini": "codex-mini-latest",
 }
 
 _QUOTA_HINTS = re.compile(r"quota|rate[\s_-]?limit|too many requests|resource_exhausted", re.I)

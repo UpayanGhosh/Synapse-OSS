@@ -610,6 +610,36 @@ def _fetch_provider_models(
                 for m in r.json().get("data", [])
             ]
 
+        # --- GitHub Copilot: OAuth token + Copilot /models endpoint ---
+        if provider == "github_copilot":
+            token = api_key
+            if not token or token == "missing":
+                return []
+            from litellm.llms.github_copilot.common_utils import (  # noqa: PLC0415
+                GITHUB_COPILOT_API_BASE,
+                get_copilot_default_headers,
+            )
+
+            r = httpx.get(
+                f"{GITHUB_COPILOT_API_BASE.rstrip('/')}/models",
+                headers=get_copilot_default_headers(token),
+                timeout=timeout,
+            )
+            r.raise_for_status()
+            data = r.json()
+            entries = data.get("data", data if isinstance(data, list) else [])
+            out = []
+            for m in entries:
+                if isinstance(m, dict):
+                    mid = m.get("id")
+                    label = m.get("name") or m.get("display_name") or mid
+                else:
+                    mid = str(m)
+                    label = mid
+                if mid:
+                    out.append(_make_entry(f"github_copilot/{mid}", str(label)))
+            return sorted(out, key=lambda x: str(x["label"]).lower())
+
         # --- OpenAI-compat providers ---
         url = _OPENAI_COMPAT_MODELS_ENDPOINTS.get(provider)
         if not url:
@@ -819,7 +849,7 @@ def _pick_model_fuzzy(
         if _is_terminal_capability_error(exc):
             pass
         else:
-            raise
+            _print("[yellow]![/] Fuzzy model picker unavailable; using fallback picker.")
 
     # --- Fallback: questionary.autocomplete (type-to-match, no visual list) ---
     try:
@@ -854,7 +884,7 @@ def _pick_model_fuzzy(
         if _is_terminal_capability_error(exc):
             pass
         else:
-            raise
+            _print("[yellow]![/] Autocomplete model picker unavailable; using simple picker.")
 
     # --- Last resort: plain select via prompter (test stubs / no TTY) ---
     plain_choices = [manual_label] + [str(m["value"]) for m in flat]
@@ -895,15 +925,15 @@ _KNOWN_MODELS: dict[str, list[dict[str, str]]] = {
         {"value": "openai/o4-mini", "label": "o4-mini (reasoning)"},
     ],
     "github_copilot": [
-        {"value": "github_copilot/gpt-4.1", "label": "GPT-4.1 (flagship)"},
-        {"value": "github_copilot/gpt-4.1-mini", "label": "GPT-4.1 Mini (fast)"},
-        {"value": "github_copilot/gpt-4.1-nano", "label": "GPT-4.1 Nano (fastest)"},
-        {"value": "github_copilot/gpt-4o", "label": "GPT-4o"},
-        {"value": "github_copilot/gpt-4o-mini", "label": "GPT-4o Mini"},
-        {"value": "github_copilot/o3-mini", "label": "o3-mini (reasoning)"},
-        {"value": "github_copilot/o4-mini", "label": "o4-mini (reasoning)"},
-        {"value": "github_copilot/claude-sonnet-4", "label": "Claude Sonnet 4"},
-        {"value": "github_copilot/gemini-2.0-flash", "label": "Gemini 2.0 Flash"},
+        {"value": "github_copilot/gpt-5.4", "label": "GPT-5.4 (flagship)"},
+        {"value": "github_copilot/gpt-5.4-mini", "label": "GPT-5.4 Mini (fast)"},
+        {"value": "github_copilot/gpt-5.4-nano", "label": "GPT-5.4 Nano (fastest)"},
+        {"value": "github_copilot/gpt-5.3-codex", "label": "GPT-5.3-Codex (coding)"},
+        {"value": "github_copilot/gpt-5.2-codex", "label": "GPT-5.2-Codex (coding)"},
+        {"value": "github_copilot/claude-sonnet-4.6", "label": "Claude Sonnet 4.6"},
+        {"value": "github_copilot/claude-opus-4.7", "label": "Claude Opus 4.7"},
+        {"value": "github_copilot/gemini-3-flash", "label": "Gemini 3 Flash"},
+        {"value": "github_copilot/gemini-3.1-pro", "label": "Gemini 3.1 Pro"},
     ],
     "openai_codex": [
         {
@@ -911,8 +941,8 @@ _KNOWN_MODELS: dict[str, list[dict[str, str]]] = {
             "label": "GPT-5 Codex (ChatGPT subscription, strongest coding)",
         },
         {
-            "value": "openai_codex/gpt-5-codex-mini",
-            "label": "GPT-5 Codex Mini (ChatGPT subscription, faster/cheaper)",
+            "value": "openai_codex/codex-mini-latest",
+            "label": "Codex Mini Latest (ChatGPT subscription, faster/cheaper)",
         },
     ],
     "google_antigravity": [
@@ -921,36 +951,32 @@ _KNOWN_MODELS: dict[str, list[dict[str, str]]] = {
             "label": "Gemini 3 Flash (fast, balanced)",
         },
         {
-            "value": "google_antigravity/gemini-3-flash-lite",
-            "label": "Gemini 3 Flash-Lite (fastest, KG-friendly)",
+            "value": "google_antigravity/gemini-3.1-pro-low",
+            "label": "Gemini 3.1 Pro (low reasoning, balanced quality)",
         },
         {
-            "value": "google_antigravity/gemini-3-pro-low",
-            "label": "Gemini 3 Pro (low reasoning, balanced quality)",
-        },
-        {
-            "value": "google_antigravity/gemini-3-pro-high",
-            "label": "Gemini 3 Pro (high reasoning, best quality)",
+            "value": "google_antigravity/gemini-3.1-pro-high",
+            "label": "Gemini 3.1 Pro (high reasoning, best quality)",
         },
     ],
     "claude_cli": [
         {
             "value": "claude_cli/sonnet",
-            "label": "Claude Sonnet 4.6 (Pro/Max subscription, balanced)",
+            "label": "Claude Sonnet (Claude Code subscription alias, balanced)",
         },
         {
             "value": "claude_cli/opus",
-            "label": "Claude Opus 4.6 (Pro/Max subscription, best quality)",
+            "label": "Claude Opus (Claude Code subscription alias, best quality)",
         },
         {
             "value": "claude_cli/haiku",
-            "label": "Claude Haiku 4.5 (Pro/Max subscription, fast/cheap)",
+            "label": "Claude Haiku (Claude Code subscription alias, fast)",
         },
     ],
     "anthropic": [
-        {"value": "anthropic/claude-sonnet-4-6", "label": "Claude Sonnet 4.6 (balanced)"},
-        {"value": "anthropic/claude-haiku-4-5", "label": "Claude Haiku 4.5 (fast, cheap)"},
-        {"value": "anthropic/claude-opus-4-6", "label": "Claude Opus 4.6 (best quality)"},
+        {"value": "anthropic/claude-sonnet-4-0", "label": "Claude Sonnet 4 (balanced)"},
+        {"value": "anthropic/claude-3-5-haiku-latest", "label": "Claude Haiku 3.5 (fast)"},
+        {"value": "anthropic/claude-opus-4-1", "label": "Claude Opus 4.1 (best quality)"},
     ],
     "groq": [
         {"value": "groq/llama-3.3-70b-versatile", "label": "Llama 3.3 70B Versatile"},
