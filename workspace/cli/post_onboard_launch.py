@@ -6,14 +6,13 @@ from cli.chat_types import ChatLaunchOptions
 from cli.first_run_bootstrap import bootstrap_kickoff_message, needs_first_run_bootstrap
 
 
-def should_offer_cli_chat(*, non_interactive: bool, launch_chat: bool | None) -> bool:
+def should_offer_cli_chat(non_interactive: bool, launch_chat: bool | None) -> bool:
     if launch_chat is not None:
         return launch_chat
     return not non_interactive
 
 
 def build_post_onboard_chat_options(
-    *,
     workspace_dir: Path,
     port: int,
     target: str = "the_creator",

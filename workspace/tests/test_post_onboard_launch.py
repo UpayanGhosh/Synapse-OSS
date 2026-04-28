@@ -14,6 +14,11 @@ def test_should_offer_cli_chat_only_for_interactive_success():
     assert not should_offer_cli_chat(non_interactive=False, launch_chat=False)
 
 
+def test_should_offer_cli_chat_accepts_positional_args():
+    assert should_offer_cli_chat(False, None)
+    assert not should_offer_cli_chat(True, None)
+
+
 def test_build_options_uses_bootstrap_message_when_needed(tmp_path, monkeypatch):
     (tmp_path / "BOOTSTRAP.md").write_text("ritual", encoding="utf-8")
     (tmp_path / "IDENTITY.md").write_text("- Name:\n", encoding="utf-8")
@@ -22,3 +27,11 @@ def test_build_options_uses_bootstrap_message_when_needed(tmp_path, monkeypatch)
     assert opts.port == 8123
     assert opts.initial_message is not None
     assert "BOOTSTRAP.md" in opts.initial_message
+
+
+def test_build_options_accepts_positional_workspace_and_port(tmp_path):
+    opts = build_post_onboard_chat_options(tmp_path, 8124)
+    assert isinstance(opts, ChatLaunchOptions)
+    assert opts.target == "the_creator"
+    assert opts.user_id == "local_cli"
+    assert opts.port == 8124
