@@ -75,6 +75,18 @@ def test_onboard_command_registered():
     assert "onboard" in result.output
 
 
+def test_onboard_command_passes_launch_chat_option(monkeypatch):
+    from typer.testing import CliRunner
+    from synapse_cli import app
+
+    captured = {}
+    monkeypatch.setattr("cli.onboard.run_wizard", lambda **kwargs: captured.update(kwargs))
+    result = CliRunner().invoke(app, ["onboard", "--no-launch-chat"])
+
+    assert result.exit_code == 0
+    assert captured["launch_chat"] is False
+
+
 # ===========================================================================
 # ONB-09: non-interactive mode exit codes
 # ===========================================================================

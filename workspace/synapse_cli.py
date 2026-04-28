@@ -233,6 +233,11 @@ def onboard(
             "Values: config | config+creds+sessions | full"
         ),
     ),
+    launch_chat: bool | None = typer.Option(
+        None,
+        "--launch-chat/--no-launch-chat",
+        help="Launch local CLI chat after setup completes.",
+    ),
 ) -> None:
     """Interactive setup wizard — configure LLM providers, channels, and write synapse.json."""
     from cli.onboard import run_wizard
@@ -242,6 +247,7 @@ def onboard(
         flow=flow,
         accept_risk=accept_risk,
         reset=reset,
+        launch_chat=launch_chat,
     )
 
 
@@ -279,6 +285,11 @@ def setup(
             "Values: config | config+creds+sessions | full"
         ),
     ),
+    launch_chat: bool | None = typer.Option(
+        None,
+        "--launch-chat/--no-launch-chat",
+        help="Launch local CLI chat after setup completes.",
+    ),
 ) -> None:
     """Setup Synapse — configure providers, channels, and persona profile."""
     if verify:
@@ -293,6 +304,7 @@ def setup(
             flow=flow,
             accept_risk=accept_risk,
             reset=reset,
+            launch_chat=launch_chat,
         )
 
 

@@ -92,6 +92,7 @@ def run_wizard(
     flow: str = "quickstart",
     accept_risk: bool = False,
     reset: str | None = None,
+    launch_chat: bool | None = None,
 ) -> None:
     """Entry point — dispatches to interactive or non-interactive wizard.
 
@@ -107,9 +108,14 @@ def run_wizard(
             or "full". Backed-up data before wizard starts.
     """
     if non_interactive or (not force_interactive and not _is_tty()):
-        _run_non_interactive(accept_risk=accept_risk, reset=reset, flow=flow)
+        _run_non_interactive(
+            accept_risk=accept_risk,
+            reset=reset,
+            flow=flow,
+            launch_chat=launch_chat,
+        )
     else:
-        _run_interactive(flow=flow, reset=reset)
+        _run_interactive(flow=flow, reset=reset, launch_chat=launch_chat)
 
 
 def _is_tty() -> bool:
@@ -129,6 +135,7 @@ def _run_non_interactive(
     accept_risk: bool = False,
     reset: str | None = None,
     flow: str = "quickstart",
+    launch_chat: bool | None = None,
 ) -> None:
     """Non-interactive wizard: reads all inputs from environment variables.
 
@@ -344,6 +351,21 @@ def _run_non_interactive(
 
     # --- Environment validation ---
     _validate_environment(config)
+
+    if launch_chat is True:
+        from cli.chat_loop import run_cli_chat  # noqa: PLC0415
+        from cli.post_onboard_launch import (  # noqa: PLC0415
+            build_post_onboard_chat_options,
+            should_offer_cli_chat,
+        )
+
+        if should_offer_cli_chat(non_interactive=True, launch_chat=launch_chat):
+            port = int((config.get("gateway") or {}).get("port") or 8000)
+            options = build_post_onboard_chat_options(
+                workspace_dir=data_root / "workspace",
+                port=port,
+            )
+            run_cli_chat(options)
 
 
 # ---------------------------------------------------------------------------
@@ -1931,6 +1953,7 @@ def _run_interactive(  # noqa: C901 — linear wizard, complexity is intentional
     prompter: "object | None" = None,
     flow: str = "quickstart",
     reset: str | None = None,
+    launch_chat: bool | None = None,
 ) -> None:
     """Full interactive wizard flow.
 
@@ -1963,7 +1986,12 @@ def _run_interactive(  # noqa: C901 — linear wizard, complexity is intentional
             prompter = QuestionaryPrompter()
 
     try:
-        _run_interactive_impl(prompter=prompter, flow=flow, reset=reset)
+        _run_interactive_impl(
+            prompter=prompter,
+            flow=flow,
+            reset=reset,
+            launch_chat=launch_chat,
+        )
     except WizardCancelledError:
         _print("[yellow]Wizard cancelled.[/]")
         raise typer.Exit(1) from None
@@ -1973,6 +2001,7 @@ def _run_interactive_impl(
     prompter: "object",
     flow: str,
     reset: str | None,
+    launch_chat: bool | None,
 ) -> None:  # noqa: C901 — linear wizard, complexity is intentional
     """Inner implementation of the interactive wizard (separated for exception isolation)."""
     # --- Step 1: Welcome banner ---
@@ -2145,6 +2174,25 @@ def _run_interactive_impl(
 
     # --- Step 13: Environment validation ---
     _validate_environment(config)
+
+    from cli.post_onboard_launch import should_offer_cli_chat  # noqa: PLC0415
+
+    if should_offer_cli_chat(non_interactive=False, launch_chat=launch_chat):
+        start_now = prompter.confirm(  # type: ignore[attr-defined]
+            "Start local CLI chat now?", default=True
+        )
+        if start_now:
+            from cli.chat_loop import run_cli_chat  # noqa: PLC0415
+            from cli.post_onboard_launch import (  # noqa: PLC0415
+                build_post_onboard_chat_options,
+            )
+
+            port = int((config.get("gateway") or {}).get("port") or 8000)
+            options = build_post_onboard_chat_options(
+                workspace_dir=workspace_dir,
+                port=port,
+            )
+            run_cli_chat(options)
 
 
 # ---------------------------------------------------------------------------
