@@ -20,7 +20,7 @@ def run_cli_chat(
     output_fn: OutputFn = print,
 ) -> int:
     manager = gateway_manager
-    if manager is None and options.auto_start_gateway:
+    if manager is None and client is None and options.auto_start_gateway:
         manager = GatewayProcessManager(port=options.port)
 
     try:
@@ -32,13 +32,15 @@ def run_cli_chat(
         history: list[ChatTurn] = []
 
         if options.initial_message:
-            _send_message(options.initial_message, options, client, history, output_fn)
+            if not _send_message(options.initial_message, options, client, history, output_fn):
+                return 1
             if options.exit_after_initial:
                 return 0
 
         while True:
             try:
-                message = input_fn("> ")
+                mode = options.resolved_session_type().upper()
+                message = input_fn(f"[{mode}] > ")
             except EOFError:
                 return 0
             except KeyboardInterrupt:
@@ -54,11 +56,11 @@ def run_cli_chat(
                 return 0
             if command == "/safe":
                 options = replace(options, session_type="safe")
-                output_fn("SAFE")
+                output_fn("SAFE mode")
                 continue
             if command == "/spicy":
                 options = replace(options, session_type="spicy")
-                output_fn("SPICY")
+                output_fn("SPICY mode")
                 continue
             if command == "/help":
                 output_fn("Commands: /safe, /spicy, /quit, /exit")
@@ -76,8 +78,13 @@ def _send_message(
     client: ChatClient,
     history: list[ChatTurn],
     output_fn: OutputFn,
-) -> None:
-    reply = client.send_turn(message, options=options, history=history)
+) -> bool:
+    try:
+        reply = client.send_turn(message, options=options, history=history)
+    except Exception as exc:
+        output_fn(f"Error: {exc}")
+        return False
     output_fn(reply.reply)
     history.append(ChatTurn(role="user", content=message))
     history.append(ChatTurn(role="assistant", content=reply.reply))
+    return True
