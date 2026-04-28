@@ -6,8 +6,10 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from typing import Any
 
 import aiohttp
+import httpx
 from sci_fi_dashboard.db import get_db_connection
 from utils.env_loader import load_env_file
 
@@ -94,6 +96,7 @@ async def interactive_chat_loop():
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
         env=os.environ.copy(),  # Inherit env
+        cwd=str(Path(__file__).resolve().parent),
     )
 
     # Wait for server to boot (naive wait)
@@ -167,6 +170,133 @@ def start_chat():
     """Wrapper to run the async loop"""
     with contextlib.suppress(KeyboardInterrupt):
         asyncio.run(interactive_chat_loop())
+
+
+def _gateway_headers() -> dict[str, str]:
+    """Return auth headers for gateway calls when a token is configured."""
+    headers: dict[str, str] = {}
+    token = os.environ.get("SYNAPSE_GATEWAY_TOKEN")
+    if not token:
+        with contextlib.suppress(Exception):
+            from synapse_config import SynapseConfig, gateway_token  # noqa: PLC0415
+
+            token = gateway_token(SynapseConfig.load())
+    if token:
+        headers["x-api-key"] = token
+    return headers
+
+
+def _gateway_reachable(port: int, *, timeout_sec: float = 2.0) -> bool:
+    """Best-effort readiness probe for the local gateway process."""
+    try:
+        resp = httpx.get(f"http://127.0.0.1:{port}/health", timeout=timeout_sec)
+        return resp.status_code < 500
+    except Exception:
+        return False
+
+
+def send_single_test_message(
+    message: str,
+    *,
+    target: str = "the_creator",
+    user_id: str = "synapse_verify",
+    session_type: str = "safe",
+    port: int = 8000,
+    auto_start_gateway: bool = True,
+    timeout_sec: float = 45.0,
+) -> dict[str, Any]:
+    """Send one non-interactive test message through persona chat.
+
+    Returns:
+        Dict with keys:
+          ok: bool
+          model: str
+          reply: str
+          routed_via_openai_codex: bool
+          status_code: int (only on HTTP response)
+          error: str (only on failure)
+    """
+    server_process: subprocess.Popen | None = None
+    started_here = False
+
+    try:
+        if not _gateway_reachable(port):
+            if not auto_start_gateway:
+                return {
+                    "ok": False,
+                    "error": f"Gateway not reachable on port {port}",
+                }
+
+            server_process = subprocess.Popen(
+                [
+                    sys.executable,
+                    "-m",
+                    "uvicorn",
+                    "sci_fi_dashboard.api_gateway:app",
+                    "--host",
+                    "127.0.0.1",
+                    "--port",
+                    str(port),
+                ],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                env=os.environ.copy(),
+                cwd=str(Path(__file__).resolve().parent),
+            )
+            started_here = True
+
+            deadline = time.time() + min(timeout_sec, 30.0)
+            while time.time() < deadline:
+                if _gateway_reachable(port):
+                    break
+                time.sleep(0.5)
+            else:
+                return {
+                    "ok": False,
+                    "error": f"Gateway failed to start on port {port} within timeout",
+                }
+
+        payload = {
+            "message": message,
+            "session_type": session_type,
+            "user_id": user_id,
+        }
+        headers = _gateway_headers()
+        resp = httpx.post(
+            f"http://127.0.0.1:{port}/chat/{target}",
+            json=payload,
+            headers=headers,
+            timeout=timeout_sec,
+        )
+        status_code = int(resp.status_code)
+        try:
+            body = resp.json()
+        except ValueError:
+            body = {}
+
+        if status_code >= 400:
+            return {
+                "ok": False,
+                "status_code": status_code,
+                "error": str(body) if body else resp.text,
+            }
+
+        model = str(body.get("model", "")) if isinstance(body, dict) else ""
+        reply = str(body.get("reply", "")) if isinstance(body, dict) else ""
+        routed_via_openai_codex = model.casefold().startswith("openai_codex/")
+        return {
+            "ok": True,
+            "status_code": status_code,
+            "model": model,
+            "reply": reply,
+            "routed_via_openai_codex": routed_via_openai_codex,
+        }
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": str(exc)}
+    finally:
+        if started_here and server_process is not None:
+            with contextlib.suppress(Exception):
+                server_process.terminate()
 
 
 def ingest_data():

@@ -1,13 +1,14 @@
 """
 workspace_seeding.py — Agent workspace seeding and state machine for Synapse-OSS.
 
-Seeds 7 Markdown template files into the agent workspace on first run and
+Seeds Markdown guidance files into the agent workspace on first run and
 maintains a workspace-state.json file that tracks bootstrapSeededAt and
 setupCompletedAt timestamps.  This prevents re-triggering the bootstrapping
 ritual on subsequent onboard runs.
 
 Template files:
-  AGENTS.md, BOOTSTRAP.md, IDENTITY.md, USER.md, SOUL.md, TOOLS.md, HEARTBEAT.md
+  AGENTS.md, SOUL.md, CORE.md, CODE.md, IDENTITY.md, USER.md, TOOLS.md,
+  MEMORY.md, HEARTBEAT.md, BOOTSTRAP.md
 
 Exports:
   write_file_if_missing()     Exclusive-create a file; returns True if written
@@ -30,9 +31,12 @@ from pathlib import Path
 _TEMPLATE_FILES: list[str] = [
     "AGENTS.md",
     "SOUL.md",
+    "CORE.md",
+    "CODE.md",
     "IDENTITY.md",
     "USER.md",
     "TOOLS.md",
+    "MEMORY.md",
     "HEARTBEAT.md",
     "BOOTSTRAP.md",  # must be last — conditional seeding
 ]

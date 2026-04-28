@@ -33,12 +33,18 @@ except ImportError:  # pragma: no cover
 def _print(msg: str) -> None:
     """Print with Rich markup if available, else strip markup and plain-print."""
     if _RICH_AVAILABLE and console is not None:
-        console.print(msg)
-    else:
-        import re  # noqa: PLC0415
+        try:
+            console.print(msg)
+            return
+        except UnicodeEncodeError:
+            # Windows cp1252 terminals can fail on glyphs like "✗".
+            pass
 
-        plain = re.sub(r"\[/?[^\]]*\]", "", msg)
-        print(plain)
+    import re  # noqa: PLC0415
+
+    plain = re.sub(r"\[/?[^\]]*\]", "", msg)
+    safe = plain.encode("ascii", errors="replace").decode("ascii")
+    print(safe)
 
 
 # ---------------------------------------------------------------------------

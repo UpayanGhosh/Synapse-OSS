@@ -41,7 +41,7 @@ def test_load_agent_workspace_prefix_returns_content():
     prefix = chat_pipeline._load_agent_workspace_prefix()
     assert isinstance(prefix, str)
     assert len(prefix) > 500, f"Expected >500 chars, got {len(prefix)}"
-    for name in ["SOUL", "CORE", "IDENTITY", "USER", "TOOLS", "MEMORY", "AGENTS"]:
+    for name in ["SOUL", "CORE", "CODE", "IDENTITY", "USER", "TOOLS", "MEMORY", "AGENTS"]:
         assert name in prefix, f"{name} section missing from prefix"
         assert f"# ===== {name}.md =====" in prefix, f"{name} section header missing"
 
@@ -50,7 +50,7 @@ def test_load_agent_workspace_prefix_returns_content():
 def test_load_agent_workspace_prefix_section_order():
     """Sections appear in the documented order — AGENTS comes LAST."""
     prefix = chat_pipeline._load_agent_workspace_prefix()
-    expected_order = ["SOUL", "CORE", "IDENTITY", "USER", "TOOLS", "MEMORY", "AGENTS"]
+    expected_order = ["SOUL", "CORE", "CODE", "IDENTITY", "USER", "TOOLS", "MEMORY", "AGENTS"]
     indices = [prefix.find(f"# ===== {name}.md =====") for name in expected_order]
     assert all(i >= 0 for i in indices), "All section headers should be present"
     assert indices == sorted(indices), (
@@ -76,8 +76,8 @@ def test_load_agent_workspace_prefix_mtime_cache_invalidation(tmp_path, monkeypa
     fake_user_dir.mkdir()
     fake_repo_dir.mkdir()
 
-    # Seed all 7 files in the repo dir.
-    files = ["SOUL", "CORE", "IDENTITY", "USER", "TOOLS", "MEMORY", "AGENTS"]
+    # Seed all guidance files in the repo dir.
+    files = ["SOUL", "CORE", "CODE", "IDENTITY", "USER", "TOOLS", "MEMORY", "AGENTS"]
     for name in files:
         (fake_repo_dir / f"{name}.md.template").write_text(
             f"# {name} initial content\n\nbody for {name}",

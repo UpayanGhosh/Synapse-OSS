@@ -358,11 +358,105 @@ def vacuum() -> None:
 
 
 @app.command()
-def verify() -> None:
-    """Run system health and integrity checks."""
-    from main import verify_system
+def verify(
+    non_interactive: bool = typer.Option(
+        False,
+        "--non-interactive",
+        envvar="SYNAPSE_NON_INTERACTIVE",
+        help="Disable prompts/spinners for scripted runs.",
+    ),
+    test_message: str = typer.Option(
+        "",
+        "--test-message",
+        help="Optional one-shot gateway probe message after config verify.",
+    ),
+    target: str = typer.Option(
+        "the_creator",
+        "--target",
+        help="Persona target for --test-message (route: /chat/<target>).",
+    ),
+    user_id: str = typer.Option(
+        "synapse_verify",
+        "--user-id",
+        help="User id for --test-message request.",
+    ),
+    session_type: str = typer.Option(
+        "safe",
+        "--session-type",
+        help="Session type for --test-message payload.",
+    ),
+    port: int = typer.Option(
+        8000,
+        "--port",
+        help="Gateway port for --test-message.",
+    ),
+    no_auto_start_gateway: bool = typer.Option(
+        False,
+        "--no-auto-start-gateway",
+        help="Fail probe if gateway is not already running.",
+    ),
+    timeout_sec: float = typer.Option(
+        45.0,
+        "--timeout-sec",
+        help="HTTP timeout for --test-message probe.",
+    ),
+    require_openai_codex: bool = typer.Option(
+        False,
+        "--require-openai-codex",
+        help="Fail if probe response model is not openai_codex/*.",
+    ),
+    probe_only: bool = typer.Option(
+        False,
+        "--probe-only",
+        help="Skip config verification and run only --test-message probe.",
+    ),
+) -> None:
+    """Run config verification and optional one-shot live message probe."""
+    from cli.verify_steps import run_verify  # noqa: PLC0415
+    from main import send_single_test_message  # noqa: PLC0415
 
-    verify_system()
+    if probe_only and not test_message:
+        typer.echo("--probe-only requires --test-message.", err=True)
+        raise typer.Exit(2)
+
+    verify_code = 0
+    if not probe_only:
+        verify_code = run_verify(non_interactive=non_interactive)
+        if verify_code != 0 and not test_message:
+            raise typer.Exit(verify_code)
+        if verify_code != 0:
+            typer.echo("Config verification failed; continuing with live probe.", err=True)
+
+    if not test_message:
+        raise typer.Exit(verify_code)
+
+    probe = send_single_test_message(
+        test_message,
+        target=target,
+        user_id=user_id,
+        session_type=session_type,
+        port=port,
+        auto_start_gateway=not no_auto_start_gateway,
+        timeout_sec=timeout_sec,
+    )
+    if not probe.get("ok"):
+        typer.echo(f"Probe failed: {probe.get('error', 'unknown error')}", err=True)
+        raise typer.Exit(1)
+
+    model = str(probe.get("model", "")).strip()
+    routed = bool(probe.get("routed_via_openai_codex", False))
+    typer.echo(f"Probe status: PASS (HTTP {probe.get('status_code', 200)})")
+    typer.echo(f"Probe model: {model or '(missing)'}")
+    typer.echo(f"Routed via openai_codex: {routed}")
+
+    if require_openai_codex and not routed:
+        typer.echo(
+            "Probe did not route via openai_codex. Check synapse.json model_mappings/provider trust.",
+            err=True,
+        )
+        raise typer.Exit(1)
+
+    raise typer.Exit(verify_code)
 
 
 @app.command()

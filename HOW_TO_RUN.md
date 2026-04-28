@@ -8,9 +8,9 @@ No prior experience required. Every command is shown for **Windows**, **macOS**,
 ## What You Are Setting Up
 
 Synapse is a self-hosted AI assistant you can use from the terminal or from chat
-apps such as WhatsApp. It has persistent memory, an evolving personality, and
-routes private conversations to a local model with zero cloud exposure. Here is
-how the pieces fit together:
+apps such as WhatsApp. It has persistent memory, persona-aware behavior, and
+supports both local and cloud model routing. Here is how the pieces fit
+together:
 
 ```
 Terminal CLI or Your Phone (WhatsApp)
@@ -109,8 +109,7 @@ Ollama runs the `nomic-embed-text` embedding model locally. This model converts 
 message and memory into a 768-dimensional vector — the foundation of Synapse's semantic
 memory system. **Without it, memory ingestion does not work.**
 
-Ollama also unlocks **The Vault**: a private conversation mode where responses are generated
-by a local LLM with zero cloud exposure.
+Ollama also enables fully local response paths when configured.
 
 #### Install Ollama
 
@@ -462,6 +461,28 @@ Creates the required directory structure under `~/.synapse/`:
 - `~/.synapse/logs/` — service log files
 - `~/.synapse/workspace/db/` — SQLite databases
 - Profile directories for each persona
+
+Agent workspace reference:
+- [workspace/README.md](workspace/README.md)
+- [docs/agent-workspace.md](docs/agent-workspace.md)
+
+Canonical context files:
+- `CORE.md`
+- `CODE.md`
+- `MEMORY.md`
+
+Non-overwrite policy:
+- Workspace seeding/repair creates missing required files only.
+- Existing workspace markdown files are not overwritten.
+
+Existing-install migration note:
+- If you already have a Synapse install, keep your current workspace.
+- Run repair first:
+
+```bash
+cd workspace
+python synapse_cli.py doctor --fix
+```
 
 **Step 7: Configures LLM access**
 Checks for a `GEMINI_API_KEY` in `.env`. If none is found, it prints a warning (does not
@@ -1065,6 +1086,18 @@ All log files, databases, and persona profiles will be placed under that directo
 | View gateway log | `tail -f ~/.synapse/logs/gateway.log` | `type "%USERPROFILE%\.synapse\logs\gateway.log"` |
 | Get WhatsApp QR code | `curl http://localhost:8000/qr` | `curl.exe http://localhost:8000/qr` |
 | Check bridge status | `curl http://localhost:8000/channels/whatsapp/health` | same |
+
+### Targeted Test Commands (Workspace/Doctor)
+
+Run from repo root:
+
+```bash
+cd workspace
+pytest tests/test_doctor.py -v
+pytest tests/test_onboard.py -k ensure_agent_workspace -v
+pytest tests/test_agent_workspace_prefix.py -v
+pytest tests/test_multiuser.py -k bootstrap -v
+```
 
 ---
 

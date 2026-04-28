@@ -100,9 +100,11 @@ def register_optional_channels():
         )
 
     # --- Slack ---
-    slk_bot = ch_cfg.get("slack", {}).get("bot_token", "").strip()
-    slk_app = ch_cfg.get("slack", {}).get("app_token", "").strip()
-    if slk_bot and slk_app:
+    slk_cfg = ch_cfg.get("slack", {})
+    slk_enabled = bool(slk_cfg.get("enabled", False))
+    slk_bot = slk_cfg.get("bot_token", "").strip()
+    slk_app = slk_cfg.get("app_token", "").strip()
+    if slk_enabled and slk_bot and slk_app:
         try:
             from channels.slack import SlackChannel
 
@@ -118,9 +120,12 @@ def register_optional_channels():
             )
         except ValueError as exc:
             logger.error("Slack channel configuration error — channel disabled: %s", exc)
+    elif slk_enabled:
+        logger.warning(
+            "Slack channel enabled but missing bot_token/app_token — channel disabled"
+        )
     else:
         logger.info(
-            "Slack channel not configured — skipping "
-            "(add channels.slack.bot_token and channels.slack.app_token "
-            "to synapse.json to enable)"
+            "Slack channel disabled — skipping "
+            "(set channels.slack.enabled=true with bot_token/app_token to enable)"
         )

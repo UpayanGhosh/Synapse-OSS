@@ -1451,9 +1451,15 @@ def _build_openai_codex_response_shim(codex_response: OpenAICodexResponse):
         completion_tokens=codex_response.completion_tokens,
         total_tokens=codex_response.total_tokens,
     )
+    raw_model = str(codex_response.model or "").strip()
+    if raw_model.startswith(("openai_codex/", "openai-codex/", "codex/")):
+        canonical_model = raw_model
+    else:
+        canonical_model = f"openai_codex/{raw_model or 'unknown'}"
+
     return SimpleNamespace(
         choices=[choice],
-        model=codex_response.model,
+        model=canonical_model,
         usage=usage,
     )
 
@@ -2253,8 +2259,9 @@ class SynapseLLMRouter:
                 fallback_role = f"{role}_fallback"
                 logger.info("Falling back to '%s' after budget exceeded (tools)", fallback_role)
                 kwargs["model"] = fallback_role
-                return await self._router.acompletion(**kwargs)
-            raise
+                response = await self._router.acompletion(**kwargs)
+            else:
+                raise
         except Exception as exc:
             # M-03: Copilot 403 refresh — same logic as _do_call()
             if self._uses_copilot and "forbidden" in str(exc).lower():

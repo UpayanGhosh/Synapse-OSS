@@ -42,6 +42,7 @@ _log = get_child_logger("pipeline.chat")  # OBS-01 structured logger carrying ru
 _AGENT_WORKSPACE_FILES: tuple[str, ...] = (
     "SOUL",
     "CORE",
+    "CODE",
     "IDENTITY",
     "USER",
     "TOOLS",
@@ -218,19 +219,21 @@ def _format_memory_context_for_tier(
 
     raw_results = mem_response.get("results", []) or []
     selected: list[dict] = []
-    for result in raw_results:
-        if not isinstance(result, dict):
-            continue
-        if policy.memory_min_score is not None:
-            try:
-                score = float(result.get("score", 0.0) or 0.0)
-            except (TypeError, ValueError):
-                score = 0.0
-            if score < policy.memory_min_score:
+    memory_limit = max(0, int(policy.memory_limit or 0))
+    if memory_limit:
+        for result in raw_results:
+            if not isinstance(result, dict):
                 continue
-        selected.append(result)
-        if len(selected) >= policy.memory_limit:
-            break
+            if policy.memory_min_score is not None:
+                try:
+                    score = float(result.get("score", 0.0) or 0.0)
+                except (TypeError, ValueError):
+                    score = 0.0
+                if score < policy.memory_min_score:
+                    continue
+            selected.append(result)
+            if len(selected) >= memory_limit:
+                break
 
     profile_limit = policy.profile_fact_limit
     profile_facts = permanent_facts if profile_limit is None else permanent_facts[:profile_limit]
@@ -340,6 +343,226 @@ def _dep_int(name: str, default: int) -> int:
 def _dep_float(name: str, default: float) -> float:
     value = getattr(deps, name, default)
     return value if isinstance(value, int | float) else default
+
+
+def _is_reflective_casual_message(message: str) -> bool:
+    msg = " ".join(str(message or "").lower().split())
+    reflective_markers = (
+        "worried",
+        "worry",
+        "anxious",
+        "scared",
+        "sad",
+        "hurt",
+        "lonely",
+        "depressed",
+        "stressed",
+        "frustrated",
+        "confused",
+        "upset",
+        "tension",
+        "i feel",
+        "i'm feeling",
+        "i am feeling",
+        "feel like",
+        "doesn't feel",
+        "won't make",
+        "not human",
+        "generic",
+        "slop",
+        "ki korbo",
+        "bujhte parchhi na",
+        "valo nei",
+        "bhalo nei",
+        "kharap",
+    )
+    return any(marker in msg for marker in reflective_markers)
+
+
+def _prompt_depth_for_turn(
+    user_msg: str,
+    role: str,
+    session_mode: str,
+    history: list | None,
+) -> str:
+    """Return full | casual_light | casual_reflective for prompt assembly."""
+    if session_mode == "spicy" or str(role).lower() != "casual":
+        return "full"
+    if _message_requests_external_action(user_msg):
+        return "full"
+
+    complexity = "standard"
+    with contextlib.suppress(Exception):
+        complexity = deps.dual_cognition.classify_complexity(user_msg, history)
+
+    if complexity == "deep":
+        return "full"
+    if complexity == "fast" and not _is_reflective_casual_message(user_msg):
+        return "casual_light"
+    return "casual_reflective"
+
+
+def _compact_prompt_policy(base_policy: PromptTierPolicy, prompt_depth: str) -> PromptTierPolicy:
+    if prompt_depth == "casual_light":
+        return PromptTierPolicy(
+            tier="small",
+            token_target=2_000,
+            memory_limit=0,
+            memory_min_score=None,
+            include_graph_context=False,
+            include_mcp_context=False,
+            history_turns=1,
+            cognitive_detail="strategy",
+            native_tool_schemas=False,
+            profile_fact_limit=2,
+            profile_fact_chars=180,
+        )
+    if prompt_depth == "casual_reflective":
+        return PromptTierPolicy(
+            tier="small",
+            token_target=6_000,
+            memory_limit=3,
+            memory_min_score=None,
+            include_graph_context=False,
+            include_mcp_context=False,
+            history_turns=3,
+            cognitive_detail="strategy",
+            native_tool_schemas=False,
+            profile_fact_limit=4,
+            profile_fact_chars=260,
+        )
+    return base_policy
+
+
+def _build_compact_casual_system_prompt(
+    prompt_depth: str,
+    sbs_orchestrator,
+    base_instructions: str,
+    proactive_block: str,
+) -> str:
+    if prompt_depth == "casual_light":
+        compact_rules = (
+            "You are Synapse, the user's close-friend AI. Reply like a real friend: "
+            "short, warm, casual, and Banglish when it fits. No generic assistant tone. "
+            "For tiny greetings, keep it tiny."
+        )
+        sbs_limit = 700
+    else:
+        compact_rules = (
+            "You are Synapse, the user's close-friend AI. Keep casual language, but do not "
+            "flatten emotional substance. If the user sounds worried, insecure, conflicted, "
+            "or reflective, respond with grounded reassurance and memory-aware nuance. "
+            "Do not sound like therapy-script AI; sound like someone who knows them."
+        )
+        sbs_limit = 1_400
+
+    try:
+        sbs_prompt = sbs_orchestrator.get_system_prompt(base_instructions, proactive_block)
+    except Exception:
+        sbs_prompt = ""
+    sbs_excerpt = _truncate_text(sbs_prompt, sbs_limit) if sbs_prompt else ""
+    if sbs_excerpt:
+        return f"{compact_rules}\n\nPERSONA EXCERPT:\n{sbs_excerpt}"
+    return compact_rules
+
+
+def _dual_cognition_llm_fn(user_msg: str, history: list | None, call_ag_oracle):
+    """Return the oracle callable only when this turn warrants extra cloud spend."""
+    session_cfg = getattr(getattr(deps, "_synapse_cfg", None), "session", {}) or {}
+    mode = str(session_cfg.get("dual_cognition_cloud_mode", "deep_only")).strip().lower()
+
+    if mode in {"off", "none", "never", "local_only"}:
+        return None
+    if mode in {"always", "all"}:
+        return call_ag_oracle
+
+    complexity = "standard"
+    with contextlib.suppress(Exception):
+        complexity = deps.dual_cognition.classify_complexity(user_msg, history)
+
+    if mode in {"standard_plus", "standard", "non_fast"}:
+        return call_ag_oracle if complexity != "fast" else None
+
+    # Default: preserve high-quality cognition only for turns that actually need it.
+    return call_ag_oracle if complexity == "deep" else None
+
+
+def _message_requests_external_action(message: str) -> bool:
+    msg = " ".join(str(message or "").lower().split())
+    if not msg:
+        return False
+
+    trigger_phrases = (
+        "look up",
+        "search",
+        "browse",
+        "open ",
+        "read ",
+        "check ",
+        "run ",
+        "execute",
+        "install",
+        "download",
+        "file",
+        "folder",
+        "commit",
+        "push",
+        "pull",
+        "delete",
+        "remove",
+        "edit",
+        "write ",
+        "create ",
+        "send ",
+        "email",
+        "calendar",
+        "schedule",
+        "remind",
+        "remember ",
+        "save ",
+        "analyze ",
+        "debug",
+        "test ",
+    )
+    return any(phrase in msg for phrase in trigger_phrases)
+
+
+def _should_enable_tools_for_turn(user_msg: str, role: str, session_mode: str) -> bool:
+    if session_mode == "spicy":
+        return False
+    if str(role).lower() == "casual" and not _message_requests_external_action(user_msg):
+        return False
+    return True
+
+
+def _is_rate_limit_error(exc: Exception) -> bool:
+    status = getattr(exc, "status_code", None)
+    if status is None:
+        response = getattr(exc, "response", None)
+        status = getattr(response, "status_code", None)
+    if status == 429:
+        return True
+
+    error_str = str(exc).lower()
+    return any(
+        marker in error_str
+        for marker in (
+            "429",
+            "rate limit",
+            "rate_limit",
+            "ratelimit",
+            "too many requests",
+            "quota exceeded",
+        )
+    )
+
+
+def _ends_with_sentence_terminal(text: str) -> bool:
+    cleaned = str(text or "").strip()
+    while cleaned and cleaned[-1] in "*_`~":
+        cleaned = cleaned[:-1].rstrip()
+    terminals = (".", "!", "?", '"', "'", ")", "]", "}")
+    return cleaned.endswith(terminals)
 
 
 # Conditional imports -- same pattern as original api_gateway.py
@@ -655,13 +878,14 @@ async def persona_chat(
         try:
             from sci_fi_dashboard.llm_wrappers import call_ag_oracle
 
+            cognition_llm_fn = _dual_cognition_llm_fn(user_msg, request.history, call_ag_oracle)
             cognitive_merge = await asyncio.wait_for(
                 deps.dual_cognition.think(
                     user_message=user_msg,
                     chat_id=request.user_id or "default",
                     conversation_history=request.history,
                     target=target,
-                    llm_fn=call_ag_oracle,
+                    llm_fn=cognition_llm_fn,
                     pre_cached_memory=mem_response,
                 ),
                 timeout=dc_timeout,
@@ -912,7 +1136,9 @@ async def persona_chat(
 
     model_mappings = getattr(deps._synapse_cfg, "model_mappings", {}) or {}
     prompt_tier = prompt_tier_for_role(model_mappings, role)
-    prompt_policy = get_prompt_tier_policy(prompt_tier)
+    base_prompt_policy = get_prompt_tier_policy(prompt_tier)
+    prompt_depth = _prompt_depth_for_turn(user_msg, role, session_mode, request.history)
+    prompt_policy = _compact_prompt_policy(base_prompt_policy, prompt_depth)
     memory_context = _format_memory_context_for_tier(_permanent_facts, mem_response, prompt_policy)
     cognitive_context = _build_cognitive_context_for_tier(cognitive_merge, prompt_policy)
 
@@ -923,6 +1149,7 @@ async def persona_chat(
                 "role": role,
                 "tier": prompt_policy.tier,
                 "token_target": prompt_policy.token_target,
+                "prompt_depth": prompt_depth,
             },
         )
 
@@ -935,37 +1162,52 @@ async def persona_chat(
     _proactive_raw = deps._proactive_engine.get_prompt_injection() if deps._proactive_engine else ""
     # Merge proactive context + situational awareness block
     proactive_block = "\n\n".join(p for p in [_proactive_raw, _situational_block] if p)
-    system_prompt = sbs_orchestrator.get_system_prompt(base_instructions, proactive_block)
-    system_prompt = filter_tier_sections(system_prompt, prompt_policy.tier)
+    if prompt_depth == "full":
+        system_prompt = sbs_orchestrator.get_system_prompt(base_instructions, proactive_block)
+        system_prompt = filter_tier_sections(system_prompt, prompt_policy.tier)
 
-    # RT2: Prepend the static agent workspace markdown prefix (Jarvis-style discipline + identity)
-    # ABOVE the SBS dynamic persona layer. Both layers compose: agent_workspace anchors
-    # identity/rules, SBS adapts tone/style/exemplars per user.
-    _agent_workspace_prefix = _load_agent_workspace_prefix(prompt_policy.tier)
-    if _agent_workspace_prefix:
-        system_prompt = f"{_agent_workspace_prefix}\n\n---\n\n{system_prompt}"
+        # RT2: Prepend the static agent workspace markdown prefix (Jarvis-style discipline + identity)
+        # ABOVE the SBS dynamic persona layer. Both layers compose: agent_workspace anchors
+        # identity/rules, SBS adapts tone/style/exemplars per user.
+        _agent_workspace_prefix = _load_agent_workspace_prefix(prompt_policy.tier)
+        if _agent_workspace_prefix:
+            system_prompt = f"{_agent_workspace_prefix}\n\n---\n\n{system_prompt}"
 
-    # Runtime info -- prevents the bot from hallucinating about its own model identity.
-    # Without this, the LLM falls back to training-data answers ("I'm GPT-4o") even when
-    # actually running on a different model. Inject the live routing table so the bot
-    # has factual ground truth about what's running per role.
-    try:
-        _runtime_block = _build_runtime_info_block()
-        if _runtime_block:
-            system_prompt = f"{system_prompt}\n\n---\n\n{_runtime_block}"
-    except Exception as _exc:  # pragma: no cover -- runtime block is best-effort
-        logger.warning("[runtime] failed to build runtime info block: %s", _exc)
+        # Runtime info -- prevents the bot from hallucinating about its own model identity.
+        # Without this, the LLM falls back to training-data answers ("I'm GPT-4o") even when
+        # actually running on a different model. Inject the live routing table so the bot
+        # has factual ground truth about what's running per role.
+        try:
+            _runtime_block = _build_runtime_info_block()
+            if _runtime_block:
+                system_prompt = f"{system_prompt}\n\n---\n\n{_runtime_block}"
+        except Exception as _exc:  # pragma: no cover -- runtime block is best-effort
+            logger.warning("[runtime] failed to build runtime info block: %s", _exc)
+    else:
+        system_prompt = _build_compact_casual_system_prompt(
+            prompt_depth,
+            sbs_orchestrator,
+            base_instructions,
+            proactive_block,
+        )
 
     messages = [
         {"role": "system", "content": system_prompt},
         {
             "role": "system",
             "content": (
-                f"--- RETRIEVED MEMORIES ---\n"
-                f"These are real facts about the user's life retrieved from memory. "
-                f"Use ONLY what is in these memories -- do not invent, hallucinate, or add "
-                f"names, people, events, or details that are not explicitly present below.\n\n"
-                f"{memory_context}\n--- END MEMORIES ---"
+                (
+                    "MEMORY HINTS (use naturally; never announce you checked memory):\n"
+                    f"{memory_context}"
+                )
+                if prompt_depth != "full"
+                else (
+                    f"--- RETRIEVED MEMORIES ---\n"
+                    f"These are real facts about the user's life retrieved from memory. "
+                    f"Use ONLY what is in these memories -- do not invent, hallucinate, or add "
+                    f"names, people, events, or details that are not explicitly present below.\n\n"
+                    f"{memory_context}\n--- END MEMORIES ---"
+                )
             ),
         },
     ]
@@ -993,7 +1235,7 @@ async def persona_chat(
     # Small models (Gemma4:e4b) have strong recency bias -- context far from
     # the user message gets ignored. Placing this last ensures it's read.
     _profile_reminder = _format_profile_reminder(_permanent_facts, prompt_policy)
-    if _profile_reminder:
+    if _profile_reminder and prompt_depth == "full":
         messages.append({"role": "system", "content": _profile_reminder})
 
     messages.append({"role": "user", "content": user_msg})
@@ -1005,6 +1247,7 @@ async def persona_chat(
             "tier": prompt_policy.tier,
             "messages": len(messages),
             "est_tokens": _estimate_message_tokens(messages),
+            "prompt_depth": prompt_depth,
         },
     )
 
@@ -1015,6 +1258,7 @@ async def persona_chat(
         session_mode != "spicy"
         and deps.tool_registry is not None
         and getattr(deps, "_TOOL_REGISTRY_AVAILABLE", False) is True
+        and _should_enable_tools_for_turn(user_msg, role, session_mode)
     )
     session_tools: list = []
     tool_schemas: list | None = None
@@ -1226,16 +1470,29 @@ async def persona_chat(
                     break
             except Exception as e:
                 error_str = str(e).lower()
-                if "context" in error_str or "token" in error_str:
+                if _is_rate_limit_error(e):
+                    _log.warning(
+                        "tool_loop_rate_limited",
+                        extra={"round": round_num, "retry": False},
+                    )
+                    reply = (
+                        "The cloud model is rate-limited right now. "
+                        "I'm pausing instead of retrying. Please try again in a moment."
+                    )
+                    result = LLMResult(
+                        text=reply,
+                        model="rate-limited",
+                        prompt_tokens=0,
+                        completion_tokens=0,
+                        total_tokens=0,
+                    )
+                    break
+                elif "context" in error_str or "token" in error_str:
                     _log.warning(
                         "tool_loop_context_overflow",
                         extra={"round": round_num},
                     )
                     tool_schemas = None
-                    continue
-                elif "rate" in error_str:
-                    _log.warning("tool_loop_rate_limited", extra={"round": round_num})
-                    await asyncio.sleep(2)
                     continue
                 else:
                     _log.error("tool_loop_llm_error", extra={"round": round_num, "error": str(e)})
@@ -1440,10 +1697,8 @@ async def persona_chat(
     )
 
     # --- AUTO-CONTINUE LOGIC ---
-    terminals = [".", "!", "?", '"', "'", ")", "]", "}"]
     is_long = len(reply) > 50
-    cleaned_reply = reply.strip()
-    ends_with_terminal = any(cleaned_reply.endswith(t) for t in terminals)
+    ends_with_terminal = _ends_with_sentence_terminal(reply)
 
     if is_long and not ends_with_terminal:
         _log.info("auto_continue_triggered")

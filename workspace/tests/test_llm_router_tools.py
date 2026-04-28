@@ -19,6 +19,8 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from sci_fi_dashboard.llm_router import (
+    BudgetExceededError,
+    LLMToolResult,
     SynapseLLMRouter,
     _attempt_json_repair,
     normalize_tool_calls,
@@ -371,6 +373,55 @@ async def test_call_with_tools_retries_malformed_text_attempt(monkeypatch):
     assert len(fake_router.calls) == 2
     assert result.tool_calls[0].name == "bash_exec"
     assert json.loads(result.tool_calls[0].arguments) == {"command": "pwd"}
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_call_with_tools_budget_fallback_returns_normalized_result(monkeypatch):
+    """Budget fallback path must still return LLMToolResult, not raw provider response."""
+    monkeypatch.setattr("sci_fi_dashboard.llm_router._write_session", lambda **_kwargs: None)
+
+    class FakeRouter:
+        def __init__(self) -> None:
+            self.models: list[str] = []
+
+        async def acompletion(self, **kwargs):
+            model = kwargs["model"]
+            self.models.append(model)
+            if model == "casual":
+                raise BudgetExceededError(2.0, 0.001, "budget exceeded")
+            return _make_response(
+                "fallback response",
+                [_make_raw_tool_call(name="get_weather", arguments='{"location":"London"}')],
+            )
+
+    fake_router = FakeRouter()
+    router = object.__new__(SynapseLLMRouter)
+    router._config = types.SimpleNamespace(
+        model_mappings={
+            "casual": {
+                "model": "ollama_chat/qwen2.5:7b",
+                "fallback": "openai/gpt-4o-mini",
+            }
+        },
+        providers={},
+    )
+    router._router = fake_router
+    router._uses_copilot = False
+    router._copilot_refresh_lock = asyncio.Lock()
+    router._antigravity_roles = set()
+
+    result = await router.call_with_tools(
+        "casual",
+        [{"role": "user", "content": "weather in london"}],
+        tools=[_make_tool()],
+    )
+
+    assert fake_router.models == ["casual", "casual_fallback"]
+    assert isinstance(result, LLMToolResult)
+    assert result.text == "fallback response"
+    assert result.total_tokens == 15
+    assert result.tool_calls[0].name == "get_weather"
 
 
 # ---------------------------------------------------------------------------

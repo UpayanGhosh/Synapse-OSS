@@ -8,6 +8,25 @@ __pycache__/
 .ruff_cache/
 .pytest_cache/
 .mypy_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+junit*.xml
+test-results/
+workspace/tests/.codex-pytest-run/
+tmp_pytest*/
+tmp_pytest_local/
+workspace/.tmp_pytest*/
+workspace/tmp_pytest*/
+workspace/tmp_codex_verify/
+workspace/tmp_task*/
+workspace/_pytest*/
+workspace/tests/pytest-cache-files-*/
+workspace/tests/tmp_run_codex_review/
+workspace/tests/state/pytest-affect-run/
+workspace/tests/workspace/.tmp_pytest*/
+workspace/tests/workspace/.tmp_pytest_run/
 *.egg-info/
 dist/
 build/
@@ -48,6 +67,14 @@ workspace/*.log
 
 # Archive / backup
 *.bak
+*.temp
+*.tmp
+.temp/
+tmp/
+workspace/*.temp
+workspace/*.tmp
+workspace/.temp/
+workspace/tmp/
 *.gz
 *.dat
 *.mmap
@@ -162,3 +189,7 @@ landing/
 # Codex agent scratch — not for GitHub
 # ──────────────────────────────────────────────────────────────
 .codex-*/
+
+# MemPalace per-project files (issue #185)
+mempalace.yaml
+entities.json

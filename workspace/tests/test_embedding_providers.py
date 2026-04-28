@@ -193,6 +193,30 @@ class TestFactory(unittest.TestCase):
         self.assertEqual(call_args[0][0], "fastembed")
         self.assertIs(result, fake_provider)
 
+    def test_factory_explicit_gemini_reads_api_key_from_provider_config(self):
+        config = {
+            "embedding": {"provider": "gemini", "model": "text-embedding-004"},
+            "providers": {"gemini": {"api_key": "cfg-gemini-key"}},
+        }
+        fake_provider = MagicMock()
+
+        with patch(
+            "sci_fi_dashboard.embedding.factory._create_explicit",
+            return_value=fake_provider,
+        ) as mock_explicit:
+            from sci_fi_dashboard.embedding.factory import create_provider
+
+            result = create_provider(config)
+
+        mock_explicit.assert_called_once_with(
+            "gemini",
+            model="text-embedding-004",
+            cache_dir=None,
+            threads=None,
+            api_key="cfg-gemini-key",
+        )
+        self.assertIs(result, fake_provider)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -111,6 +111,16 @@ def test_parse_responses_payload_text_tool_calls_and_usage():
     ]
 
 
+def test_build_responses_input_assistant_content_type_switch():
+    messages = [{"role": "assistant", "content": "prior assistant reply"}]
+
+    normal_items = codex.build_responses_input(messages)
+    assert normal_items[0]["content"][0]["type"] == "input_text"
+
+    stream_items = codex.build_responses_input(messages, assistant_content_type="output_text")
+    assert stream_items[0]["content"][0]["type"] == "output_text"
+
+
 @pytest.mark.asyncio
 async def test_chat_completion_posts_responses_payload_shape(monkeypatch):
     creds = openai_codex_oauth.OpenAICodexCredentials(
@@ -209,6 +219,71 @@ async def test_chat_completion_posts_responses_payload_shape(monkeypatch):
             },
         }
     ]
+
+
+@pytest.mark.asyncio
+async def test_chat_completion_gpt54_uses_stream_shape_and_parses_sse(monkeypatch):
+    creds = openai_codex_oauth.OpenAICodexCredentials(
+        access_token="access-token",
+        refresh_token="refresh-token",
+        expires_at=time.time() + 3600,
+        email="user@example.com",
+        account_id="acct-1",
+        profile_name="user@example.com",
+    )
+    monkeypatch.setattr(codex.openai_codex_oauth, "load_credentials", lambda: creds)
+    monkeypatch.setattr(codex.openai_codex_oauth, "refresh_access_token", lambda c: c)
+    monkeypatch.setattr(codex.openai_codex_oauth, "save_credentials", lambda c: None)
+
+    sse = "\n".join(
+        [
+            "event: response.created",
+            'data: {"type":"response.created","response":{"model":"gpt-5.4"}}',
+            "event: response.output_text.delta",
+            'data: {"type":"response.output_text.delta","delta":"hel"}',
+            "event: response.output_text.delta",
+            'data: {"type":"response.output_text.delta","delta":"lo"}',
+            "event: response.completed",
+            (
+                'data: {"type":"response.completed","response":{"model":"gpt-5.4",'
+                '"status":"completed","usage":{"input_tokens":3,"output_tokens":4,"total_tokens":7}}}'
+            ),
+        ]
+    )
+    fake_http = _FakeAsyncClient([httpx.Response(200, text=sse)])
+    client = codex.OpenAICodexClient(http_client=fake_http)
+
+    result = await client.chat_completion(
+        messages=[
+            {"role": "system", "content": "Be terse."},
+            {"role": "user", "content": "Say hello"},
+            {"role": "assistant", "content": "hello"},
+            {"role": "user", "content": "continue"},
+        ],
+        model="openai_codex/gpt-5.4",
+        max_tokens=128,
+    )
+
+    assert result.text == "hello"
+    assert result.model == "gpt-5.4"
+    assert result.prompt_tokens == 3
+    assert result.completion_tokens == 4
+    assert result.total_tokens == 7
+    assert result.finish_reason == "completed"
+
+    payload = _payload_from_call(fake_http.calls[0])
+    assert payload["model"] == "gpt-5.4"
+    assert payload["stream"] is True
+    assert payload["store"] is False
+    assert payload["instructions"] == "Be terse."
+    assert payload["reasoning"] == {"effort": "medium"}
+    assert payload["text"] == {"format": {"type": "text"}, "verbosity": "medium"}
+    assert payload["input"][2]["role"] == "assistant"
+    assert payload["input"][2]["content"][0]["type"] == "output_text"
+    assert payload["input"][2]["content"][0]["text"] == "hello"
+    assert "max_output_tokens" not in payload
+    assert "temperature" not in payload
+    assert "top_p" not in payload
 
 
 @pytest.mark.asyncio

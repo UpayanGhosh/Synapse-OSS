@@ -111,7 +111,11 @@ def _flatten_message_content(content: Any) -> str:
     return str(content)
 
 
-def _message_to_input_blocks(message: dict[str, Any]) -> list[dict[str, Any]]:
+def _message_to_input_blocks(
+    message: dict[str, Any], *, assistant_content_type: str = "input_text"
+) -> list[dict[str, Any]]:
+    role = str(message.get("role") or "").lower()
+    text_block_type = assistant_content_type if role == "assistant" else "input_text"
     content = message.get("content")
     if isinstance(content, list):
         blocks: list[dict[str, Any]] = []
@@ -121,7 +125,7 @@ def _message_to_input_blocks(message: dict[str, Any]) -> list[dict[str, Any]]:
                 if btype in {"text", "input_text", "output_text", ""}:
                     text = block.get("text") or block.get("content")
                     if text is not None:
-                        blocks.append({"type": "input_text", "text": str(text)})
+                        blocks.append({"type": text_block_type, "text": str(text)})
                 elif btype == "image_url":
                     image_url = block.get("image_url")
                     if isinstance(image_url, dict):
@@ -129,17 +133,19 @@ def _message_to_input_blocks(message: dict[str, Any]) -> list[dict[str, Any]]:
                     if isinstance(image_url, str) and image_url.strip():
                         blocks.append({"type": "input_image", "image_url": image_url})
             elif isinstance(block, str) and block.strip():
-                blocks.append({"type": "input_text", "text": block})
+                blocks.append({"type": text_block_type, "text": block})
         if blocks:
             return blocks
 
     text = _flatten_message_content(content).strip()
     if not text:
         return []
-    return [{"type": "input_text", "text": text}]
+    return [{"type": text_block_type, "text": text}]
 
 
-def build_responses_input(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def build_responses_input(
+    messages: list[dict[str, Any]], *, assistant_content_type: str = "input_text"
+) -> list[dict[str, Any]]:
     """Translate OpenAI chat messages to Responses API `input` items."""
     items: list[dict[str, Any]] = []
     for message in messages or []:
@@ -161,7 +167,9 @@ def build_responses_input(messages: list[dict[str, Any]]) -> list[dict[str, Any]
                 continue
 
         if role in {"system", "user", "assistant"}:
-            blocks = _message_to_input_blocks(message)
+            blocks = _message_to_input_blocks(
+                message, assistant_content_type=assistant_content_type
+            )
             if blocks:
                 items.append({"role": role, "content": blocks})
 
@@ -224,22 +232,55 @@ def build_responses_request(
     max_tokens: int | None = None,
     stop: list[str] | str | None = None,
 ) -> dict[str, Any]:
+    normalized_model = normalize_openai_codex_model(model)
+    requires_stream = _requires_stream_protocol(normalized_model)
+    assistant_content_type = "output_text" if requires_stream else "input_text"
     payload: dict[str, Any] = {
-        "model": normalize_openai_codex_model(model),
-        "input": build_responses_input(messages),
+        "model": normalized_model,
+        "input": build_responses_input(messages, assistant_content_type=assistant_content_type),
     }
+    if requires_stream:
+        # ChatGPT-account "gpt-5.4" path requires stream protocol and explicit store flag.
+        payload["store"] = False
+        payload["stream"] = True
+        payload["instructions"] = _extract_instructions(messages)
+        # Default to "medium thinking" for natural conversation quality.
+        payload["reasoning"] = {"effort": "medium"}
+        payload["text"] = {"format": {"type": "text"}, "verbosity": "medium"}
     codex_tools = build_responses_tools(tools)
     if codex_tools:
         payload["tools"] = codex_tools
-    if temperature is not None:
+    if temperature is not None and not requires_stream:
         payload["temperature"] = temperature
-    if top_p is not None:
+    if top_p is not None and not requires_stream:
         payload["top_p"] = top_p
-    if max_tokens is not None:
+    if max_tokens is not None and not requires_stream:
         payload["max_output_tokens"] = int(max_tokens)
     if stop is not None:
         payload["stop"] = [stop] if isinstance(stop, str) else list(stop)
     return payload
+
+
+def _requires_stream_protocol(model_name: str) -> bool:
+    """Return True when this model requires ChatGPT streaming request shape."""
+    lowered = str(model_name or "").strip().lower()
+    return lowered.startswith("gpt-5.4")
+
+
+def _extract_instructions(messages: list[dict[str, Any]]) -> str:
+    """Build top-level instructions from system messages for stream-mode requests."""
+    if not messages:
+        return "You are a helpful assistant."
+    chunks: list[str] = []
+    for message in messages:
+        if not isinstance(message, dict):
+            continue
+        if str(message.get("role") or "").lower() != "system":
+            continue
+        text = _flatten_message_content(message.get("content")).strip()
+        if text:
+            chunks.append(text)
+    return "\n\n".join(chunks) if chunks else "You are a helpful assistant."
 
 
 def _usage_int(usage: dict[str, Any], *names: str) -> int:
@@ -309,6 +350,62 @@ def parse_responses_payload(payload: dict[str, Any], *, requested_model: str) ->
         completion_tokens=completion_tokens,
         total_tokens=total_tokens,
         finish_reason=str(finish_reason) if finish_reason is not None else None,
+    )
+
+
+def parse_responses_stream_payload(raw_body: str, *, requested_model: str) -> OpenAICodexResponse:
+    """Parse SSE stream body from ChatGPT responses transport into OpenAICodexResponse."""
+    text_chunks: list[str] = []
+    usage: dict[str, Any] = {}
+    finish_reason: str | None = None
+    model = requested_model
+
+    for line in (raw_body or "").splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("data:"):
+            continue
+        raw_json = stripped[5:].strip()
+        if not raw_json:
+            continue
+        try:
+            event = json.loads(raw_json)
+        except (TypeError, ValueError):
+            continue
+        if not isinstance(event, dict):
+            continue
+        etype = str(event.get("type") or "").lower()
+        if etype == "response.output_text.delta":
+            delta = event.get("delta")
+            if isinstance(delta, str):
+                text_chunks.append(delta)
+        elif etype == "response.output_text.done":
+            if not text_chunks:
+                done_text = event.get("text")
+                if isinstance(done_text, str):
+                    text_chunks.append(done_text)
+        elif etype == "response.completed":
+            response_obj = event.get("response")
+            if isinstance(response_obj, dict):
+                usage_obj = response_obj.get("usage")
+                if isinstance(usage_obj, dict):
+                    usage = usage_obj
+                model = str(response_obj.get("model") or model)
+                finish_reason = str(response_obj.get("status") or "") or finish_reason
+
+    prompt_tokens = _usage_int(usage, "input_tokens", "prompt_tokens")
+    completion_tokens = _usage_int(usage, "output_tokens", "completion_tokens")
+    total_tokens = _usage_int(usage, "total_tokens")
+    if total_tokens <= 0:
+        total_tokens = prompt_tokens + completion_tokens
+
+    return OpenAICodexResponse(
+        text="".join(text_chunks),
+        tool_calls=[],
+        model=model,
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+        total_tokens=total_tokens,
+        finish_reason=finish_reason,
     )
 
 
@@ -500,6 +597,9 @@ class OpenAICodexClient:
                 continue
 
             _raise_for_status(resp, model=normalized_model)
+            if payload.get("stream") is True:
+                return parse_responses_stream_payload(resp.text, requested_model=normalized_model)
+
             try:
                 body = resp.json()
             except ValueError as exc:

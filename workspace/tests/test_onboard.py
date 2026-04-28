@@ -1363,8 +1363,8 @@ def test_reset_invalid_scope_exits_1(tmp_path, monkeypatch):
 # ===========================================================================
 
 
-def test_ensure_agent_workspace_seeds_all_7_files(tmp_path):
-    """ONB-15: First call seeds all 7 template files and sets bootstrapSeededAt."""
+def test_ensure_agent_workspace_seeds_runtime_guidance_files(tmp_path):
+    """ONB-15: First call seeds all runtime guidance files and sets bootstrapSeededAt."""
     from cli.workspace_seeding import ensure_agent_workspace
 
     workspace = tmp_path / "workspace"
@@ -1373,19 +1373,29 @@ def test_ensure_agent_workspace_seeds_all_7_files(tmp_path):
     assert "bootstrapSeededAt" in state, "bootstrapSeededAt must be set after first seeding"
     assert state["bootstrapSeededAt"], "bootstrapSeededAt must be a non-empty string"
 
-    # All 7 template files must exist
     expected_files = [
         "AGENTS.md",
         "SOUL.md",
+        "CORE.md",
+        "CODE.md",
         "IDENTITY.md",
         "USER.md",
         "TOOLS.md",
+        "MEMORY.md",
         "HEARTBEAT.md",
         "BOOTSTRAP.md",
     ]
     for fname in expected_files:
         fpath = workspace / fname
         assert fpath.exists(), f"Template file {fname} should be seeded in workspace"
+
+    assert "What should I call you?" in (workspace / "BOOTSTRAP.md").read_text(
+        encoding="utf-8"
+    )
+    agents_text = (workspace / "AGENTS.md").read_text(encoding="utf-8")
+    assert "Read `CORE.md`" in agents_text
+    assert "Read `CODE.md`" in agents_text
+    assert "Name:" in (workspace / "USER.md").read_text(encoding="utf-8")
 
 
 def test_ensure_agent_workspace_second_call_is_idempotent(tmp_path):
@@ -1450,6 +1460,16 @@ def test_ensure_agent_workspace_legacy_git_dir_sets_completed_at(tmp_path):
     assert not (
         workspace / "BOOTSTRAP.md"
     ).exists(), "BOOTSTRAP.md must NOT be created for a legacy (.git) workspace"
+
+
+def test_markdown_guidance_templates_are_packaged():
+    """Installed wheels must include onboarding and runtime guidance markdown files."""
+    pyproject_path = Path(__file__).resolve().parents[2] / "pyproject.toml"
+    data = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
+    package_data = data["tool"]["setuptools"]["package-data"]
+
+    assert "templates/*.md" in package_data["cli"]
+    assert "agent_workspace/*.md.template" in package_data["sci_fi_dashboard"]
 
 
 # ===========================================================================
