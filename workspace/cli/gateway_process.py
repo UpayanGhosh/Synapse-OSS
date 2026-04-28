@@ -30,7 +30,16 @@ class GatewayProcessManager:
     def is_reachable(self) -> bool:
         try:
             response = httpx.get(f"{self.base_url}/health", timeout=2.0)
-            return int(response.status_code) == 200
+            if int(response.status_code) != 200:
+                return False
+            payload = response.json()
+            if not isinstance(payload, dict):
+                return False
+            has_gateway_status = payload.get("status") in {"ok", "degraded"}
+            has_synapse_key = any(
+                key in payload for key in ("llm_configured", "graph_ok", "memory_ok")
+            )
+            return has_gateway_status and has_synapse_key
         except Exception:
             return False
 

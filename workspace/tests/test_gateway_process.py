@@ -8,6 +8,7 @@ from cli.gateway_process import GatewayProcessManager
 
 def test_reachable_returns_true_for_healthy_response(monkeypatch):
     response = Mock(status_code=200)
+    response.json.return_value = {"status": "ok", "llm_configured": True}
     monkeypatch.setattr("cli.gateway_process.httpx.get", lambda *a, **k: response)
     manager = GatewayProcessManager(port=9001)
     assert manager.is_reachable()
@@ -24,6 +25,22 @@ def test_reachable_returns_false_on_request_error(monkeypatch):
 
 def test_reachable_returns_false_for_not_found_response(monkeypatch):
     response = Mock(status_code=404)
+    monkeypatch.setattr("cli.gateway_process.httpx.get", lambda *a, **k: response)
+    manager = GatewayProcessManager(port=9001)
+    assert not manager.is_reachable()
+
+
+def test_reachable_returns_false_for_wrong_health_json(monkeypatch):
+    response = Mock(status_code=200)
+    response.json.return_value = {"status": "ok", "service": "other"}
+    monkeypatch.setattr("cli.gateway_process.httpx.get", lambda *a, **k: response)
+    manager = GatewayProcessManager(port=9001)
+    assert not manager.is_reachable()
+
+
+def test_reachable_returns_false_for_invalid_health_json(monkeypatch):
+    response = Mock(status_code=200)
+    response.json.side_effect = ValueError("not json")
     monkeypatch.setattr("cli.gateway_process.httpx.get", lambda *a, **k: response)
     manager = GatewayProcessManager(port=9001)
     assert not manager.is_reachable()
