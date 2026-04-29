@@ -104,3 +104,88 @@ def test_distill_and_upsert_response_style_and_codename() -> None:
         ]
     finally:
         conn.close()
+
+
+def test_sync_user_memory_writes_preferred_response_style_to_interaction(tmp_path) -> None:
+    from sci_fi_dashboard.sbs.profile.manager import ProfileManager
+    from sci_fi_dashboard.sbs.profile.sync import sync_user_memory_profile
+    from sci_fi_dashboard.user_memory import ensure_user_memory_facts_table
+
+    db_path = tmp_path / "sync-memory.db"
+    conn = sqlite3.connect(str(db_path))
+    try:
+        ensure_user_memory_facts_table(conn)
+        conn.execute(
+            """
+            INSERT INTO user_memory_facts
+                (user_id, kind, key, value, summary, confidence, source_doc_id, evidence, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "agent:creator:whatsapp:dm:+15551230000",
+                "preference",
+                "response_style",
+                "direct",
+                "Prefers concise, direct responses.",
+                0.86,
+                101,
+                "keep it short and direct",
+                "active",
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    profile_mgr = ProfileManager(tmp_path / "profiles")
+    sync_user_memory_profile(
+        profile_mgr,
+        user_id="agent:creator:whatsapp:dm:+15551230000",
+        db_path=db_path,
+    )
+
+    interaction = profile_mgr.load_layer("interaction")
+    assert interaction.get("preferred_response_style") == "direct"
+
+
+def test_compiled_prompt_includes_synced_preference_string(tmp_path) -> None:
+    from sci_fi_dashboard.sbs.injection.compiler import PromptCompiler
+    from sci_fi_dashboard.sbs.profile.manager import ProfileManager
+    from sci_fi_dashboard.sbs.profile.sync import sync_user_memory_profile
+    from sci_fi_dashboard.user_memory import ensure_user_memory_facts_table
+
+    db_path = tmp_path / "sync-memory.db"
+    conn = sqlite3.connect(str(db_path))
+    try:
+        ensure_user_memory_facts_table(conn)
+        conn.execute(
+            """
+            INSERT INTO user_memory_facts
+                (user_id, kind, key, value, summary, confidence, source_doc_id, evidence, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "agent:creator:whatsapp:dm:+15551230000",
+                "preference",
+                "response_style",
+                "direct",
+                "Prefers concise, direct responses.",
+                0.86,
+                102,
+                "keep it short and direct",
+                "active",
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    profile_mgr = ProfileManager(tmp_path / "profiles")
+    sync_user_memory_profile(
+        profile_mgr,
+        user_id="agent:creator:whatsapp:dm:+15551230000",
+        db_path=db_path,
+    )
+
+    prompt = PromptCompiler(profile_mgr).compile()
+    assert "Preferred response style: direct." in prompt

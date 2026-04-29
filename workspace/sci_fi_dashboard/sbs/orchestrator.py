@@ -11,6 +11,7 @@ from .ingestion.logger import ConversationLogger
 from .ingestion.schema import RawMessage
 from .injection.compiler import PromptCompiler
 from .profile.manager import ProfileManager
+from .profile.sync import sync_user_memory_profile
 
 
 class SBSOrchestrator:
@@ -207,6 +208,10 @@ class SBSOrchestrator:
 
     def rollback(self, version: int):
         self.profile_mgr.rollback_to(version)
+
+    def sync_user_memory(self, user_id: str, db_path: str) -> dict:
+        """Sync structured user-memory facts into SBS profile layers."""
+        return sync_user_memory_profile(self.profile_mgr, user_id=user_id, db_path=db_path)
 
     def get_profile_summary(self) -> dict:
         profile = self.profile_mgr.load_full_profile()

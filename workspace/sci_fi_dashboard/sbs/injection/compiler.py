@@ -70,7 +70,7 @@ class PromptCompiler:
             char_budget -= len(domain_block)
 
         # === SECTION 7: Interaction Notes ===
-        interaction_block = self._compile_interaction(profile["interaction"])
+        interaction_block = self._compile_interaction(profile["interaction"], profile["domain"])
         if interaction_block and len(interaction_block) < char_budget:
             sections.append(interaction_block)
 
@@ -185,7 +185,7 @@ Emoji usage: {"common" if style.get("emoji_frequency", 0) > 0.2 else "occasional
 User is currently focused on: {", ".join(active[:3])}.
 Tailor technical depth accordingly."""
 
-    def _compile_interaction(self, interaction: dict) -> str:
+    def _compile_interaction(self, interaction: dict, domain: dict | None = None) -> str:
         parts = []
 
         peak = interaction.get("peak_hours", [])
@@ -205,6 +205,20 @@ Tailor technical depth accordingly."""
         }
         if privacy and privacy in privacy_directives:
             parts.append(privacy_directives[privacy])
+
+        preferred_response_style = str(interaction.get("preferred_response_style", "")).strip()
+        if preferred_response_style:
+            parts.append(f"Preferred response style: {preferred_response_style}.")
+
+        stable_identity_notes: list[str] = []
+        if isinstance(domain, dict):
+            notes = domain.get("stable_identity_notes")
+            if isinstance(notes, list):
+                stable_identity_notes = [str(item).strip() for item in notes if str(item).strip()]
+            elif isinstance(notes, str) and notes.strip():
+                stable_identity_notes = [notes.strip()]
+        if stable_identity_notes:
+            parts.append(f"Stable identity notes: {'; '.join(stable_identity_notes[:3])}")
 
         if not parts:
             return ""
