@@ -471,7 +471,7 @@ async def process_message_pipeline(
             timeout=chat_timeout_seconds,
         )
         reply = result.get("reply", "")
-    except asyncio.TimeoutError:
+    except TimeoutError:
         logger.warning("persona_chat timed out after %.2fs for %s", chat_timeout_seconds, session_key)
         reply = (
             "I saved your message, but I timed out while generating a reply. "
