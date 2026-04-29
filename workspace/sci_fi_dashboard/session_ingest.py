@@ -134,7 +134,9 @@ async def _ingest_session_background(
         _write_triple_to_entity_links,
     )
     from sci_fi_dashboard.multiuser.transcript import load_messages
-    from sci_fi_dashboard.user_memory import distill_and_upsert_user_memory_facts
+    from sci_fi_dashboard.user_memory_distiller_v2 import (
+        distill_and_upsert_user_memory_facts_v2,
+    )
 
     cfg = SynapseConfig.load()
     memory_db_path = str(cfg.db_dir / "memory.db")
@@ -258,7 +260,7 @@ async def _ingest_session_background(
         try:
             conn = sqlite3.connect(memory_db_path)
             try:
-                facts = distill_and_upsert_user_memory_facts(
+                facts = await distill_and_upsert_user_memory_facts_v2(
                     conn,
                     text=text,
                     user_id=session_key,

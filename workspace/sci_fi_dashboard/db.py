@@ -242,6 +242,26 @@ def _ensure_user_memory_schema(conn: sqlite3.Connection) -> None:
     ensure_user_memory_facts_table(conn)
 
 
+def _ensure_user_memory_distiller_v2_schema(conn: sqlite3.Connection) -> None:
+    """Create async user memory distiller V2 schema if missing."""
+    try:
+        from .user_memory_distiller_v2 import ensure_user_memory_distiller_v2_tables
+    except ImportError:
+        from user_memory_distiller_v2 import ensure_user_memory_distiller_v2_tables
+
+    ensure_user_memory_distiller_v2_tables(conn)
+
+
+def _ensure_self_evolution_schema(conn: sqlite3.Connection) -> None:
+    """Create approval-gated self-evolution schema if missing."""
+    try:
+        from .self_evolution import ensure_self_evolution_tables
+    except ImportError:
+        from self_evolution import ensure_self_evolution_tables
+
+    ensure_self_evolution_tables(conn)
+
+
 def _ensure_embedding_metadata(conn: sqlite3.Connection) -> None:
     """Add embedding provenance columns if they don't exist yet (idempotent).
 
@@ -372,6 +392,8 @@ class DatabaseManager:
                 _ensure_kg_processed_column(conn)
                 _ensure_memory_affect_schema(conn)
                 _ensure_user_memory_schema(conn)
+                _ensure_user_memory_distiller_v2_schema(conn)
+                _ensure_self_evolution_schema(conn)
                 _ensure_ingest_failures_table(conn)
                 conn.commit()
                 conn.close()
@@ -389,6 +411,8 @@ class DatabaseManager:
                     _ensure_kg_processed_column(_mig)
                     _ensure_memory_affect_schema(_mig)
                     _ensure_user_memory_schema(_mig)
+                    _ensure_user_memory_distiller_v2_schema(_mig)
+                    _ensure_self_evolution_schema(_mig)
                     _ensure_ingest_failures_table(_mig)
                 finally:
                     _mig.close()
