@@ -120,19 +120,41 @@ def memory_save_probe(
 
     result = MemoryEngine().add_memory(content, category=category, hemisphere=hemisphere)
     typer.echo(f"save_result: {result}")
+    probe_error = result.get("error") if isinstance(result, dict) else None
+    if probe_error:
+        typer.echo(f"save_error: {probe_error}", err=True)
 
     db_path = SynapseConfig.load().db_dir / "memory.db"
     documents_count = 0
     memory_affect_count = 0
-    if db_path.exists():
-        with sqlite3.connect(db_path) as conn:
-            documents_count = int(conn.execute("SELECT COUNT(*) FROM documents").fetchone()[0] or 0)
-            memory_affect_count = int(
-                conn.execute("SELECT COUNT(*) FROM memory_affect").fetchone()[0] or 0
-            )
+    documents_note = ""
+    memory_affect_note = ""
 
-    typer.echo(f"documents_count: {documents_count}")
-    typer.echo(f"memory_affect_count: {memory_affect_count}")
+    if db_path.exists():
+        try:
+            with sqlite3.connect(db_path) as conn:
+
+                def _safe_count(table_name: str) -> tuple[int, str]:
+                    try:
+                        count = int(conn.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0] or 0)
+                        return count, ""
+                    except sqlite3.OperationalError as exc:
+                        return 0, f" (unavailable: {exc})"
+
+                documents_count, documents_note = _safe_count("documents")
+                memory_affect_count, memory_affect_note = _safe_count("memory_affect")
+        except sqlite3.Error as exc:
+            documents_note = f" (unavailable: {exc})"
+            memory_affect_note = f" (unavailable: {exc})"
+    else:
+        documents_note = " (memory.db missing)"
+        memory_affect_note = " (memory.db missing)"
+
+    typer.echo(f"documents_count: {documents_count}{documents_note}")
+    typer.echo(f"memory_affect_count: {memory_affect_count}{memory_affect_note}")
+
+    if probe_error:
+        raise typer.Exit(1)
 
 
 # ---------------------------------------------------------------------------

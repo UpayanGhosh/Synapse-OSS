@@ -86,3 +86,49 @@ def test_memory_save_probe_returns_counts(tmp_path, monkeypatch):
     assert "save_result:" in result.output
     assert "documents_count: 2" in result.output
     assert "memory_affect_count: 3" in result.output
+
+
+def test_memory_save_probe_exits_nonzero_on_add_memory_error(tmp_path, monkeypatch):
+    db_dir = tmp_path / "workspace" / "db"
+    db_dir.mkdir(parents=True, exist_ok=True)
+    db_path = db_dir / "memory.db"
+
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("CREATE TABLE documents (id INTEGER PRIMARY KEY)")
+        conn.execute("CREATE TABLE memory_affect (document_id INTEGER)")
+        conn.commit()
+
+    class _FailingMemoryEngine:
+        def add_memory(self, content: str, category: str = "direct_entry", hemisphere: str = "safe"):
+            return {"error": "vector write failed"}
+
+    fake_cfg = SimpleNamespace(db_dir=db_dir)
+    monkeypatch.setattr("sci_fi_dashboard.memory_engine.MemoryEngine", _FailingMemoryEngine)
+    monkeypatch.setattr("synapse_config.SynapseConfig.load", classmethod(lambda cls: fake_cfg))
+
+    result = CliRunner().invoke(app, ["memory", "save-probe", "--content", "probe content"])
+
+    assert result.exit_code == 1, result.output
+    assert "save_result:" in result.output
+    assert "save_error: vector write failed" in result.output
+
+
+def test_memory_save_probe_handles_missing_tables(tmp_path, monkeypatch):
+    db_dir = tmp_path / "workspace" / "db"
+    db_dir.mkdir(parents=True, exist_ok=True)
+    db_path = db_dir / "memory.db"
+    sqlite3.connect(db_path).close()
+
+    class _OkMemoryEngine:
+        def add_memory(self, content: str, category: str = "direct_entry", hemisphere: str = "safe"):
+            return {"status": "stored", "id": 9, "embedded": True, "backup_error": None}
+
+    fake_cfg = SimpleNamespace(db_dir=db_dir)
+    monkeypatch.setattr("sci_fi_dashboard.memory_engine.MemoryEngine", _OkMemoryEngine)
+    monkeypatch.setattr("synapse_config.SynapseConfig.load", classmethod(lambda cls: fake_cfg))
+
+    result = CliRunner().invoke(app, ["memory", "save-probe", "--content", "probe content"])
+
+    assert result.exit_code == 0, result.output
+    assert "documents_count: 0 (unavailable:" in result.output
+    assert "memory_affect_count: 0 (unavailable:" in result.output
