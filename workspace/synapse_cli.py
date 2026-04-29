@@ -102,6 +102,39 @@ def memory_health(
         raise typer.Exit(1)
 
 
+@memory_app.command("save-probe")
+def memory_save_probe(
+    content: str = typer.Option(
+        "synapse cli save-probe",
+        "--content",
+        help="Content payload to store as a memory probe.",
+    ),
+    category: str = typer.Option("cli_probe", "--category", help="Document category label."),
+    hemisphere: str = typer.Option("safe", "--hemisphere", help="safe or spicy"),
+) -> None:
+    """Store one memory and print persistence counters from memory.db."""
+    import sqlite3  # noqa: PLC0415
+
+    from sci_fi_dashboard.memory_engine import MemoryEngine  # noqa: PLC0415
+    from synapse_config import SynapseConfig  # noqa: PLC0415
+
+    result = MemoryEngine().add_memory(content, category=category, hemisphere=hemisphere)
+    typer.echo(f"save_result: {result}")
+
+    db_path = SynapseConfig.load().db_dir / "memory.db"
+    documents_count = 0
+    memory_affect_count = 0
+    if db_path.exists():
+        with sqlite3.connect(db_path) as conn:
+            documents_count = int(conn.execute("SELECT COUNT(*) FROM documents").fetchone()[0] or 0)
+            memory_affect_count = int(
+                conn.execute("SELECT COUNT(*) FROM memory_affect").fetchone()[0] or 0
+            )
+
+    typer.echo(f"documents_count: {documents_count}")
+    typer.echo(f"memory_affect_count: {memory_affect_count}")
+
+
 # ---------------------------------------------------------------------------
 # WhatsApp subcommand group
 # ---------------------------------------------------------------------------

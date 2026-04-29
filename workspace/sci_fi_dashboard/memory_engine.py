@@ -188,7 +188,7 @@ class MemoryEngine:
             _get_emitter().emit("memory.query_start", {"text": text[:80]})
         _query_start = time.time()
 
-        # First-person pronouns → include seed_entities in graph lookup even if
+        # First-person pronouns -> include seed_entities in graph lookup even if
         # no entity name appears literally in the query text ("my condition" etc.)
         _FIRST_PERSON = {  # noqa: N806
             "i",
@@ -414,7 +414,7 @@ class MemoryEngine:
                     "routing": routing,
                 }
             except Exception as rerank_err:
-                print(f"[WARN] Reranker failed ({rerank_err}) — falling back to scored results")
+                print(f"[WARN] Reranker failed ({rerank_err}) -- falling back to scored results")
                 return {
                     "results": [
                         {
@@ -446,12 +446,18 @@ class MemoryEngine:
     def add_memory(
         self, content: str, category: str = "direct_entry", hemisphere: str = "safe"
     ) -> dict:
+        backup_error = None
+        entry = {"timestamp": time.time(), "category": category, "content": content}
         try:
-            # Backup — path resolved at __init__ time under ~/.synapse/ (not repo root)
-            entry = {"timestamp": time.time(), "category": category, "content": content}
+            # Backup log write is best-effort; storage must still proceed.
             with open(self._backup_file, "a", encoding="utf-8") as f:
                 f.write(json.dumps(entry) + "\n")
+        except OSError as backup_err:
+            backup_error = str(backup_err)
+            print(f"[WARN] Backup log write failed (non-fatal): {backup_err}")
 
+        conn = None
+        try:
             # Store - Unified connection path
             conn = get_db_connection()
             cursor = conn.cursor()
@@ -507,10 +513,17 @@ class MemoryEngine:
                 print(f"[WARN] Embedding failed for doc {doc_id}; queued for later processing")
 
             conn.commit()
-            conn.close()
-            return {"status": "stored", "id": doc_id, "embedded": embedding is not None}
+            return {
+                "status": "stored",
+                "id": doc_id,
+                "embedded": embedding is not None,
+                "backup_error": backup_error,
+            }
         except Exception as e:
-            return {"error": str(e)}
+            return {"error": str(e), "backup_error": backup_error}
+        finally:
+            if conn is not None:
+                conn.close()
 
     def _score_importance_heuristic(self, content: str) -> int:
         """Tier 1: Fast keyword-based importance scoring. Zero tokens."""
@@ -612,3 +625,4 @@ class MemoryEngine:
             return {"error": "No LLM backend available (cloud router unavailable)"}
         except Exception as e:
             return {"error": str(e)}
+

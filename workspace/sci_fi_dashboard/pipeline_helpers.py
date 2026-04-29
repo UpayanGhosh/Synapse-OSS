@@ -446,28 +446,52 @@ async def process_message_pipeline(
         deps.conversation_cache.put(session_key, messages)  # put() BEFORE append() calls
 
     # ------------------------------------------------------------------
-    # Step 5: Build ChatRequest with real history and call persona_chat (THE FIX for D-01)
+    # Step 5: Capture user turn first, then call persona_chat with timeout
     # ------------------------------------------------------------------
+    history_for_llm = list(messages)
+    user_dict = {"role": "user", "content": user_msg}
+    await append_message(t_path, user_dict)
+    deps.conversation_cache.append(session_key, user_dict)
+
+    raw_timeout = session_cfg.get("chat_timeout_seconds", 90.0)
+    try:
+        chat_timeout_seconds = float(raw_timeout)
+    except (TypeError, ValueError):
+        chat_timeout_seconds = 90.0
+
     chat_req = ChatRequest(
         message=user_msg,
         user_id=chat_id,
         session_type="safe",
-        history=messages,
+        history=history_for_llm,
     )
-    result = await persona_chat(chat_req, target, None, mcp_context=mcp_context)
-    reply = result.get("reply", "")
+    try:
+        result = await asyncio.wait_for(
+            persona_chat(chat_req, target, None, mcp_context=mcp_context),
+            timeout=chat_timeout_seconds,
+        )
+        reply = result.get("reply", "")
+    except asyncio.TimeoutError:
+        logger.warning("persona_chat timed out after %.2fs for %s", chat_timeout_seconds, session_key)
+        reply = (
+            "I saved your message, but I timed out while generating a reply. "
+            "Please try again."
+        )
+    except Exception:
+        logger.exception("persona_chat failed for %s", session_key)
+        reply = (
+            "I saved your message, but hit an error while generating a reply. "
+            "Please try again."
+        )
 
     # ------------------------------------------------------------------
-    # Step 6: Fire-and-forget transcript append + compaction (per D-11, D-12, D-14-D-17)
+    # Step 6: Fire-and-forget assistant append + compaction (per D-11, D-12, D-14-D-17)
     # ------------------------------------------------------------------
-    user_dict = {"role": "user", "content": user_msg}
     asst_dict = {"role": "assistant", "content": reply}
 
     async def _save_and_compact():
         try:
-            await append_message(t_path, user_dict)
             await append_message(t_path, asst_dict)
-            deps.conversation_cache.append(session_key, user_dict)
             deps.conversation_cache.append(session_key, asst_dict)
 
             # Compaction pre-gate (D-14: 60% threshold, D-17: 32k safe default)
