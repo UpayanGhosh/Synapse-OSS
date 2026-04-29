@@ -143,7 +143,13 @@ class SBSOrchestrator:
 
         self.logger.log(message)
         if role == "user" and rt_results.get("rt_mood_signal"):
-            self.realtime.flush()
+            try:
+                self.realtime.flush()
+            except Exception:
+                logging.getLogger("sbs").warning(
+                    "Realtime flush failed; continuing message flow.",
+                    exc_info=True,
+                )
 
         rt_results["msg_id"] = message.msg_id
 
