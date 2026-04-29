@@ -251,31 +251,42 @@ async def _ingest_session_background(
                 except (TypeError, ValueError):
                     doc_id = None
 
-        if doc_id is not None:
+        try:
+            conn = sqlite3.connect(memory_db_path)
             try:
-                conn = sqlite3.connect(memory_db_path)
-                try:
-                    facts = distill_and_upsert_user_memory_facts(
-                        conn,
-                        text=text,
-                        user_id=session_key,
-                        source_doc_id=doc_id,
-                    )
-                    conn.commit()
-                finally:
-                    conn.close()
-                if facts:
-                    log.info(
-                        "[session_ingest] distilled %d user facts from doc %d",
-                        len(facts),
-                        doc_id,
-                    )
-            except Exception as distill_err:
-                log.warning(
-                    "[session_ingest] user memory distill failed for doc %s: %s",
-                    doc_id,
-                    distill_err,
+                facts = distill_and_upsert_user_memory_facts(
+                    conn,
+                    text=text,
+                    user_id=session_key,
+                    source_doc_id=doc_id,
                 )
+                conn.commit()
+            finally:
+                conn.close()
+            if facts:
+                log.info(
+                    "[session_ingest] distilled %d user facts from doc %s",
+                    len(facts),
+                    doc_id,
+                )
+        except Exception as distill_err:
+            _record_ingest_failure(
+                memory_db_path,
+                phase="user_memory",
+                session_key=session_key,
+                agent_id=agent_id,
+                archived_path=archived_path,
+                batch_index=i + 1,
+                total_batches=len(batches),
+                exc=distill_err,
+                ingested_vec=ingested_vec,
+                ingested_kg=ingested_kg,
+            )
+            log.warning(
+                "[session_ingest] user memory distill failed for doc %s: %s",
+                doc_id,
+                distill_err,
+            )
 
         # ── 2. KG extraction + triple writes ──
         if extractor is not None:
