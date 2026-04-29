@@ -69,6 +69,15 @@ _CODENAME_PATTERNS: tuple[str, ...] = (
 )
 
 
+def _slug(value: str, *, max_len: int = 48) -> str:
+    slug = re.sub(r"[^a-z0-9_-]+", "_", value.lower()).strip("_")
+    return (slug[:max_len].strip("_")) or "unknown"
+
+
+def _clean_value(value: str, *, max_len: int = 96) -> str:
+    return " ".join(str(value or "").strip().strip(".,!?;:\"'`").split())[:max_len].strip()
+
+
 def ensure_user_memory_facts_table(conn: sqlite3.Connection) -> None:
     """Create structured user-memory table and indexes idempotently."""
     conn.executescript("""
@@ -135,6 +144,68 @@ def _distill_codename(user_text: str) -> tuple[str, str, str, float] | None:
     return None
 
 
+def _distill_routines(user_text: str) -> list[tuple[str, str, str, float]]:
+    facts: list[tuple[str, str, str, float]] = []
+    patterns = (
+        r"\bmy routine is\s+([^.!?]{3,96})",
+        r"\bevery\s+(morning|day|night|evening)\s+i\s+([^.!?]{3,96})",
+    )
+    for pattern in patterns:
+        for match in re.finditer(pattern, user_text, re.IGNORECASE):
+            if len(match.groups()) == 2:
+                value = _clean_value(f"{match.group(2)} every {match.group(1).lower()}")
+            else:
+                value = _clean_value(match.group(1))
+            if not value:
+                continue
+            facts.append((f"routine_{_slug(value)}", value, f"Routine: {value}.", 0.82))
+    return facts
+
+
+def _distill_relationships(user_text: str) -> list[tuple[str, str, str, float]]:
+    facts: list[tuple[str, str, str, float]] = []
+    pattern = r"\b([A-Z][A-Za-z0-9_-]{1,31})\s+is my\s+([^.!?]{3,80})"
+    for match in re.finditer(pattern, user_text):
+        name = _clean_value(match.group(1), max_len=32)
+        role = _clean_value(match.group(2).lower(), max_len=80)
+        if not name or not role or "project" in role:
+            continue
+        facts.append((f"person_{_slug(name)}", role, f"{name} is user's {role}.", 0.84))
+    return facts
+
+
+def _distill_projects(user_text: str) -> list[tuple[str, str, str, float]]:
+    facts: list[tuple[str, str, str, float]] = []
+    pattern = r"\b([A-Z][A-Za-z0-9_-]{1,63})\s+is my\s+(?:main|primary|current)\s+project\b"
+    for match in re.finditer(pattern, user_text):
+        project = _clean_value(match.group(1), max_len=64)
+        if not project:
+            continue
+        facts.append((f"project_{_slug(project)}", project, f"Current project: {project}.", 0.84))
+    return facts
+
+
+def _distill_corrections(user_text: str) -> list[tuple[str, str, str, float]]:
+    facts: list[tuple[str, str, str, float]] = []
+    for match in re.finditer(r"\b(?:don't|do not)\s+call me\s+([^.!?;,]{2,40})", user_text, re.IGNORECASE):
+        bad_name = _clean_value(match.group(1).lower(), max_len=40)
+        if not bad_name:
+            continue
+        facts.append(
+            (
+                f"avoid_calling_me_{_slug(bad_name)}",
+                bad_name,
+                f"Do not call the user {bad_name}.",
+                0.9,
+            )
+        )
+    for match in re.finditer(r"\bforget that\s+([^.!?]{3,96})", user_text, re.IGNORECASE):
+        value = _clean_value(match.group(1), max_len=96)
+        if value:
+            facts.append((f"forget_{_slug(value)}", value, f"Forget rule: {value}.", 0.88))
+    return facts
+
+
 def distill_user_memory_facts(
     *,
     text: str,
@@ -184,6 +255,66 @@ def distill_user_memory_facts(
                 confidence=_clamp_confidence(confidence),
                 source_doc_id=source_doc_id,
                 evidence=evidence,
+                status=clean_status,
+            )
+        )
+
+    for key, value, summary, confidence in _distill_routines(user_text):
+        facts.append(
+            UserMemoryFact(
+                user_id=clean_user_id,
+                kind="routine",
+                key=key.removeprefix("routine_"),
+                value=value,
+                summary=summary,
+                confidence=_clamp_confidence(confidence),
+                source_doc_id=source_doc_id,
+                evidence=value,
+                status=clean_status,
+            )
+        )
+
+    for key, value, summary, confidence in _distill_relationships(user_text):
+        facts.append(
+            UserMemoryFact(
+                user_id=clean_user_id,
+                kind="relationship",
+                key=key,
+                value=value,
+                summary=summary,
+                confidence=_clamp_confidence(confidence),
+                source_doc_id=source_doc_id,
+                evidence=summary,
+                status=clean_status,
+            )
+        )
+
+    for key, value, summary, confidence in _distill_projects(user_text):
+        facts.append(
+            UserMemoryFact(
+                user_id=clean_user_id,
+                kind="project",
+                key=key,
+                value=value,
+                summary=summary,
+                confidence=_clamp_confidence(confidence),
+                source_doc_id=source_doc_id,
+                evidence=summary,
+                status=clean_status,
+            )
+        )
+
+    for key, value, summary, confidence in _distill_corrections(user_text):
+        facts.append(
+            UserMemoryFact(
+                user_id=clean_user_id,
+                kind="correction",
+                key=key,
+                value=value,
+                summary=summary,
+                confidence=_clamp_confidence(confidence),
+                source_doc_id=source_doc_id,
+                evidence=summary,
                 status=clean_status,
             )
         )

@@ -1,4 +1,5 @@
 import asyncio
+import concurrent.futures
 import logging
 import time
 
@@ -96,9 +97,13 @@ class GentleWorker:
         if loop is None or not loop.is_running():
             return
 
+        coro = self._async_proactive_checkin()
         try:
-            asyncio.run_coroutine_threadsafe(self._async_proactive_checkin(), loop)
+            future = asyncio.run_coroutine_threadsafe(coro, loop)
+            if not isinstance(future, concurrent.futures.Future):
+                coro.close()
         except Exception as e:
+            coro.close()
             print(f"[WARN] Proactive check-in scheduling failed: {e}")
 
     async def _async_proactive_checkin(self):

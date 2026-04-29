@@ -14,8 +14,10 @@ Never blocks the chat pipeline.
 from __future__ import annotations
 
 import asyncio
+import importlib
 import logging
 import sqlite3
+import sys
 import traceback as _traceback_mod
 from datetime import UTC, datetime
 from pathlib import Path
@@ -123,7 +125,9 @@ async def _ingest_session_background(
     # Late imports to avoid circular deps at module load time
     from synapse_config import SynapseConfig
 
-    from sci_fi_dashboard import _deps as deps
+    deps = sys.modules.get("sci_fi_dashboard._deps")
+    if deps is None:
+        deps = importlib.import_module("sci_fi_dashboard._deps")
     from sci_fi_dashboard.conv_kg_extractor import (
         ConvKGExtractor,
         _ensure_entity_links,

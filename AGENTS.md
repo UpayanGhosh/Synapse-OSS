@@ -52,6 +52,21 @@ Fall back to Grep/Glob/Read **only** when the graph doesn't cover what you need.
 3. Use `get_affected_flows` to understand impact.
 4. Use `query_graph` pattern="tests_for" to check coverage.
 
+## Default Combo Workflow (Graph + MemPalace)
+
+Run this combo as the default operating loop for repo work:
+
+1. **Task start (context pull):**
+   - `mempalace search "<task or topic>"`
+   - then orient with graph tools (`semantic_search_nodes`, `query_graph`, `get_review_context`).
+2. **During implementation (structure truth):**
+   - use `code-review-graph` first for tracing/impact.
+3. **Before handoff or closeout (memory + risk refresh):**
+   - run `synapse_context_sync.bat` (Windows) or `./synapse_context_sync.sh` (Mac/Linux)
+   - this updates graph state, runs risk scan, and mines MemPalace.
+
+If MemPalace context conflicts with repo state, repo + graph win.
+
 ## MemPalace (Default Behavior)
 
 This repo uses MemPalace as the default external memory layer for Codex.
@@ -76,3 +91,9 @@ This repo uses MemPalace as the default external memory layer for Codex.
   repo and explicitly call out the mismatch.
 - Do not make code changes from MemPalace context alone; verify against the
   current codebase first.
+
+### Reliability notes (Windows)
+
+- Use UTF-8 env for MemPalace commands to avoid Windows `cp1252` decode issues:
+  - `set PYTHONUTF8=1`
+  - `set PYTHONIOENCODING=utf-8`

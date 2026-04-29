@@ -103,7 +103,17 @@ def _resolve_backup_path() -> str:
     clean-ups that remove workspace/_archived_memories/.
     """
     cfg = SynapseConfig.load()
-    return str(Path(cfg.data_root) / "workspace" / "_archived_memories" / "persistent_log.jsonl")
+    data_root = getattr(cfg, "data_root", None)
+    if data_root:
+        return str(Path(data_root) / "workspace" / "_archived_memories" / "persistent_log.jsonl")
+
+    # Test doubles and partial configs may only expose db_dir. Keep memory
+    # persistence alive instead of failing during singleton import.
+    db_dir = getattr(cfg, "db_dir", None)
+    if db_dir:
+        return str(Path(db_dir).parent / "_archived_memories" / "persistent_log.jsonl")
+
+    return str(Path.home() / ".synapse" / "workspace" / "_archived_memories" / "persistent_log.jsonl")
 
 
 class MemoryEngine:
@@ -625,4 +635,3 @@ class MemoryEngine:
             return {"error": "No LLM backend available (cloud router unavailable)"}
         except Exception as e:
             return {"error": str(e)}
-

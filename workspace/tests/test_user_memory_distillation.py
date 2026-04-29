@@ -106,6 +106,38 @@ def test_distill_and_upsert_response_style_and_codename() -> None:
         conn.close()
 
 
+def test_distill_routines_people_projects_and_corrections() -> None:
+    from sci_fi_dashboard.user_memory import distill_user_memory_facts
+
+    text = (
+        "[WhatsApp session - 2026-04-30]\n"
+        "User: My routine is standup at 10am every day.\n"
+        "User: Priya is my design partner.\n"
+        "User: Synapse-OSS is my main project.\n"
+        "User: Don't call me bro."
+    )
+
+    facts = distill_user_memory_facts(
+        text=text,
+        user_id="agent:creator:whatsapp:dm:+15551230000",
+        source_doc_id=201,
+    )
+
+    by_kind_key = {(fact.kind, fact.key): fact for fact in facts}
+    assert by_kind_key[("routine", "standup_at_10am_every_day")].value == (
+        "standup at 10am every day"
+    )
+    assert by_kind_key[("relationship", "person_priya")].summary == (
+        "Priya is user's design partner."
+    )
+    assert by_kind_key[("project", "project_synapse-oss")].summary == (
+        "Current project: Synapse-OSS."
+    )
+    assert by_kind_key[("correction", "avoid_calling_me_bro")].summary == (
+        "Do not call the user bro."
+    )
+
+
 def test_sync_user_memory_writes_preferred_response_style_to_interaction(tmp_path) -> None:
     from sci_fi_dashboard.sbs.profile.manager import ProfileManager
     from sci_fi_dashboard.sbs.profile.sync import sync_user_memory_profile
@@ -189,6 +221,86 @@ def test_compiled_prompt_includes_synced_preference_string(tmp_path) -> None:
 
     prompt = PromptCompiler(profile_mgr).compile()
     assert "Preferred response style: direct." in prompt
+
+
+def test_compiled_prompt_includes_rich_user_memory_facts(tmp_path) -> None:
+    from sci_fi_dashboard.sbs.injection.compiler import PromptCompiler
+    from sci_fi_dashboard.sbs.profile.manager import ProfileManager
+    from sci_fi_dashboard.sbs.profile.sync import sync_user_memory_profile
+    from sci_fi_dashboard.user_memory import ensure_user_memory_facts_table
+
+    user_id = "agent:creator:whatsapp:dm:+15551230000"
+    db_path = tmp_path / "sync-rich-memory.db"
+    conn = sqlite3.connect(str(db_path))
+    try:
+        ensure_user_memory_facts_table(conn)
+        rows = [
+            (
+                user_id,
+                "routine",
+                "standup_at_10am_every_day",
+                "standup at 10am every day",
+                "Routine: standup at 10am every day.",
+                0.82,
+                201,
+                "My routine is standup at 10am every day",
+                "active",
+            ),
+            (
+                user_id,
+                "relationship",
+                "person_priya",
+                "design partner",
+                "Priya is user's design partner.",
+                0.84,
+                201,
+                "Priya is my design partner",
+                "active",
+            ),
+            (
+                user_id,
+                "project",
+                "project_synapse-oss",
+                "Synapse-OSS",
+                "Current project: Synapse-OSS.",
+                0.84,
+                201,
+                "Synapse-OSS is my main project",
+                "active",
+            ),
+            (
+                user_id,
+                "correction",
+                "avoid_calling_me_bro",
+                "bro",
+                "Do not call the user bro.",
+                0.9,
+                201,
+                "Don't call me bro",
+                "active",
+            ),
+        ]
+        conn.executemany(
+            """
+            INSERT INTO user_memory_facts
+                (user_id, kind, key, value, summary, confidence, source_doc_id, evidence, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            rows,
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    profile_mgr = ProfileManager(tmp_path / "profiles")
+    sync_result = sync_user_memory_profile(profile_mgr, user_id=user_id, db_path=db_path)
+    prompt = PromptCompiler(profile_mgr).compile()
+
+    assert sync_result["active_facts"] == 4
+    assert "User routines: Routine: standup at 10am every day." in prompt
+    assert "Important people: Priya is user's design partner." in prompt
+    assert "Important projects: Current project: Synapse-OSS." in prompt
+    assert "Correction rules: Do not call the user bro." in prompt
 
 
 def test_sync_user_memory_clears_synced_fields_when_no_active_facts(tmp_path) -> None:

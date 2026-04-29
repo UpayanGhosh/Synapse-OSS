@@ -178,12 +178,28 @@ Emoji usage: {"common" if style.get("emoji_frequency", 0) > 0.2 else "occasional
 
     def _compile_domain(self, domain: dict) -> str:
         active = domain.get("active_domains", [])
-        if not active:
+        important_people = domain.get("important_people", [])
+        important_projects = domain.get("important_projects", [])
+
+        parts = []
+        if active:
+            parts.append(
+                f"User is currently focused on: {', '.join(active[:3])}."
+            )
+            parts.append("Tailor technical depth accordingly.")
+        if important_projects:
+            projects = "; ".join(str(item).strip() for item in important_projects[:5] if str(item).strip())
+            if projects:
+                parts.append(f"Important projects: {projects}")
+        if important_people:
+            people = "; ".join(str(item).strip() for item in important_people[:5] if str(item).strip())
+            if people:
+                parts.append(f"Important people: {people}")
+
+        if not parts:
             return ""
 
-        return f"""[CURRENT INTERESTS]
-User is currently focused on: {", ".join(active[:3])}.
-Tailor technical depth accordingly."""
+        return "[CURRENT INTERESTS]\n" + "\n".join(parts)
 
     def _compile_interaction(self, interaction: dict, domain: dict | None = None) -> str:
         parts = []
@@ -209,6 +225,18 @@ Tailor technical depth accordingly."""
         preferred_response_style = str(interaction.get("preferred_response_style", "")).strip()
         if preferred_response_style:
             parts.append(f"Preferred response style: {preferred_response_style}.")
+
+        routines = interaction.get("stable_routines", [])
+        if isinstance(routines, list) and routines:
+            routine_line = "; ".join(str(item).strip() for item in routines[:5] if str(item).strip())
+            if routine_line:
+                parts.append(f"User routines: {routine_line}")
+
+        corrections = interaction.get("correction_rules", [])
+        if isinstance(corrections, list) and corrections:
+            correction_line = "; ".join(str(item).strip() for item in corrections[:5] if str(item).strip())
+            if correction_line:
+                parts.append(f"Correction rules: {correction_line}")
 
         stable_identity_notes: list[str] = []
         if isinstance(domain, dict):

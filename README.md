@@ -117,6 +117,10 @@ by local agent workflows and MCP tooling. `graphify` / `graphify-out/` are
 secondary export artifacts for offline inspection or custom scripting, not the
 default graph surface for day-to-day work in this repo.
 
+For persistent project memory, use MemPalace alongside the graph. Refresh both
+with `synapse_context_sync.bat` (Windows) or `./synapse_context_sync.sh`
+(Mac/Linux).
+
 ## Founder Note
 
 Synapse started from a very simple frustration:

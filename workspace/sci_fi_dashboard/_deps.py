@@ -159,7 +159,22 @@ init_sentinel(project_root=Path(__file__).parent)
 # ---------------------------------------------------------------------------
 from synapse_config import SynapseConfig as _SbsConfig  # noqa: E402
 
-SBS_DATA_DIR = str(_SbsConfig.load().sbs_dir)
+def _resolve_sbs_data_dir() -> str:
+    cfg = _SbsConfig.load()
+    sbs_dir = getattr(cfg, "sbs_dir", None)
+    if isinstance(sbs_dir, str | Path):
+        return str(sbs_dir)
+
+    # Tests often patch SynapseConfig.load() with only db_dir + kg config.
+    # Derive the normal path from db_dir so _deps import stays side-effect safe.
+    db_dir = getattr(cfg, "db_dir", None)
+    if db_dir:
+        return str(Path(db_dir).parent / "sci_fi_dashboard" / "synapse_data")
+
+    return str(Path.home() / ".synapse" / "workspace" / "sci_fi_dashboard" / "synapse_data")
+
+
+SBS_DATA_DIR = _resolve_sbs_data_dir()
 os.makedirs(SBS_DATA_DIR, exist_ok=True)
 
 
@@ -248,12 +263,93 @@ load_env_file(anchor=Path(__file__))
 # references module-level helpers (_port_open, SynapseConfig) defined there.
 # The gateway itself calls validate_env() before creating the router.
 
-from synapse_config import SynapseConfig  # noqa: E402
+from synapse_config import (  # noqa: E402
+    KGExtractionConfig,
+    SBSConfig,
+    SessionAutoFlushConfig,
+    SynapseConfig,
+)
 
 from sci_fi_dashboard.llm_router import SynapseLLMRouter  # noqa: E402
 
 _synapse_cfg = SynapseConfig.load()
-synapse_llm_router = SynapseLLMRouter(_synapse_cfg)
+
+
+def _fallback_data_root_from_db_dir(cfg) -> Path:
+    db_dir = getattr(cfg, "db_dir", None)
+    if db_dir:
+        db_path = Path(db_dir)
+        if db_path.name == "db" and db_path.parent.name == "workspace":
+            return db_path.parent.parent
+        return db_path.parent
+    return Path.home() / ".synapse"
+
+
+if not isinstance(getattr(_synapse_cfg, "data_root", None), str | Path):
+    try:
+        setattr(_synapse_cfg, "data_root", _fallback_data_root_from_db_dir(_synapse_cfg))
+    except Exception:
+        pass
+
+if not isinstance(getattr(_synapse_cfg, "sbs_dir", None), str | Path):
+    try:
+        setattr(
+            _synapse_cfg,
+            "sbs_dir",
+            Path(getattr(_synapse_cfg, "data_root", Path.home() / ".synapse"))
+            / "workspace"
+            / "sci_fi_dashboard"
+            / "synapse_data",
+        )
+    except Exception:
+        pass
+
+for _mapping_name in ("providers", "channels", "model_mappings", "session", "mcp"):
+    if not isinstance(getattr(_synapse_cfg, _mapping_name, None), dict):
+        try:
+            setattr(_synapse_cfg, _mapping_name, {})
+        except Exception:
+            pass
+
+for _mapping_name in (
+    "embedding",
+    "vector_store",
+    "image_gen",
+    "tts",
+    "logging",
+    "reconnect_raw",
+    "heartbeat",
+    "bridge",
+):
+    if not isinstance(getattr(_synapse_cfg, _mapping_name, None), dict):
+        try:
+            setattr(_synapse_cfg, _mapping_name, {})
+        except Exception:
+            pass
+
+for _attr_name, _default_value, _expected_type in (
+    ("sbs", SBSConfig(), SBSConfig),
+    ("kg_extraction", KGExtractionConfig(), KGExtractionConfig),
+    ("session_auto_flush", SessionAutoFlushConfig(), SessionAutoFlushConfig),
+):
+    if not isinstance(getattr(_synapse_cfg, _attr_name, None), _expected_type):
+        try:
+            setattr(_synapse_cfg, _attr_name, _default_value)
+        except Exception:
+            pass
+
+
+class _UnavailableLLMRouter:
+    async def _do_call(self, *args, **kwargs):  # noqa: ANN002, ANN003
+        raise RuntimeError("SynapseLLMRouter unavailable: incomplete SynapseConfig")
+
+
+if isinstance(getattr(_synapse_cfg, "providers", None), dict) and isinstance(
+    getattr(_synapse_cfg, "model_mappings", None), dict
+):
+    synapse_llm_router = SynapseLLMRouter(_synapse_cfg)
+else:
+    synapse_llm_router = _UnavailableLLMRouter()
 
 # Module-level proactive engine reference — set in lifespan after engine starts
 _proactive_engine = None

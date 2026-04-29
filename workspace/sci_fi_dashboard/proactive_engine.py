@@ -4,6 +4,7 @@ Runs as asyncio task. Thermal-aware like GentleWorker.
 """
 
 import asyncio
+import contextlib
 import json
 import logging
 from dataclasses import dataclass, field
@@ -71,13 +72,15 @@ class ProactiveAwarenessEngine:
         self._running = False
         if self._task:
             self._task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._task
 
     async def _poll_loop(self):
         while self._running:
             try:
                 await self._poll_all()
             except asyncio.CancelledError:
-                break
+                raise
             except Exception as e:
                 logger.error(f"[PROACTIVE] Poll error: {e}")
             await asyncio.sleep(self.config.poll_interval_seconds)

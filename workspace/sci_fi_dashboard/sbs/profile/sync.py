@@ -7,7 +7,11 @@ from typing import Any
 from .manager import ProfileManager
 
 _INTERACTION_STYLE_KEY = "preferred_response_style"
+_INTERACTION_ROUTINES_KEY = "stable_routines"
+_INTERACTION_CORRECTIONS_KEY = "correction_rules"
 _DOMAIN_IDENTITY_NOTES_KEY = "stable_identity_notes"
+_DOMAIN_PEOPLE_KEY = "important_people"
+_DOMAIN_PROJECTS_KEY = "important_projects"
 
 
 def _load_active_user_memory_facts(db_path: Path, user_id: str) -> list[sqlite3.Row]:
@@ -70,14 +74,27 @@ def sync_user_memory_profile(
     # Unique key by (kind, key). Query order prefers most-recent values.
     latest: dict[tuple[str, str], sqlite3.Row] = {}
     identity_notes: list[str] = []
+    routine_notes: list[str] = []
+    correction_notes: list[str] = []
+    people_notes: list[str] = []
+    project_notes: list[str] = []
     for row in rows:
         kind = str(row["kind"] or "").strip()
         key = str(row["key"] or "").strip()
         latest.setdefault((kind, key), row)
-        if kind == "identity":
-            summary = str(row["summary"] or "").strip()
-            if summary and summary not in identity_notes:
-                identity_notes.append(summary)
+        summary = str(row["summary"] or "").strip()
+        if not summary:
+            continue
+        if kind == "identity" and summary not in identity_notes:
+            identity_notes.append(summary)
+        elif kind == "routine" and summary not in routine_notes:
+            routine_notes.append(summary)
+        elif kind == "correction" and summary not in correction_notes:
+            correction_notes.append(summary)
+        elif kind == "relationship" and summary not in people_notes:
+            people_notes.append(summary)
+        elif kind == "project" and summary not in project_notes:
+            project_notes.append(summary)
 
     preferred_response_style = ""
     style_row = latest.get(("preference", "response_style"))
@@ -93,14 +110,16 @@ def sync_user_memory_profile(
         interaction.pop(_INTERACTION_STYLE_KEY, None)
         interaction_updated = True
 
-    current_identity_notes = domain.get(_DOMAIN_IDENTITY_NOTES_KEY)
-    if identity_notes:
-        if current_identity_notes != identity_notes:
-            domain[_DOMAIN_IDENTITY_NOTES_KEY] = identity_notes
-            domain_updated = True
-    elif _DOMAIN_IDENTITY_NOTES_KEY in domain:
-        domain.pop(_DOMAIN_IDENTITY_NOTES_KEY, None)
-        domain_updated = True
+    routines_updated = _set_list(interaction, _INTERACTION_ROUTINES_KEY, routine_notes)
+    corrections_updated = _set_list(
+        interaction, _INTERACTION_CORRECTIONS_KEY, correction_notes
+    )
+    identity_updated = _set_list(domain, _DOMAIN_IDENTITY_NOTES_KEY, identity_notes)
+    people_updated = _set_list(domain, _DOMAIN_PEOPLE_KEY, people_notes)
+    projects_updated = _set_list(domain, _DOMAIN_PROJECTS_KEY, project_notes)
+
+    interaction_updated = interaction_updated or routines_updated or corrections_updated
+    domain_updated = domain_updated or identity_updated or people_updated or projects_updated
 
     if interaction_updated:
         profile_mgr.save_layer("interaction", interaction)
@@ -111,3 +130,16 @@ def sync_user_memory_profile(
     result["domain_updated"] = domain_updated
     result["synced"] = interaction_updated or domain_updated
     return result
+
+
+def _set_list(layer: dict[str, Any], key: str, values: list[str]) -> bool:
+    clean_values = [value for value in values if value]
+    if clean_values:
+        if layer.get(key) != clean_values:
+            layer[key] = clean_values
+            return True
+        return False
+    if key in layer:
+        layer.pop(key, None)
+        return True
+    return False
