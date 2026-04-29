@@ -24,6 +24,7 @@ log = logging.getLogger(__name__)
 
 BATCH_SIZE = 5  # conversation turns per batch (1 turn = 1 user + 1 assistant)
 BATCH_SLEEP_S = 1.0  # seconds between batches (rate-limit safety)
+KG_EXTRACT_TIMEOUT_SECONDS = 45.0
 _TRACEBACK_MAX_BYTES = 4096  # truncate stored tracebacks to 4 KB
 
 
@@ -243,7 +244,10 @@ async def _ingest_session_background(
         # ── 2. KG extraction + triple writes ──
         if extractor is not None:
             try:
-                result = await extractor.extract(text)
+                result = await asyncio.wait_for(
+                    extractor.extract(text),
+                    timeout=KG_EXTRACT_TIMEOUT_SECONDS,
+                )
                 validated = result.get("validated_triples", [])
 
                 if validated:
@@ -274,6 +278,23 @@ async def _ingest_session_background(
                         conn.close()
 
                     ingested_kg += len(validated)
+            except asyncio.TimeoutError as exc:
+                log.error(
+                    "[session_ingest] KG batch %d/%d timed out after %.1fs",
+                    i + 1,
+                    len(batches),
+                    KG_EXTRACT_TIMEOUT_SECONDS,
+                )
+                _record_ingest_failure(
+                    memory_db_path,
+                    phase="kg",
+                    session_key=session_key,
+                    agent_id=agent_id,
+                    archived_path=archived_path,
+                    batch_index=i + 1,
+                    total_batches=len(batches),
+                    exc=exc,
+                )
             except Exception as exc:
                 log.error("[session_ingest] KG batch %d/%d failed: %s", i + 1, len(batches), exc)
                 _record_ingest_failure(
@@ -282,7 +303,7 @@ async def _ingest_session_background(
                     session_key=session_key,
                     agent_id=agent_id,
                     archived_path=archived_path,
-                    batch_index=i,
+                    batch_index=i + 1,
                     total_batches=len(batches),
                     exc=exc,
                 )
