@@ -142,6 +142,8 @@ class SBSOrchestrator:
         message.rt_mood_signal = rt_results.get("rt_mood_signal")
 
         self.logger.log(message)
+        if role == "user" and rt_results.get("rt_mood_signal"):
+            self.realtime.flush()
 
         rt_results["msg_id"] = message.msg_id
 

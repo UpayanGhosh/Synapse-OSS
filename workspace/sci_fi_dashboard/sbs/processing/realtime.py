@@ -19,12 +19,18 @@ BANGLISH_MARKERS = {
 }
 
 MOOD_KEYWORDS = {
-    "stressed": [r"pressure", r"deadline", r"pagol", r"er\s*upor", r"jhame+la"],
-    "playful": [r"lol", r"haha+", r"[LOL]", r"[ROFL]", r"moja", r"maza"],
-    "tired": [r"l[yi]a+dh", r"ghu+m", r"thak", r"uff+", r"[SLEEP]"],
-    "focused": [r"implement", r"build", r"code", r"debug", r"fix", r"deploy"],
-    "excited": [r"!!+", r"[FIRE]", r"daru+n", r"jhakkas", r"let'?s\s*go"],
-    "frustrated": [r"wtf", r"keno", r"kaaj\s*kor(che)?\s*na", r"broken", r"error"],
+    "stressed": [
+        r"\bpressure\b",
+        r"\bdeadline\b",
+        r"\bpagol\b",
+        r"\ber\s*upor\b",
+        r"\bjhame+la\b",
+    ],
+    "playful": [r"\blol\b", r"\bhaha+\b", r"\brofl\b", r"\bmoja\b", r"\bmaza\b"],
+    "tired": [r"\bl[yi]a+dh\b", r"\bghu+m\b", r"\bthak\w*\b", r"\buff+\b", r"\[sleep\]"],
+    "focused": [r"\bimplement\b", r"\bbuild\b", r"\bcode\b", r"\bdebug\b", r"\bfix\b", r"\bdeploy\b"],
+    "excited": [r"!{2,}", r"\[fire\]", r"\bdaru+n\b", r"\bjhakkas\b", r"\blet'?s\s*go\b"],
+    "frustrated": [r"\bwtf\b", r"\bkeno\b", r"\bkaaj\s*kor(che)?\s*na\b", r"\bbroken\b", r"\berror\b"],
 }
 
 COMPILED_BANGLISH = {re.compile(k, re.IGNORECASE): v for k, v in BANGLISH_MARKERS.items()}
@@ -213,3 +219,7 @@ class RealtimeProcessor:
         self.profile_mgr.save_layer("emotional_state", emotional)
         self._mood_buffer.clear()
         self._last_flush = time.monotonic()
+
+    def flush(self):
+        """Public flush hook for orchestrator to persist pending realtime updates immediately."""
+        self._flush_emotional_state()
