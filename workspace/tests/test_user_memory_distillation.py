@@ -14,92 +14,93 @@ def _make_local_db_path(tag: str) -> Path:
     return Path(__file__).parent / f".{tag}-{uuid.uuid4().hex}.db"
 
 
-def _entity_links_columns(db_path: Path) -> set[str]:
+def _table_columns(db_path: Path, table: str) -> set[str]:
     conn = sqlite3.connect(str(db_path))
     try:
-        rows = conn.execute("PRAGMA table_info(entity_links)").fetchall()
+        rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
         return {row[1] for row in rows}
     finally:
         conn.close()
 
 
-def _entity_links_indexes(db_path: Path) -> set[str]:
+def _table_indexes(db_path: Path, table: str) -> set[str]:
     conn = sqlite3.connect(str(db_path))
     try:
-        rows = conn.execute("PRAGMA index_list(entity_links)").fetchall()
+        rows = conn.execute(f"PRAGMA index_list({table})").fetchall()
         return {row[1] for row in rows}
     finally:
         conn.close()
 
 
-def test_entity_links_schema_created_on_first_boot() -> None:
+def test_user_memory_schema_created_on_first_boot() -> None:
     from sci_fi_dashboard.db import DatabaseManager
 
-    db_path = _make_local_db_path("kg-schema")
+    db_path = _make_local_db_path("user-memory-schema")
     try:
         with patch("sci_fi_dashboard.db.DB_PATH", str(db_path)):
             DatabaseManager._initialized = False
             DatabaseManager._ensure_db()
             DatabaseManager._initialized = False
 
-        cols = _entity_links_columns(db_path)
+        cols = _table_columns(db_path, "user_memory_facts")
         assert {
-            "subject",
-            "relation",
-            "object",
-            "archived",
+            "id",
+            "user_id",
+            "kind",
+            "key",
+            "value",
+            "summary",
             "confidence",
             "source_doc_id",
+            "evidence",
+            "status",
+            "first_seen",
+            "last_seen",
         }.issubset(cols)
 
-        indexes = _entity_links_indexes(db_path)
-        assert "idx_entity_links_subject_relation_active" in indexes
-        assert "idx_entity_links_source_doc_id" in indexes
+        indexes = _table_indexes(db_path, "user_memory_facts")
+        assert "idx_user_memory_facts_user_kind_status" in indexes
+        assert "idx_user_memory_facts_last_seen" in indexes
+        assert "idx_user_memory_facts_source_doc_id" in indexes
     finally:
         if db_path.exists():
             db_path.unlink()
 
 
-def test_entity_links_schema_migrates_existing_db() -> None:
-    from sci_fi_dashboard.db import DatabaseManager
+def test_distill_and_upsert_response_style_and_codename() -> None:
+    from sci_fi_dashboard.user_memory import distill_and_upsert_user_memory_facts
 
-    db_path = _make_local_db_path("kg-migrate")
+    conn = sqlite3.connect(":memory:")
     try:
-        db_path.parent.mkdir(parents=True, exist_ok=True)
+        text = (
+            "[WhatsApp session - 2026-04-29]\n"
+            "User: Keep it short and direct.\n"
+            "Me: Noted.\n"
+            "User: Call me Nova."
+        )
+        facts = distill_and_upsert_user_memory_facts(
+            conn,
+            text=text,
+            user_id="agent:creator:whatsapp:dm:+15551230000",
+            source_doc_id=101,
+        )
+        conn.commit()
 
-        conn = sqlite3.connect(str(db_path))
-        try:
-            conn.executescript(
-                """
-                CREATE TABLE documents (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    filename TEXT,
-                    content TEXT NOT NULL
-                );
-                CREATE TABLE entity_links (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    subject TEXT NOT NULL,
-                    predicate TEXT NOT NULL,
-                    object TEXT NOT NULL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                );
-                """
-            )
-            conn.commit()
-        finally:
-            conn.close()
+        assert {(fact.key, fact.value) for fact in facts} == {
+            ("response_style", "direct"),
+            ("codename", "Nova"),
+        }
 
-        with patch("sci_fi_dashboard.db.DB_PATH", str(db_path)):
-            DatabaseManager._initialized = False
-            DatabaseManager._ensure_db()
-            DatabaseManager._initialized = False
-
-        cols = _entity_links_columns(db_path)
-        assert {"relation", "archived", "confidence", "source_doc_id"}.issubset(cols)
-
-        indexes = _entity_links_indexes(db_path)
-        assert "idx_entity_links_subject_relation_active" in indexes
-        assert "idx_entity_links_source_doc_id" in indexes
+        rows = conn.execute(
+            """
+            SELECT kind, key, value, source_doc_id, status
+            FROM user_memory_facts
+            ORDER BY key
+            """
+        ).fetchall()
+        assert rows == [
+            ("identity", "codename", "Nova", 101, "active"),
+            ("preference", "response_style", "direct", 101, "active"),
+        ]
     finally:
-        if db_path.exists():
-            db_path.unlink()
+        conn.close()

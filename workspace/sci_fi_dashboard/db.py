@@ -232,6 +232,16 @@ def _ensure_memory_affect_schema(conn: sqlite3.Connection) -> None:
     ensure_memory_affect_table(conn)
 
 
+def _ensure_user_memory_schema(conn: sqlite3.Connection) -> None:
+    """Create structured user memory schema if missing (idempotent)."""
+    try:
+        from .user_memory import ensure_user_memory_facts_table
+    except ImportError:
+        from user_memory import ensure_user_memory_facts_table
+
+    ensure_user_memory_facts_table(conn)
+
+
 def _ensure_embedding_metadata(conn: sqlite3.Connection) -> None:
     """Add embedding provenance columns if they don't exist yet (idempotent).
 
@@ -361,6 +371,7 @@ class DatabaseManager:
                 _ensure_entity_links_table(conn)
                 _ensure_kg_processed_column(conn)
                 _ensure_memory_affect_schema(conn)
+                _ensure_user_memory_schema(conn)
                 _ensure_ingest_failures_table(conn)
                 conn.commit()
                 conn.close()
@@ -377,6 +388,7 @@ class DatabaseManager:
                     _ensure_entity_links_table(_mig)
                     _ensure_kg_processed_column(_mig)
                     _ensure_memory_affect_schema(_mig)
+                    _ensure_user_memory_schema(_mig)
                     _ensure_ingest_failures_table(_mig)
                 finally:
                     _mig.close()

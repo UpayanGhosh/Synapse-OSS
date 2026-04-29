@@ -130,6 +130,7 @@ async def _ingest_session_background(
         _write_triple_to_entity_links,
     )
     from sci_fi_dashboard.multiuser.transcript import load_messages
+    from sci_fi_dashboard.user_memory import distill_and_upsert_user_memory_facts
 
     cfg = SynapseConfig.load()
     memory_db_path = str(cfg.db_dir / "memory.db")
@@ -240,6 +241,41 @@ async def _ingest_session_background(
             )
             continue
         ingested_vec += 1
+
+        doc_id: int | None = None
+        if isinstance(result, dict):
+            raw_doc_id = result.get("id")
+            if raw_doc_id is not None:
+                try:
+                    doc_id = int(raw_doc_id)
+                except (TypeError, ValueError):
+                    doc_id = None
+
+        if doc_id is not None:
+            try:
+                conn = sqlite3.connect(memory_db_path)
+                try:
+                    facts = distill_and_upsert_user_memory_facts(
+                        conn,
+                        text=text,
+                        user_id=session_key,
+                        source_doc_id=doc_id,
+                    )
+                    conn.commit()
+                finally:
+                    conn.close()
+                if facts:
+                    log.info(
+                        "[session_ingest] distilled %d user facts from doc %d",
+                        len(facts),
+                        doc_id,
+                    )
+            except Exception as distill_err:
+                log.warning(
+                    "[session_ingest] user memory distill failed for doc %s: %s",
+                    doc_id,
+                    distill_err,
+                )
 
         # ── 2. KG extraction + triple writes ──
         if extractor is not None:

@@ -166,3 +166,77 @@ async def test_kg_timeout_records_failure_and_completed(
     completed_rows = [row for row in rows if row[0] == "completed"]
     assert completed_rows, f"Expected a completed row, got: {rows}"
     assert completed_rows[-1][2] == 1
+
+
+@pytest.mark.asyncio
+async def test_ingest_distills_response_style_and_codename(
+    tmp_memory_db: Path, tmp_transcript: Path
+) -> None:
+    from sci_fi_dashboard import session_ingest
+
+    mock_cfg = MagicMock()
+    mock_cfg.db_dir = tmp_memory_db.parent
+    mock_cfg.kg_extraction.enabled = False
+    mock_cfg.kg_extraction.kg_role = "casual"
+
+    mock_deps = types.SimpleNamespace(
+        memory_engine=types.SimpleNamespace(
+            add_memory=lambda **kwargs: {"status": "stored", "id": 77}
+        ),
+        brain=types.SimpleNamespace(
+            add_node=lambda *args, **kwargs: None,
+            add_relation=lambda *args, **kwargs: None,
+            save_graph=lambda *args, **kwargs: None,
+        ),
+        synapse_llm_router=object(),
+    )
+
+    async def _fake_load_messages(path: Path) -> list[dict]:  # noqa: ARG001
+        return [
+            {"role": "user", "content": "Keep it short and direct."},
+            {"role": "assistant", "content": "Done."},
+            {"role": "user", "content": "Call me Nova from now on."},
+            {"role": "assistant", "content": "Noted, Nova."},
+        ]
+
+    session_key = "agent:the_creator:whatsapp:dm:+1234567890"
+    prior_deps = sys.modules.get("sci_fi_dashboard._deps")
+    sys.modules["sci_fi_dashboard._deps"] = mock_deps
+    try:
+        with (
+            patch("synapse_config.SynapseConfig.load", return_value=mock_cfg),
+            patch(
+                "sci_fi_dashboard.multiuser.transcript.load_messages",
+                new=_fake_load_messages,
+            ),
+        ):
+            await session_ingest._ingest_session_background(
+                archived_path=tmp_transcript,
+                agent_id="the_creator",
+                session_key=session_key,
+                hemisphere="safe",
+            )
+    finally:
+        if prior_deps is None:
+            sys.modules.pop("sci_fi_dashboard._deps", None)
+        else:
+            sys.modules["sci_fi_dashboard._deps"] = prior_deps
+
+    conn = sqlite3.connect(str(tmp_memory_db))
+    try:
+        rows = conn.execute(
+            """
+            SELECT key, value, source_doc_id, status
+            FROM user_memory_facts
+            WHERE user_id = ?
+            ORDER BY key
+            """,
+            (session_key,),
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert rows == [
+        ("codename", "Nova", 77, "active"),
+        ("response_style", "direct", 77, "active"),
+    ]
