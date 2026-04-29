@@ -179,18 +179,6 @@ async def test_ingest_distills_response_style_and_codename(
     mock_cfg.kg_extraction.enabled = False
     mock_cfg.kg_extraction.kg_role = "casual"
 
-    mock_deps = types.SimpleNamespace(
-        memory_engine=types.SimpleNamespace(
-            add_memory=lambda **kwargs: {"status": "stored", "id": 77}
-        ),
-        brain=types.SimpleNamespace(
-            add_node=lambda *args, **kwargs: None,
-            add_relation=lambda *args, **kwargs: None,
-            save_graph=lambda *args, **kwargs: None,
-        ),
-        synapse_llm_router=object(),
-    )
-
     async def _fake_load_messages(path: Path) -> list[dict]:  # noqa: ARG001
         return [
             {"role": "user", "content": "Keep it short and direct."},
@@ -200,27 +188,23 @@ async def test_ingest_distills_response_style_and_codename(
         ]
 
     session_key = "agent:the_creator:whatsapp:dm:+1234567890"
-    prior_deps = sys.modules.get("sci_fi_dashboard._deps")
-    sys.modules["sci_fi_dashboard._deps"] = mock_deps
-    try:
-        with (
-            patch("synapse_config.SynapseConfig.load", return_value=mock_cfg),
-            patch(
-                "sci_fi_dashboard.multiuser.transcript.load_messages",
-                new=_fake_load_messages,
-            ),
-        ):
-            await session_ingest._ingest_session_background(
-                archived_path=tmp_transcript,
-                agent_id="the_creator",
-                session_key=session_key,
-                hemisphere="safe",
-            )
-    finally:
-        if prior_deps is None:
-            sys.modules.pop("sci_fi_dashboard._deps", None)
-        else:
-            sys.modules["sci_fi_dashboard._deps"] = prior_deps
+    with (
+        patch("synapse_config.SynapseConfig.load", return_value=mock_cfg),
+        patch(
+            "sci_fi_dashboard.multiuser.transcript.load_messages",
+            new=_fake_load_messages,
+        ),
+        patch(
+            "sci_fi_dashboard._deps.memory_engine.add_memory",
+            new=lambda **kwargs: {"status": "stored", "id": 77},
+        ),
+    ):
+        await session_ingest._ingest_session_background(
+            archived_path=tmp_transcript,
+            agent_id="the_creator",
+            session_key=session_key,
+            hemisphere="safe",
+        )
 
     conn = sqlite3.connect(str(tmp_memory_db))
     try:
@@ -253,16 +237,6 @@ async def test_ingest_distills_even_without_doc_id(
     mock_cfg.kg_extraction.enabled = False
     mock_cfg.kg_extraction.kg_role = "casual"
 
-    mock_deps = types.SimpleNamespace(
-        memory_engine=types.SimpleNamespace(add_memory=lambda **kwargs: {"status": "stored"}),
-        brain=types.SimpleNamespace(
-            add_node=lambda *args, **kwargs: None,
-            add_relation=lambda *args, **kwargs: None,
-            save_graph=lambda *args, **kwargs: None,
-        ),
-        synapse_llm_router=object(),
-    )
-
     async def _fake_load_messages(path: Path) -> list[dict]:  # noqa: ARG001
         return [
             {"role": "user", "content": "Keep it short and direct."},
@@ -272,27 +246,23 @@ async def test_ingest_distills_even_without_doc_id(
         ]
 
     session_key = "agent:the_creator:whatsapp:dm:+1234567890"
-    prior_deps = sys.modules.get("sci_fi_dashboard._deps")
-    sys.modules["sci_fi_dashboard._deps"] = mock_deps
-    try:
-        with (
-            patch("synapse_config.SynapseConfig.load", return_value=mock_cfg),
-            patch(
-                "sci_fi_dashboard.multiuser.transcript.load_messages",
-                new=_fake_load_messages,
-            ),
-        ):
-            await session_ingest._ingest_session_background(
-                archived_path=tmp_transcript,
-                agent_id="the_creator",
-                session_key=session_key,
-                hemisphere="safe",
-            )
-    finally:
-        if prior_deps is None:
-            sys.modules.pop("sci_fi_dashboard._deps", None)
-        else:
-            sys.modules["sci_fi_dashboard._deps"] = prior_deps
+    with (
+        patch("synapse_config.SynapseConfig.load", return_value=mock_cfg),
+        patch(
+            "sci_fi_dashboard.multiuser.transcript.load_messages",
+            new=_fake_load_messages,
+        ),
+        patch(
+            "sci_fi_dashboard._deps.memory_engine.add_memory",
+            new=lambda **kwargs: {"status": "stored"},
+        ),
+    ):
+        await session_ingest._ingest_session_background(
+            archived_path=tmp_transcript,
+            agent_id="the_creator",
+            session_key=session_key,
+            hemisphere="safe",
+        )
 
     conn = sqlite3.connect(str(tmp_memory_db))
     try:
