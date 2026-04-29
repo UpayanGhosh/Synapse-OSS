@@ -1,3 +1,4 @@
+import logging
 import re
 import time
 
@@ -123,6 +124,8 @@ class RealtimeProcessor:
         # 4. Hot-update emotional state if mood changed
         if mood and message.role == "user":
             self._hot_update_emotional_state(mood, sentiment, message.timestamp)
+        else:
+            self._retry_pending_flush()
 
         return {"rt_sentiment": sentiment, "rt_language": language, "rt_mood_signal": mood}
 
@@ -188,7 +191,15 @@ class RealtimeProcessor:
             or (now - self._last_flush) >= self._FLUSH_INTERVAL
         )
         if should_flush:
-            self._flush_emotional_state()
+            self._safe_flush("hot_update")
+
+    def _retry_pending_flush(self):
+        """Retry pending mood persistence during subsequent processing turns."""
+        if not self._mood_buffer:
+            return
+        now = time.monotonic()
+        if (now - self._last_flush) >= self._FLUSH_INTERVAL:
+            self._safe_flush("periodic_retry")
 
     def _flush_emotional_state(self):
         """Write buffered mood updates to the emotional_state profile layer."""
@@ -220,6 +231,16 @@ class RealtimeProcessor:
         self._mood_buffer.clear()
         self._last_flush = time.monotonic()
 
+    def _safe_flush(self, source: str):
+        """Flush wrapper that keeps realtime pipeline alive on persistence failures."""
+        try:
+            self._flush_emotional_state()
+        except Exception:
+            logging.getLogger("sbs").warning(
+                f"Realtime emotional flush failed from {source}; keeping buffer for retry.",
+                exc_info=True,
+            )
+
     def flush(self):
         """Public flush hook for orchestrator to persist pending realtime updates immediately."""
-        self._flush_emotional_state()
+        self._safe_flush("manual_flush")
