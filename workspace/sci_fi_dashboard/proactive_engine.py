@@ -147,22 +147,30 @@ class ProactiveAwarenessEngine:
         user_id: str,
         channel_id: str,
         last_message_time: float = None,
+        *,
+        recent_memory_summaries: list[str] | None = None,
+        emotional_need: float = 0.0,
+        seconds_since_last_message: float | None = None,
+        now_hour: int | None = None,
     ) -> str | None:
         """Return a proactive message if policy allows speaking."""
         from datetime import datetime, timedelta, timezone
 
         IST = timezone(timedelta(hours=5, minutes=30))  # noqa: N806
         now = datetime.now(IST)
+        memory_summaries = list(recent_memory_summaries or [])
         decision = self.policy_scorer.score(
             ProactivePolicyInput(
                 user_id=user_id,
                 channel_id=channel_id,
-                now_hour=now.hour,
+                now_hour=now.hour if now_hour is None else int(now_hour),
                 last_message_time=last_message_time,
+                seconds_since_last_message=seconds_since_last_message,
                 calendar_events=self._context.calendar_events,
                 unread_emails=self._context.unread_emails,
                 slack_mentions=self._context.slack_mentions,
-                recent_memory_summaries=[],
+                recent_memory_summaries=memory_summaries,
+                emotional_need=emotional_need,
             )
         )
         if not decision.should_reach_out:
@@ -179,19 +187,27 @@ class ProactiveAwarenessEngine:
             from sci_fi_dashboard.chat_pipeline import persona_chat
             from sci_fi_dashboard.schemas import ChatRequest
 
+            memory_block = ""
+            if memory_summaries:
+                memory_block = " Recent memory signals: " + " | ".join(memory_summaries[:5]) + ". "
             payload = (
                 "Check in naturally with the user. "
                 "Don't say you're doing an automated check-in. "
                 "Reference something from recent memory if you remember it: "
                 "a topic they mentioned, something they were working on. "
+                f"{memory_block}"
                 f"Reach-out reason: {decision.reason}; evidence: {', '.join(decision.evidence)}. "
-                "Keep it brief and warm."
+                "Keep it brief, warm, and friend-like. Offer one concrete next step if useful."
             )
             request = ChatRequest(message=payload, user_id=user_id, history=[])
             result = await persona_chat(request, target=user_id)
             reply = result.get("reply", "")
-            if "---\n**Context Usage:**" in reply:
-                reply = reply.split("---\n**Context Usage:**")[0].strip()
+            sep = reply.find("\n\n---\n")
+            if sep != -1:
+                reply = reply[:sep]
+            elif "---\n**Context Usage:**" in reply:
+                reply = reply.split("---\n**Context Usage:**")[0]
+            reply = reply.strip()
             return reply if reply else None
         except Exception as exc:
             logger.warning("[PROACTIVE] maybe_reach_out failed: %s", exc)

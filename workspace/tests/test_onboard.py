@@ -212,6 +212,9 @@ def test_cli_chat_modules_are_part_of_workspace_package():
     assert packages == ["workspace"]
     assert "templates/*.md" in package_data["cli"]
     assert "agent_workspace/*.md.template" in package_data["sci_fi_dashboard"]
+    assert "agent_workspace/INSTRUCTIONS.md" in package_data["sci_fi_dashboard"]
+    assert "agent_workspace/CORE.md" in package_data["sci_fi_dashboard"]
+    assert "agent_workspace/AGENTS.md" in package_data["sci_fi_dashboard"]
 
 
 def test_setup_paths_install_synapse_console_script():
@@ -222,10 +225,12 @@ def test_setup_paths_install_synapse_console_script():
     onboard_bat = (repo_root / "synapse_onboard.bat").read_text(encoding="utf-8")
     onboard_sh = (repo_root / "synapse_onboard.sh").read_text(encoding="utf-8")
 
-    assert "pip install -e ." in readme
-    assert "pip install -e ." in how_to_run
-    assert 'pip.exe" install -e "%PROJECT_ROOT%"' in onboard_bat
-    assert '"$VENV_PIP" install -e "$SCRIPT_DIR"' in onboard_sh
+    assert "npm install -g synapse-oss" in readme
+    assert "npm install -g synapse-oss" in how_to_run
+    assert "synapse install" in onboard_bat
+    assert "synapse install" in onboard_sh
+    assert "pip install -e ." not in onboard_bat
+    assert "pip install -e ." not in onboard_sh
 
 
 # ===========================================================================
@@ -1509,6 +1514,7 @@ def test_ensure_agent_workspace_seeds_runtime_guidance_files(tmp_path):
     assert state["bootstrapSeededAt"], "bootstrapSeededAt must be a non-empty string"
 
     expected_files = [
+        "INSTRUCTIONS.md",
         "AGENTS.md",
         "SOUL.md",
         "CORE.md",
@@ -1524,13 +1530,94 @@ def test_ensure_agent_workspace_seeds_runtime_guidance_files(tmp_path):
         fpath = workspace / fname
         assert fpath.exists(), f"Template file {fname} should be seeded in workspace"
 
-    assert "What should I call you?" in (workspace / "BOOTSTRAP.md").read_text(
+    bootstrap_text = (workspace / "BOOTSTRAP.md").read_text(encoding="utf-8")
+    assert "Who am I? Who are you?" in bootstrap_text
+    assert "ask one question at a time" in bootstrap_text
+    assert "CLI" in bootstrap_text
+    agents_text = (workspace / "AGENTS.md").read_text(encoding="utf-8")
+    assert "CORE.md" in agents_text
+    assert "Response Protocol" in agents_text
+    assert "Read `CODE.md`" in agents_text
+    instructions_text = (workspace / "INSTRUCTIONS.md").read_text(encoding="utf-8")
+    assert "System Instructions" in instructions_text
+    assert "SOUL.md" in instructions_text
+    assert "You are Synapse" in instructions_text
+    user_text = (workspace / "USER.md").read_text(encoding="utf-8")
+    assert "About Your Human" in user_text
+    assert "Name:" in user_text
+    assert "not building a dossier" in user_text
+
+
+def test_core_template_is_loaded_from_single_canonical_source():
+    """CORE seeding must use one repo source to avoid drift."""
+    from cli.workspace_seeding import _load_template
+
+    repo_root = Path(__file__).resolve().parents[2]
+    canonical_core = repo_root / "workspace" / "sci_fi_dashboard" / "agent_workspace" / "CORE.md"
+
+    assert canonical_core.exists()
+    assert not (repo_root / "workspace" / "cli" / "templates" / "CORE.md").exists()
+    assert not (
+        repo_root / "workspace" / "sci_fi_dashboard" / "agent_workspace" / "CORE.md.template"
+    ).exists()
+    assert _load_template("CORE.md") == canonical_core.read_text(encoding="utf-8")
+
+
+def test_agents_template_is_loaded_from_single_canonical_source():
+    """AGENTS seeding must use one repo source to avoid drift."""
+    from cli.workspace_seeding import _load_template
+
+    repo_root = Path(__file__).resolve().parents[2]
+    canonical_agents = (
+        repo_root / "workspace" / "sci_fi_dashboard" / "agent_workspace" / "AGENTS.md"
+    )
+
+    assert canonical_agents.exists()
+    assert not (repo_root / "workspace" / "AGENTS.md").exists()
+    assert not (repo_root / "workspace" / "cli" / "templates" / "AGENTS.md").exists()
+    assert not (
+        repo_root / "workspace" / "sci_fi_dashboard" / "agent_workspace" / "AGENTS.md.template"
+    ).exists()
+    assert _load_template("AGENTS.md") == canonical_agents.read_text(encoding="utf-8")
+
+
+def test_instructions_template_is_loaded_from_single_canonical_source():
+    """INSTRUCTIONS seeding must use one repo source to avoid drift."""
+    from cli.workspace_seeding import _load_template
+
+    repo_root = Path(__file__).resolve().parents[2]
+    canonical_instructions = (
+        repo_root / "workspace" / "sci_fi_dashboard" / "agent_workspace" / "INSTRUCTIONS.md"
+    )
+
+    assert canonical_instructions.exists()
+    assert not (repo_root / "workspace" / "INSTRUCTIONS.MD").exists()
+    assert not (
+        repo_root / "workspace" / "cli" / "templates" / "INSTRUCTIONS.md"
+    ).exists()
+    assert not (
+        repo_root
+        / "workspace"
+        / "sci_fi_dashboard"
+        / "agent_workspace"
+        / "INSTRUCTIONS.md.template"
+    ).exists()
+    assert _load_template("INSTRUCTIONS.md") == canonical_instructions.read_text(
         encoding="utf-8"
     )
-    agents_text = (workspace / "AGENTS.md").read_text(encoding="utf-8")
-    assert "Read `CORE.md`" in agents_text
-    assert "Read `CODE.md`" in agents_text
-    assert "Name:" in (workspace / "USER.md").read_text(encoding="utf-8")
+
+
+def test_bootstrap_template_is_single_cli_source():
+    """BOOTSTRAP is a CLI onboarding seed; keep only that source."""
+    repo_root = Path(__file__).resolve().parents[2]
+    bootstrap = repo_root / "workspace" / "cli" / "templates" / "BOOTSTRAP.md"
+
+    assert bootstrap.exists()
+    assert not (repo_root / "workspace" / "BOOTSTRAP.md").exists()
+    text = bootstrap.read_text(encoding="utf-8")
+    assert "Who am I? Who are you?" in text
+    assert "ask one question at a time" in text
+    assert "delete `BOOTSTRAP.md`" in text
 
 
 def test_ensure_agent_workspace_second_call_is_idempotent(tmp_path):
@@ -1605,6 +1692,23 @@ def test_markdown_guidance_templates_are_packaged():
 
     assert "templates/*.md" in package_data["cli"]
     assert "agent_workspace/*.md.template" in package_data["sci_fi_dashboard"]
+    assert "agent_workspace/INSTRUCTIONS.md" in package_data["sci_fi_dashboard"]
+    assert "agent_workspace/CORE.md" in package_data["sci_fi_dashboard"]
+    assert "agent_workspace/AGENTS.md" in package_data["sci_fi_dashboard"]
+
+
+def test_runtime_assets_are_packaged_for_standalone_install():
+    """Installed wheels must not depend on the developer checkout for runtime assets."""
+    pyproject_path = Path(__file__).resolve().parents[2] / "pyproject.toml"
+    data = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
+    package_data = data["tool"]["setuptools"]["package-data"]
+    sci_fi_assets = package_data["sci_fi_dashboard"]
+
+    assert "entities.json" in sci_fi_assets
+    assert "skills/bundled/**/*" in sci_fi_assets
+    assert "sbs/feedback/*.yaml" in sci_fi_assets
+    assert "model_parity/*.yaml" in sci_fi_assets
+    assert "model_parity/*.yaml.example" in sci_fi_assets
 
 
 # ===========================================================================

@@ -1,22 +1,26 @@
-# MEMORY.md - Durable Memory
+# MEMORY.md - Durable Behavior Memory
 
-This is the assistant's curated long-term memory. Keep it short and high-signal.
+Small, high-signal behavioral summary. The database stores detailed memory.
+
+## Conversation Lessons
+
+-
 
 ## Preferences
 
 -
 
-## Decisions
+## Corrections
 
 -
 
-## Known Gotchas
+## Proactive Rules
 
 -
 
-## Memory Rules
+## Rules
 
-- Save durable facts here only when they should survive future sessions.
-- Use daily notes under `memory/YYYY-MM-DD.md` for raw logs.
+- Use the database for detailed recall.
 - Do not store secrets.
-- If the vector database has a conflicting fact, treat the database as source of truth.
+- Do not store raw chat logs here.
+- Let memory change future behavior quietly.

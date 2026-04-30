@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -57,6 +58,14 @@ def _cron_schedule(expr: str = "*/5 * * * *") -> dict:
         "schedule": {"kind": "cron", "expr": expr},
         "payload": {"kind": "agentTurn", "message": "run agent"},
         "name": "test-cron",
+    }
+
+
+def _at_schedule(at: datetime, message: str = "at tick") -> dict:
+    return {
+        "schedule": {"kind": "at", "at": at.isoformat()},
+        "payload": {"kind": "systemEvent", "message": message},
+        "name": "test-at",
     }
 
 
@@ -139,6 +148,37 @@ class TestCRUD:
         result = await service.run("nonexistent")
         assert result["status"] == "error"
 
+    @pytest.mark.asyncio
+    async def test_system_event_forwards_timeout_and_delivery_context(self, data_root):
+        captured_kwargs: dict = {}
+
+        async def record_kwargs(message: str, session_key: str, **kwargs):
+            captured_kwargs.update(kwargs)
+            return "ok"
+
+        svc = CronService("test", data_root, record_kwargs)
+        job = svc.add(
+            {
+                "schedule": {"kind": "every", "every_ms": 60_000, "anchor_ms": 0},
+                "payload": {
+                    "kind": "systemEvent",
+                    "message": "proactive ping",
+                    "timeout_seconds": 12,
+                },
+                "delivery": {
+                    "mode": "announce",
+                    "channel": "telegram",
+                    "to": "1988095919",
+                },
+            }
+        )
+
+        await svc._run_payload(job)
+
+        assert captured_kwargs["timeout_seconds"] == 12
+        assert captured_kwargs["channel_id"] == "telegram"
+        assert captured_kwargs["user_id"] == "1988095919"
+
 
 # ---------------------------------------------------------------------------
 # Persistence across restart
@@ -184,6 +224,28 @@ class TestTimerLoop:
             loop_task = asyncio.create_task(service._timer_loop())
             stop_task = asyncio.create_task(stop_after_one())
             await asyncio.gather(loop_task, stop_task, return_exceptions=True)
+
+        execute_fn.assert_awaited()
+
+    @pytest.mark.asyncio
+    async def test_new_earlier_job_wakes_sleeping_timer(self, service, execute_fn):
+        """Adding a near-term job while cron sleeps for a later job should rearm."""
+        later = datetime.now(UTC) + timedelta(minutes=30)
+        service.add(_at_schedule(later, "later"))
+        await service.start()
+
+        try:
+            await asyncio.sleep(0.05)
+            soon = datetime.now(UTC) + timedelta(milliseconds=120)
+            service.add(_at_schedule(soon, "soon"))
+
+            async def wait_for_execution() -> None:
+                while execute_fn.await_count == 0:
+                    await asyncio.sleep(0.02)
+
+            await asyncio.wait_for(wait_for_execution(), timeout=1.0)
+        finally:
+            await service.stop()
 
         execute_fn.assert_awaited()
 
@@ -317,6 +379,35 @@ class TestDeliveryRouting:
         assert result["delivery"]["status"] == "ok"
         channel = channel_registry.get("whatsapp")
         channel.send.assert_awaited_with("+1234567890", "cron output")
+
+    @pytest.mark.asyncio
+    async def test_announce_strips_channel_diagnostics(self, data_root, channel_registry):
+        execute_fn = AsyncMock(
+            return_value=(
+                "**Oi** - open the Kestrel cleanup now.\n\n"
+                "---\n"
+                "**Context Usage:** 23,157 / 1,000,000 (2.3%)\n"
+                "**Model:** openai_codex/gpt-5.4\n"
+                "**Tokens:** 23,096 in / 61 out / 23,157 total"
+            )
+        )
+        svc = CronService("test", data_root, execute_fn, channel_registry)
+
+        job = svc.add(
+            {
+                **_every_schedule(),
+                "delivery": {
+                    "mode": "announce",
+                    "channel": "telegram",
+                    "to": "1988095919",
+                },
+            }
+        )
+
+        result = await svc._execute_job(job)
+        assert result["delivery"]["status"] == "ok"
+        channel = channel_registry.get("telegram")
+        channel.send.assert_awaited_with("1988095919", "Oi - open the Kestrel cleanup now.")
 
     @pytest.mark.asyncio
     async def test_webhook_calls_httpx_post(self, data_root, execute_fn):

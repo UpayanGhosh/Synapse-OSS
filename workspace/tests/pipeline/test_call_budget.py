@@ -108,10 +108,14 @@ def _make_deps(tmp_path: Path) -> types.SimpleNamespace:
 @pytest.fixture
 def fresh_pipeline(tmp_path, monkeypatch):
     fake_deps = _make_deps(tmp_path)
+    import sci_fi_dashboard as pkg
+
     original_deps = sys.modules.get("sci_fi_dashboard._deps")
+    original_pkg_deps = getattr(pkg, "_deps", None)
     original_chat_pipeline = sys.modules.pop("sci_fi_dashboard.chat_pipeline", None)
     original_llm_wrappers = sys.modules.pop("sci_fi_dashboard.llm_wrappers", None)
     monkeypatch.setitem(sys.modules, "sci_fi_dashboard._deps", fake_deps)
+    monkeypatch.setattr(pkg, "_deps", fake_deps, raising=False)
 
     module = importlib.import_module("sci_fi_dashboard.chat_pipeline")
     llm_wrappers = importlib.import_module("sci_fi_dashboard.llm_wrappers")
@@ -122,10 +126,18 @@ def fresh_pipeline(tmp_path, monkeypatch):
         sys.modules.pop("sci_fi_dashboard.llm_wrappers", None)
         if original_chat_pipeline is not None:
             sys.modules["sci_fi_dashboard.chat_pipeline"] = original_chat_pipeline
+            pkg.chat_pipeline = original_chat_pipeline
+        elif hasattr(pkg, "chat_pipeline"):
+            delattr(pkg, "chat_pipeline")
         if original_llm_wrappers is not None:
             sys.modules["sci_fi_dashboard.llm_wrappers"] = original_llm_wrappers
+            pkg.llm_wrappers = original_llm_wrappers
+        elif hasattr(pkg, "llm_wrappers"):
+            delattr(pkg, "llm_wrappers")
         if original_deps is not None:
             sys.modules["sci_fi_dashboard._deps"] = original_deps
+        if original_pkg_deps is not None:
+            pkg._deps = original_pkg_deps
 
 
 @pytest.mark.asyncio
@@ -168,6 +180,51 @@ async def test_rate_limit_stops_after_one_final_attempt(fresh_pipeline):
 
 
 @pytest.mark.asyncio
+async def test_empty_model_text_does_not_send_metadata_only_reply(fresh_pipeline):
+    """Empty provider text must not become a stats-only user-visible reply."""
+    chat_pipeline, llm_wrappers, deps = fresh_pipeline
+    deps.synapse_llm_router.call_with_metadata = AsyncMock(
+        return_value=LLMResult(
+            text="",
+            model="test/mock",
+            prompt_tokens=120,
+            completion_tokens=0,
+            total_tokens=120,
+        )
+    )
+
+    with patch.object(llm_wrappers, "route_traffic_cop", AsyncMock(return_value="CASUAL")):
+        result = await chat_pipeline.persona_chat(_make_request("hi"), target="the_creator")
+
+    assert isinstance(result, dict)
+    assert not result["reply"].lstrip().startswith("---")
+    assert "empty response" in result["reply"]
+    assert "**Context Usage:**" in result["reply"]
+
+
+@pytest.mark.asyncio
+async def test_invisible_model_text_does_not_send_metadata_only_reply(fresh_pipeline):
+    """Invisible/control-only provider text is also an empty user-visible reply."""
+    chat_pipeline, llm_wrappers, deps = fresh_pipeline
+    deps.synapse_llm_router.call_with_metadata = AsyncMock(
+        return_value=LLMResult(
+            text="\u200b\n\t",
+            model="test/mock",
+            prompt_tokens=120,
+            completion_tokens=1,
+            total_tokens=121,
+        )
+    )
+
+    with patch.object(llm_wrappers, "route_traffic_cop", AsyncMock(return_value="CASUAL")):
+        result = await chat_pipeline.persona_chat(_make_request("hi"), target="the_creator")
+
+    assert isinstance(result, dict)
+    assert not result["reply"].lstrip().startswith("---")
+    assert "empty response" in result["reply"]
+
+
+@pytest.mark.asyncio
 async def test_simple_greeting_does_not_use_native_tool_calling(fresh_pipeline):
     """Simple chat should not spend the final call on native tool schemas."""
     chat_pipeline, llm_wrappers, deps = fresh_pipeline
@@ -194,6 +251,46 @@ async def test_simple_greeting_does_not_use_native_tool_calling(fresh_pipeline):
     assert isinstance(result, dict)
     assert deps.synapse_llm_router.call_with_tools.call_count == 0
     assert deps.synapse_llm_router.call_with_metadata.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_tool_context_preserves_channel_id(fresh_pipeline):
+    """Channel messages must resolve tools with the real channel policy."""
+    chat_pipeline, llm_wrappers, deps = fresh_pipeline
+    captured = {}
+    deps._TOOL_REGISTRY_AVAILABLE = True
+    deps.tool_registry = MagicMock()
+
+    def _resolve(context):
+        captured["channel_id"] = context.channel_id
+        return [types.SimpleNamespace(name="web_query", description="Search web", serial=False)]
+
+    deps.tool_registry.resolve.side_effect = _resolve
+    deps.tool_registry.get_schemas.return_value = [
+        {
+            "type": "function",
+            "function": {
+                "name": "web_query",
+                "description": "Search web",
+                "parameters": {"type": "object", "properties": {}},
+            },
+        }
+    ]
+    deps.synapse_llm_router.call_with_tools = AsyncMock(return_value=_make_llm_result("found it"))
+
+    request = ChatRequest(
+        message="search the web for current onboarding ideas",
+        user_id="tg-chat",
+        channel_id="telegram",
+        history=[],
+        session_type="safe",
+    )
+    with patch.object(llm_wrappers, "route_traffic_cop", AsyncMock(return_value="CASUAL")):
+        result = await chat_pipeline.persona_chat(request, target="the_creator")
+
+    assert isinstance(result, dict)
+    assert captured["channel_id"] == "telegram"
+    assert deps.synapse_llm_router.call_with_tools.call_count == 1
 
 
 @pytest.mark.asyncio

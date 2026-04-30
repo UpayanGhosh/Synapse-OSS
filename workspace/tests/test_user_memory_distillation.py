@@ -138,6 +138,97 @@ def test_distill_routines_people_projects_and_corrections() -> None:
     )
 
 
+def test_distill_day_to_day_personality_facts() -> None:
+    from sci_fi_dashboard.user_memory import distill_user_memory_facts
+
+    text = (
+        "[Telegram session - 2026-04-30]\n"
+        "User: Personal update: I think I have a real crush on Naina now. "
+        "She remembered I like filter coffee.\n"
+        "User: Raghav said my Kestrel scope is too fuzzy.\n"
+        "User: I almost bought 18000 INR headphones, but I still need to save 30000 INR. "
+        "Remember that impulse-buying audio gear is my weakness.\n"
+        "User: When I am anxious, give me one next action and one reason.\n"
+        "User: I always underestimate handoff time.\n"
+        "User: Forget the Goa maybe-plan."
+    )
+
+    facts = distill_user_memory_facts(
+        text=text,
+        user_id="agent:the_creator:telegram:dm:123",
+        source_doc_id=303,
+    )
+
+    keys = {(fact.kind, fact.key) for fact in facts}
+    summaries = " ".join(fact.summary for fact in facts)
+
+    assert ("relationship", "person_naina") in keys
+    assert ("relationship", "person_raghav") in keys
+    assert ("project", "project_kestrel") in keys
+    assert ("preference", "audio_gear_impulse") in keys
+    assert ("preference", "anxiety_next_action") in keys
+    assert ("preference", "handoff_time_underestimate") in keys
+    assert ("correction", "forget_the_goa_maybe-plan") in keys
+    assert "Naina" in summaries
+    assert "Raghav" in summaries
+    assert "Kestrel" in summaries
+
+
+def test_distill_live_memory_update_into_clean_rows() -> None:
+    from sci_fi_dashboard.user_memory import distill_user_memory_facts
+
+    facts = distill_user_memory_facts(
+        text=(
+            "User: Memory update: Raghav is the person who calls my Kestrel scope fuzzy, "
+            "headphones/audio gear are my impulse-buy weakness, and when I am anxious "
+            "I want one next action with one reason."
+        ),
+        user_id="agent:the_creator:telegram:dm:123",
+        source_doc_id=None,
+    )
+
+    by_kind_key = {(fact.kind, fact.key): fact for fact in facts}
+
+    assert by_kind_key[("relationship", "person_raghav")].value == (
+        "calls my kestrel scope fuzzy, headphones/audio gear are my impulse-buy weakness, "
+        "and when i am anxious i want one next action with one reason"
+    )
+    assert ("project", "project_raghav") not in by_kind_key
+    assert ("project", "project_memory") not in by_kind_key
+    assert ("project", "project_patch") not in by_kind_key
+    assert ("project", "project_final") not in by_kind_key
+    assert ("project", "project_kestrel") in by_kind_key
+    assert ("preference", "audio_gear_impulse") in by_kind_key
+    assert ("preference", "anxiety_next_action") in by_kind_key
+
+    shorthand_facts = distill_user_memory_facts(
+        text=(
+            "User: Patch live check 04: Raghav is the person who calls my Kestrel scope fuzzy; "
+            "headphones/audio gear are my impulse-buy weakness; when anxious I want one next "
+            "action with one reason."
+        ),
+        user_id="agent:the_creator:telegram:dm:123",
+        source_doc_id=None,
+    )
+    shorthand_keys = {(fact.kind, fact.key) for fact in shorthand_facts}
+    assert ("project", "project_patch") not in shorthand_keys
+    assert ("project", "project_final") not in shorthand_keys
+    assert ("preference", "anxiety_next_action") in shorthand_keys
+
+    final_label_facts = distill_user_memory_facts(
+        text=(
+            "User: Final memory check 05: Raghav is the person who calls my Kestrel scope fuzzy; "
+            "headphones/audio gear are my impulse-buy weakness; when anxious I want one next "
+            "action with one reason."
+        ),
+        user_id="agent:the_creator:telegram:dm:123",
+        source_doc_id=None,
+    )
+    final_label_keys = {(fact.kind, fact.key) for fact in final_label_facts}
+    assert ("project", "project_final") not in final_label_keys
+    assert ("project", "project_kestrel") in final_label_keys
+
+
 def test_sync_user_memory_writes_preferred_response_style_to_interaction(tmp_path) -> None:
     from sci_fi_dashboard.sbs.profile.manager import ProfileManager
     from sci_fi_dashboard.sbs.profile.sync import sync_user_memory_profile
@@ -373,8 +464,15 @@ def test_sync_user_memory_clears_synced_fields_when_no_active_facts(tmp_path) ->
         conn.close()
 
     cleared = sync_user_memory_profile(profile_mgr, user_id=user_id, db_path=db_path)
-    assert set(cleared.keys()) == {"synced", "interaction_updated", "domain_updated", "active_facts"}
+    assert set(cleared.keys()) == {
+        "synced",
+        "interaction_updated",
+        "domain_updated",
+        "workspace_files_updated",
+        "active_facts",
+    }
     assert cleared["active_facts"] == 0
+    assert cleared["workspace_files_updated"] == 0
     assert cleared["synced"] is True
     assert cleared["interaction_updated"] is True
     assert cleared["domain_updated"] is True

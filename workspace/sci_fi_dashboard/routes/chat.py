@@ -7,9 +7,9 @@ import uuid
 from fastapi import APIRouter, BackgroundTasks, Depends, Request
 
 from sci_fi_dashboard import _deps as deps
-from sci_fi_dashboard.chat_pipeline import persona_chat
 from sci_fi_dashboard.middleware import validate_api_key
 from sci_fi_dashboard.observability import mint_run_id
+from sci_fi_dashboard.pipeline_helpers import process_direct_persona_chat
 from sci_fi_dashboard.schemas import ChatRequest
 
 logger = logging.getLogger(__name__)
@@ -95,7 +95,7 @@ def _make_persona_handler(persona_id: str):
             return await _run_with_parity_role_override(
                 request, persona_id, background_tasks, override_role
             )
-        return await persona_chat(request, persona_id, background_tasks)
+        return await process_direct_persona_chat(request, persona_id, background_tasks)
 
     handler.__name__ = f"chat_{persona_id}"
     return handler
@@ -135,7 +135,7 @@ async def _run_with_parity_role_override(
     previous = get_model_override(chat_id)
     set_model_override(chat_id, override_role)
     try:
-        return await persona_chat(request, persona_id, background_tasks)
+        return await process_direct_persona_chat(request, persona_id, background_tasks)
     finally:
         if previous:
             set_model_override(chat_id, previous)

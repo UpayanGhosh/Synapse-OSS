@@ -55,9 +55,17 @@ if sys.platform == "win32":
 logger = logging.getLogger(__name__)
 _log = get_child_logger("channel.whatsapp")
 
-# Path: workspace/sci_fi_dashboard/channels/whatsapp.py → repo_root/baileys-bridge
-_BRIDGE_DIR = Path(__file__).resolve().parent.parent.parent.parent / "baileys-bridge"
-_AUTH_STATE_DIR = _BRIDGE_DIR / "auth_state"
+# Installed bridge lives under the product home, never the developer repo.
+def resolve_bridge_dir() -> Path:
+    from synapse_config import resolve_data_root  # noqa: PLC0415
+
+    return resolve_data_root().expanduser().resolve() / "bridges" / "baileys"
+
+
+def resolve_auth_state_dir() -> Path:
+    from synapse_config import resolve_data_root  # noqa: PLC0415
+
+    return resolve_data_root().expanduser().resolve() / "state" / "whatsapp" / "auth_state"
 
 
 class WhatsAppChannel(BaseChannel):
@@ -167,10 +175,14 @@ class WhatsAppChannel(BaseChannel):
             try:
                 self._proc = await asyncio.create_subprocess_exec(
                     "node",
-                    str(_BRIDGE_DIR / "index.js"),
+                    str(resolve_bridge_dir() / "index.js"),
                     env={
                         **os.environ,
                         "BRIDGE_PORT": str(self._port),
+                        "SYNAPSE_AUTH_DIR": str(resolve_auth_state_dir()),
+                        "MEDIA_CACHE_DIR": str(
+                            resolve_auth_state_dir().parent / "media_cache"
+                        ),
                         "PYTHON_WEBHOOK_URL": self._webhook_url,
                         "PYTHON_STATE_WEBHOOK_URL": self._webhook_url.replace(
                             "/webhook", "/connection-state"
@@ -178,7 +190,7 @@ class WhatsAppChannel(BaseChannel):
                     },
                     stdout=asyncio.subprocess.DEVNULL,
                     stderr=asyncio.subprocess.PIPE,
-                    cwd=str(_BRIDGE_DIR),
+                    cwd=str(resolve_bridge_dir()),
                 )
                 self._bridge_pid = self._proc.pid
                 self._status = "running"
@@ -335,12 +347,13 @@ class WhatsAppChannel(BaseChannel):
 
     def _clear_auth_cache(self) -> None:
         """Remove stale auth_state directory so the next restart triggers a fresh QR."""
-        if _AUTH_STATE_DIR.exists():
+        auth_state_dir = resolve_auth_state_dir()
+        if auth_state_dir.exists():
             try:
                 import shutil as _shutil
 
-                _shutil.rmtree(_AUTH_STATE_DIR, ignore_errors=True)
-                logger.info("[WA] Cleared auth_state at %s", _AUTH_STATE_DIR)
+                _shutil.rmtree(auth_state_dir, ignore_errors=True)
+                logger.info("[WA] Cleared auth_state at %s", auth_state_dir)
             except OSError as exc:
                 logger.warning("[WA] Failed to clear auth_state: %s", exc)
 

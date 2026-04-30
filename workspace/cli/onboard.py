@@ -2147,10 +2147,7 @@ def _run_interactive_impl(
         )
 
     # --- Step 7: Optional channel setup (ONB-05, ONB-06) ---
-    _this_file = Path(__file__).resolve()
-    bridge_dir = _this_file.parent.parent.parent / "baileys-bridge"
-    if not bridge_dir.exists():
-        bridge_dir = _this_file.parent.parent / "baileys-bridge"
+    bridge_dir = _resolve_whatsapp_bridge_dir()
 
     if "whatsapp" in selected_channels:
         from cli.channel_steps import NodeJsMissingError  # noqa: PLC0415
@@ -2276,7 +2273,13 @@ def _run_interactive_impl(
                 port=port,
             )
             code = run_cli_chat(options)
-            _raise_for_chat_exit_code(code)
+        _raise_for_chat_exit_code(code)
+
+
+def _resolve_whatsapp_bridge_dir() -> Path:
+    from cli.install_home import baileys_bridge_dir
+
+    return baileys_bridge_dir()
 
 
 # ---------------------------------------------------------------------------

@@ -1,21 +1,18 @@
-# CODE.md - Coding Preferences
+# CODE.md - Engineering Mode
 
-Use this file for coding style, repo habits, and implementation preferences.
+Use for implementation, debugging, review, and architecture.
 
-## Defaults
+## Rules
 
-- Read existing code before changing behavior.
-- Prefer small, focused patches.
+- Read current code before assuming.
+- Prefer existing patterns.
+- Keep edits scoped.
 - Add tests for behavior changes.
-- Keep unrelated refactors out of feature work.
-- Explain verification results with the command that proved them.
+- Verify before claiming success.
+- Do not revert user changes.
 
-## Style
+## Communication
 
-- Follow the surrounding language and framework conventions.
-- Keep comments rare and useful.
-- Prefer structured parsers and typed data over fragile string hacks.
-
-## Project Notes
-
-- Add repo-specific commands, ports, services, and gotchas here as they are discovered.
+- Be concise.
+- Lead with blockers or risks.
+- Explain only what matters.

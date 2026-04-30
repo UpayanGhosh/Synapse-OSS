@@ -5,6 +5,7 @@ import contextlib
 import json
 import logging
 import os
+import re
 import time
 from pathlib import Path
 
@@ -38,8 +39,13 @@ _log = get_child_logger("pipeline.chat")  # OBS-01 structured logger carrying ru
 #   1. ~/.synapse/workspace/<NAME>.md            (user override)
 #   2. ~/.synapse/workspace/<NAME>.md.template   (runtime fallback)
 #   3. <repo>/agent_workspace/<NAME>.md.template (repo default)
+#
+# INSTRUCTIONS, CORE, and AGENTS are special: the repo has one canonical shipping copy at
+# <repo>/agent_workspace/<NAME>.md. CLI seeding and prompt fallback both read
+# that same file so personality rules cannot drift across duplicate templates.
 
 _AGENT_WORKSPACE_FILES: tuple[str, ...] = (
+    "INSTRUCTIONS",
     "SOUL",
     "CORE",
     "CODE",
@@ -55,6 +61,14 @@ _USER_AGENT_WORKSPACE: Path = Path.home() / ".synapse" / "workspace"
 
 # Module-level cache keyed by file mtimes + prompt tier for cheap invalidation.
 _agent_workspace_cache: dict = {"content": "", "content_by_tier": {}, "mtimes": {}}
+_agent_workspace_session_cache: dict[tuple[str, str], str] = {}
+
+
+def _repo_agent_workspace_default(name: str) -> Path:
+    """Return the repo-packaged default for an agent workspace file."""
+    if name in {"INSTRUCTIONS", "CORE", "AGENTS"}:
+        return _REPO_AGENT_WORKSPACE / f"{name}.md"
+    return _REPO_AGENT_WORKSPACE / f"{name}.md.template"
 
 
 def _resolve_agent_workspace_path(name: str) -> Path | None:
@@ -65,7 +79,7 @@ def _resolve_agent_workspace_path(name: str) -> Path | None:
     candidates = (
         _USER_AGENT_WORKSPACE / f"{name}.md",
         _USER_AGENT_WORKSPACE / f"{name}.md.template",
-        _REPO_AGENT_WORKSPACE / f"{name}.md.template",
+        _repo_agent_workspace_default(name),
     )
     for candidate in candidates:
         try:
@@ -74,6 +88,32 @@ def _resolve_agent_workspace_path(name: str) -> Path | None:
         except OSError:
             continue
     return None
+
+
+def clear_agent_workspace_session_prefix(session_key: str | None = None) -> None:
+    """Clear frozen identity-prefix cache for one session or all sessions."""
+    if session_key is None:
+        _agent_workspace_session_cache.clear()
+        return
+    normalized = str(session_key or "default")
+    for key in list(_agent_workspace_session_cache):
+        if key[0] == normalized:
+            _agent_workspace_session_cache.pop(key, None)
+
+
+def _load_agent_workspace_prefix_for_session(
+    session_key: str | None,
+    prompt_tier: str = "frontier",
+) -> str:
+    """Load the identity prefix once per session and reuse it for later turns."""
+    tier = get_prompt_tier_policy(prompt_tier).tier
+    key = (str(session_key or "default"), tier)
+    cached = _agent_workspace_session_cache.get(key)
+    if cached is not None:
+        return cached
+    content = _load_agent_workspace_prefix(tier)
+    _agent_workspace_session_cache[key] = content
+    return content
 
 
 def _load_agent_workspace_prefix(prompt_tier: str = "frontier") -> str:
@@ -327,6 +367,13 @@ def _truncate_text(text: str, max_chars: int) -> str:
     return compact[: max(0, max_chars - 15)].rstrip() + " ... [truncated]"
 
 
+def _truncate_tool_result(text: str, max_chars: int) -> str:
+    content = str(text or "").strip()
+    if len(content) <= max_chars:
+        return content
+    return content[: max(0, max_chars - 16)].rstrip() + "\n... [truncated]"
+
+
 def _estimate_message_tokens(messages: list[dict]) -> int:
     chars = 0
     for message in messages:
@@ -377,6 +424,163 @@ def _is_reflective_casual_message(message: str) -> bool:
         "kharap",
     )
     return any(marker in msg for marker in reflective_markers)
+
+
+def _is_relationship_voice_turn(user_msg: str, role: str, session_mode: str) -> bool:
+    """Return True when the reply should lean into close-friend voice.
+
+    This is deliberately broader than "emotional support": the Jarvis-style target
+    is day-to-day companionship, so work rants, crush updates, family pressure,
+    money impulses, health slips, and tiny wins all qualify.
+    """
+    if session_mode == "spicy" or str(role).lower() != "casual":
+        return False
+    msg = " ".join(str(user_msg or "").lower().split())
+    memory_turn = any(marker in msg for marker in ("remember ", "remember:", "save my", "save this"))
+    if _message_requests_external_action(user_msg) and not memory_turn:
+        return False
+
+    markers = (
+        "crush",
+        "love",
+        "date",
+        "naina",
+        "family",
+        "ma ",
+        "mother",
+        "father",
+        "boss",
+        "office",
+        "raghav",
+        "mira",
+        "friend",
+        "lonely",
+        "guilty",
+        "irritated",
+        "angry",
+        "annoyed",
+        "pissed",
+        "vent",
+        "rant",
+        "bitch",
+        "defensive",
+        "dumped",
+        "unfair",
+        "office politics",
+        "toxic",
+        "anxious",
+        "scared",
+        "fear",
+        "stressed",
+        "pressure",
+        "hurt",
+        "sad",
+        "tired",
+        "sleep",
+        "breakfast",
+        "walk",
+        "health",
+        "money",
+        "budget",
+        "bought",
+        "buy",
+        "save",
+        "shopping",
+        "travel",
+        "goa",
+        "small joy",
+        "life update",
+        "personal update",
+        "work stress",
+        "anger moment",
+        "fear check",
+        "i feel",
+        "i felt",
+        "i want",
+        "i think",
+    )
+    return any(marker in msg for marker in markers)
+
+
+def _build_relationship_voice_contract(
+    user_msg: str,
+    role: str,
+    session_mode: str,
+    prompt_depth: str,
+) -> str:
+    """Build a high-recency voice contract for Jarvis-like friend responses."""
+    if not _is_relationship_voice_turn(user_msg, role, session_mode):
+        return ""
+
+    msg = " ".join(str(user_msg or "").lower().split())
+    crush_turn = any(marker in msg for marker in ("crush", "love", "date", "naina"))
+    anxious_turn = any(
+        marker in msg
+        for marker in ("anxious", "scared", "fear", "panic", "stressed", "pressure")
+    )
+    anger_turn = any(
+        marker in msg
+        for marker in ("angry", "irritated", "annoyed", "pissed", "defensive", "hurt")
+    )
+    vent_turn = any(
+        marker in msg
+        for marker in (
+            "vent",
+            "rant",
+            "bitch",
+            "pissed",
+            "annoyed",
+            "office politics",
+            "dumped",
+            "toxic",
+            "unfair",
+        )
+    )
+
+    situational = []
+    if crush_turn:
+        situational.append(
+            "If this is romance/crush talk: gently hype or leg-pull once, then ground him. "
+            "Do not turn it into therapy or a dating checklist."
+        )
+    if anxious_turn:
+        situational.append(
+            "If he is anxious: one warm line, one next action, one reason. No ten-option menus."
+        )
+    if anger_turn:
+        situational.append(
+            "If he is angry or defensive: validate the sting, share a real opinion, "
+            "then give the adult move."
+        )
+    if vent_turn:
+        situational.append(
+            "If he is venting: join the frustration like a friend when he has a point. "
+            "Do not stay neutral just to sound safe. If he is being unfair or spiraling, "
+            "push back clearly and kindly."
+        )
+
+    length_line = (
+        "Target 1-4 short chat lines, usually under 120 words."
+        if prompt_depth != "full"
+        else "Target 2-6 short chat lines unless the user asks for depth."
+    )
+    situational_block = "\n".join(f"- {line}" for line in situational)
+    if situational_block:
+        situational_block = f"\nTurn-specific behavior:\n{situational_block}"
+
+    return (
+        "RELATIONSHIP VOICE CONTRACT - highest priority for this reply:\n"
+        "- Speak like the user's close friend, not a customer-support assistant.\n"
+        "- Have a real stance. React first; do not only summarize what he said.\n"
+        "- Use warmth, tiny teasing, and opinion when safe. Be kind, not sycophantic.\n"
+        "- If the user is ranting and has a point, rant with them a little; if they are wrong, contradict them with care.\n"
+        "- For personal/emotional updates: mirror the feeling in human words, then give one useful move.\n"
+        "- Avoid bot phrases: 'It sounds like', 'I understand', 'Here are', 'I recommend', 'As an AI'.\n"
+        "- Avoid headings and therapy-template bullet dumps unless explicitly asked.\n"
+        f"- {length_line}\n"
+        "- Serious safety/medical/legal/financial risk overrides teasing: be calm and careful."
+        f"{situational_block}"
+    )
 
 
 def _prompt_depth_for_turn(
@@ -439,6 +643,7 @@ def _build_compact_casual_system_prompt(
     sbs_orchestrator,
     base_instructions: str,
     proactive_block: str,
+    session_key: str | None = None,
 ) -> str:
     if prompt_depth == "casual_light":
         compact_rules = (
@@ -460,7 +665,20 @@ def _build_compact_casual_system_prompt(
         sbs_prompt = sbs_orchestrator.get_system_prompt(base_instructions, proactive_block)
     except Exception:
         sbs_prompt = ""
+    try:
+        workspace_prefix = _load_agent_workspace_prefix_for_session(session_key, "small")
+    except Exception:
+        workspace_prefix = ""
+    workspace_excerpt = _truncate_text(workspace_prefix, 1_400) if workspace_prefix else ""
     sbs_excerpt = _truncate_text(sbs_prompt, sbs_limit) if sbs_prompt else ""
+    if workspace_excerpt and sbs_excerpt:
+        return (
+            f"{compact_rules}\n\n"
+            f"CHARACTER BACKBONE:\n{workspace_excerpt}\n\n"
+            f"PERSONA EXCERPT:\n{sbs_excerpt}"
+        )
+    if workspace_excerpt:
+        return f"{compact_rules}\n\nCHARACTER BACKBONE:\n{workspace_excerpt}"
     if sbs_excerpt:
         return f"{compact_rules}\n\nPERSONA EXCERPT:\n{sbs_excerpt}"
     return compact_rules
@@ -527,6 +745,92 @@ def _message_requests_external_action(message: str) -> bool:
     return any(phrase in msg for phrase in trigger_phrases)
 
 
+def _extract_first_url(text: str) -> str | None:
+    match = re.search(r"https?://[^\s<>)\"']+", str(text or ""))
+    if not match:
+        return None
+    return match.group(0).rstrip(".,;:!?")
+
+
+def _should_prefetch_url(user_msg: str) -> bool:
+    msg = " ".join(str(user_msg or "").lower().split())
+    return bool(_extract_first_url(user_msg)) and any(
+        phrase in msg
+        for phrase in (
+            "fetch",
+            "open this url",
+            "read this url",
+            "summarize this url",
+            "summarise this url",
+            "check this url",
+            "search",
+            "web",
+        )
+    )
+
+
+def _should_prefetch_web_query(user_msg: str) -> bool:
+    msg = " ".join(str(user_msg or "").lower().split())
+    if _extract_first_url(user_msg):
+        return False
+    return any(
+        phrase in msg
+        for phrase in (
+            "search the web",
+            "web search",
+            "look up",
+            "latest",
+            "current",
+            "news about",
+            "find online",
+        )
+    )
+
+
+def _extract_web_query(text: str) -> str:
+    query = str(text or "").strip()
+    lowered = query.lower()
+    prefixes = (
+        "search the web for ",
+        "web search for ",
+        "look up ",
+        "find online ",
+        "search for ",
+    )
+    for prefix in prefixes:
+        if lowered.startswith(prefix):
+            return query[len(prefix) :].strip(" .")
+    return query.strip(" .")
+
+
+def _should_skip_skill_routing(user_msg: str) -> bool:
+    msg = " ".join(str(user_msg or "").lower().split())
+    memory_markers = (
+        "remember this",
+        "remember that",
+        "remember my",
+        "save my",
+        "save this about me",
+        "my preference",
+        "my identity",
+        "i prefer",
+        "call me ",
+        "i am ",
+        "i'm ",
+    )
+    return any(marker in msg for marker in memory_markers)
+
+
+def _has_explicit_skill_trigger(user_msg: str, skills: list) -> bool:
+    msg = str(user_msg or "").lower()
+    for skill in skills or []:
+        for trigger in getattr(skill, "triggers", []) or []:
+            trigger_text = str(trigger or "").strip().lower()
+            if trigger_text and trigger_text in msg:
+                return True
+    return False
+
+
 def _should_enable_tools_for_turn(user_msg: str, role: str, session_mode: str) -> bool:
     if session_mode == "spicy":
         return False
@@ -563,6 +867,16 @@ def _ends_with_sentence_terminal(text: str) -> bool:
         cleaned = cleaned[:-1].rstrip()
     terminals = (".", "!", "?", '"', "'", ")", "]", "}")
     return cleaned.endswith(terminals)
+
+
+def _has_user_visible_reply(text: str) -> bool:
+    """Return True only when reply has content beyond invisible/control marks."""
+    cleaned = str(text or "")
+    for marker in ("\u200b", "\u200c", "\u200d", "\ufeff", "\x00"):
+        cleaned = cleaned.replace(marker, "")
+    cleaned = cleaned.strip()
+    cleaned = cleaned.strip("-*_`~ \t\r\n")
+    return bool(cleaned)
 
 
 # Conditional imports -- same pattern as original api_gateway.py
@@ -985,8 +1299,15 @@ async def persona_chat(
         getattr(deps, "_SKILL_SYSTEM_AVAILABLE", False) is True
         and getattr(deps, "skill_router", None) is not None
         and session_mode != "spicy"
+        and not _should_skip_skill_routing(user_msg)
     ):
-        matched_skill = deps.skill_router.match(user_msg)
+        skill_registry = getattr(deps, "skill_registry", None)
+        loaded_skills = skill_registry.list_skills() if skill_registry is not None else None
+        matched_skill = (
+            deps.skill_router.match(user_msg)
+            if loaded_skills is None or _has_explicit_skill_trigger(user_msg, loaded_skills)
+            else None
+        )
         if matched_skill is not None:
             _log.info("skill_routed", extra={"skill_name": matched_skill.name})
             from sci_fi_dashboard.skills.runner import SkillRunner
@@ -1169,7 +1490,10 @@ async def persona_chat(
         # RT2: Prepend the static agent workspace markdown prefix (Jarvis-style discipline + identity)
         # ABOVE the SBS dynamic persona layer. Both layers compose: agent_workspace anchors
         # identity/rules, SBS adapts tone/style/exemplars per user.
-        _agent_workspace_prefix = _load_agent_workspace_prefix(prompt_policy.tier)
+        _agent_workspace_prefix = _load_agent_workspace_prefix_for_session(
+            _session_key,
+            prompt_policy.tier,
+        )
         if _agent_workspace_prefix:
             system_prompt = f"{_agent_workspace_prefix}\n\n---\n\n{system_prompt}"
 
@@ -1189,6 +1513,7 @@ async def persona_chat(
             sbs_orchestrator,
             base_instructions,
             proactive_block,
+            session_key=_session_key,
         )
 
     messages = [
@@ -1238,6 +1563,15 @@ async def persona_chat(
     if _profile_reminder and prompt_depth == "full":
         messages.append({"role": "system", "content": _profile_reminder})
 
+    _relationship_voice_contract = _build_relationship_voice_contract(
+        user_msg,
+        role,
+        session_mode,
+        prompt_depth,
+    )
+    if _relationship_voice_contract:
+        messages.append({"role": "system", "content": _relationship_voice_contract})
+
     messages.append({"role": "user", "content": user_msg})
 
     _log.info(
@@ -1262,15 +1596,18 @@ async def persona_chat(
     )
     session_tools: list = []
     tool_schemas: list | None = None
+    pre_tools_used: list[str] = []
+    pre_tool_fallback: str = ""
 
     if use_tools:
+        request_channel_id = getattr(request, "channel_id", None) or "api"
         tool_context = ToolContext(
             chat_id=request.user_id or "unknown",
             sender_id=request.user_id or "unknown",
             sender_is_owner=_is_owner_sender(request.user_id),
             workspace_dir=str(deps.WORKSPACE_ROOT),
             config=deps._synapse_cfg.session,
-            channel_id="api",
+            channel_id=request_channel_id,
         )
         session_tools = deps.tool_registry.resolve(tool_context)
 
@@ -1282,7 +1619,7 @@ async def persona_chat(
             ]
             policy_steps = build_policy_steps(
                 deps._synapse_cfg.raw if hasattr(deps._synapse_cfg, "raw") else {},
-                channel_id="api",
+                channel_id=request_channel_id,
             )
             surviving_names, _removal_log = apply_tool_policy_pipeline(
                 tool_infos, policy_steps, _is_owner_sender(request.user_id)
@@ -1294,6 +1631,94 @@ async def persona_chat(
             if session_tools and prompt_policy.native_tool_schemas
             else None
         )
+
+        if _should_prefetch_url(user_msg):
+            url = _extract_first_url(user_msg)
+            web_tool = next((t for t in session_tools if t.name == "web_search"), None)
+            if url and web_tool is not None:
+                try:
+                    tool_result = await asyncio.wait_for(
+                        web_tool.execute({"url": url}),
+                        timeout=12.0,
+                    )
+                    pre_tools_used.append("web_search")
+                    if not bool(getattr(tool_result, "is_error", False)):
+                        pre_tool_fallback = (
+                            "I fetched the URL. Here is the extracted content I found:\n"
+                            f"{_truncate_tool_result(tool_result.content, 1200)}"
+                        )
+                    messages.append(
+                        {
+                            "role": "system",
+                            "content": (
+                                "Tool result from web_search for the user-provided URL "
+                                f"{url}:\n{_truncate_tool_result(tool_result.content, 3000)}"
+                            ),
+                        }
+                    )
+                    _log.info(
+                        "prefetch_tool_done",
+                        extra={
+                            "tool": "web_search",
+                            "is_error": bool(getattr(tool_result, "is_error", False)),
+                        },
+                    )
+                except Exception as exc:
+                    _log.warning(
+                        "prefetch_tool_failed",
+                        extra={"tool": "web_search", "error": str(exc)},
+                    )
+        elif _should_prefetch_web_query(user_msg):
+            query = _extract_web_query(user_msg)
+            query_tool = next((t for t in session_tools if t.name == "web_query"), None)
+            if query and query_tool is not None:
+                try:
+                    tool_result = await asyncio.wait_for(
+                        query_tool.execute({"query": query, "limit": 5}),
+                        timeout=12.0,
+                    )
+                    pre_tools_used.append("web_query")
+                    if not bool(getattr(tool_result, "is_error", False)):
+                        try:
+                            payload = json.loads(tool_result.content)
+                            results = payload.get("results", [])[:5]
+                            lines = [
+                                "I searched the web and found these starting points:"
+                            ]
+                            for item in results:
+                                title = str(item.get("title", "")).strip()
+                                url = str(item.get("url", "")).strip()
+                                if title and url:
+                                    lines.append(f"- {title}: {url}")
+                            if len(lines) == 1 and payload.get("warning"):
+                                lines.append(f"- {payload['warning']}")
+                            pre_tool_fallback = "\n".join(lines)
+                        except Exception:
+                            pre_tool_fallback = (
+                                "I searched the web. Here is what I found:\n"
+                                f"{_truncate_tool_result(tool_result.content, 1200)}"
+                            )
+                    messages.append(
+                        {
+                            "role": "system",
+                            "content": (
+                                "Tool result from web_query for the user search request "
+                                f"{query!r}:\n{_truncate_tool_result(tool_result.content, 3000)}"
+                            ),
+                        }
+                    )
+                    _log.info(
+                        "prefetch_tool_done",
+                        extra={
+                            "tool": "web_query",
+                            "is_error": bool(getattr(tool_result, "is_error", False)),
+                        },
+                    )
+                except Exception as exc:
+                    _log.warning(
+                        "prefetch_tool_failed",
+                        extra={"tool": "web_query", "error": str(exc)},
+                    )
 
     if session_mode == "spicy":
         # === THE VAULT (Local Stheno) ===
@@ -1375,7 +1800,7 @@ async def persona_chat(
             tool_schemas = None
 
         reply = ""
-        tools_used: list[str] = []
+        tools_used: list[str] = list(pre_tools_used)
         total_tool_time = 0.0
         total_result_chars = 0
         result = None
@@ -1659,6 +2084,21 @@ async def persona_chat(
         pass
 
     usage_pct = (total_tokens / max_context) * 100 if max_context else 0
+
+    if not _has_user_visible_reply(reply):
+        _log.warning(
+            "empty_model_reply",
+            extra={
+                "target": target,
+                "model": actual_model,
+                "prompt_tokens": in_tokens,
+                "completion_tokens": out_tokens,
+            },
+        )
+        reply = (
+            pre_tool_fallback
+            or "I hit an empty response there, but I heard you. Please try again in a moment."
+        )
 
     # Phase 5: Include tool usage info in footer
     tools_footer = ""

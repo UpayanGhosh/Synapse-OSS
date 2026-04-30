@@ -56,8 +56,18 @@ from sci_fi_dashboard.whatsapp_bridge import ensure_bridge_db
 
 logger = logging.getLogger(__name__)
 
+# Backwards-compatible test/operator handles. Runtime code should use deps/routes directly.
+from sci_fi_dashboard.channels.whatsapp import WhatsAppChannel  # noqa: E402
+
+channel_registry = deps.channel_registry
+
 # Register optional channels (Telegram/Discord/Slack) if tokens configured
 register_optional_channels()
+
+
+class _NoopProactiveMCPClient:
+    async def call_tool(self, *_args, **_kwargs) -> str:
+        return "[]"
 
 
 # ---------------------------------------------------------------------------
@@ -166,9 +176,7 @@ async def lifespan(app: FastAPI):
             try:
                 from sci_fi_dashboard.tool_sysops import register_sysops_tools
 
-                register_sysops_tools(
-                    deps.tool_registry, deps.memory_engine, deps.WORKSPACE_ROOT
-                )
+                register_sysops_tools(deps.tool_registry, deps.memory_engine, deps.WORKSPACE_ROOT)
                 deps._tool_logger.info("sysops tools registered")
             except Exception as exc:
                 deps._tool_logger.warning("sysops registration failed: %s", exc)
@@ -263,13 +271,18 @@ async def lifespan(app: FastAPI):
     from proactive_engine import ProactiveAwarenessEngine
 
     app.state.proactive_engine = None
-    if _mcp_config.enabled and _mcp_config.proactive.enabled and app.state.mcp_client:
+    deps._proactive_engine = None
+    if _mcp_config.proactive.enabled:
+        proactive_client = app.state.mcp_client or _NoopProactiveMCPClient()
         app.state.proactive_engine = ProactiveAwarenessEngine(
-            app.state.mcp_client, _mcp_config.proactive
+            proactive_client, _mcp_config.proactive
         )
         await app.state.proactive_engine.start()
         deps._proactive_engine = app.state.proactive_engine
-        logger.info("[PROACTIVE] Engine started")
+        logger.info(
+            "[PROACTIVE] Engine started (%s)",
+            "mcp" if app.state.mcp_client else "memory-only",
+        )
 
     # CronService — proactive scheduled messages (wired to persona_chat via execute_fn)
     app.state.cron_service = None
@@ -281,10 +294,13 @@ async def lifespan(app: FastAPI):
         async def _cron_execute_fn(message: str, session_key: str, **kwargs) -> str:
             """Adapter: CronService execute_fn -> persona_chat()."""
             timeout_s = float(kwargs.pop("timeout_seconds", 300))
+            channel_id = str(kwargs.pop("channel_id", "") or "")
+            user_id = str(kwargs.pop("user_id", "") or "the_creator")
             req = ChatRequest(
                 message=message,
                 session_key=session_key,
-                user_id="the_creator",
+                user_id=user_id,
+                channel_id=channel_id or None,
             )
             try:
                 result = await asyncio.wait_for(
@@ -306,9 +322,11 @@ async def lifespan(app: FastAPI):
             execute_fn=_cron_execute_fn,
             channel_registry=deps.channel_registry,
         )
+        deps.cron_service = app.state.cron_service
         await app.state.cron_service.start()
         logger.info("[CRON] CronService (cron/) started")
     except Exception as _cron_exc:
+        deps.cron_service = None
         logger.warning("[CRON] CronService init failed (non-fatal): %s", _cron_exc)
 
     # Phase 16 HEART-01..05: Heartbeat runner — scheduled outbound pings
@@ -407,6 +425,9 @@ async def lifespan(app: FastAPI):
 
             _skills_dir = deps._synapse_cfg.data_root / "skills"
             _skills_dir.mkdir(parents=True, exist_ok=True)
+            seeded = SkillRegistry.seed_bundled_skills(_skills_dir)
+            if seeded:
+                logger.info("[Skills] Seeded %d bundled skill(s)", seeded)
 
             deps.skill_registry = SkillRegistry(_skills_dir)
             deps.skill_router = SkillRouter()

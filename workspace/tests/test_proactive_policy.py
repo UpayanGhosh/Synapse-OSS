@@ -51,6 +51,29 @@ def test_policy_reaches_out_for_urgent_relevant_context_after_silence_gap() -> N
     assert "calendar" in decision.evidence
 
 
+def test_policy_reaches_out_for_memory_emotional_need_after_silence_gap() -> None:
+    from sci_fi_dashboard.proactive_policy import ProactivePolicyInput, ProactivePolicyScorer
+
+    decision = ProactivePolicyScorer().score(
+        ProactivePolicyInput(
+            user_id="the_creator",
+            channel_id="telegram",
+            now_hour=14,
+            recent_memory_summaries=[
+                "User is anxious about tomorrow's Kestrel demo deadline and asked for a check-in."
+            ],
+            seconds_since_last_message=9 * 3600,
+            emotional_need=0.85,
+        )
+    )
+
+    assert decision.should_reach_out is True
+    assert decision.reason == "policy_score"
+    assert decision.score >= 0.62
+    assert decision.components["urgency"] >= 0.35
+    assert "memory_urgency" in decision.evidence
+
+
 def test_policy_blocks_recent_contact_without_high_urgency() -> None:
     from sci_fi_dashboard.proactive_policy import ProactivePolicyInput, ProactivePolicyScorer
 

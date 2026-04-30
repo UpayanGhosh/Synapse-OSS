@@ -99,6 +99,16 @@ class TestMessageWorkerConstruction:
         worker = MessageWorker(queue=q, process_fn=process)
         assert worker._process_fn_accepts_mcp is True
 
+    def test_channel_metadata_detection(self):
+        """process_fn with keyword channel metadata is detected."""
+        q = TaskQueue()
+
+        async def process(msg, chat_id, mcp_context="", *, channel_id="whatsapp", is_group=False):
+            return "r"
+
+        worker = MessageWorker(queue=q, process_fn=process)
+        assert worker._process_fn_accepts_channel_metadata is True
+
 
 # ===========================================================================
 # _get_channel
@@ -221,6 +231,52 @@ class TestHandleTask:
         await worker._handle_task(task, worker_id=0)
         assert len(stub.sent_messages) == 1
         assert stub.sent_messages[0] == ("c1", "processed response")
+
+    @pytest.mark.asyncio
+    async def test_pipeline_receives_channel_metadata(self):
+        """Worker passes Telegram metadata into channel-aware pipelines."""
+        from sci_fi_dashboard.channels.registry import ChannelRegistry
+        from sci_fi_dashboard.channels.stub import StubChannel
+
+        q = TaskQueue()
+        seen = {}
+
+        async def process(msg, chat_id, mcp_context="", *, channel_id="whatsapp", is_group=False):
+            seen.update(
+                {
+                    "msg": msg,
+                    "chat_id": chat_id,
+                    "mcp_context": mcp_context,
+                    "channel_id": channel_id,
+                    "is_group": is_group,
+                }
+            )
+            return "ok"
+
+        reg = ChannelRegistry()
+        stub = StubChannel("telegram")
+        reg.register(stub)
+
+        worker = MessageWorker(queue=q, process_fn=process, num_workers=1, channel_registry=reg)
+        task = MessageTask(
+            task_id="t1",
+            chat_id="tg-chat",
+            user_message="hello",
+            channel_id="telegram",
+            is_group=True,
+            mcp_context="ctx",
+        )
+
+        await worker._handle_task(task, worker_id=0)
+
+        assert seen == {
+            "msg": "hello",
+            "chat_id": "tg-chat",
+            "mcp_context": "ctx",
+            "channel_id": "telegram",
+            "is_group": True,
+        }
+        assert stub.sent_messages == [("tg-chat", "ok")]
 
     @pytest.mark.asyncio
     async def test_empty_response_fails_task(self):

@@ -8,8 +8,8 @@ Design decisions (Phase 3):
 - Trigger semantics: OR-combined (idle OR message-count). Most robust against
   pathological cases (very active sessions that never go idle, and long-dead
   sessions that never hit the count).
-- Idle threshold: 1800 s (30 min). Brief pauses don't flush; genuinely dead
-  sessions flush within ~1 scan cycle after the threshold.
+- Idle threshold: 21600 s (6 hours). Brief pauses don't flush; long-running
+  sessions still get saved without requiring the user to run /new.
 - Message count: 50. Matches SBS batch_threshold so ingest and profiling stay
   in sync.
 - Scanner host: FastAPI lifespan background task. Flush cadence must follow

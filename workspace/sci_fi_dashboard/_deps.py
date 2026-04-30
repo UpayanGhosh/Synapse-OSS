@@ -87,6 +87,7 @@ except ImportError:
 skill_registry: "_SkillRegistry | None" = None
 skill_router: "_SkillRouter | None" = None
 skill_watcher: "_SkillWatcher | None" = None
+cron_service = None
 
 # ---------------------------------------------------------------------------
 # Tool execution loop constants

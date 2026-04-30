@@ -58,6 +58,7 @@ class CronService:
         self._run_log = RunLog(data_root)
         self._jobs: list[CronJob] = []
         self._timer_task: asyncio.Task | None = None
+        self._wakeup_event: asyncio.Event | None = None
         self._running = False
 
     # ------------------------------------------------------------------
@@ -70,16 +71,19 @@ class CronService:
         logger.info("Loaded %d cron jobs for agent %s", len(self._jobs), self._agent_id)
         await self._catch_up_missed_jobs()
         self._running = True
+        self._wakeup_event = asyncio.Event()
         self._timer_task = asyncio.create_task(self._timer_loop())
 
     async def stop(self) -> None:
         """Cancel the timer and persist the current state."""
         self._running = False
+        self._wake_timer()
         if self._timer_task and not self._timer_task.done():
             self._timer_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await self._timer_task
         self._store.save(self._jobs)
+        self._wakeup_event = None
         logger.info("Cron service stopped for agent %s", self._agent_id)
 
     # ------------------------------------------------------------------
@@ -115,6 +119,7 @@ class CronService:
 
         self._jobs.append(job)
         self._store.save(self._jobs)
+        self._wake_timer()
         logger.info("Added cron job %s (%s)", job.id, job.name)
         return job
 
@@ -153,6 +158,7 @@ class CronService:
             job.state.next_run_at_ms = compute_next_run_at_ms(job.schedule, now_ms)
 
         self._store.save(self._jobs)
+        self._wake_timer()
         logger.info("Updated cron job %s", job_id)
         return job
 
@@ -163,6 +169,7 @@ class CronService:
         removed = len(self._jobs) < before
         if removed:
             self._store.save(self._jobs)
+            self._wake_timer()
             logger.info("Removed cron job %s", job_id)
         return removed
 
@@ -197,11 +204,12 @@ class CronService:
                 sleep_seconds = self._seconds_until_next()
                 if sleep_seconds is None:
                     # No jobs with a next_run — sleep a bit and re-check
-                    await asyncio.sleep(10)
+                    await self._wait_for_wake(10.0)
                     continue
 
                 if sleep_seconds > 0:
-                    await asyncio.sleep(sleep_seconds)
+                    await self._wait_for_wake(sleep_seconds)
+                    continue
 
                 if not self._running:
                     break
@@ -229,7 +237,31 @@ class CronService:
                 break
             except Exception:
                 logger.exception("Unexpected error in cron timer loop")
-                await asyncio.sleep(5)
+                await self._wait_for_wake(5.0)
+
+    async def _wait_for_wake(self, timeout_seconds: float) -> None:
+        """Wait for timer timeout or a CRUD wake signal, whichever comes first."""
+        event = self._wakeup_event
+        if event is None:
+            await asyncio.sleep(timeout_seconds)
+            return
+
+        if event.is_set():
+            event.clear()
+            return
+
+        try:
+            await asyncio.wait_for(event.wait(), timeout=timeout_seconds)
+        except TimeoutError:
+            pass
+        finally:
+            if event.is_set():
+                event.clear()
+
+    def _wake_timer(self) -> None:
+        """Interrupt the timer sleep so newly earlier jobs can be considered."""
+        if self._wakeup_event is not None:
+            self._wakeup_event.set()
 
     def _seconds_until_next(self) -> float | None:
         """Return seconds until the earliest due job, or None if no jobs scheduled."""
@@ -359,19 +391,69 @@ class CronService:
         if payload.kind == PayloadKind.AGENT_TURN:
             session_key = f"cron-{job.id}-{uuid.uuid4().hex[:8]}"
             if job.session_target == SessionTarget.ISOLATED:
-                return await run_isolated_agent(payload, session_key, self._execute_fn)
+                return await run_isolated_agent(
+                    payload,
+                    session_key,
+                    self._execute_fn_with_delivery_context(job),
+                )
             # MAIN or CURRENT — use execute_fn directly
             if self._execute_fn:
-                return await self._execute_fn(payload.message or "", session_key)
+                return await self._execute_fn(
+                    payload.message or "",
+                    session_key,
+                    **self._payload_execute_kwargs(job),
+                )
             return ""
 
         if payload.kind == PayloadKind.SYSTEM_EVENT:
             # System events are just passed through execute_fn if available
             if self._execute_fn:
-                return await self._execute_fn(payload.message or "", f"cron-sys-{job.id}")
+                return await self._execute_fn(
+                    payload.message or "",
+                    f"cron-sys-{job.id}",
+                    **self._payload_execute_kwargs(job),
+                )
             return payload.message or ""
 
         return ""
+
+    def _execute_fn_with_delivery_context(self, job: CronJob):
+        """Wrap execute_fn so isolated agent payload kwargs keep delivery context."""
+        if self._execute_fn is None:
+            return None
+
+        async def _wrapped(message: str, session_key: str, **kwargs):
+            merged = self._delivery_context_kwargs(job)
+            merged.update(kwargs)
+            return await self._execute_fn(message, session_key, **merged)
+
+        return _wrapped
+
+    def _payload_execute_kwargs(self, job: CronJob) -> dict[str, Any]:
+        """Build execute_fn kwargs shared by main/current and system-event cron jobs."""
+        payload = job.payload
+        kwargs = self._delivery_context_kwargs(job)
+        if payload.model_override:
+            kwargs["model_override"] = payload.model_override
+        if payload.fallbacks:
+            kwargs["fallbacks"] = payload.fallbacks
+        if payload.thinking:
+            kwargs["thinking"] = payload.thinking
+        if payload.tools_allow:
+            kwargs["tools_allow"] = payload.tools_allow
+        if payload.light_context:
+            kwargs["light_context"] = payload.light_context
+        kwargs["timeout_seconds"] = payload.timeout_seconds
+        return kwargs
+
+    @staticmethod
+    def _delivery_context_kwargs(job: CronJob) -> dict[str, Any]:
+        kwargs: dict[str, Any] = {}
+        if job.delivery.channel:
+            kwargs["channel_id"] = job.delivery.channel
+        if job.delivery.to:
+            kwargs["user_id"] = job.delivery.to
+        return kwargs
 
     # ------------------------------------------------------------------
     # Catch-up

@@ -107,6 +107,108 @@ class TestSkillRouting:
         ), f"Skill executed {exec_mock.await_count} times — expected exactly 1"
 
 
+def test_memory_identity_turns_skip_skill_routing():
+    from sci_fi_dashboard.chat_pipeline import _should_skip_skill_routing
+
+    assert _should_skip_skill_routing(
+        "Remember this: I am Aarav and I prefer short calm replies."
+    )
+    assert _should_skip_skill_routing("Save my preference: no long explanations.")
+    assert not _should_skip_skill_routing("summarize this article for me")
+
+
+def test_skill_routing_requires_explicit_trigger():
+    from types import SimpleNamespace
+
+    from sci_fi_dashboard.chat_pipeline import _has_explicit_skill_trigger
+
+    skills = [
+        SimpleNamespace(name="synapse.summarize", triggers=["summarize", "tldr"]),
+        SimpleNamespace(name="synapse.weather", triggers=["what's the weather"]),
+    ]
+
+    assert _has_explicit_skill_trigger("what's the weather in Bangalore?", skills)
+    assert not _has_explicit_skill_trigger(
+        "I am scared Kestrel is another almost-startup.", skills
+    )
+
+
+def test_relationship_voice_contract_for_personal_turns():
+    from sci_fi_dashboard.chat_pipeline import (
+        _build_relationship_voice_contract,
+        _is_relationship_voice_turn,
+    )
+
+    user_msg = (
+        "Personal update: I think I have a real crush on Naina now. "
+        "Please don't make this dramatic; keep me grounded."
+    )
+
+    assert _is_relationship_voice_turn(user_msg, "casual", "safe")
+    contract = _build_relationship_voice_contract(
+        user_msg,
+        "casual",
+        "safe",
+        "casual_reflective",
+    )
+    assert "close friend" in contract
+    assert "leg-pull" in contract
+    assert "Avoid bot phrases" in contract
+    assert "therapy-template" in contract
+
+
+def test_relationship_voice_contract_skips_tool_and_code_turns():
+    from sci_fi_dashboard.chat_pipeline import _build_relationship_voice_contract
+
+    assert (
+        _build_relationship_voice_contract(
+            "search the web for current onboarding ideas",
+            "casual",
+            "safe",
+            "full",
+        )
+        == ""
+    )
+
+
+def test_relationship_voice_contract_keeps_memory_turns_warm():
+    from sci_fi_dashboard.chat_pipeline import _build_relationship_voice_contract
+
+    contract = _build_relationship_voice_contract(
+        "Remember that impulse-buying audio gear is my weakness when I am anxious.",
+        "casual",
+        "safe",
+        "full",
+    )
+
+    assert "close friend" in contract
+    assert "one next action" in contract
+    assert (
+        _build_relationship_voice_contract(
+            "I feel this parser is broken, debug the code",
+            "code",
+            "safe",
+            "full",
+        )
+        == ""
+    )
+
+
+def test_relationship_voice_contract_joins_fair_vent_but_keeps_spine():
+    from sci_fi_dashboard.chat_pipeline import _build_relationship_voice_contract
+
+    contract = _build_relationship_voice_contract(
+        "I am pissed. Rohan dumped the demo cleanup on me and I need to vent.",
+        "casual",
+        "safe",
+        "casual_reflective",
+    )
+
+    assert "rant with them" in contract
+    assert "contradict them with care" in contract
+    assert "share a real opinion" in contract
+
+
 class TestSkillRoutingSource:
     """WA-FIX-05 red→green source-level signal.
 

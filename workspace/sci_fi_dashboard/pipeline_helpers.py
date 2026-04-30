@@ -1,12 +1,17 @@
 """Gateway processing pipeline, background workers, and utility functions."""
 
 import asyncio
+import contextlib
 import json
 import logging
 import os
+import re
+import sqlite3
 import socket
 import time
 import uuid
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 
 import psutil
@@ -24,6 +29,367 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Utility Functions
 # ---------------------------------------------------------------------------
+
+
+def _ensure_user_visible_reply(reply: str) -> str:
+    """Prevent empty or diagnostics-only replies from reaching chat channels."""
+    text = str(reply or "")
+    for marker in ("\u200b", "\u200c", "\u200d", "\ufeff", "\x00"):
+        text = text.replace(marker, "")
+    sep = text.find("\n\n---\n**Context Usage:**")
+    if sep == -1:
+        sep = text.find("\n---\n**Context Usage:**")
+    if sep != -1:
+        text = text[:sep]
+    visible = _strip_channel_markdown(text).strip()
+    if not visible or visible.startswith("---\n**Context Usage:**"):
+        return "I heard you. I hit an empty response there, so please try that once more."
+    return visible
+
+
+def _strip_channel_markdown(text: str) -> str:
+    """Make LLM markdown feel like normal chat text in WhatsApp/Telegram."""
+    cleaned = str(text or "")
+    cleaned = re.sub(r"```(?:\w+)?\n([\s\S]*?)```", r"\1", cleaned)
+    cleaned = re.sub(r"`([^`]+)`", r"\1", cleaned)
+    cleaned = re.sub(r"\*\*([^*]+)\*\*", r"\1", cleaned)
+    cleaned = re.sub(r"__([^_]+)__", r"\1", cleaned)
+    cleaned = re.sub(r"(?<!\*)\*([^*\n]+)\*(?!\*)", r"\1", cleaned)
+    cleaned = re.sub(r"(?<!_)_([^_\n]+)_(?!_)", r"\1", cleaned)
+    cleaned = re.sub(r"^\s{0,3}#{1,6}\s+", "", cleaned, flags=re.MULTILINE)
+    cleaned = re.sub(r"^\s*[-*+]\s+", "- ", cleaned, flags=re.MULTILINE)
+    cleaned = re.sub(r"\[([^\]]+)\]\((https?://[^)]+)\)", r"\1 (\2)", cleaned)
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+    return cleaned
+
+
+def _memory_db_path_from_config(cfg) -> Path:
+    db_dir = getattr(cfg, "db_dir", None)
+    if db_dir is None:
+        db_dir = Path(getattr(cfg, "data_root", Path.home() / ".synapse" / "workspace")) / "db"
+    return Path(db_dir) / "memory.db"
+
+
+def _sync_user_turn_memory(
+    *,
+    user_msg: str,
+    session_key: str,
+    target: str,
+    cfg,
+) -> int:
+    """Immediately persist lightweight structured user facts for this turn.
+
+    Full vector/KG ingestion still runs on /new, but identity, people, projects,
+    preferences, routines, corrections, and commitments should not wait for a
+    session archive. This keeps Jarvis-like continuity alive during long chats.
+    """
+    try:
+        from sci_fi_dashboard.user_memory import distill_and_upsert_user_memory_facts
+
+        db_path = _memory_db_path_from_config(cfg)
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        conn = sqlite3.connect(str(db_path))
+        try:
+            facts = distill_and_upsert_user_memory_facts(
+                conn,
+                text=f"User: {user_msg}",
+                user_id=session_key,
+                source_doc_id=None,
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        if facts:
+            with contextlib.suppress(Exception):
+                sbs = deps.get_sbs_for_target(target)
+                if hasattr(sbs, "sync_user_memory"):
+                    sbs.sync_user_memory(session_key, str(db_path))
+            logger.info(
+                "immediate_user_memory_synced",
+                extra={
+                    "session_key": session_key,
+                    "target": target,
+                    "facts": len(facts),
+                },
+            )
+        return len(facts)
+    except Exception:
+        logger.exception("immediate user-memory sync failed for %s", session_key)
+        return 0
+
+
+@dataclass(frozen=True)
+class ParsedReminder:
+    task: str
+    when: datetime
+
+
+_REMINDER_TRIGGERS = (
+    "can you remind",
+    "can you nudge",
+    "can you ping",
+    "can you notify",
+    "remind me",
+    "set a reminder",
+    "reminder for",
+    "don't forget",
+    "dont forget",
+    "nudge me",
+    "ping me",
+    "notify me",
+    "call me out",
+)
+
+_DURATION_RE = re.compile(
+    r"\b(?:in|after)\s+(?P<amount>\d{1,3})\s*"
+    r"(?P<unit>minutes?|mins?|min|hours?|hrs?|hr|days?|day)\b",
+    re.IGNORECASE,
+)
+_RELATIVE_BEFORE_RE = re.compile(
+    r"\b(?P<amount>\d{1,3})\s*"
+    r"(?P<unit>minutes?|mins?|min|hours?|hrs?|hr|days?|day)\s+before\b(?:\s+it)?",
+    re.IGNORECASE,
+)
+
+
+def _duration_from_match(match: re.Match[str]) -> timedelta:
+    amount = int(match.group("amount"))
+    unit = match.group("unit").lower()
+    if unit.startswith(("hour", "hr")):
+        return timedelta(hours=amount)
+    if unit.startswith("day"):
+        return timedelta(days=amount)
+    return timedelta(minutes=amount)
+
+
+def _get_local_reminder_tz() -> timezone:
+    """Use configured user timezone for natural-language reminders."""
+    try:
+        cfg = SynapseConfig.load()
+        tz_offset = cfg.session.get("timezone_offset_hours")
+        if tz_offset is not None:
+            return timezone(timedelta(hours=float(tz_offset)))
+    except Exception:
+        pass
+
+    local_offset = datetime.now(UTC).astimezone().utcoffset()
+    return timezone(local_offset) if local_offset else UTC
+
+
+def _is_reminder_request(text: str) -> bool:
+    lowered = text.lower()
+    return any(trigger in lowered for trigger in _REMINDER_TRIGGERS)
+
+
+def _extract_event_name(text: str) -> str | None:
+    event_match = re.search(
+        r"\b(?:today|tomorrow)?\s*(?:the\s+|my\s+)?"
+        r"(?P<event>[a-z0-9][a-z0-9 '\-]{2,90}?)\s+"
+        r"(?:is|starts|happens)\s+at\b",
+        text,
+        re.IGNORECASE,
+    )
+    if not event_match:
+        return None
+    event = event_match.group("event").strip(" .,!?:;")
+    event = re.sub(r"\s+", " ", event)
+    return event or None
+
+
+def _extract_reminder_task(text: str) -> str:
+    task = text.strip()
+    lowered = task.lower()
+    for prefix in (
+        "remind me to ",
+        "set a reminder to ",
+        "don't forget to ",
+        "dont forget to ",
+        "nudge me to ",
+        "ping me to ",
+        "notify me to ",
+    ):
+        if lowered.startswith(prefix):
+            task = task[len(prefix) :]
+            break
+    else:
+        event = _extract_event_name(text)
+        action_match = re.search(
+            r"\bneed\s+(?:at\s+least\s+)?"
+            r"(?:\d{1,3}\s*(?:minutes?|mins?|min|hours?|hrs?|hr)\s+before\s+it\s+)?"
+            r"to\s+(?P<action>[^.!?]+)",
+            text,
+            re.IGNORECASE,
+        )
+        if event and action_match:
+            action = action_match.group("action").strip(" .,!?:;")
+            if event.lower() not in action.lower():
+                article = "" if event.lower().startswith(("the ", "my ")) else "the "
+                return f"{action} for {article}{event}".strip()
+            return action or event
+        if event:
+            return event
+
+        ask_match = re.search(
+            r"\b(?:remind|nudge|ping|notify)\s+me\b[^.!?]{0,80}?\b(?:to|about)\s+"
+            r"(?P<task>[^.!?]+)",
+            text,
+            re.IGNORECASE,
+        )
+        if ask_match:
+            task = ask_match.group("task")
+
+    task = _RELATIVE_BEFORE_RE.sub(" ", task)
+    task = _DURATION_RE.sub(" ", task)
+
+    for marker in (" by ", " at ", " on ", " tomorrow", " today", " before "):
+        idx = task.lower().find(marker)
+        if idx > 0:
+            task = task[:idx]
+            break
+
+    return task.strip(" .,!") or "your reminder"
+
+
+def _parse_reminder_request(text: str, now: datetime | None = None) -> ParsedReminder | None:
+    """Parse common reminder phrasing into a one-shot datetime + task."""
+    if not _is_reminder_request(text):
+        return None
+
+    try:
+        from dateutil import parser as date_parser
+    except Exception:
+        return None
+
+    base = now or datetime.now(_get_local_reminder_tz())
+    if base.tzinfo is None:
+        base = base.replace(tzinfo=_get_local_reminder_tz())
+
+    duration_match = _DURATION_RE.search(text)
+    relative_before_matches = list(_RELATIVE_BEFORE_RE.finditer(text))
+    if duration_match and not relative_before_matches:
+        return ParsedReminder(
+            task=_extract_reminder_task(text),
+            when=base.replace(microsecond=0) + _duration_from_match(duration_match),
+        )
+
+    parse_text = _RELATIVE_BEFORE_RE.sub(" ", text)
+    parse_text = _DURATION_RE.sub(" ", parse_text)
+    lowered = text.lower()
+    if "tomorrow" in lowered:
+        parse_text = re.sub(
+            r"\btomorrow\b",
+            (base + timedelta(days=1)).strftime("%B %d %Y"),
+            parse_text,
+            flags=re.IGNORECASE,
+        )
+    elif "today" in lowered:
+        parse_text = re.sub(
+            r"\btoday\b",
+            base.strftime("%B %d %Y"),
+            parse_text,
+            flags=re.IGNORECASE,
+        )
+
+    try:
+        when = date_parser.parse(parse_text, fuzzy=True, default=base.replace(second=0, microsecond=0))
+    except (ValueError, OverflowError, TypeError):
+        return None
+
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=base.tzinfo)
+
+    if relative_before_matches:
+        # If the user says both "need 20 minutes before" and "nudge me
+        # 30 minutes before", the last lead-time phrase is the requested nudge.
+        when = when - _duration_from_match(relative_before_matches[-1])
+
+    if when <= base:
+        # If user supplied a month/day without a year and it resolved to past,
+        # carry it to next year instead of silently creating a dead cron job.
+        try:
+            candidate = when.replace(year=when.year + 1)
+        except ValueError:
+            candidate = when + timedelta(days=365)
+        when = candidate
+
+    return ParsedReminder(task=_extract_reminder_task(text), when=when)
+
+
+def _format_tools_command(channel_id: str, chat_id: str) -> str:
+    registry = deps.tool_registry
+    if registry is None:
+        return "No tools are loaded right now."
+
+    from sci_fi_dashboard.chat_pipeline import _is_owner_sender
+    from sci_fi_dashboard.tool_registry import ToolContext
+
+    tools = registry.resolve(
+        ToolContext(
+            chat_id=chat_id,
+            sender_id=chat_id,
+            sender_is_owner=_is_owner_sender(chat_id),
+            workspace_dir=str(deps.WORKSPACE_ROOT),
+            config=getattr(deps._synapse_cfg, "session", {}),
+            channel_id=channel_id,
+        )
+    )
+    if not tools:
+        return "No tools are available for this chat."
+
+    lines = ["Available tools:"]
+    for tool in sorted(tools, key=lambda t: t.name):
+        owner = " owner-only" if getattr(tool, "owner_only", False) else ""
+        lines.append(f"- {tool.name}{owner}: {tool.description}")
+    return "\n".join(lines)
+
+
+async def _maybe_handle_reminder_command(
+    user_msg: str,
+    chat_id: str,
+    channel_id: str,
+    *,
+    now: datetime | None = None,
+) -> str | None:
+    parsed = _parse_reminder_request(user_msg, now=now)
+    if parsed is None:
+        return None
+
+    cron_service = getattr(deps, "cron_service", None)
+    if cron_service is None:
+        return "I understood the reminder, but the cron scheduler is not running yet."
+
+    delivery_prompt = (
+        "CRON DELIVERY MODE: Output only the Telegram reminder text. No headers, "
+        "labels, or meta-commentary. Your reply is delivered directly to the user.\n\n"
+        f"Reminder due now: {parsed.task}.\n"
+        f"Original request: {user_msg}\n"
+        "Write one short, warm, close-friend nudge. If the user asked to be called "
+        "out, do it lightly."
+    )
+    job = cron_service.add(
+        {
+            "name": f"Reminder: {parsed.task[:80]}",
+            "schedule": {"kind": "at", "at": parsed.when.isoformat()},
+            "payload": {
+                "kind": "systemEvent",
+                "message": delivery_prompt,
+                "timeout_seconds": 60,
+            },
+            "delivery": {
+                "mode": "announce",
+                "channel": channel_id,
+                "to": chat_id,
+            },
+            "session_target": "main",
+            "wake_mode": "now",
+            "enabled": True,
+        }
+    )
+    return (
+        f"Done - I'll nudge you at {parsed.when.strftime('%Y-%m-%d %H:%M %Z')}: "
+        f"{parsed.task}."
+    )
 
 
 def _port_open(host: str, port: int, timeout: float = 0.5) -> bool:
@@ -234,6 +600,9 @@ _session_ingest_tasks: set[asyncio.Task] = set()
 # GC anchor for diary generation background tasks (/new command)
 _diary_tasks: set[asyncio.Task] = set()
 
+PERIODIC_MEMORY_FLUSH_MESSAGES = 50
+PERIODIC_MEMORY_FLUSH_SECONDS = 6 * 60 * 60
+
 
 async def _send_voice_note(reply: str, chat_id: str) -> None:
     """Background task: synthesize TTS, save to media store, deliver via WhatsApp."""
@@ -290,6 +659,92 @@ async def _generate_diary_background(
         )
 
 
+async def _write_memory_flush_snapshot(snapshot_path: Path, messages: list[dict]) -> None:
+    def _write() -> None:
+        snapshot_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(snapshot_path, "w", encoding="utf-8") as fh:
+            for msg in messages:
+                fh.write(json.dumps(msg, separators=(",", ":")) + "\n")
+
+    await asyncio.to_thread(_write)
+
+
+async def _maybe_schedule_periodic_memory_flush(
+    *,
+    session_key: str,
+    agent_id: str,
+    data_root: Path,
+    transcript_file: Path,
+    session_store,
+    hemisphere: str = "safe",
+) -> None:
+    """Flush active transcript tail to long-term memory every 50 msgs or 6h.
+
+    Unlike /new, this does not rotate the session. It snapshots only messages
+    not previously flushed so long-running Telegram chats keep durable memory
+    without duplicate whole-transcript ingestion.
+    """
+    from sci_fi_dashboard.multiuser.transcript import load_messages
+
+    try:
+        entry = await session_store.get(session_key)
+        if entry is None or not transcript_file.exists():
+            return
+
+        messages = await load_messages(transcript_file)
+        total_count = len(messages)
+        last_count = max(0, int(getattr(entry, "memory_flush_message_count", 0) or 0))
+        new_count = total_count - last_count
+        if new_count <= 0:
+            return
+
+        now = time.time()
+        last_flush_at = getattr(entry, "memory_flush_at", None)
+        flush_baseline = float(last_flush_at) if last_flush_at is not None else float(entry.updated_at)
+        count_due = new_count >= PERIODIC_MEMORY_FLUSH_MESSAGES
+        time_due = (now - flush_baseline) >= PERIODIC_MEMORY_FLUSH_SECONDS
+        if not (count_due or time_due):
+            return
+
+        batch = messages[last_count:]
+        if not batch:
+            return
+
+        snapshot_path = Path(
+            f"{transcript_file}.memoryflush.{int(now * 1000)}.{last_count}-{total_count}"
+        )
+        await _write_memory_flush_snapshot(snapshot_path, batch)
+        await session_store.update(
+            session_key,
+            {
+                "memory_flush_at": now,
+                "memory_flush_message_count": total_count,
+            },
+        )
+
+        task = asyncio.create_task(
+            _ingest_session_background(
+                archived_path=snapshot_path,
+                agent_id=agent_id,
+                session_key=session_key,
+                hemisphere=hemisphere,
+            )
+        )
+        _session_ingest_tasks.add(task)
+        task.add_done_callback(_session_ingest_tasks.discard)
+        logger.info(
+            "periodic_memory_flush_scheduled",
+            extra={
+                "session_key": session_key,
+                "agent_id": agent_id,
+                "messages": new_count,
+                "reason": "count" if count_due else "time",
+            },
+        )
+    except Exception:
+        logger.exception("periodic memory flush scheduling failed for %s", session_key)
+
+
 async def _handle_new_command(
     session_key: str,
     agent_id: str,
@@ -314,6 +769,10 @@ async def _handle_new_command(
 
     # Clear in-memory cache
     deps.conversation_cache.invalidate(session_key)
+    with contextlib.suppress(Exception):
+        from sci_fi_dashboard.chat_pipeline import clear_agent_workspace_session_prefix
+
+        clear_agent_workspace_session_prefix(session_key)
 
     # Rotate session ID → new JSONL on next message
     # CRITICAL: delete() first — _merge_entry() never overwrites session_id via update()
@@ -348,14 +807,165 @@ async def _handle_new_command(
     return "Session archived! I'll remember everything. Starting fresh now."
 
 
+def _direct_persona_session_key(request: ChatRequest, target: str) -> str:
+    explicit = (request.session_key or "").strip()
+    if explicit:
+        return explicit
+    user_id = (request.user_id or "default").strip() or "default"
+    return f"cli:{target}:{user_id}"
+
+
+async def process_direct_persona_chat(
+    request: ChatRequest,
+    target: str,
+    background_tasks=None,
+    mcp_context: str = "",
+) -> dict:
+    """Run /chat/{persona} through the durable session transcript path.
+
+    Direct persona chat is used by the CLI and OpenAI-compatible local clients.
+    Unlike channel workers, it does not enter process_message_pipeline(), so it
+    must capture turns here before calling the LLM and let /new ingest them.
+    """
+    from sci_fi_dashboard.chat_pipeline import persona_chat
+    from sci_fi_dashboard.multiuser.session_store import SessionStore
+    from sci_fi_dashboard.multiuser.transcript import (
+        append_message,
+        load_messages,
+        transcript_path,
+    )
+
+    cfg = SynapseConfig.load()
+    data_root = cfg.data_root
+    session_cfg = getattr(cfg, "session", {}) or {}
+    session_key = _direct_persona_session_key(request, target)
+    session_type = (request.session_type or "safe").strip().lower() or "safe"
+    hemisphere = "spicy" if session_type == "spicy" else "safe"
+
+    store = SessionStore(agent_id=target, data_root=data_root)
+    entry = await store.get(session_key)
+    if entry is None:
+        entry = await store.update(session_key, {})
+    t_path = transcript_path(entry, data_root, target)
+
+    if request.message.strip().lower() == "/new":
+        reply = await _handle_new_command(
+            session_key=session_key,
+            agent_id=target,
+            data_root=data_root,
+            session_store=store,
+            hemisphere=hemisphere,
+        )
+        return {
+            "reply": reply,
+            "persona": f"synapse_{target}",
+            "memory_method": "session_archive",
+            "model": "session-command",
+        }
+
+    raw_history_limit = session_cfg.get("cli_history_limit", session_cfg.get("historyLimit", 50))
+    try:
+        history_limit = int(raw_history_limit)
+    except (TypeError, ValueError):
+        history_limit = 50
+
+    messages = deps.conversation_cache.get(session_key)
+    if messages is None:
+        messages = await load_messages(t_path, limit=history_limit)
+        deps.conversation_cache.put(session_key, messages)
+
+    history_for_llm = list(messages) if messages else list(request.history or [])
+    user_dict = {"role": "user", "content": request.message}
+    await append_message(t_path, user_dict)
+    deps.conversation_cache.append(session_key, user_dict)
+    _sync_user_turn_memory(
+        user_msg=request.message,
+        session_key=session_key,
+        target=target,
+        cfg=cfg,
+    )
+
+    raw_timeout = session_cfg.get("chat_timeout_seconds", 90.0)
+    try:
+        chat_timeout_seconds = float(raw_timeout)
+    except (TypeError, ValueError):
+        chat_timeout_seconds = 90.0
+
+    chat_req = ChatRequest(
+        message=request.message,
+        history=history_for_llm,
+        user_id=request.user_id,
+        session_type=session_type,
+        session_key=session_key,
+    )
+
+    try:
+        result = await asyncio.wait_for(
+            persona_chat(chat_req, target, background_tasks, mcp_context=mcp_context),
+            timeout=chat_timeout_seconds,
+        )
+        if not isinstance(result, dict):
+            result = {"reply": str(result or "")}
+        reply = _ensure_user_visible_reply(str(result.get("reply", "")))
+    except TimeoutError:
+        logger.warning(
+            "direct persona_chat timed out after %.2fs for %s",
+            chat_timeout_seconds,
+            session_key,
+        )
+        reply = (
+            "I saved your message, but I timed out while generating a reply. "
+            "Please try again."
+        )
+        result = {
+            "reply": reply,
+            "persona": f"synapse_{target}",
+            "memory_method": "saved_before_timeout",
+            "model": "timeout",
+        }
+    except Exception:
+        logger.exception("direct persona_chat failed for %s", session_key)
+        reply = (
+            "I saved your message, but hit an error while generating a reply. "
+            "Please try again."
+        )
+        result = {
+            "reply": reply,
+            "persona": f"synapse_{target}",
+            "memory_method": "saved_before_error",
+            "model": "error",
+        }
+
+    asst_dict = {"role": "assistant", "content": reply}
+    await append_message(t_path, asst_dict)
+    deps.conversation_cache.append(session_key, asst_dict)
+    await _maybe_schedule_periodic_memory_flush(
+        session_key=session_key,
+        agent_id=target,
+        data_root=data_root,
+        transcript_file=t_path,
+        session_store=store,
+        hemisphere=hemisphere,
+    )
+
+    result.setdefault("reply", reply)
+    result.setdefault("persona", f"synapse_{target}")
+    result.setdefault("memory_method", "direct_session")
+    return result
+
+
 async def process_message_pipeline(
-    user_msg: str, chat_id: str, mcp_context: str = "", *, is_group: bool = False
+    user_msg: str,
+    chat_id: str,
+    mcp_context: str = "",
+    *,
+    channel_id: str = "whatsapp",
+    is_group: bool = False,
 ) -> str:
     """Process one inbound message through the full session-aware pipeline.
 
-    The ``is_group`` keyword-only parameter defaults to False so the existing
-    3-arg call ``process_fn(task.user_message, chat_id, task.mcp_context)`` from
-    MessageWorker continues to work unchanged (Research Pitfall 3 / D-04, D-06).
+    Channel metadata defaults to the legacy WhatsApp direct path so older
+    callers keep working, while Telegram/Slack/Discord get isolated sessions.
     """
     # Deferred imports to avoid circular dependencies at module load time.
     from sci_fi_dashboard.chat_pipeline import persona_chat
@@ -372,6 +982,7 @@ async def process_message_pipeline(
     # Step 1: Resolve target persona and load config
     # ------------------------------------------------------------------
     target = deps._resolve_target(chat_id)
+    channel_id = (channel_id or "whatsapp").strip().lower() or "whatsapp"
     cfg = SynapseConfig.load()
     data_root = cfg.data_root  # ~/.synapse/ — NOT cfg.db_dir.parent (Research Pitfall 1)
     session_cfg = getattr(cfg, "session", {}) or {}
@@ -383,12 +994,12 @@ async def process_message_pipeline(
     # ------------------------------------------------------------------
     session_key = build_session_key(
         agent_id=target,
-        channel="whatsapp",
+        channel=channel_id,
         peer_id=chat_id,
         peer_kind="group" if is_group else "direct",
-        account_id="whatsapp",
+        account_id=channel_id,
         dm_scope=dm_scope,
-        main_key="whatsapp:dm",
+        main_key=f"{channel_id}:dm",
         identity_links=identity_links,
     )
     logger.debug("session_key_built")
@@ -398,18 +1009,18 @@ async def process_message_pipeline(
     # ------------------------------------------------------------------
     from sci_fi_dashboard.subagent.spawn import maybe_spawn_agent
 
-    # TODO(multi-channel): channel_id is hardcoded to "whatsapp" because
-    # process_message_pipeline() does not receive channel_id from its caller.
-    # When a second channel gains pipeline access, thread channel_id from
-    # MessageTask through process_message_pipeline's signature instead.
     spawn_reply = await maybe_spawn_agent(
         user_msg=user_msg,
         chat_id=chat_id,
-        channel_id="whatsapp",
+        channel_id=channel_id,
         session_key=session_key,
     )
     if spawn_reply is not None:
         return spawn_reply  # Short-circuit: agent spawned, return acknowledgment as str
+
+    normalized_msg = user_msg.strip().lower()
+    if normalized_msg in {"/tools", "tools"}:
+        return _format_tools_command(channel_id, chat_id)
 
     # ------------------------------------------------------------------
     # Step 3: Get or create session entry (per D-18 corrected, D-19)
@@ -432,13 +1043,41 @@ async def process_message_pipeline(
             session_store=store,
         )
 
+    reminder_reply = await _maybe_handle_reminder_command(
+        user_msg,
+        chat_id=chat_id,
+        channel_id=channel_id,
+    )
+    if reminder_reply is not None:
+        user_dict = {"role": "user", "content": user_msg}
+        asst_dict = {"role": "assistant", "content": reminder_reply}
+        await append_message(t_path, user_dict)
+        await append_message(t_path, asst_dict)
+        deps.conversation_cache.append(session_key, user_dict)
+        deps.conversation_cache.append(session_key, asst_dict)
+        _sync_user_turn_memory(
+            user_msg=user_msg,
+            session_key=session_key,
+            target=target,
+            cfg=cfg,
+        )
+        await _maybe_schedule_periodic_memory_flush(
+            session_key=session_key,
+            agent_id=target,
+            data_root=data_root,
+            transcript_file=t_path,
+            session_store=store,
+            hemisphere="safe",
+        )
+        return reminder_reply
+
     # ------------------------------------------------------------------
     # Step 4: Load history with cache (per D-10, D-13, Research Pitfall 7)
     # ------------------------------------------------------------------
     channels_cfg = (
         cfg.channels if hasattr(cfg, "channels") and isinstance(cfg.channels, dict) else {}
     )
-    history_limit = int(channels_cfg.get("whatsapp", {}).get("dmHistoryLimit", 50))
+    history_limit = int(channels_cfg.get(channel_id, {}).get("dmHistoryLimit", 50))
 
     messages = deps.conversation_cache.get(session_key)
     if messages is None:
@@ -452,6 +1091,12 @@ async def process_message_pipeline(
     user_dict = {"role": "user", "content": user_msg}
     await append_message(t_path, user_dict)
     deps.conversation_cache.append(session_key, user_dict)
+    _sync_user_turn_memory(
+        user_msg=user_msg,
+        session_key=session_key,
+        target=target,
+        cfg=cfg,
+    )
 
     raw_timeout = session_cfg.get("chat_timeout_seconds", 90.0)
     try:
@@ -462,15 +1107,17 @@ async def process_message_pipeline(
     chat_req = ChatRequest(
         message=user_msg,
         user_id=chat_id,
+        channel_id=channel_id,
         session_type="safe",
         history=history_for_llm,
+        session_key=session_key,
     )
     try:
         result = await asyncio.wait_for(
             persona_chat(chat_req, target, None, mcp_context=mcp_context),
             timeout=chat_timeout_seconds,
         )
-        reply = result.get("reply", "")
+        reply = _ensure_user_visible_reply(result.get("reply", ""))
     except TimeoutError:
         logger.warning("persona_chat timed out after %.2fs for %s", chat_timeout_seconds, session_key)
         reply = (
@@ -493,6 +1140,14 @@ async def process_message_pipeline(
         try:
             await append_message(t_path, asst_dict)
             deps.conversation_cache.append(session_key, asst_dict)
+            await _maybe_schedule_periodic_memory_flush(
+                session_key=session_key,
+                agent_id=target,
+                data_root=data_root,
+                transcript_file=t_path,
+                session_store=store,
+                hemisphere="safe",
+            )
 
             # Compaction pre-gate (D-14: 60% threshold, D-17: 32k safe default)
             cached = deps.conversation_cache.get(session_key) or []
@@ -528,7 +1183,7 @@ async def process_message_pipeline(
     _reply_stripped = reply.strip()
     _ends_terminal = bool(_reply_stripped) and _reply_stripped[-1] in _terminals
 
-    if reply and _tts_enabled and _ends_terminal:
+    if channel_id == "whatsapp" and reply and _tts_enabled and _ends_terminal:
         tts_task = asyncio.create_task(_send_voice_note(reply, chat_id))
         _background_tasks.add(tts_task)
         tts_task.add_done_callback(_background_tasks.discard)
@@ -537,7 +1192,7 @@ async def process_message_pipeline(
 
 
 async def on_batch_ready(chat_id: str, combined_message: str, metadata: dict):
-    from gateway.queue import MessageTask
+    from sci_fi_dashboard.gateway.queue import MessageTask
 
     is_group = metadata.get("is_group", False)
     channel_id = metadata.get("channel_id", "whatsapp")
@@ -554,7 +1209,7 @@ async def on_batch_ready(chat_id: str, combined_message: str, metadata: dict):
         peer_kind="group" if is_group else "direct",
         account_id=channel_id,
         dm_scope=session_cfg.get("dmScope", "per-channel-peer"),
-        main_key="whatsapp:dm",
+        main_key=f"{channel_id}:dm",
         identity_links=session_cfg.get("identityLinks", {}),
     )
     task = MessageTask(
@@ -624,5 +1279,8 @@ async def gentle_worker_loop():
             await asyncio.sleep(60)
 
 
-# Wire flood callback -- must happen after on_batch_ready is defined
-deps.flood.set_callback(on_batch_ready)
+# Wire flood callback -- must happen after on_batch_ready is defined.
+# Some lightweight unit tests stub _deps without the gateway flood gate; production
+# _deps always has it.
+if getattr(deps, "flood", None) is not None:
+    deps.flood.set_callback(on_batch_ready)

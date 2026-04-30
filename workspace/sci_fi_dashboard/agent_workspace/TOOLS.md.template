@@ -1,205 +1,22 @@
-# TOOLS.md - Your Local Notes
+# TOOLS.md - Local Tool Notes
 
-Skills define *how* tools work. This file is for *your* specifics -- the stuff unique to your setup.
+This file stores environment-specific tool notes. Keep it free of secrets.
 
-## What Goes Here
+## Runtime
 
-- SSH hosts and aliases
-- Installed CLI binaries (`sqlite3`, `curl`, `jq`, `rg`, `git`, `gh`)
-- Phone number nicknames
-- Speaker / room names
-- Device nicknames
-- Anything environment-specific
+- Gateway: `http://127.0.0.1:8000`
+- Health: `GET /health`
+- Runtime config: `~/.synapse/synapse.json`
+- Runtime workspace: `~/.synapse/workspace`
 
-## Installed CLIs (verify with `command -v <cmd>` (bash/zsh) or `Get-Command <cmd>` (PowerShell))
+## Style
 
-- `sqlite3` -- query SQLite DBs directly. Your primary way to touch `memory.db` and `knowledge_graph.db`.
-- `curl` -- HTTP requests. Your primary way to hit your local FastAPI gateway (`http://127.0.0.1:8000`).
-- `jq` -- JSON parsing. Pair with `curl` for clean extraction.
-- `rg` (ripgrep) -- fast text search. Python fallback exists in `grep_tool`.
-- `git` -- version control. Repo lives at `D:\Shorty\Synapse-OSS\`.
-- `gh` -- GitHub CLI (if installed). Issues, PRs, actions.
-- `python` / `uv` -- Python 3.11. `uv` for fast installs.
-- `node` -- Node.js 20+. Used by the Baileys WhatsApp bridge.
-- `ollama` -- local model runtime. `ollama list` shows installed models.
+- Use tools when they materially help.
+- Prefer local/private tools when available.
+- Do not leak raw diagnostics into messaging channels.
+- Ask before external side effects or sensitive data transmission.
 
-## Phone Nicknames
+## Local Notes
 
-(Populate per-user; placeholder)
-
-- Upayan: `+91XXXXXXXXXX`
-- Shreya (Boumuni): `+91XXXXXXXXXX`
-
-> Real numbers are stored in your runtime override at `~/.synapse/workspace/TOOLS.md`, **not** in this committed template. Never paste real phone numbers into a file that ships with the repo.
-
-## Channel Nicknames
-
-- WhatsApp: primary casual channel. Runs via Baileys bridge (internal port 5010).
-- Telegram: secondary casual / debug channel.
-- Discord: optional.
-- Slack: optional (work contexts).
-
-## Useful One-Liners
-
-```bash
-# Check if the gateway is up
-curl -s http://127.0.0.1:8000/health/ready | jq
-
-# List Ollama models
-curl -s http://127.0.0.1:11434/api/tags | jq '.models[].name'
-
-# Query memory.db for recent documents
-sqlite3 ~/.synapse/workspace/db/memory.db "SELECT id, category, substr(content,1,80) FROM documents ORDER BY id DESC LIMIT 5"
-
-# Query knowledge graph for a name
-sqlite3 ~/.synapse/workspace/db/knowledge_graph.db "SELECT * FROM nodes WHERE name LIKE '%Shreya%' LIMIT 10"
-
-# Hot-reload config after editing synapse.json
-curl -s -X POST http://127.0.0.1:8000/reload_config -H "Content-Type: application/json" -d '{}'
-
-# Ingest a quick memory
-curl -s -X POST http://127.0.0.1:8000/add -H "Content-Type: application/json" \
-  -d '{"content":"Upayan prefers Python for scripting","category":"tech_preferences"}'
-```
-
-<tier:frontier,mid_open>
-
-## Provider Model Discovery (curl recipes)
-
-You don't need a dedicated tool to list models per provider -- you have `bash_exec`. Use the recipes below to hit each provider's `/models` endpoint directly, then drop the chosen ID into `synapse.json -> model_mappings.<role>.model` with the right prefix.
-
-API keys live in `synapse.json -> providers.<name>.api_key`. They may also be in env vars (set by `_inject_provider_keys()` at startup). To run the curl recipes:
-
-1. Read the key: `bash('jq -r .providers.openai.api_key ~/.synapse/synapse.json')`
-2. Or check env: `bash('echo $OPENAI_API_KEY')` (set if synapse.json had a real value at boot)
-3. Substitute into curl command directly: `bash('curl ... -H "Authorization: Bearer YOUR_REAL_KEY"')`
-
-Skip providers whose key is `YOUR_*_API_KEY` placeholder or empty -- they're not configured.
-
-### OpenAI
-
-**Endpoint:** `https://api.openai.com/v1/models`
-**Auth:** `Authorization: Bearer $OPENAI_API_KEY`
-**Discover models:**
-```bash
-curl -s https://api.openai.com/v1/models -H "Authorization: Bearer $OPENAI_API_KEY" | jq -r '.data[].id'
-```
-**Use in synapse.json:** `openai/<model-id>` (e.g. `openai/gpt-4o`)
-
-### Anthropic
-
-**Endpoint:** `https://api.anthropic.com/v1/models`
-**Auth:** TWO headers -- `x-api-key: $ANTHROPIC_API_KEY` AND `anthropic-version: 2023-06-01`
-**Discover models:**
-```bash
-curl -s https://api.anthropic.com/v1/models -H "x-api-key: $ANTHROPIC_API_KEY" -H "anthropic-version: 2023-06-01" | jq -r '.data[].id'
-```
-**Use in synapse.json:** `anthropic/<model-id>` (e.g. `anthropic/claude-opus-4-5-20250929`)
-**Notes:** Both headers are required -- omitting `anthropic-version` returns 400.
-
-### Gemini (Google AI Studio)
-
-**Endpoint:** `https://generativelanguage.googleapis.com/v1beta/models?key=$GEMINI_API_KEY`
-**Auth:** none in headers -- key goes in the URL query string
-**Discover models:**
-```bash
-curl -s "https://generativelanguage.googleapis.com/v1beta/models?key=$GEMINI_API_KEY" | jq -r '.models[].name | sub("^models/"; "")'
-```
-**Use in synapse.json:** `gemini/<model-id>` (e.g. `gemini/gemini-1.5-flash`)
-**Notes:** API returns names like `models/gemini-1.5-flash` -- the `sub` step strips the `models/` prefix.
-
-### Groq
-
-**Endpoint:** `https://api.groq.com/openai/v1/models`
-**Auth:** `Authorization: Bearer $GROQ_API_KEY`
-**Discover models:**
-```bash
-curl -s https://api.groq.com/openai/v1/models -H "Authorization: Bearer $GROQ_API_KEY" | jq -r '.data[].id'
-```
-**Use in synapse.json:** `groq/<model-id>` (e.g. `groq/llama-3.1-70b-versatile`)
-**Notes:** OpenAI-compatible response shape.
-
-### OpenRouter
-
-**Endpoint:** `https://openrouter.ai/api/v1/models`
-**Auth:** `Authorization: Bearer $OPENROUTER_API_KEY`
-**Discover models:**
-```bash
-curl -s https://openrouter.ai/api/v1/models -H "Authorization: Bearer $OPENROUTER_API_KEY" | jq -r '.data[].id'
-```
-**Use in synapse.json:** `openrouter/<model-id>` (e.g. `openrouter/anthropic/claude-3.5-sonnet`)
-**Notes:** OpenRouter ids are already provider-prefixed (`anthropic/claude-3.5-sonnet`), so the final string is double-prefixed (`openrouter/anthropic/claude-3.5-sonnet`). That's correct.
-
-### Mistral
-
-**Endpoint:** `https://api.mistral.ai/v1/models`
-**Auth:** `Authorization: Bearer $MISTRAL_API_KEY`
-**Discover models:**
-```bash
-curl -s https://api.mistral.ai/v1/models -H "Authorization: Bearer $MISTRAL_API_KEY" | jq -r '.data[].id'
-```
-**Use in synapse.json:** `mistral/<model-id>` (e.g. `mistral/mistral-large-latest`)
-
-### Together AI
-
-**Endpoint:** `https://api.together.xyz/v1/models`
-**Auth:** `Authorization: Bearer $TOGETHER_API_KEY`
-**Discover models:**
-```bash
-curl -s https://api.together.xyz/v1/models -H "Authorization: Bearer $TOGETHER_API_KEY" | jq -r '.[].id'
-```
-**Use in synapse.json:** `together_ai/<model-id>` (e.g. `together_ai/meta-llama/Llama-3.1-70B-Instruct-Turbo`)
-**Notes:** Response is a bare JSON array, NOT wrapped in `{"data": [...]}` -- use `.[].id` not `.data[].id`.
-
-### xAI
-
-**Endpoint:** `https://api.x.ai/v1/models`
-**Auth:** `Authorization: Bearer $XAI_API_KEY`
-**Discover models:**
-```bash
-curl -s https://api.x.ai/v1/models -H "Authorization: Bearer $XAI_API_KEY" | jq -r '.data[].id'
-```
-**Use in synapse.json:** `xai/<model-id>` (e.g. `xai/grok-2`)
-
-### Cohere
-
-**Endpoint:** `https://api.cohere.com/v1/models`
-**Auth:** `Authorization: Bearer $COHERE_API_KEY`
-**Discover models:**
-```bash
-curl -s https://api.cohere.com/v1/models -H "Authorization: Bearer $COHERE_API_KEY" | jq -r '.models[] | select(.endpoints | index("chat")) | .name'
-```
-**Use in synapse.json:** `cohere/<model-id>` (e.g. `cohere/command-r`)
-**Notes:** Response uses `models[].name` (not `data[].id`). Many entries are embedding/rerank models -- the `select(.endpoints | index("chat"))` filter keeps only chat-capable ones.
-
-### GitHub Copilot
-
-**Endpoint:** `https://api.githubcopilot.com/models` (auth flow is non-trivial)
-**Auth:** Short-lived JWT exchanged from the OAuth token in `~/.config/litellm/github_copilot/api-key.json`. The exchange + refresh is already handled by `llm_router.py`.
-**Discover models:** Don't curl directly -- use the existing `list_available_models` tool, which performs the JWT exchange for you.
-**Use in synapse.json:** `github_copilot/<model-id>` (e.g. `github_copilot/claude-3.5-sonnet`)
-**Notes:** Tokens expire fast and can be revoked before `expires_at`. The router auto-refreshes on 403. Don't try to replicate the JWT flow in bash.
-
-### Ollama (local)
-
-**Endpoint:** `http://localhost:11434/api/tags` (or `$OLLAMA_HOST`)
-**Auth:** none
-**Discover models:**
-```bash
-curl -s http://localhost:11434/api/tags | jq -r '.models[].name'
-```
-**Use in synapse.json:** `ollama_chat/<model-id>` (e.g. `ollama_chat/llama3.2:latest`)
-**Notes:** Use `ollama_chat/` prefix, NOT `ollama/`. The `api_base` is read from `providers.ollama.api_base`.
-
-**Why this is documentation, not a function tool:**
-You already have `bash_exec` -- that's the only tool needed. New providers, new endpoints, new auth styles are added by editing this file (or your runtime override at `~/.synapse/workspace/TOOLS.md`). No code change. You -- as the brain -- decide which provider to query based on your master's intent.
-
-</tier:frontier,mid_open>
-
-## Why Separate from Skills?
-
-Skills are shared / portable -- they teach *concepts* (how to swap a model, how to query memory). This file is *your* environment -- what's actually installed on this machine, the nicknames Upayan uses, which hosts are reachable. Keeping them apart means you can update skills without losing your notes, and share skills without leaking your infrastructure.
-
----
-
-*Update this file as you learn the environment. Add a command here the moment you realize you'll need it again.*
+Add device names, voice IDs, browser details, SSH aliases, and other safe local
+setup notes here.

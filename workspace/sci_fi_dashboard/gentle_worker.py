@@ -1,14 +1,144 @@
 import asyncio
 import concurrent.futures
 import logging
+import sqlite3
 import time
+from dataclasses import dataclass
+from pathlib import Path
 
 import psutil
-import schedule
+
+try:
+    import schedule
+except ImportError:  # pragma: no cover - production installs the dependency
+    schedule = None
 
 from .sqlite_graph import SQLiteGraph
 
 logger = logging.getLogger(__name__)
+
+_DEFAULT_PROACTIVE_USERS = ("the_creator", "the_partner")
+_PROACTIVE_COOLDOWN_SECONDS = 6 * 3600
+_MEMORY_SUMMARY_LIMIT = 5
+_EMOTIONAL_TERMS = (
+    "anxious",
+    "anxiety",
+    "worried",
+    "stress",
+    "stressed",
+    "scared",
+    "fear",
+    "panic",
+    "sad",
+    "lonely",
+)
+_COMMITMENT_TERMS = (
+    "deadline",
+    "demo",
+    "meeting",
+    "interview",
+    "reminder",
+    "remind",
+    "check-in",
+    "check in",
+    "follow up",
+)
+
+
+@dataclass(frozen=True)
+class ProactiveTarget:
+    agent_id: str
+    channel_id: str
+    recipient_id: str
+    session_key: str | None = None
+    last_message_time: float | None = None
+    recent_memory_summaries: tuple[str, ...] = ()
+    emotional_need: float = 0.0
+
+    @property
+    def cooldown_key(self) -> str:
+        return self.session_key or f"{self.agent_id}:{self.channel_id}:{self.recipient_id}"
+
+
+def _path_or_none(value) -> Path | None:
+    if isinstance(value, Path):
+        return value
+    if isinstance(value, str) and value.strip():
+        return Path(value)
+    return None
+
+
+def _memory_db_path_from_config(cfg) -> Path | None:
+    db_dir = _path_or_none(getattr(cfg, "db_dir", None))
+    if db_dir is not None:
+        return db_dir / "memory.db"
+    data_root = _path_or_none(getattr(cfg, "data_root", None))
+    if data_root is not None:
+        return data_root / "workspace" / "db" / "memory.db"
+    return None
+
+
+def _parse_direct_session_target(
+    session_key: str,
+    last_message_time: float | None,
+) -> ProactiveTarget | None:
+    parts = str(session_key or "").lower().split(":")
+    if len(parts) < 5 or parts[0] != "agent" or parts[3] != "dm":
+        return None
+    agent_id = parts[1].strip()
+    channel_id = parts[2].strip()
+    recipient_id = parts[-1].strip()
+    if not agent_id or not channel_id or not recipient_id or recipient_id == "unknown":
+        return None
+    return ProactiveTarget(
+        agent_id=agent_id,
+        channel_id=channel_id,
+        recipient_id=recipient_id,
+        session_key=":".join(parts),
+        last_message_time=last_message_time,
+    )
+
+
+def _load_recent_memory_summaries(
+    db_path: Path | None,
+    session_key: str,
+    *,
+    limit: int,
+) -> list[str]:
+    if db_path is None or not db_path.exists():
+        return []
+
+    user_ids = tuple(dict.fromkeys([session_key, session_key.lower()]))
+    placeholders = ",".join("?" for _ in user_ids)
+    query = f"""
+        SELECT summary
+        FROM user_memory_facts
+        WHERE user_id IN ({placeholders})
+          AND status = 'active'
+        ORDER BY last_seen DESC, id DESC
+        LIMIT ?
+    """
+    try:
+        with sqlite3.connect(str(db_path)) as conn:
+            rows = conn.execute(query, (*user_ids, int(limit))).fetchall()
+    except sqlite3.Error:
+        return []
+
+    summaries: list[str] = []
+    for (summary,) in rows:
+        text = " ".join(str(summary or "").split())
+        if text:
+            summaries.append(text)
+    return summaries
+
+
+def _estimate_emotional_need(summaries: list[str]) -> float:
+    text = " ".join(summaries).lower()
+    if any(term in text for term in _EMOTIONAL_TERMS):
+        return 0.8
+    if any(term in text for term in _COMMITMENT_TERMS):
+        return 0.55
+    return 0.0
 
 
 class GentleWorker:
@@ -29,6 +159,7 @@ class GentleWorker:
         self.cron_service = cron_service
         self.proactive_engine = proactive_engine
         self.channel_registry = channel_registry
+        self._proactive_last_sent: dict[str, float] = {}
 
     def check_conditions(self):
         """
@@ -107,6 +238,152 @@ class GentleWorker:
             print(f"[WARN] Proactive check-in scheduling failed: {e}")
 
     async def _async_proactive_checkin(self):
+        """Async proactive check-in for active direct sessions and linked users."""
+        from synapse_config import SynapseConfig
+
+        from sci_fi_dashboard.pipeline_emitter import get_emitter
+
+        cfg = SynapseConfig.load()
+        targets = await self._discover_proactive_targets(cfg)
+
+        for target in targets:
+            try:
+                if self._is_proactive_cooling_down(target.cooldown_key):
+                    continue
+
+                reply = await self.proactive_engine.maybe_reach_out(
+                    target.agent_id,
+                    target.channel_id,
+                    last_message_time=target.last_message_time,
+                    recent_memory_summaries=list(target.recent_memory_summaries),
+                    emotional_need=target.emotional_need,
+                )
+                if not reply:
+                    continue
+
+                channel = self.channel_registry.get(target.channel_id)
+                if channel is None:
+                    continue
+
+                ok = await channel.send(target.recipient_id, reply)
+                if not ok:
+                    print(f"[WARN] Proactive send to {target.agent_id} returned False")
+                    continue
+
+                self._mark_proactive_sent(target.cooldown_key)
+                preview = reply[:80].encode("ascii", errors="replace").decode("ascii")
+                get_emitter().emit(
+                    "proactive.sent",
+                    {
+                        "channel_id": target.channel_id,
+                        "user_id": target.agent_id,
+                        "recipient_id": target.recipient_id,
+                        "reason": "policy_score",
+                        "preview": preview,
+                    },
+                )
+                print(f"[PROACTIVE] Sent check-in to {target.agent_id}/{target.channel_id}")
+            except Exception as e:
+                print(f"[WARN] Proactive {target.agent_id} failed: {e}")
+
+    async def _discover_proactive_targets(self, cfg) -> list[ProactiveTarget]:
+        targets: list[ProactiveTarget] = []
+        targets.extend(self._identity_link_targets(cfg))
+        targets.extend(await self._session_store_targets(cfg))
+
+        deduped: dict[tuple[str, str], ProactiveTarget] = {}
+        for target in targets:
+            key = (target.channel_id, target.recipient_id)
+            existing = deduped.get(key)
+            if existing is None or (not existing.session_key and target.session_key):
+                deduped[key] = target
+        return list(deduped.values())
+
+    def _identity_link_targets(self, cfg) -> list[ProactiveTarget]:
+        session_cfg = getattr(cfg, "session", {}) or {}
+        identity_links = (
+            session_cfg.get("identityLinks", {}) if isinstance(session_cfg, dict) else {}
+        )
+        if not isinstance(identity_links, dict):
+            return []
+
+        targets: list[ProactiveTarget] = []
+        for agent_id in [*_DEFAULT_PROACTIVE_USERS, *identity_links.keys()]:
+            linked = identity_links.get(agent_id, [])
+            if isinstance(linked, str):
+                linked = [linked]
+            if not isinstance(linked, list):
+                continue
+            for recipient_id in linked:
+                recipient = str(recipient_id or "").strip()
+                if not recipient:
+                    continue
+                targets.append(
+                    ProactiveTarget(
+                        agent_id=str(agent_id),
+                        channel_id="whatsapp",
+                        recipient_id=recipient,
+                    )
+                )
+        return targets
+
+    async def _session_store_targets(self, cfg) -> list[ProactiveTarget]:
+        data_root = _path_or_none(getattr(cfg, "data_root", None))
+        if data_root is None:
+            return []
+
+        from sci_fi_dashboard.multiuser.session_store import SessionStore
+
+        db_path = _memory_db_path_from_config(cfg)
+        session_cfg = getattr(cfg, "session", {}) or {}
+        identity_links = (
+            session_cfg.get("identityLinks", {}) if isinstance(session_cfg, dict) else {}
+        )
+        agent_ids = set(_DEFAULT_PROACTIVE_USERS)
+        if isinstance(identity_links, dict):
+            agent_ids.update(str(key) for key in identity_links)
+
+        targets: list[ProactiveTarget] = []
+        for agent_id in sorted(agent_ids):
+            try:
+                store = SessionStore(agent_id, data_root=data_root)
+                entries = await store.load()
+            except Exception as exc:
+                logger.debug("Proactive session discovery failed for %s: %s", agent_id, exc)
+                continue
+
+            for session_key, entry in entries.items():
+                parsed = _parse_direct_session_target(session_key, entry.updated_at)
+                if parsed is None:
+                    continue
+                summaries = _load_recent_memory_summaries(
+                    db_path,
+                    parsed.session_key or session_key,
+                    limit=_MEMORY_SUMMARY_LIMIT,
+                )
+                targets.append(
+                    ProactiveTarget(
+                        agent_id=parsed.agent_id,
+                        channel_id=parsed.channel_id,
+                        recipient_id=parsed.recipient_id,
+                        session_key=parsed.session_key,
+                        last_message_time=parsed.last_message_time,
+                        recent_memory_summaries=tuple(summaries),
+                        emotional_need=_estimate_emotional_need(summaries),
+                    )
+                )
+        return targets
+
+    def _is_proactive_cooling_down(self, key: str) -> bool:
+        last_sent = self._proactive_last_sent.get(key)
+        if last_sent is None:
+            return False
+        return time.time() - last_sent < _PROACTIVE_COOLDOWN_SECONDS
+
+    def _mark_proactive_sent(self, key: str) -> None:
+        self._proactive_last_sent[key] = time.time()
+
+    async def _async_proactive_checkin_legacy(self):
         """Async proactive check-in for default users.
 
         PROA-02 + OQ-4: resolves user_id ("the_creator"/"the_partner") to a
@@ -168,6 +445,10 @@ class GentleWorker:
 
     def start(self):
         print(f"[WORKER] Gentle Worker Started (PID: {psutil.Process().pid})")
+
+        if schedule is None:
+            print("[WARN] Gentle Worker scheduling disabled: missing 'schedule' package")
+            return
 
         # Schedule tasks at production-appropriate intervals
         # KG extraction now lives in async gentle_worker_loop() (pipeline_helpers.py)

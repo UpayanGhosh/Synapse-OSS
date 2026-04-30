@@ -19,14 +19,34 @@ def test_should_offer_cli_chat_accepts_positional_args():
     assert not should_offer_cli_chat(True, None)
 
 
-def test_build_options_keeps_bootstrap_pending_without_auto_message(tmp_path, monkeypatch):
-    (tmp_path / "BOOTSTRAP.md").write_text("ritual", encoding="utf-8")
+def test_build_options_autostarts_bootstrap_when_identity_blank(tmp_path, monkeypatch):
+    (tmp_path / "BOOTSTRAP.md").write_text(
+        "# BOOTSTRAP.md - Hello, World\n\nAsk the first identity question.",
+        encoding="utf-8",
+    )
     (tmp_path / "IDENTITY.md").write_text("- Name:\n", encoding="utf-8")
     opts = build_post_onboard_chat_options(workspace_dir=tmp_path, port=8123)
     assert isinstance(opts, ChatLaunchOptions)
     assert opts.port == 8123
-    assert opts.initial_message is None
+    assert opts.initial_message is not None
+    assert "BOOTSTRAP.md" in opts.initial_message
+    assert "Ask the first identity question." in opts.initial_message
+    assert "Your next visible reply must greet the user" in opts.initial_message
+    assert "one question at a time" in opts.initial_message
     assert opts.workspace_dir == tmp_path
+
+
+def test_build_options_autostarts_bootstrap_until_bootstrap_deleted(tmp_path):
+    (tmp_path / "BOOTSTRAP.md").write_text("ritual", encoding="utf-8")
+    (tmp_path / "IDENTITY.md").write_text("- Name: Synapse\n", encoding="utf-8")
+    opts = build_post_onboard_chat_options(workspace_dir=tmp_path, port=8123)
+    assert opts.initial_message is not None
+
+
+def test_build_options_skips_bootstrap_message_after_bootstrap_deleted(tmp_path):
+    (tmp_path / "IDENTITY.md").write_text("- Name: Synapse\n", encoding="utf-8")
+    opts = build_post_onboard_chat_options(workspace_dir=tmp_path, port=8123)
+    assert opts.initial_message is None
 
 
 def test_build_options_accepts_positional_workspace_and_port(tmp_path):

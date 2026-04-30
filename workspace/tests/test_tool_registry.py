@@ -8,6 +8,7 @@ and owner-only access gating.
 
 import os
 import sys
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -19,8 +20,11 @@ from sci_fi_dashboard.tool_registry import (
     ToolRegistry,
     ToolResult,
     error_result,
+    extract_readable_html_text,
     json_result,
     normalize_raw_result,
+    parse_search_results,
+    register_builtin_tools,
     text_result,
 )
 
@@ -267,3 +271,44 @@ class TestToolRegistry:
         j = json_result({"a": 1})
         assert '"a"' in j.content
         assert j.is_error is False
+
+    @pytest.mark.unit
+    def test_builtin_tools_include_query_web_search(self, registry, owner_context):
+        """Built-ins expose both URL fetch and search-query web tools."""
+        memory = MagicMock()
+        register_builtin_tools(registry, memory, "/tmp/synapse")
+
+        names = {tool.name for tool in registry.resolve(owner_context)}
+
+        assert "web_search" in names
+        assert "web_query" in names
+
+    @pytest.mark.unit
+    def test_parse_duckduckgo_lite_results(self):
+        html = """
+        <a rel="nofollow" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Fsaas&amp;rut=x" class='result-link'>
+          10 SaaS Onboarding Best Practices
+        </a>
+        """
+
+        results = parse_search_results(html, limit=3)
+
+        assert results == [
+            {
+                "title": "10 SaaS Onboarding Best Practices",
+                "url": "https://example.com/saas",
+            }
+        ]
+
+    @pytest.mark.unit
+    def test_extract_readable_html_text_removes_noise(self):
+        html = """
+        <html><head><title>Title</title><script>bad()</script></head>
+        <body><nav>Menu</nav><main><h1>Hello</h1><p>Useful text.</p></main></body></html>
+        """
+
+        text = extract_readable_html_text(html, max_chars=200)
+
+        assert "Hello" in text
+        assert "Useful text." in text
+        assert "bad()" not in text

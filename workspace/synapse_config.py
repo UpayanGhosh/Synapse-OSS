@@ -89,8 +89,9 @@ class SessionAutoFlushConfig:
     Attributes:
         enabled:           Master switch. Set ``auto_flush_enabled=false`` to disable
                            entirely (e.g. low-resource environments). Default ``True``.
-        idle_seconds:      Seconds of inactivity before a session is flushed.
-                           Default ``1800`` (30 min). OR-combined with message_count.
+        idle_seconds:      Seconds since the last memory flush/session window before
+                           a session is flushed. Default ``21600`` (6 hours).
+                           OR-combined with message_count.
         message_count:     Message count ceiling before a session is flushed.
                            Default ``50``. OR-combined with idle_seconds.
         check_interval_seconds: How often the scanner wakes up to inspect sessions.
@@ -104,7 +105,7 @@ class SessionAutoFlushConfig:
     """
 
     enabled: bool = True
-    idle_seconds: float = 1800.0
+    idle_seconds: float = 21600.0
     message_count: int = 50
     check_interval_seconds: float = 60.0
     min_messages: int = 5

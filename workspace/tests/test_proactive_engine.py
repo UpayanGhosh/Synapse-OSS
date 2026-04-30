@@ -148,6 +148,35 @@ class TestProactiveAwarenessEngine:
         assert engine.get_prompt_injection() == ""
 
     @pytest.mark.asyncio
+    async def test_maybe_reach_out_uses_memory_signals(self, engine, monkeypatch):
+        captured = {}
+
+        async def _fake_persona_chat(request, target):
+            captured["request"] = request
+            captured["target"] = target
+            return {
+                "reply": "Don't spiral bro, take the first clean step.\n\n---\n**Context Usage:** x"
+            }
+
+        monkeypatch.setattr("sci_fi_dashboard.chat_pipeline.persona_chat", _fake_persona_chat)
+
+        reply = await engine.maybe_reach_out(
+            "the_creator",
+            "telegram",
+            recent_memory_summaries=[
+                "User is anxious about tomorrow's Kestrel demo deadline and asked for a check-in."
+            ],
+            emotional_need=0.85,
+            seconds_since_last_message=9 * 3600,
+            now_hour=14,
+        )
+
+        assert reply == "Don't spiral bro, take the first clean step."
+        assert captured["target"] == "the_creator"
+        assert "Kestrel" in captured["request"].message
+        assert "memory_urgency" in captured["request"].message
+
+    @pytest.mark.asyncio
     async def test_start_creates_task(self, engine):
         engine._running = False
         with patch.object(engine, "_poll_loop", new_callable=AsyncMock):

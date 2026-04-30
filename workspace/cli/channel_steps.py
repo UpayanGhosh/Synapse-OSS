@@ -456,8 +456,8 @@ def run_whatsapp_qr_flow(
         )
         if npm_result.returncode != 0:
             raise NodeJsMissingError(
-                "npm install failed in baileys-bridge/.\n"
-                "Check your internet connection and re-run: .\\synapse_onboard.bat"
+                f"npm install failed in the WhatsApp bridge at {bridge_dir}.\n"
+                "Check your internet connection and re-run: synapse onboard"
             )
         _print("[green]Bridge dependencies installed.[/green]")
 
@@ -467,7 +467,11 @@ def run_whatsapp_qr_flow(
     # a QR event — the terminal stays blank. Wipe it unconditionally before pairing.
     import shutil as _shutil  # noqa: PLC0415
 
-    auth_state_dir = bridge_dir / "auth_state"
+    from cli.install_home import whatsapp_state_dir  # noqa: PLC0415
+
+    state_dir = whatsapp_state_dir()
+    auth_state_dir = state_dir / "auth_state"
+    media_cache_dir = state_dir / "media_cache"
     if auth_state_dir.exists():
         _shutil.rmtree(auth_state_dir, ignore_errors=True)
         _print("[dim]Cleared previous auth state — generating fresh QR...[/dim]")
@@ -492,6 +496,8 @@ def run_whatsapp_qr_flow(
             env={
                 **os.environ,
                 "BRIDGE_PORT": str(BRIDGE_PORT),
+                "SYNAPSE_AUTH_DIR": str(auth_state_dir),
+                "MEDIA_CACHE_DIR": str(media_cache_dir),
                 "PYTHON_WEBHOOK_URL": "http://127.0.0.1:8000/channels/whatsapp/webhook",
             },
             stdout=None,  # inherit — QR prints itself to terminal via qrcode-terminal
@@ -586,7 +592,7 @@ def run_whatsapp_qr_flow(
                     if state == "connected":
                         _print(
                             "[green]WhatsApp paired successfully![/green] "
-                            "Your session is saved in baileys-bridge/auth_state/"
+                            f"Your session is saved in {auth_state_dir}"
                         )
                         return True
                     if state == "logged_out":

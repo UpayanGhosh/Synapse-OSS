@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from cli.chat_types import ChatLaunchOptions
+from cli.first_run_bootstrap import bootstrap_kickoff_message, needs_first_run_bootstrap
 
 
 def should_offer_cli_chat(non_interactive: bool, launch_chat: bool | None) -> bool:
@@ -17,6 +18,10 @@ def build_post_onboard_chat_options(
     target: str = "the_creator",
     user_id: str = "local_cli",
 ) -> ChatLaunchOptions:
+    initial_message = None
+    if needs_first_run_bootstrap(workspace_dir):
+        initial_message = bootstrap_kickoff_message(workspace_dir)
+
     return ChatLaunchOptions(
         target=target,
         user_id=user_id,
@@ -24,6 +29,6 @@ def build_post_onboard_chat_options(
         session_key=f"cli:{target}:{user_id}",
         port=port,
         auto_start_gateway=True,
-        initial_message=None,
+        initial_message=initial_message,
         workspace_dir=workspace_dir,
     )

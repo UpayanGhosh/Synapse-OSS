@@ -13,6 +13,9 @@ from __future__ import annotations
 
 import json
 import logging
+import re
+import html
+import urllib.parse
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -236,6 +239,130 @@ def _web_search_factory(_ctx: ToolContext) -> SynapseTool:
     )
 
 
+def _decode_result_url(href: str) -> str:
+    href = html.unescape(str(href or "").strip())
+    if href.startswith("//"):
+        href = "https:" + href
+    href = urllib.parse.unquote(href)
+    parsed = urllib.parse.urlparse(href)
+    qs = urllib.parse.parse_qs(parsed.query)
+    if "uddg" in qs:
+        href = qs["uddg"][0]
+    return href
+
+
+def _clean_html_text(text: str) -> str:
+    text = html.unescape(re.sub(r"<[^>]+>", " ", str(text or "")))
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def parse_search_results(raw_html: str, limit: int = 5) -> list[dict[str, str]]:
+    """Parse common DuckDuckGo HTML/lite result layouts."""
+    patterns = (
+        r'<a[^>]+href=["\']([^"\']+)["\'][^>]+class=["\']result-link["\'][^>]*>(.*?)</a>',
+        r'<a[^>]+class=["\']result-link["\'][^>]+href=["\']([^"\']+)["\'][^>]*>(.*?)</a>',
+        r'<a[^>]+href=["\']([^"\']+)["\'][^>]+class=["\']result__a["\'][^>]*>(.*?)</a>',
+        r'<a[^>]+class=["\']result__a["\'][^>]+href=["\']([^"\']+)["\'][^>]*>(.*?)</a>',
+    )
+    results: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for pattern in patterns:
+        for href, title_html in re.findall(pattern, raw_html, flags=re.I | re.S):
+            url = _decode_result_url(href)
+            title = _clean_html_text(title_html)
+            if not title or not url.startswith(("http://", "https://")) or url in seen:
+                continue
+            seen.add(url)
+            results.append({"title": title, "url": url})
+            if len(results) >= limit:
+                return results
+    return results
+
+
+def extract_readable_html_text(raw_html: str, max_chars: int = 3000) -> str:
+    """Best-effort visible text extraction without heavyweight parser deps."""
+    text = re.sub(
+        r"<(script|style|noscript|svg|canvas|iframe)\b[^>]*>.*?</\1>",
+        " ",
+        str(raw_html or ""),
+        flags=re.I | re.S,
+    )
+    text = re.sub(r"<!--.*?-->", " ", text, flags=re.S)
+    main_match = re.search(r"<main\b[^>]*>(.*?)</main>", text, flags=re.I | re.S)
+    article_match = re.search(r"<article\b[^>]*>(.*?)</article>", text, flags=re.I | re.S)
+    if main_match:
+        text = main_match.group(1)
+    elif article_match:
+        text = article_match.group(1)
+    text = _clean_html_text(text)
+    return text[:max_chars]
+
+
+def _web_query_factory(_ctx: ToolContext) -> SynapseTool:
+    """Factory for web_query: search the web by natural-language query."""
+
+    async def _execute(arguments: dict) -> ToolResult:
+        query = str(arguments.get("query", "")).strip()
+        if not query:
+            return error_result("web_query failed: missing query")
+        limit = int(arguments.get("limit", 5) or 5)
+        limit = max(1, min(limit, 10))
+
+        try:
+            import httpx
+        except Exception as exc:
+            return error_result(f"web_query failed: httpx unavailable: {exc}")
+
+        urls = [
+            "https://lite.duckduckgo.com/lite/?" + urllib.parse.urlencode({"q": query}),
+            "https://html.duckduckgo.com/html/?" + urllib.parse.urlencode({"q": query}),
+        ]
+        raw_html = ""
+        try:
+            async with httpx.AsyncClient(
+                timeout=12.0,
+                follow_redirects=True,
+                headers={"User-Agent": "Mozilla/5.0"},
+            ) as client:
+                for url in urls:
+                    resp = await client.get(url)
+                    resp.raise_for_status()
+                    raw_html = resp.text
+                    results = parse_search_results(raw_html, limit=limit)
+                    if results:
+                        return json_result({"query": query, "results": results})
+        except Exception as exc:
+            return error_result(f"web_query failed: {exc}")
+
+        return json_result(
+            {
+                "query": query,
+                "results": [],
+                "warning": "Search request completed, but no result links were parsed.",
+            }
+        )
+
+    return SynapseTool(
+        name="web_query",
+        description="Search the public web by query and return result titles and URLs.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Natural-language web search query.",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Max results to return, 1-10.",
+                },
+            },
+            "required": ["query"],
+        },
+        execute=_execute,
+    )
+
+
 def _query_memory_factory(memory_engine: Any) -> ToolFactory:
     """Return a factory that captures a MemoryEngine reference."""
 
@@ -380,6 +507,7 @@ def register_builtin_tools(
         Workspace root path (unused currently, reserved for future factories).
     """
     registry.register_factory("web_search", _web_search_factory)
+    registry.register_factory("web_query", _web_query_factory)
     registry.register_factory("query_memory", _query_memory_factory(memory_engine))
     registry.register_factory("read_file", _read_file_factory)
     registry.register_factory("write_file", _write_file_factory)

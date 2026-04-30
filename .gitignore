@@ -88,7 +88,10 @@ REDUNDANCY_ARCHIVE_*/
 # JSON / text data files  (config templates are whitelisted below)
 # ──────────────────────────────────────────────────────────────
 *.json
+!package.json
 !workspace/sci_fi_dashboard/entities.json
+!workspace/sci_fi_dashboard/runtime_assets/baileys-bridge/package.json
+!workspace/sci_fi_dashboard/runtime_assets/baileys-bridge/package-lock.json
 !synapse.json.example
 !baileys-bridge/package.json
 !baileys-bridge/package-lock.json

@@ -22,7 +22,7 @@ psutil>=5.9.0
 
 # --- Terminal UI ---
 rich>=13.0.0
-typer[all]>=0.24.0              # CLI framework (onboarding wizard + synapse entry point)
+typer>=0.24.0                   # CLI framework (onboarding wizard + synapse entry point)
 questionary>=2.1.0              # Interactive prompts: text, password, select, checkbox, confirm (fallback)
 InquirerPy>=0.3.4               # Preferred terminal UI: better Windows compat + fuzzy search
 

@@ -9,6 +9,31 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 
+_MEMORY_URGENCY_TERMS = (
+    "urgent",
+    "blocked",
+    "deadline",
+    "due",
+    "meeting",
+    "demo",
+    "interview",
+    "remind",
+    "reminder",
+    "check-in",
+    "check in",
+    "follow up",
+    "tomorrow",
+    "today",
+    "anxious",
+    "anxiety",
+    "worried",
+    "stressed",
+    "stress",
+    "scared",
+    "fear",
+    "panic",
+)
+
 
 @dataclass(frozen=True)
 class ProactivePolicyInput:
@@ -135,6 +160,14 @@ class ProactivePolicyScorer:
         if any(term in joined for term in ("urgent", "blocked", "prod", "deadline")):
             score += 0.22
             evidence.append("urgent_terms")
+
+        memory_text = " ".join(policy_input.recent_memory_summaries).lower()
+        if memory_text and any(term in memory_text for term in _MEMORY_URGENCY_TERMS):
+            score += 0.42
+            evidence.append("memory_urgency")
+        elif memory_text and policy_input.emotional_need >= 0.75:
+            score += 0.28
+            evidence.append("memory_emotional_need")
         return _clamp(score), evidence
 
 

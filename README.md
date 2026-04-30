@@ -598,40 +598,27 @@ If you try it and hit issues, that is useful feedback.
 
 > **Full setup guide** (API keys, Ollama, channel linking): [HOW_TO_RUN.md](HOW_TO_RUN.md)
 
-If you want to run Synapse locally:
+If you want to run Synapse locally as an app:
 
-### 1. Clone the repo
-
-```bash
-git clone https://github.com/UpayanGhosh/Synapse-OSS.git
-cd Synapse-OSS
-```
-
-### 2. Create a virtual environment
+### 1. Install the CLI
 
 ```bash
-# macOS / Linux
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-pip install -e .
-
-# Windows
-python -m venv .venv
-.venv\Scripts\activate.bat
-pip install -r requirements.txt
-pip install -e .
+npm install -g synapse-oss
 ```
+
+### 2. Install Synapse into your product home
+
+```bash
+synapse install
+```
+
+This creates and manages your local Synapse product home at `.synapse`
+(`~/.synapse` on macOS/Linux, `%USERPROFILE%\.synapse` on Windows).
 
 ### 3. Run onboarding
 
 ```bash
-# macOS / Linux
-chmod +x synapse_onboard.sh
-./synapse_onboard.sh
-
-# Windows
-synapse_onboard.bat
+synapse onboard
 ```
 
 ### CLI chat
@@ -649,12 +636,11 @@ message so the bot asks who it is, who you are, and what it should call you.
 ### 4. Start Synapse
 
 ```bash
-# macOS / Linux
-./synapse_start.sh
-
-# Windows
-synapse_start.bat
+synapse start
 ```
+
+Developer-only repo setup is for contributors who want to edit Synapse source.
+Normal users should use the npm install flow above.
 
 For the full setup guide, use [HOW_TO_RUN.md](HOW_TO_RUN.md).
 

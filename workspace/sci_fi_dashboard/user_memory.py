@@ -53,11 +53,17 @@ _RESPONSE_STYLE_RULES: tuple[tuple[str, tuple[str, ...], str, float], ...] = (
         (
             r"\bplayful\b",
             r"\btease\b",
+            r"\bleg[- ]?pull\b",
+            r"\bhype me\b",
+            r"\bhype you up\b",
             r"\bfunny\b",
             r"\blighthearted\b",
+            r"\bfriendly\b",
+            r"\blike a friend\b",
+            r"\bhuman like\b",
         ),
-        "Prefers playful response tone.",
-        0.78,
+        "Prefers playful, friend-like response tone.",
+        0.84,
     ),
 )
 
@@ -164,24 +170,220 @@ def _distill_routines(user_text: str) -> list[tuple[str, str, str, float]]:
 
 def _distill_relationships(user_text: str) -> list[tuple[str, str, str, float]]:
     facts: list[tuple[str, str, str, float]] = []
+    seen_keys: set[str] = set()
     pattern = r"\b([A-Z][A-Za-z0-9_-]{1,31})\s+is my\s+([^.!?]{3,80})"
     for match in re.finditer(pattern, user_text):
         name = _clean_value(match.group(1), max_len=32)
         role = _clean_value(match.group(2).lower(), max_len=80)
         if not name or not role or "project" in role:
             continue
-        facts.append((f"person_{_slug(name)}", role, f"{name} is user's {role}.", 0.84))
+        key = f"person_{_slug(name)}"
+        seen_keys.add(key)
+        facts.append((key, role, f"{name} is user's {role}.", 0.84))
+
+    descriptor_patterns = (
+        r"\b([A-Z][A-Za-z0-9_-]{1,31})\s+is the person who\s+([^.!?]{3,180})",
+        r"\b([A-Z][A-Za-z0-9_-]{1,31})\s+is the one who\s+([^.!?]{3,180})",
+    )
+    for descriptor_pattern in descriptor_patterns:
+        for match in re.finditer(descriptor_pattern, user_text):
+            name = _clean_value(match.group(1), max_len=32)
+            detail = _clean_value(match.group(2).lower(), max_len=180)
+            if not name or not detail:
+                continue
+            key = f"person_{_slug(name)}"
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+            facts.append((key, detail, f"{name} is the person who {detail}.", 0.84))
+
+    # Capture day-to-day people even when the user does not use "X is my ...".
+    # These are intentionally conservative: only named entities near relational
+    # or emotional context are promoted to long-term facts.
+    people_markers = (
+        "crush",
+        "boss",
+        "manager",
+        "coworker",
+        "colleague",
+        "client",
+        "friend",
+        "partner",
+        "ma",
+        "mother",
+        "father",
+        "family",
+        "remembered",
+        "liked",
+        "asked",
+        "said",
+    )
+    sentence_pattern = r"[^.!?]*\b[A-Z][A-Za-z0-9_-]{1,31}\b[^.!?]*(?:[.!?]|$)"
+    name_pattern = r"\b[A-Z][A-Za-z0-9_-]{1,31}\b"
+    skip_names = {"user", "me", "i", "synapse", "jarvis"}
+    for match in re.finditer(sentence_pattern, user_text):
+        sentence = _clean_value(match.group(0), max_len=180)
+        if not sentence:
+            continue
+        lower_sentence = sentence.lower()
+        if not any(marker in lower_sentence for marker in people_markers):
+            continue
+        for raw_name in re.findall(name_pattern, sentence):
+            name = _clean_value(raw_name, max_len=32)
+            if not name or name.lower() in skip_names:
+                continue
+            key = f"person_{_slug(name)}"
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+            facts.append(
+                (
+                    key,
+                    sentence,
+                    f"Important person/context: {sentence}.",
+                    0.74,
+                )
+            )
     return facts
 
 
 def _distill_projects(user_text: str) -> list[tuple[str, str, str, float]]:
     facts: list[tuple[str, str, str, float]] = []
+    seen_keys: set[str] = set()
     pattern = r"\b([A-Z][A-Za-z0-9_-]{1,63})\s+is my\s+(?:main|primary|current)\s+project\b"
     for match in re.finditer(pattern, user_text):
         project = _clean_value(match.group(1), max_len=64)
         if not project:
             continue
-        facts.append((f"project_{_slug(project)}", project, f"Current project: {project}.", 0.84))
+        key = f"project_{_slug(project)}"
+        seen_keys.add(key)
+        facts.append((key, project, f"Current project: {project}.", 0.84))
+
+    project_context_markers = (
+        "project",
+        "product",
+        "launch",
+        "code",
+        "onboarding",
+        "wireframe",
+        "deadline",
+        "scope",
+        "solo consultant",
+    )
+    for match in re.finditer(r"[^.!?]*\b[A-Z][A-Za-z0-9_-]{2,63}\b[^.!?]*(?:[.!?]|$)", user_text):
+        sentence = _clean_value(match.group(0), max_len=180)
+        if not sentence:
+            continue
+        scan_sentence = re.sub(
+            r"^\s*(?:memory update|personal update|patch live check(?:\s+\d+)?|final memory check(?:\s+\d+)?|live check(?:\s+\d+)?)\s*:\s*",
+            "",
+            sentence,
+            flags=re.IGNORECASE,
+        )
+        lower_sentence = scan_sentence.lower()
+        if not any(marker in lower_sentence for marker in project_context_markers):
+            continue
+        for raw_project in re.findall(r"\b[A-Z][A-Za-z0-9_-]{2,63}\b", scan_sentence):
+            project = _clean_value(raw_project, max_len=64)
+            project_lower = project.lower()
+            if (
+                not project
+                or project_lower in {"user", "synapse", "jarvis", "memory", "patch", "live", "check"}
+                or f"{project_lower} is the person" in lower_sentence
+                or f"{project_lower} is the one" in lower_sentence
+            ):
+                continue
+            key = f"project_{_slug(project)}"
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+            facts.append(
+                (
+                    key,
+                    sentence,
+                    f"Project context: {sentence}.",
+                    0.76,
+                )
+            )
+    return facts
+
+
+def _distill_preferences_and_patterns(user_text: str) -> list[tuple[str, str, str, float]]:
+    facts: list[tuple[str, str, str, float]] = []
+    pattern_specs = (
+        (
+            "anxiety_next_action",
+            r"\bwhen (?:i am )?anxious,?\s*(?:i want|please|that)?\s*([^.!?]{6,160})",
+            "Anxiety response preference",
+            0.88,
+        ),
+        (
+            "low_sleep_reactive",
+            r"\blow sleep[^.!?]{0,120}\b(?:reactive|sharp|irritable|angry)[^.!?]*",
+            "Low-sleep behavior pattern",
+            0.84,
+        ),
+        (
+            "audio_gear_impulse",
+            r"\b(?:impulse[- ]buying|buying)\s+(?:headphones|audio gear)\s+is my weakness\b|\b(?:headphones|audio gear)\s+(?:are|is)\s+my\s+impulse[- ]buy\s+weakness\b|\b(?:headphones|audio gear)\s+are my weakness\b",
+            "Impulse-buying pattern",
+            0.86,
+        ),
+        (
+            "saving_goal",
+            r"\bsave\s+([0-9,]+)\s*(?:inr|rs|rupees)\b[^.!?]*",
+            "Money goal",
+            0.82,
+        ),
+        (
+            "handoff_time_underestimate",
+            r"\bunderestimate\s+handoff\s+time\b",
+            "Workflow pattern",
+            0.86,
+        ),
+        (
+            "cleanup_reset",
+            r"\b(?:cleanup|clean up)[^.!?]{0,120}\b(?:reset|less chaotic|product)\b[^.!?]*",
+            "Reset pattern",
+            0.78,
+        ),
+    )
+    for key, pattern, label, confidence in pattern_specs:
+        for match in re.finditer(pattern, user_text, re.IGNORECASE):
+            evidence = _clean_value(match.group(0), max_len=180)
+            if not evidence:
+                continue
+            facts.append(
+                (
+                    key,
+                    evidence,
+                    f"{label}: {evidence}.",
+                    confidence,
+                )
+            )
+    return facts
+
+
+def _distill_commitments(user_text: str) -> list[tuple[str, str, str, float]]:
+    facts: list[tuple[str, str, str, float]] = []
+    commitment_patterns = (
+        r"\b(?:have to|need to|must|should)\s+([^.!?]{6,180})",
+        r"\b(?:deadline|due)\s+(?:is|by|at)\s+([^.!?]{6,180})",
+        r"\bremind me\s+([^.!?]{6,180})",
+    )
+    for pattern in commitment_patterns:
+        for match in re.finditer(pattern, user_text, re.IGNORECASE):
+            value = _clean_value(match.group(1), max_len=180)
+            if not value:
+                continue
+            facts.append(
+                (
+                    f"commitment_{_slug(value)}",
+                    value,
+                    f"Commitment/reminder context: {value}.",
+                    0.8,
+                )
+            )
     return facts
 
 
@@ -200,6 +402,10 @@ def _distill_corrections(user_text: str) -> list[tuple[str, str, str, float]]:
             )
         )
     for match in re.finditer(r"\bforget that\s+([^.!?]{3,96})", user_text, re.IGNORECASE):
+        value = _clean_value(match.group(1), max_len=96)
+        if value:
+            facts.append((f"forget_{_slug(value)}", value, f"Forget rule: {value}.", 0.88))
+    for match in re.finditer(r"\bforget\s+([^.!?]{3,96})", user_text, re.IGNORECASE):
         value = _clean_value(match.group(1), max_len=96)
         if value:
             facts.append((f"forget_{_slug(value)}", value, f"Forget rule: {value}.", 0.88))
@@ -300,6 +506,36 @@ def distill_user_memory_facts(
                 confidence=_clamp_confidence(confidence),
                 source_doc_id=source_doc_id,
                 evidence=summary,
+                status=clean_status,
+            )
+        )
+
+    for key, value, summary, confidence in _distill_preferences_and_patterns(user_text):
+        facts.append(
+            UserMemoryFact(
+                user_id=clean_user_id,
+                kind="preference",
+                key=key,
+                value=value,
+                summary=summary,
+                confidence=_clamp_confidence(confidence),
+                source_doc_id=source_doc_id,
+                evidence=value,
+                status=clean_status,
+            )
+        )
+
+    for key, value, summary, confidence in _distill_commitments(user_text):
+        facts.append(
+            UserMemoryFact(
+                user_id=clean_user_id,
+                kind="routine",
+                key=key,
+                value=value,
+                summary=summary,
+                confidence=_clamp_confidence(confidence),
+                source_doc_id=source_doc_id,
+                evidence=value,
                 status=clean_status,
             )
         )

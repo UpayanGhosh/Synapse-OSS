@@ -64,8 +64,13 @@ class MessageWorker:
         try:
             _sig = inspect.signature(process_fn)
             self._process_fn_accepts_mcp = len(_sig.parameters) >= 3
+            self._process_fn_accepts_channel_metadata = any(
+                p.kind is inspect.Parameter.KEYWORD_ONLY and p.name in {"channel_id", "is_group"}
+                for p in _sig.parameters.values()
+            )
         except (ValueError, TypeError):
             self._process_fn_accepts_mcp = False
+            self._process_fn_accepts_channel_metadata = False
         self.num_workers = num_workers
         self._workers: list[asyncio.Task] = []
         self._running = False
@@ -152,7 +157,15 @@ class MessageWorker:
                 # STEP 4: The actual pipeline (SBS + RAG + LLM)
                 # Note: mcp_context populated here by external MCP tool calls (not memory —
                 # persona_chat queries memory directly via the singleton MemoryEngine).
-                if self._process_fn_accepts_mcp:
+                if self._process_fn_accepts_channel_metadata:
+                    response = await self.process_fn(
+                        task.user_message,
+                        chat_id,
+                        task.mcp_context,
+                        channel_id=task.channel_id,
+                        is_group=task.is_group,
+                    )
+                elif self._process_fn_accepts_mcp:
                     response = await self.process_fn(task.user_message, chat_id, task.mcp_context)
                 else:
                     response = await self.process_fn(task.user_message, chat_id)

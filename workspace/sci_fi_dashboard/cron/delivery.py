@@ -8,6 +8,7 @@ ChannelRegistry, a webhook URL, or nowhere (``none``).
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
 try:
@@ -18,6 +19,25 @@ except ImportError:  # pragma: no cover
 from .types import CronDelivery, DeliveryMode
 
 logger = logging.getLogger(__name__)
+
+
+def _sanitize_announce_output(output: str) -> str:
+    """Keep proactive channel messages free of diagnostics and chat markdown."""
+    text = str(output or "")
+    for marker in ("\u200b", "\u200c", "\u200d", "\ufeff", "\x00"):
+        text = text.replace(marker, "")
+
+    text = re.split(r"\n\s*---\s*\n\*\*Context Usage:\*\*", text, maxsplit=1)[0]
+    text = re.sub(r"```(?:\w+)?\n([\s\S]*?)```", r"\1", text)
+    text = re.sub(r"`([^`]+)`", r"\1", text)
+    text = re.sub(r"\*\*([^*]+)\*\*", r"\1", text)
+    text = re.sub(r"__([^_]+)__", r"\1", text)
+    text = re.sub(r"(?<!\*)\*([^*\n]+)\*(?!\*)", r"\1", text)
+    text = re.sub(r"(?<!_)_([^_\n]+)_(?!_)", r"\1", text)
+    text = re.sub(r"^\s{0,3}#{1,6}\s+", "", text, flags=re.MULTILINE)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    cleaned = text.strip()
+    return cleaned or "Done."
 
 
 async def deliver_output(
@@ -62,7 +82,7 @@ async def _deliver_announce(
         channel = channel_registry.get(channel_id)
         if channel is None:
             return {"status": "error", "reason": f"channel {channel_id!r} not found"}
-        await channel.send(delivery.to or channel_id, output)
+        await channel.send(delivery.to or channel_id, _sanitize_announce_output(output))
         return {"status": "ok", "mode": "announce", "channel": channel_id}
     except Exception as exc:
         logger.exception("Announce delivery failed for channel %s", channel_id)

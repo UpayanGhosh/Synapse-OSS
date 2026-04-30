@@ -260,6 +260,15 @@ def antigravity_logout() -> None:
 
 
 @app.command()
+def install_home() -> None:
+    """Create or repair the standalone ~/.synapse product home."""
+    from cli.install_home import ensure_product_home
+
+    result = ensure_product_home()
+    typer.echo(f"Synapse product home ready: {result['data_root']}")
+
+
+@app.command()
 def onboard(
     non_interactive: bool = typer.Option(
         False,

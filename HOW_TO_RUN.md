@@ -166,23 +166,32 @@ If you see the embedding array, Ollama is working correctly.
 
 ---
 
-## Part 2 — Get the Code
+## Part 2 — Install Synapse
 
-Clone the Synapse-OSS repository to your computer:
+Normal users do not need the GitHub repo. Install the standalone CLI from npm:
 
 ```bash
-# macOS / Linux
-cd ~
-git clone https://github.com/UpayanGhosh/Synapse-OSS.git
-cd Synapse-OSS
-
-# Windows (Command Prompt or PowerShell)
-cd %USERPROFILE%
-git clone https://github.com/UpayanGhosh/Synapse-OSS.git
-cd Synapse-OSS
+npm install -g synapse-oss
 ```
 
-> You can clone it anywhere. The scripts resolve their own location automatically.
+Then install the product runtime into your Synapse home:
+
+```bash
+synapse install
+```
+
+Run onboarding from the installed CLI:
+
+```bash
+synapse onboard
+```
+
+Synapse stores app data, logs, config, runtime files, and local workspace state in
+`.synapse` (`~/.synapse` on macOS/Linux, `%USERPROFILE%\.synapse` on Windows).
+That product home is the normal place to inspect or back up your install.
+
+Developer-only setup: clone the repo only if you plan to edit Synapse source or
+contribute patches.
 
 ---
 
@@ -216,21 +225,21 @@ Synapse needs at least **one LLM API key** to work. Get it before continuing.
 
 ## Part 4 — Configure Your Environment
 
-Copy the template and fill in your keys:
+`synapse install` creates the local product-home files. `synapse onboard` opens
+the guided setup and writes config under `.synapse`.
+
+If you want to edit keys manually before onboarding:
 
 ### macOS / Linux
 
 ```bash
-# From inside the Synapse-OSS directory
-cp .env.example .env
-nano .env          # or: code .env (VS Code), vim .env, etc.
+nano ~/.synapse/.env          # or: code ~/.synapse/.env
 ```
 
 ### Windows
 
 ```cmd
-copy .env.example .env
-notepad .env
+notepad "%USERPROFILE%\.synapse\.env"
 ```
 
 **What to fill in (minimum required):**
@@ -258,45 +267,22 @@ Save the file and close it.
 
 ---
 
-## Part 5 — Set Up Python Environment
+## Part 5 — Install the Runtime
 
-Install Python dependencies into an isolated virtual environment.
-
-### macOS / Linux
+Run the product installer:
 
 ```bash
-# From inside the Synapse-OSS directory
-python3 -m venv .venv
-source .venv/bin/activate
-
-pip install -r requirements.txt
-pip install -e .
-
-# Install browser for web browsing feature (Mac/Linux only)
-crawl4ai-setup
+synapse install
 ```
 
-### Windows
-
-```cmd
-python -m venv .venv
-.venv\Scripts\activate.bat
-
-pip install -r requirements.txt
-pip install -e .
-```
-
-> **Windows web browsing:** The onboarding script installs Playwright (the Windows browser
-> backend) automatically. You do not need to run any browser setup command manually.
+The installer creates the managed virtual environment and runtime assets inside
+`.synapse`. Normal users do not need to create a repo-local virtual environment.
 
 **Verify the install:**
 
 ```bash
-python -c "import fastapi, sqlite_vec; print('Dependencies OK')"
+synapse doctor
 ```
-
-If you see `Dependencies OK`, you're good. If you see an error about `sqlite_vec`, see
-the [Troubleshooting](#troubleshooting) section.
 
 ---
 
@@ -305,13 +291,12 @@ the [Troubleshooting](#troubleshooting) section.
 This step is **required** for Synapse to make LLM calls. Without it, the gateway starts
 but every chat reply fails with "0 roles configured".
 
-Copy the template and fill in your API keys:
+Let onboarding create the config, then fill in your API keys if needed:
 
 ### macOS / Linux
 
 ```bash
-mkdir -p ~/.synapse
-cp synapse.json.example ~/.synapse/synapse.json
+synapse onboard
 chmod 600 ~/.synapse/synapse.json   # keep your keys private
 nano ~/.synapse/synapse.json        # or: code ~/.synapse/synapse.json
 ```
@@ -319,8 +304,7 @@ nano ~/.synapse/synapse.json        # or: code ~/.synapse/synapse.json
 ### Windows
 
 ```cmd
-mkdir "%USERPROFILE%\.synapse"
-copy synapse.json.example "%USERPROFILE%\.synapse\synapse.json"
+synapse onboard
 notepad "%USERPROFILE%\.synapse\synapse.json"
 ```
 
@@ -382,41 +366,38 @@ Auth split summary:
 
 > **File location:** `~/.synapse/synapse.json` (Mac/Linux) or
 > `%USERPROFILE%\.synapse\synapse.json` (Windows).
-> The onboarding script creates this file automatically from the example — you just
+> The onboarding command creates this file automatically from the example — you just
 > need to open it and replace the placeholder API keys.
 
 ---
 
-## Part 6 — Run the Onboarding Script (One Time Only)
+## Part 6 — Run Onboarding (One Time Only)
 
-The onboarding script does everything else: creates required directories, configures the
+The onboarding command does everything else: creates required directories, configures the
 workspace, optionally guides you through WhatsApp setup, and starts all services. **Run it once on
-first setup. Never run it again after that** — use the start script for daily use instead.
+first setup. Never run it again after that** — use `synapse start` for daily use instead.
 
 ### macOS / Linux
 
 ```bash
-chmod +x synapse_onboard.sh   # Make executable (only needed once)
-./synapse_onboard.sh
+synapse onboard
 ```
 
 ### Windows
 
-Double-click `synapse_onboard.bat` in File Explorer. Or from a terminal:
-
 ```cmd
-.\synapse_onboard.bat
+synapse onboard
 ```
 
-> **Do NOT double-click the `.ps1` files** — Windows opens them in Notepad by default.
-> Always use the `.bat` launchers on Windows.
+The repository launchers (`synapse_onboard.bat`, `synapse_onboard.sh`) are
+developer conveniences. They delegate to the npm-installed CLI.
 
 ---
 
 ### What the onboarding script does — step by step
 
 **Step 1: Checks your tools**
-Verifies Git, Python, and Ollama are installed and working. If Ollama is missing,
+Verifies Node, Python, and Ollama are installed and working. If Ollama is missing,
 it installs it automatically (via Homebrew on macOS, the official installer on Linux).
 Fails with a clear message if anything else is missing.
 
@@ -480,8 +461,7 @@ Existing-install migration note:
 - Run repair first:
 
 ```bash
-cd workspace
-python synapse_cli.py doctor --fix
+synapse doctor --fix
 ```
 
 **Step 7: Configures LLM access**
@@ -990,7 +970,7 @@ cd workspace
 source ../.venv/bin/activate   # Mac/Linux
 # ..\.venv\Scripts\activate.bat  ← Windows
 
-uvicorn sci_fi_dashboard.api_gateway:app --host 0.0.0.0 --port 8000 --reload
+uvicorn sci_fi_dashboard.api_gateway:app --host 127.0.0.1 --port 8000 --reload
 ```
 
 `--reload` auto-restarts on code changes. Remove it in production.
@@ -1076,10 +1056,11 @@ All log files, databases, and persona profiles will be placed under that directo
 
 | Task | Mac/Linux | Windows |
 |------|-----------|---------|
-| First-time setup | `./synapse_onboard.sh` | `synapse_onboard.bat` |
-| Start Synapse | `./synapse_start.sh` | `synapse_start.bat` |
-| Stop Synapse | `./synapse_stop.sh` | `synapse_stop.bat` |
-| Health check | `./synapse_health.sh` | `curl.exe http://localhost:8000/health` |
+| Install Synapse | `npm install -g synapse-oss && synapse install` | `npm install -g synapse-oss && synapse install` |
+| First-time setup | `synapse onboard` | `synapse onboard` |
+| Start Synapse | `synapse start` | `synapse start` |
+| Stop Synapse | `synapse stop` | `synapse stop` |
+| Health check | `synapse doctor` | `synapse doctor` |
 | Check Ollama | `curl http://localhost:11434` | `curl.exe http://localhost:11434` |
 | Pull embedding model | `ollama pull nomic-embed-text` | same |
 | Verify embeddings work | `ollama embeddings nomic-embed-text "test"` | same |

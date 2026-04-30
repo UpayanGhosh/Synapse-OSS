@@ -15,7 +15,6 @@ Import guard:
 
 import asyncio
 import importlib.util
-import json
 import sys
 import unittest.mock
 from pathlib import Path
@@ -40,12 +39,18 @@ pytestmark = pytest.mark.skipif(
 
 if WA_AVAILABLE:
     from sci_fi_dashboard.channels.whatsapp import WhatsAppChannel
+    from sci_fi_dashboard.channels.supervisor import ReconnectPolicy
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-_BRIDGE_DIR = Path(__file__).resolve().parent.parent.parent / "baileys-bridge"
+_BRIDGE_DIR = (
+    Path(__file__).resolve().parent.parent
+    / "sci_fi_dashboard"
+    / "runtime_assets"
+    / "baileys-bridge"
+)
 
 
 def _make_mock_process(returncode_after_start=None):
@@ -84,6 +89,11 @@ def _make_mock_process(returncode_after_start=None):
     return mock_proc
 
 
+def _gateway_auth_headers(gw):
+    token = str(gw.deps._synapse_cfg.gateway.get("token", "") or "").strip()
+    return {"x-api-key": token} if token else {}
+
+
 # ---------------------------------------------------------------------------
 # WA-01: Bridge files exist at baileys-bridge/index.js and package.json
 # ---------------------------------------------------------------------------
@@ -109,9 +119,13 @@ async def test_start_tracks_pid(monkeypatch):
     """WA-02: After start(), channel._bridge_pid must equal the mock subprocess PID."""
     mock_proc = _make_mock_process(returncode_after_start=None)
 
+    async def _noop_validate_nodejs():
+        return None
+
     async def mock_create_subprocess(*args, **kwargs):
         return mock_proc
 
+    monkeypatch.setattr(WhatsAppChannel, "_validate_nodejs", staticmethod(_noop_validate_nodejs))
     monkeypatch.setattr("asyncio.create_subprocess_exec", mock_create_subprocess)
 
     channel = WhatsAppChannel(bridge_port=5010, python_webhook_url="http://localhost:8000")
@@ -156,18 +170,15 @@ def test_bridge_endpoints_defined():
 
 
 # ---------------------------------------------------------------------------
-# WA-04: write-file-atomic listed as a dependency in package.json
+# WA-04: Auth write guard bundled with bridge assets
 # ---------------------------------------------------------------------------
 
 
-def test_atomic_write_dep_present():
-    """WA-04: package.json must include write-file-atomic in dependencies."""
-    pkg_path = _BRIDGE_DIR / "package.json"
-    assert pkg_path.exists(), "baileys-bridge/package.json missing — cannot check dependencies"
-    pkg = json.loads(pkg_path.read_text())
-    assert "write-file-atomic" in pkg.get(
-        "dependencies", {}
-    ), "write-file-atomic missing from baileys-bridge/package.json dependencies"
+def test_auth_write_guard_present():
+    """WA-04: bundled bridge must include the auth write guard module."""
+    guard_path = _BRIDGE_DIR / "lib" / "creds_queue.js"
+    assert guard_path.exists(), "creds_queue.js missing from bundled bridge assets"
+    assert "enqueueSaveCreds" in guard_path.read_text(encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------
@@ -196,6 +207,9 @@ async def test_supervisor_restarts_on_crash(monkeypatch):
     call_count = 0
     crash_proc = _make_mock_process(returncode_after_start=1)  # exits immediately
 
+    async def _noop_validate_nodejs():
+        return None
+
     # Second process runs until cancelled
     running_proc = _make_mock_process(returncode_after_start=None)
 
@@ -206,9 +220,14 @@ async def test_supervisor_restarts_on_crash(monkeypatch):
             return crash_proc
         return running_proc
 
+    monkeypatch.setattr(WhatsAppChannel, "_validate_nodejs", staticmethod(_noop_validate_nodejs))
     monkeypatch.setattr("asyncio.create_subprocess_exec", mock_create_subprocess)
 
-    channel = WhatsAppChannel(bridge_port=5010, python_webhook_url="http://localhost:8000")
+    channel = WhatsAppChannel(
+        bridge_port=5010,
+        python_webhook_url="http://localhost:8000",
+        reconnect_policy=ReconnectPolicy(initial_ms=0, max_ms=0, jitter=0.0),
+    )
 
     start_task = asyncio.create_task(channel.start())
 
@@ -291,10 +310,10 @@ async def test_gateway_get_qr_returns_qr_string(monkeypatch):
     if gw.channel_registry.get("whatsapp") is None:
         gw.channel_registry.register(
             WhatsAppChannel(bridge_port=5010, python_webhook_url="http://localhost:8000")
-        )
+    )
 
     client = TestClient(gw.app)
-    response = client.get("/qr")
+    response = client.get("/qr", headers=_gateway_auth_headers(gw))
 
     assert response.status_code == 200
     data = response.json()
@@ -329,7 +348,7 @@ async def test_gateway_get_qr_returns_503_when_bridge_down(monkeypatch):
         )
 
     client = TestClient(gw.app)
-    response = client.get("/qr")
+    response = client.get("/qr", headers=_gateway_auth_headers(gw))
 
     assert response.status_code == 503
     assert "QR not available" in response.json().get("detail", "")
@@ -356,7 +375,7 @@ async def test_gateway_get_qr_returns_503_when_whatsapp_not_registered(monkeypat
     monkeypatch.setattr(gw.channel_registry, "get", _get_no_whatsapp)
 
     client = TestClient(gw.app)
-    response = client.get("/qr")
+    response = client.get("/qr", headers=_gateway_auth_headers(gw))
 
     assert response.status_code == 503
     assert "not registered" in response.json().get("detail", "")
