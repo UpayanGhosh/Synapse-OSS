@@ -435,13 +435,13 @@ class CronService:
         kwargs = self._delivery_context_kwargs(job)
         if payload.model_override:
             kwargs["model_override"] = payload.model_override
-        if payload.fallbacks:
+        if payload.fallbacks is not None:
             kwargs["fallbacks"] = payload.fallbacks
-        if payload.thinking:
+        if payload.thinking is not None:
             kwargs["thinking"] = payload.thinking
-        if payload.tools_allow:
+        if payload.tools_allow is not None:
             kwargs["tools_allow"] = payload.tools_allow
-        if payload.light_context:
+        if payload.light_context is not None:
             kwargs["light_context"] = payload.light_context
         kwargs["timeout_seconds"] = payload.timeout_seconds
         return kwargs

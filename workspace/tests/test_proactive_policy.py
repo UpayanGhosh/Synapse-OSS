@@ -103,3 +103,31 @@ def test_policy_input_can_compute_gap_from_last_message_timestamp() -> None:
     )
 
     assert 899 <= policy_input.resolved_seconds_since_last_message() <= 901
+
+
+def test_policy_supports_non_wrapping_quiet_hours() -> None:
+    from sci_fi_dashboard.proactive_policy import ProactivePolicyInput, ProactivePolicyScorer
+
+    scorer = ProactivePolicyScorer(quiet_start_hour=8, quiet_end_hour=23)
+
+    quiet_decision = scorer.score(
+        ProactivePolicyInput(
+            user_id="the_creator",
+            channel_id="telegram",
+            now_hour=12,
+            recent_memory_summaries=["User asked for a deadline check-in."],
+            seconds_since_last_message=10 * 3600,
+        )
+    )
+    active_decision = scorer.score(
+        ProactivePolicyInput(
+            user_id="the_creator",
+            channel_id="telegram",
+            now_hour=2,
+            recent_memory_summaries=["User asked for a deadline check-in."],
+            seconds_since_last_message=10 * 3600,
+        )
+    )
+
+    assert quiet_decision.reason == "quiet_hours"
+    assert active_decision.reason != "quiet_hours"

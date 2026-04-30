@@ -15,6 +15,37 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 
+class _DepsPatch:
+    def __init__(self, deps) -> None:
+        self.deps = deps
+        self.prior_deps = None
+        self.prior_pkg_deps = None
+        self.had_pkg_deps = False
+        self.pkg = None
+
+    def __enter__(self):
+        import sci_fi_dashboard as pkg
+
+        self.pkg = pkg
+        self.prior_deps = sys.modules.get("sci_fi_dashboard._deps")
+        self.had_pkg_deps = hasattr(pkg, "_deps")
+        self.prior_pkg_deps = getattr(pkg, "_deps", None)
+        sys.modules["sci_fi_dashboard._deps"] = self.deps
+        pkg._deps = self.deps
+        return self.deps
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        if self.prior_deps is None:
+            sys.modules.pop("sci_fi_dashboard._deps", None)
+        else:
+            sys.modules["sci_fi_dashboard._deps"] = self.prior_deps
+        if self.pkg is not None:
+            if self.had_pkg_deps:
+                self.pkg._deps = self.prior_pkg_deps
+            elif hasattr(self.pkg, "_deps"):
+                delattr(self.pkg, "_deps")
+
+
 @pytest.fixture()
 def tmp_memory_db() -> Path:
     db_dir = Path(__file__).parent / ".tmp_phase5" / f"kg-timeout-{uuid.uuid4().hex}"
@@ -121,28 +152,21 @@ async def test_kg_timeout_records_failure_and_completed(
 
     monkeypatch.setattr(session_ingest.asyncio, "wait_for", _fake_wait_for)
 
-    prior_deps = sys.modules.get("sci_fi_dashboard._deps")
-    sys.modules["sci_fi_dashboard._deps"] = mock_deps
-    try:
-        with (
-            patch("synapse_config.SynapseConfig.load", return_value=mock_cfg),
-            patch(
-                "sci_fi_dashboard.multiuser.transcript.load_messages",
-                new=_fake_load_messages,
-            ),
-            patch("sci_fi_dashboard.conv_kg_extractor.ConvKGExtractor", _MockExtractor),
-        ):
-            await session_ingest._ingest_session_background(
-                archived_path=tmp_transcript,
-                agent_id="the_creator",
-                session_key="agent:the_creator:whatsapp:dm:+1234567890",
-                hemisphere="safe",
-            )
-    finally:
-        if prior_deps is None:
-            sys.modules.pop("sci_fi_dashboard._deps", None)
-        else:
-            sys.modules["sci_fi_dashboard._deps"] = prior_deps
+    with (
+        _DepsPatch(mock_deps),
+        patch("synapse_config.SynapseConfig.load", return_value=mock_cfg),
+        patch(
+            "sci_fi_dashboard.multiuser.transcript.load_messages",
+            new=_fake_load_messages,
+        ),
+        patch("sci_fi_dashboard.conv_kg_extractor.ConvKGExtractor", _MockExtractor),
+    ):
+        await session_ingest._ingest_session_background(
+            archived_path=tmp_transcript,
+            agent_id="the_creator",
+            session_key="agent:the_creator:whatsapp:dm:+1234567890",
+            hemisphere="safe",
+        )
 
     assert seen_timeouts == [session_ingest.KG_EXTRACT_TIMEOUT_SECONDS]
 
@@ -188,15 +212,21 @@ async def test_ingest_distills_response_style_and_codename(
         ]
 
     session_key = "agent:the_creator:whatsapp:dm:+1234567890"
+    mock_deps = types.SimpleNamespace(
+        memory_engine=types.SimpleNamespace(add_memory=lambda **kwargs: {"status": "stored", "id": 77}),
+        brain=types.SimpleNamespace(
+            add_node=lambda *args, **kwargs: None,
+            add_relation=lambda *args, **kwargs: None,
+            save_graph=lambda *args, **kwargs: None,
+        ),
+        synapse_llm_router=object(),
+    )
     with (
+        _DepsPatch(mock_deps),
         patch("synapse_config.SynapseConfig.load", return_value=mock_cfg),
         patch(
             "sci_fi_dashboard.multiuser.transcript.load_messages",
             new=_fake_load_messages,
-        ),
-        patch(
-            "sci_fi_dashboard._deps.memory_engine.add_memory",
-            new=lambda **kwargs: {"status": "stored", "id": 77},
         ),
     ):
         await session_ingest._ingest_session_background(
@@ -246,15 +276,21 @@ async def test_ingest_distills_even_without_doc_id(
         ]
 
     session_key = "agent:the_creator:whatsapp:dm:+1234567890"
+    mock_deps = types.SimpleNamespace(
+        memory_engine=types.SimpleNamespace(add_memory=lambda **kwargs: {"status": "stored"}),
+        brain=types.SimpleNamespace(
+            add_node=lambda *args, **kwargs: None,
+            add_relation=lambda *args, **kwargs: None,
+            save_graph=lambda *args, **kwargs: None,
+        ),
+        synapse_llm_router=object(),
+    )
     with (
+        _DepsPatch(mock_deps),
         patch("synapse_config.SynapseConfig.load", return_value=mock_cfg),
         patch(
             "sci_fi_dashboard.multiuser.transcript.load_messages",
             new=_fake_load_messages,
-        ),
-        patch(
-            "sci_fi_dashboard._deps.memory_engine.add_memory",
-            new=lambda **kwargs: {"status": "stored"},
         ),
     ):
         await session_ingest._ingest_session_background(
@@ -316,31 +352,24 @@ async def test_ingest_records_user_memory_failure_and_completes(
     def _raise_distill(*args, **kwargs):  # noqa: ANN002, ANN003, ARG001
         raise RuntimeError("distill boom")
 
-    prior_deps = sys.modules.get("sci_fi_dashboard._deps")
-    sys.modules["sci_fi_dashboard._deps"] = mock_deps
-    try:
-        with (
-            patch("synapse_config.SynapseConfig.load", return_value=mock_cfg),
-            patch(
-                "sci_fi_dashboard.multiuser.transcript.load_messages",
-                new=_fake_load_messages,
-            ),
-            patch(
-                "sci_fi_dashboard.user_memory.distill_and_upsert_user_memory_facts",
-                new=_raise_distill,
-            ),
-        ):
-            await session_ingest._ingest_session_background(
-                archived_path=tmp_transcript,
-                agent_id="the_creator",
-                session_key="agent:the_creator:whatsapp:dm:+1234567890",
-                hemisphere="safe",
-            )
-    finally:
-        if prior_deps is None:
-            sys.modules.pop("sci_fi_dashboard._deps", None)
-        else:
-            sys.modules["sci_fi_dashboard._deps"] = prior_deps
+    with (
+        _DepsPatch(mock_deps),
+        patch("synapse_config.SynapseConfig.load", return_value=mock_cfg),
+        patch(
+            "sci_fi_dashboard.multiuser.transcript.load_messages",
+            new=_fake_load_messages,
+        ),
+        patch(
+            "sci_fi_dashboard.user_memory.distill_and_upsert_user_memory_facts",
+            new=_raise_distill,
+        ),
+    ):
+        await session_ingest._ingest_session_background(
+            archived_path=tmp_transcript,
+            agent_id="the_creator",
+            session_key="agent:the_creator:whatsapp:dm:+1234567890",
+            hemisphere="safe",
+        )
 
     conn = sqlite3.connect(str(tmp_memory_db))
     try:

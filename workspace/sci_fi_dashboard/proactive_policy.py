@@ -139,7 +139,14 @@ class ProactivePolicyScorer:
         )
 
     def _in_quiet_hours(self, hour: int) -> bool:
-        return hour >= self.quiet_start_hour or hour < self.quiet_end_hour
+        normalized_hour = int(hour) % 24
+        start = self.quiet_start_hour % 24
+        end = self.quiet_end_hour % 24
+        if start == end:
+            return False
+        if start > end:
+            return normalized_hour >= start or normalized_hour < end
+        return start <= normalized_hour < end
 
     def _urgency(self, policy_input: ProactivePolicyInput) -> tuple[float, list[str]]:
         score = 0.0

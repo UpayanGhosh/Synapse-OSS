@@ -109,6 +109,16 @@ class TestMessageWorkerConstruction:
         worker = MessageWorker(queue=q, process_fn=process)
         assert worker._process_fn_accepts_channel_metadata is True
 
+    def test_channel_metadata_detection_requires_both_keywords(self):
+        """Partial channel metadata support must not trigger the metadata call path."""
+        q = TaskQueue()
+
+        async def process(msg, chat_id, *, channel_id="whatsapp"):
+            return "r"
+
+        worker = MessageWorker(queue=q, process_fn=process)
+        assert worker._process_fn_accepts_channel_metadata is False
+
 
 # ===========================================================================
 # _get_channel
@@ -273,6 +283,50 @@ class TestHandleTask:
             "msg": "hello",
             "chat_id": "tg-chat",
             "mcp_context": "ctx",
+            "channel_id": "telegram",
+            "is_group": True,
+        }
+        assert stub.sent_messages == [("tg-chat", "ok")]
+
+    @pytest.mark.asyncio
+    async def test_pipeline_receives_channel_metadata_without_mcp_arg(self):
+        """Channel-aware two-arg pipelines should not receive positional mcp_context."""
+        from sci_fi_dashboard.channels.registry import ChannelRegistry
+        from sci_fi_dashboard.channels.stub import StubChannel
+
+        q = TaskQueue()
+        seen = {}
+
+        async def process(msg, chat_id, *, channel_id="whatsapp", is_group=False):
+            seen.update(
+                {
+                    "msg": msg,
+                    "chat_id": chat_id,
+                    "channel_id": channel_id,
+                    "is_group": is_group,
+                }
+            )
+            return "ok"
+
+        reg = ChannelRegistry()
+        stub = StubChannel("telegram")
+        reg.register(stub)
+
+        worker = MessageWorker(queue=q, process_fn=process, num_workers=1, channel_registry=reg)
+        task = MessageTask(
+            task_id="t1",
+            chat_id="tg-chat",
+            user_message="hello",
+            channel_id="telegram",
+            is_group=True,
+            mcp_context="ctx",
+        )
+
+        await worker._handle_task(task, worker_id=0)
+
+        assert seen == {
+            "msg": "hello",
+            "chat_id": "tg-chat",
             "channel_id": "telegram",
             "is_group": True,
         }

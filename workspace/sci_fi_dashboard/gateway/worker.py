@@ -63,13 +63,28 @@ class MessageWorker:
         # Allows old 2-arg consumers to keep working without modification.
         try:
             _sig = inspect.signature(process_fn)
-            self._process_fn_accepts_mcp = len(_sig.parameters) >= 3
-            self._process_fn_accepts_channel_metadata = any(
-                p.kind is inspect.Parameter.KEYWORD_ONLY and p.name in {"channel_id", "is_group"}
-                for p in _sig.parameters.values()
+            _params = list(_sig.parameters.values())
+            _positional = [
+                p
+                for p in _params
+                if p.kind
+                in (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD)
+            ]
+            _has_varargs = any(p.kind is inspect.Parameter.VAR_POSITIONAL for p in _params)
+            _has_varkw = any(p.kind is inspect.Parameter.VAR_KEYWORD for p in _params)
+            _kw_names = {p.name for p in _params if p.kind is inspect.Parameter.KEYWORD_ONLY}
+            _param_names = {p.name for p in _params}
+            self._process_fn_accepts_mcp = _has_varargs or len(_positional) >= 3
+            self._process_fn_accepts_mcp_keyword = (
+                not self._process_fn_accepts_mcp and "mcp_context" in _param_names
             )
+            self._process_fn_accepts_channel_metadata = _has_varkw or {
+                "channel_id",
+                "is_group",
+            }.issubset(_kw_names)
         except (ValueError, TypeError):
             self._process_fn_accepts_mcp = False
+            self._process_fn_accepts_mcp_keyword = False
             self._process_fn_accepts_channel_metadata = False
         self.num_workers = num_workers
         self._workers: list[asyncio.Task] = []
@@ -157,18 +172,25 @@ class MessageWorker:
                 # STEP 4: The actual pipeline (SBS + RAG + LLM)
                 # Note: mcp_context populated here by external MCP tool calls (not memory —
                 # persona_chat queries memory directly via the singleton MemoryEngine).
+                kwargs = {}
                 if self._process_fn_accepts_channel_metadata:
+                    kwargs.update(channel_id=task.channel_id, is_group=task.is_group)
+                if self._process_fn_accepts_mcp:
                     response = await self.process_fn(
                         task.user_message,
                         chat_id,
                         task.mcp_context,
-                        channel_id=task.channel_id,
-                        is_group=task.is_group,
+                        **kwargs,
                     )
-                elif self._process_fn_accepts_mcp:
-                    response = await self.process_fn(task.user_message, chat_id, task.mcp_context)
+                elif self._process_fn_accepts_mcp_keyword:
+                    response = await self.process_fn(
+                        task.user_message,
+                        chat_id,
+                        mcp_context=task.mcp_context,
+                        **kwargs,
+                    )
                 else:
-                    response = await self.process_fn(task.user_message, chat_id)
+                    response = await self.process_fn(task.user_message, chat_id, **kwargs)
 
                 # STEP 5: Stop typing
                 typing_task.cancel()

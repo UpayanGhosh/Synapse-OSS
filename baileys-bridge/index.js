@@ -28,6 +28,8 @@ const pino = require('pino');
 const qrcodeTerminal = require('qrcode-terminal');
 const path = require('path');
 const fs = require('fs');
+const dns = require('dns').promises;
+const net = require('net');
 const { enqueueSaveCreds, waitForCredsSaveQueueWithTimeout } = require('./lib/creds_queue.js');
 const { maybeRestoreCredsFromBackup } = require('./lib/restore.js');
 const { buildSendPayload } = require('./lib/send_payload.js');
@@ -177,18 +179,80 @@ function isLid(jid) {
   return typeof jid === 'string' && jid.endsWith('@lid');
 }
 
+function isPrivateIpAddress(hostname) {
+  const host = String(hostname || '').trim().replace(/^\[|\]$/g, '').toLowerCase();
+  if (!host || host === 'localhost' || host.endsWith('.localhost')) return true;
+  if (host === 'metadata.google.internal') return true;
+  if (host === '169.254.169.254' || host === 'fd00:ec2::254') return true;
+
+  const family = net.isIP(host);
+  if (family === 4) {
+    const parts = host.split('.').map((part) => Number(part));
+    if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part))) return true;
+    const [a, b] = parts;
+    return (
+      a === 0 ||
+      a === 10 ||
+      a === 127 ||
+      (a === 100 && b >= 64 && b <= 127) ||
+      (a === 169 && b === 254) ||
+      (a === 172 && b >= 16 && b <= 31) ||
+      (a === 192 && b === 168)
+    );
+  }
+  if (family === 6) {
+    return (
+      host === '::1' ||
+      host.startsWith('fc') ||
+      host.startsWith('fd') ||
+      host.startsWith('fe80') ||
+      host.startsWith('::ffff:127.') ||
+      host.startsWith('::ffff:10.') ||
+      host.startsWith('::ffff:192.168.') ||
+      host.startsWith('::ffff:169.254.')
+    );
+  }
+  return false;
+}
+
+function isAllowedOutboundMediaUrl(rawUrl) {
+  try {
+    const parsed = new URL(String(rawUrl || ''));
+    if (!['http:', 'https:'].includes(parsed.protocol)) return false;
+    return !isPrivateIpAddress(parsed.hostname);
+  } catch (_) {
+    return false;
+  }
+}
+
+async function validateOutboundMediaUrl(rawUrl) {
+  if (!isAllowedOutboundMediaUrl(rawUrl)) return false;
+  const parsed = new URL(String(rawUrl));
+  if (net.isIP(parsed.hostname)) return true;
+  try {
+    const records = await dns.lookup(parsed.hostname, { all: true, verbatim: true });
+    return records.length > 0 && records.every((record) => !isPrivateIpAddress(record.address));
+  } catch (_) {
+    return false;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // extractPayload — normalise a Baileys message into the Synapse channel schema
 // Handles text, media (image/video/audio/document/sticker), and reactions
 // ---------------------------------------------------------------------------
 async function extractPayload(msg) {
-  const isGroup = msg.key.remoteJid.endsWith('@g.us');
+  const remoteJid = msg?.key?.remoteJid;
+  if (typeof remoteJid !== 'string' || !remoteJid) {
+    return null;
+  }
+  const isGroup = remoteJid.endsWith('@g.us');
   // 7.x LID-mapping: surface BOTH primary and alternate identifiers.
   // - DM: msg.key.remoteJidAlt is PN if remoteJid is LID, null otherwise
   // - Group: msg.key.participantAlt is PN if participant is LID, null otherwise
   const userId = isGroup
-    ? (msg.key.participant || msg.pushName || msg.key.remoteJid)
-    : msg.key.remoteJid;
+    ? (msg.key.participant || msg.pushName || remoteJid)
+    : remoteJid;
   const userIdAlt = isGroup
     ? (msg.key.participantAlt || null)
     : (msg.key.remoteJidAlt || null);
@@ -210,7 +274,7 @@ async function extractPayload(msg) {
       channel_id: 'whatsapp',
       user_id: userId,
       user_id_alt: userIdAlt,
-      chat_id: msg.key.remoteJid,
+      chat_id: remoteJid,
       message_id: msg.key.id,
       reaction_emoji: msgContent.reactionMessage.text || '',
       reacted_to_id: msgContent.reactionMessage.key?.id || '',
@@ -223,7 +287,7 @@ async function extractPayload(msg) {
     channel_id: 'whatsapp',
     user_id: userId,
     user_id_alt: userIdAlt,
-    chat_id: msg.key.remoteJid,
+    chat_id: remoteJid,
     text,
     message_id: msg.key.id,
     is_group: isGroup,
@@ -293,11 +357,13 @@ async function startSocket() {
   // AUTH-V31-01 + AUTH-V31-03: per-authDir atomic queue + JSON-parse-before-backup guard
   sock.ev.on('creds.update', () => enqueueSaveCreds(AUTH_DIR, saveCreds));
 
-  sock.ev.on('groups.update', async ([event]) => {
-    try {
-      const meta = await sock.groupMetadata(event.id);
-      groupCache.set(event.id, meta);
-    } catch (_) {}
+  sock.ev.on('groups.update', async (events) => {
+    for (const event of events || []) {
+      try {
+        const meta = await sock.groupMetadata(event.id);
+        groupCache.set(event.id, meta);
+      } catch (_) {}
+    }
   });
 
   sock.ev.on('group-participants.update', async (event) => {
@@ -400,6 +466,7 @@ async function startSocket() {
       // Phase 16 BRIDGE-01: track last inbound activity for /health
       lastInboundAtMs = Date.now();
       const payload = await extractPayload(msg);
+      if (!payload) continue;
       await forwardToFastAPI(payload);
     }
   });
@@ -434,6 +501,9 @@ app.post('/send', async (req, res) => {
     let sentMsg;
     if (mediaUrl) {
       const mt = mediaType || 'image';
+      if (!(await validateOutboundMediaUrl(mediaUrl))) {
+        return res.status(400).json({ error: 'mediaUrl is not allowed' });
+      }
       const response = await fetch(mediaUrl, { signal: AbortSignal.timeout(30000) });
       if (!response.ok) {
         return res.status(400).json({ error: `Failed to fetch media from URL: ${response.status}` });
@@ -471,6 +541,9 @@ app.post('/send-voice', async (req, res) => {
   try {
     await new Promise((r) => setTimeout(r, 1000 + Math.random() * 2000)); // anti-spam jitter
 
+    if (!(await validateOutboundMediaUrl(audioUrl))) {
+      return res.status(400).json({ error: 'audioUrl is not allowed' });
+    }
     const response = await fetch(audioUrl, { signal: AbortSignal.timeout(30000) });
     if (!response.ok) {
       return res.status(400).json({ error: `Failed to fetch audio from URL: ${response.status}` });
@@ -737,7 +810,7 @@ if (require.main === module && process.env.START_BRIDGE_SOCKET !== 'false') {
 }
 
 // Export for unit tests (index.js imported without side effects when require.main !== module)
-module.exports = { extractPayload };
+module.exports = { extractPayload, isAllowedOutboundMediaUrl };
 
 // ---------------------------------------------------------------------------
 // Phase 16 test exports — only exposed when START_BRIDGE_SOCKET=false

@@ -132,9 +132,9 @@ class SelfEvolutionTracker:
                 suggested_skill=row[3],
                 evidence_count=int(row[4]),
             )
-            self.conn.execute(
+            cursor = self.conn.execute(
                 """
-                INSERT INTO self_evolution_recommendations
+                INSERT OR IGNORE INTO self_evolution_recommendations
                     (user_id, workflow_key, summary, suggested_skill,
                      evidence_count, status, requires_approval, install_applied)
                 VALUES (?, ?, ?, ?, ?, 'pending_approval', 1, 0)
@@ -147,7 +147,8 @@ class SelfEvolutionTracker:
                     rec.evidence_count,
                 ),
             )
-            recs.append(rec)
+            if cursor.rowcount:
+                recs.append(rec)
         self.conn.commit()
         return recs
 

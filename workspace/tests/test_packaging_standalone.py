@@ -1,9 +1,11 @@
 from __future__ import annotations
 
-import re
 import json
+import re
 import tomllib
 from pathlib import Path
+
+from packaging.version import parse as parse_version
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -84,7 +86,15 @@ def test_baileys_bridge_locks_safe_protobuf_resolution() -> None:
     assert package["overrides"]["protobufjs"] == "7.5.5"
     for name, metadata in lock["packages"].items():
         if name.endswith("node_modules/protobufjs"):
-            assert metadata["version"] >= "7.5.5", name
+            assert parse_version(metadata["version"]) >= parse_version("7.5.5"), name
+
+
+def test_packaged_entities_file_does_not_ship_user_memory() -> None:
+    entities = json.loads(
+        (ROOT / "workspace" / "sci_fi_dashboard" / "entities.json").read_text(encoding="utf-8")
+    )
+
+    assert entities == {}
 
 
 def test_wheel_discovery_excludes_dev_test_packages() -> None:

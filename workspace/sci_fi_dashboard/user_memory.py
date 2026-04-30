@@ -86,7 +86,7 @@ def _clean_value(value: str, *, max_len: int = 96) -> str:
 
 def ensure_user_memory_facts_table(conn: sqlite3.Connection) -> None:
     """Create structured user-memory table and indexes idempotently."""
-    conn.executescript("""
+    conn.execute("""
         CREATE TABLE IF NOT EXISTS user_memory_facts (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id         TEXT NOT NULL,
@@ -101,14 +101,26 @@ def ensure_user_memory_facts_table(conn: sqlite3.Connection) -> None:
             first_seen      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             last_seen       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             UNIQUE(user_id, kind, key)
-        );
-        CREATE INDEX IF NOT EXISTS idx_user_memory_facts_user_kind_status
-            ON user_memory_facts(user_id, kind, status);
-        CREATE INDEX IF NOT EXISTS idx_user_memory_facts_last_seen
-            ON user_memory_facts(last_seen);
-        CREATE INDEX IF NOT EXISTS idx_user_memory_facts_source_doc_id
-            ON user_memory_facts(source_doc_id);
+        )
     """)
+    conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_user_memory_facts_user_kind_status
+            ON user_memory_facts(user_id, kind, status)
+        """
+    )
+    conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_user_memory_facts_last_seen
+            ON user_memory_facts(last_seen)
+        """
+    )
+    conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_user_memory_facts_source_doc_id
+            ON user_memory_facts(source_doc_id)
+        """
+    )
 
 
 def _extract_user_text(text: str) -> str:
@@ -389,6 +401,7 @@ def _distill_commitments(user_text: str) -> list[tuple[str, str, str, float]]:
 
 def _distill_corrections(user_text: str) -> list[tuple[str, str, str, float]]:
     facts: list[tuple[str, str, str, float]] = []
+    seen_forget_keys: set[str] = set()
     for match in re.finditer(r"\b(?:don't|do not)\s+call me\s+([^.!?;,]{2,40})", user_text, re.IGNORECASE):
         bad_name = _clean_value(match.group(1).lower(), max_len=40)
         if not bad_name:
@@ -403,12 +416,16 @@ def _distill_corrections(user_text: str) -> list[tuple[str, str, str, float]]:
         )
     for match in re.finditer(r"\bforget that\s+([^.!?]{3,96})", user_text, re.IGNORECASE):
         value = _clean_value(match.group(1), max_len=96)
-        if value:
-            facts.append((f"forget_{_slug(value)}", value, f"Forget rule: {value}.", 0.88))
-    for match in re.finditer(r"\bforget\s+([^.!?]{3,96})", user_text, re.IGNORECASE):
+        key = f"forget_{_slug(value)}"
+        if value and key not in seen_forget_keys:
+            seen_forget_keys.add(key)
+            facts.append((key, value, f"Forget rule: {value}.", 0.88))
+    for match in re.finditer(r"\bforget\s+(?!that\b)([^.!?]{3,96})", user_text, re.IGNORECASE):
         value = _clean_value(match.group(1), max_len=96)
-        if value:
-            facts.append((f"forget_{_slug(value)}", value, f"Forget rule: {value}.", 0.88))
+        key = f"forget_{_slug(value)}"
+        if value and key not in seen_forget_keys:
+            seen_forget_keys.add(key)
+            facts.append((key, value, f"Forget rule: {value}.", 0.88))
     return facts
 
 

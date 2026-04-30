@@ -375,7 +375,6 @@ async def distill_and_upsert_user_memory_facts_v2(
         extractor_timeout=extractor_timeout,
     )
     distiller.enqueue(user_id=user_id, text=text, source_doc_id=source_doc_id)
-    before = conn.execute("SELECT MAX(id) FROM user_memory_observations").fetchone()[0]
     result = await distiller.process_pending(limit=1)
     if result.errors:
         raise RuntimeError("user memory distiller v2 failed")
@@ -388,8 +387,6 @@ async def distill_and_upsert_user_memory_facts_v2(
         """,
         (user_id, source_doc_id),
     ).fetchall()
-    if before is None and not rows:
-        return []
     return [
         UserMemoryFact(
             user_id=user_id,

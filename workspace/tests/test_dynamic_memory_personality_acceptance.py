@@ -130,11 +130,18 @@ async def test_fresh_db_closes_memory_personality_loop(
     ) + tuple(user_memory._CODENAME_PATTERNS)
 
     try:
+        import sci_fi_dashboard as pkg
+
+        prior_deps = sys.modules.get("sci_fi_dashboard._deps")
+        prior_pkg_deps = getattr(pkg, "_deps", None)
+        had_pkg_deps = hasattr(pkg, "_deps")
+        fake_deps = types.SimpleNamespace(memory_engine=types.SimpleNamespace(add_memory=_add_memory))
+        sys.modules["sci_fi_dashboard._deps"] = fake_deps
+        pkg._deps = fake_deps
         with (
             patch("synapse_config.SynapseConfig.load", return_value=ingest_cfg),
             patch.object(user_memory, "_RESPONSE_STYLE_RULES", style_rules),
             patch.object(user_memory, "_CODENAME_PATTERNS", codename_patterns),
-            patch("sci_fi_dashboard._deps.memory_engine.add_memory", new=_add_memory),
         ):
             await session_ingest._ingest_session_background(
                 archived_path=archived,
@@ -143,6 +150,15 @@ async def test_fresh_db_closes_memory_personality_loop(
                 hemisphere="safe",
             )
     finally:
+        if "pkg" in locals():
+            if prior_deps is None:
+                sys.modules.pop("sci_fi_dashboard._deps", None)
+            else:
+                sys.modules["sci_fi_dashboard._deps"] = prior_deps
+            if had_pkg_deps:
+                pkg._deps = prior_pkg_deps
+            elif hasattr(pkg, "_deps"):
+                delattr(pkg, "_deps")
         if archived.exists():
             archived.unlink()
 

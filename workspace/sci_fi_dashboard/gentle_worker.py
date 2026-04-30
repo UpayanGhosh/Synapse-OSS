@@ -119,7 +119,7 @@ def _load_recent_memory_summaries(
         LIMIT ?
     """
     try:
-        with sqlite3.connect(str(db_path)) as conn:
+        with sqlite3.connect(str(db_path), timeout=5.0) as conn:
             rows = conn.execute(query, (*user_ids, int(limit))).fetchall()
     except sqlite3.Error:
         return []

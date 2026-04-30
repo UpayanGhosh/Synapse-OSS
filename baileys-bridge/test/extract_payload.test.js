@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert');
-const { extractPayload } = require('../index.js');
+const { extractPayload, isAllowedOutboundMediaUrl } = require('../index.js');
 
 test('PN sender leaves user_id_alt null on DM (BAIL-04 6.x shape)', async () => {
   const msg = {
@@ -108,4 +108,24 @@ test('no alt JIDs present → user_id_alt null on both DM and group (BAIL-04)', 
   };
   const grp = await extractPayload(grpMsg);
   assert.equal(grp.user_id_alt, null);
+});
+
+test('malformed messages without remoteJid are ignored safely', async () => {
+  const msg = {
+    key: { fromMe: false, id: 'BAD1' },
+    message: { conversation: 'missing jid' },
+    messageTimestamp: 800,
+  };
+
+  const p = await extractPayload(msg);
+
+  assert.equal(p, null);
+});
+
+test('outbound media URL guard rejects private and non-http targets', () => {
+  assert.equal(isAllowedOutboundMediaUrl('https://example.com/image.png'), true);
+  assert.equal(isAllowedOutboundMediaUrl('http://127.0.0.1:8000/private.png'), false);
+  assert.equal(isAllowedOutboundMediaUrl('http://10.0.0.4/private.png'), false);
+  assert.equal(isAllowedOutboundMediaUrl('file:///C:/secret.txt'), false);
+  assert.equal(isAllowedOutboundMediaUrl('not a url'), false);
 });

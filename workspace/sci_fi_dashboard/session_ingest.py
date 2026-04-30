@@ -258,7 +258,8 @@ async def _ingest_session_background(
                     doc_id = None
 
         try:
-            conn = sqlite3.connect(memory_db_path)
+            conn = sqlite3.connect(memory_db_path, timeout=5.0)
+            conn.execute("PRAGMA busy_timeout = 5000")
             try:
                 facts = await distill_and_upsert_user_memory_facts_v2(
                     conn,
@@ -304,7 +305,8 @@ async def _ingest_session_background(
                 validated = result.get("validated_triples", [])
 
                 if validated:
-                    conn = sqlite3.connect(memory_db_path)
+                    conn = sqlite3.connect(memory_db_path, timeout=5.0)
+                    conn.execute("PRAGMA busy_timeout = 5000")
                     try:
                         _ensure_entity_links(conn)
                         for triple, confidence in validated:

@@ -174,6 +174,19 @@ def test_distill_day_to_day_personality_facts() -> None:
     assert "Kestrel" in summaries
 
 
+def test_forget_that_does_not_duplicate_forget_rule() -> None:
+    from sci_fi_dashboard.user_memory import distill_user_memory_facts
+
+    facts = distill_user_memory_facts(
+        text="User: Forget that Goa maybe-plan.",
+        user_id="agent:the_creator:telegram:dm:123",
+        source_doc_id=None,
+    )
+
+    forget_keys = [fact.key for fact in facts if fact.kind == "correction"]
+    assert forget_keys == ["forget_goa_maybe-plan"]
+
+
 def test_distill_live_memory_update_into_clean_rows() -> None:
     from sci_fi_dashboard.user_memory import distill_user_memory_facts
 
