@@ -1548,6 +1548,46 @@ def test_ensure_agent_workspace_seeds_runtime_guidance_files(tmp_path):
     assert "not building a dossier" in user_text
 
 
+def test_seeded_workspace_docs_include_humanisation_contract():
+    """Seeded docs preserve close-friend behavior without private specifics."""
+    import shutil
+    import uuid
+
+    from cli.workspace_seeding import ensure_agent_workspace
+
+    repo_root = Path(__file__).resolve().parents[2]
+    run_root = repo_root / ".codex-tmp" / f"seeded-humanisation-{uuid.uuid4().hex}"
+    workspace = run_root / "workspace"
+    try:
+        ensure_agent_workspace(workspace, ensure_bootstrap_files=True)
+
+        soul_text = (workspace / "SOUL.md").read_text(encoding="utf-8")
+        core_text = (workspace / "CORE.md").read_text(encoding="utf-8")
+        agents_text = (workspace / "AGENTS.md").read_text(encoding="utf-8")
+        contract = "\n".join([soul_text, core_text, agents_text])
+        contract_lower = contract.lower()
+
+        required_patterns = [
+            "care first",
+            "action first",
+            "close friend with tools",
+            "do not fake tool use",
+            "do not pretend you used a tool",
+            "no assistant-speak",
+            "markdown-heavy",
+            "contradict them with care",
+            "gently push back",
+        ]
+        missing = [pattern for pattern in required_patterns if pattern not in contract_lower]
+        assert not missing
+
+        private_terms = ["Upayan", "Shreya", "Boumuni"]
+        leaked = [term for term in private_terms if term in contract]
+        assert not leaked
+    finally:
+        shutil.rmtree(run_root, ignore_errors=True)
+
+
 def test_core_template_is_loaded_from_single_canonical_source():
     """CORE seeding must use one repo source to avoid drift."""
     from cli.workspace_seeding import _load_template

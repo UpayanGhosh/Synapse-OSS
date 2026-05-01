@@ -81,10 +81,24 @@ class ExemplarSelector:
             wildcard = random.choice(remaining)
             selected.append(wildcard)
 
-        # Trim to max and format for output
-        selected = selected[:max_exemplars]
+        # Trim to max and format for output. Some selection buckets can choose
+        # the same pair internally when one exchange matches multiple axes.
+        selected = self._dedupe_pairs(selected)[:max_exemplars]
 
         return [self._format_exemplar(p) for p in selected]
+
+    def _dedupe_pairs(self, pairs: list[dict]) -> list[dict]:
+        """Preserve order while removing duplicate pair_ids."""
+
+        unique = []
+        seen = set()
+        for pair in pairs:
+            pair_id = pair.get("pair_id")
+            if pair_id in seen:
+                continue
+            seen.add(pair_id)
+            unique.append(pair)
+        return unique
 
     def _build_pairs(self) -> list[dict]:
         """Build user->assistant conversation pairs from the database."""

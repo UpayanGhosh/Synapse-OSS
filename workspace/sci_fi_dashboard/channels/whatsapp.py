@@ -138,7 +138,7 @@ class WhatsAppChannel(BaseChannel):
         if not node_path:
             raise RuntimeError(
                 "Node.js is not installed or not on PATH.\n"
-                "The Baileys WhatsApp bridge requires Node.js 18+.\n"
+                "The Baileys WhatsApp bridge requires Node.js 20+.\n"
                 "Install from: https://nodejs.org/en/download/\n"
                 "Then restart Synapse."
             )
@@ -154,9 +154,9 @@ class WhatsAppChannel(BaseChannel):
             major = int(version_str.split(".")[0])
         except (ValueError, IndexError) as exc:
             raise RuntimeError(f"Could not parse Node.js version: {version_str!r}") from exc
-        if major < 18:
+        if major < 20:
             raise RuntimeError(
-                f"Node.js {version_str} found but Node.js 18+ is required.\n"
+                f"Node.js {version_str} found but Node.js 20+ is required.\n"
                 f"Upgrade from: https://nodejs.org/en/download/"
             )
 
@@ -790,7 +790,7 @@ class WhatsAppChannel(BaseChannel):
             return
         try:
             async for line in stderr:
-                _log.debug(
+                _log.warning(
                     "bridge_stderr",
                     extra={"text": line.decode(errors="replace").rstrip()},
                 )

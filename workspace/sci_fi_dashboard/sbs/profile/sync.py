@@ -118,9 +118,7 @@ def sync_user_memory_profile(
         interaction_updated = True
 
     routines_updated = _set_list(interaction, _INTERACTION_ROUTINES_KEY, routine_notes)
-    corrections_updated = _set_list(
-        interaction, _INTERACTION_CORRECTIONS_KEY, correction_notes
-    )
+    corrections_updated = _set_list(interaction, _INTERACTION_CORRECTIONS_KEY, correction_notes)
     identity_updated = _set_list(domain, _DOMAIN_IDENTITY_NOTES_KEY, identity_notes)
     people_updated = _set_list(domain, _DOMAIN_PEOPLE_KEY, people_notes)
     projects_updated = _set_list(domain, _DOMAIN_PROJECTS_KEY, project_notes)
@@ -175,7 +173,9 @@ def sync_runtime_identity_workspace(
     """
     clean_user_id = str(user_id or "").strip()
     target_dir = Path(workspace_dir)
-    facts = rows if rows is not None else _load_active_user_memory_facts(Path(db_path), clean_user_id)
+    facts = (
+        rows if rows is not None else _load_active_user_memory_facts(Path(db_path), clean_user_id)
+    )
     grouped = _group_fact_summaries(facts)
     blocks = _build_runtime_blocks(grouped)
 

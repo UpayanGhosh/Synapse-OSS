@@ -57,6 +57,88 @@ def test_extract_pressure_grounding():
     assert tags.response_style_hint == "grounding"
 
 
+def test_extract_core_life_emotions():
+    cases = [
+        ("I am anxious about tomorrow and scared I will mess it up", "anxious", "negative"),
+        ("I am angry and pissed that he lied", "angry", "negative"),
+        ("I feel sad and lonely tonight", "sad", "negative"),
+        ("I love her and feel soft about this", "loving", "positive"),
+        ("I am happy and grateful today", "happy", "positive"),
+    ]
+
+    for text, expected_mood, expected_sentiment in cases:
+        tags = extract_affect(text)
+        assert tags.mood == expected_mood
+        assert tags.sentiment == expected_sentiment
+        assert tags.confidence > 0
+
+
+def test_extract_keeps_mixed_emotion_tags():
+    tags = extract_affect(
+        "I felt quietly happy and loved, but also lonely when the room got quiet."
+    )
+
+    assert tags.sentiment == "mixed"
+    assert {"happy", "loving", "lonely"}.issubset(set(tags.emotion_tags))
+
+
+def test_extract_jealousy_as_grounding_need():
+    tags = extract_affect(
+        "I saw someone I like laughing with someone else and my stomach just dropped. "
+        "I know it sounds needy, but I hate how jealous I got."
+    )
+
+    assert tags.sentiment == "negative"
+    assert tags.mood == "jealous"
+    assert tags.tension_type == "insecurity"
+    assert tags.user_need == "grounding"
+    assert tags.response_style_hint == "grounding"
+    assert tags.emotional_intensity >= 0.5
+
+
+def test_session_archive_affect_prefers_user_lines():
+    tags = extract_affect(
+        "[Telegram session — 2026-04-30]\n"
+        "User: I saw someone I like laughing with someone else today and my stomach "
+        "just dropped. I hate how jealous I got.\n"
+        "Me: Don't build a whole movie off one laugh; don't let the feeling start "
+        "writing strategy for you."
+    )
+
+    assert tags.mood == "jealous"
+    assert tags.tension_type == "insecurity"
+    assert "focused" not in tags.emotion_tags
+
+
+def test_extract_implicit_relationship_insecurity():
+    tags = extract_affect(
+        "I hate admitting this, but seeing the person I like get so comfortable "
+        "with someone else made me feel small. My brain knows it is probably "
+        "nothing, but my chest is doing drama."
+    )
+
+    assert tags.sentiment == "negative"
+    assert tags.mood == "jealous"
+    assert tags.tension_type == "insecurity"
+    assert tags.user_need == "grounding"
+    assert tags.response_style_hint == "grounding"
+
+
+def test_extract_overthinking_crush_body_drop_as_insecurity():
+    tags = extract_affect(
+        "I’m overthinking something dumb. I like someone, but when she talks to "
+        "another guy normally my stomach drops like an idiot. I know it’s childish, "
+        "but it’s messing with my head."
+    )
+
+    assert tags.sentiment == "negative"
+    assert tags.mood in {"jealous", "anxious"}
+    assert tags.mood != "loving"
+    assert tags.tension_type == "insecurity"
+    assert tags.user_need == "grounding"
+    assert "loving" not in tags.emotion_tags[:1]
+
+
 def test_upsert_and_format_hints():
     conn = sqlite3.connect(":memory:")
     conn.execute("CREATE TABLE documents (id INTEGER PRIMARY KEY, content TEXT)")

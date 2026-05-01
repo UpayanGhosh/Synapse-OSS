@@ -377,8 +377,37 @@ class TestDeliveryRouting:
 
         result = await svc._execute_job(job)
         assert result["delivery"]["status"] == "ok"
+        receipt = result["delivery"]["action_receipts"][0]
+        assert receipt.action == "channel_send"
+        assert receipt.status == "verified"
         channel = channel_registry.get("whatsapp")
         channel.send.assert_awaited_with("+1234567890", "cron output")
+
+    @pytest.mark.asyncio
+    async def test_announce_false_send_returns_failed_receipt(
+        self, data_root, execute_fn, channel_registry
+    ):
+        channel = channel_registry.get("telegram")
+        channel.send.return_value = False
+        svc = CronService("test", data_root, execute_fn, channel_registry)
+
+        job = svc.add(
+            {
+                **_every_schedule(),
+                "delivery": {
+                    "mode": "announce",
+                    "channel": "telegram",
+                    "to": "1988095919",
+                },
+            }
+        )
+
+        result = await svc._execute_job(job)
+
+        assert result["delivery"]["status"] == "error"
+        receipt = result["delivery"]["action_receipts"][0]
+        assert receipt.action == "channel_send"
+        assert receipt.status == "failed"
 
     @pytest.mark.asyncio
     async def test_announce_strips_channel_diagnostics(self, data_root, channel_registry):
@@ -408,6 +437,33 @@ class TestDeliveryRouting:
         assert result["delivery"]["status"] == "ok"
         channel = channel_registry.get("telegram")
         channel.send.assert_awaited_with("1988095919", "Oi - open the Kestrel cleanup now.")
+
+    @pytest.mark.asyncio
+    async def test_announce_strips_reasoning_wrappers(self, data_root, channel_registry):
+        execute_fn = AsyncMock(
+            return_value=(
+                "<think>private cron planning</think>\n"
+                "Thought for 8s\n"
+                "<final>Oi - move now.</final>"
+            )
+        )
+        svc = CronService("test", data_root, execute_fn, channel_registry)
+
+        job = svc.add(
+            {
+                **_every_schedule(),
+                "delivery": {
+                    "mode": "announce",
+                    "channel": "telegram",
+                    "to": "1988095919",
+                },
+            }
+        )
+
+        result = await svc._execute_job(job)
+        assert result["delivery"]["status"] == "ok"
+        channel = channel_registry.get("telegram")
+        channel.send.assert_awaited_with("1988095919", "Oi - move now.")
 
     @pytest.mark.asyncio
     async def test_webhook_calls_httpx_post(self, data_root, execute_fn):

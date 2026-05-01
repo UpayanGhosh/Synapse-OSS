@@ -6,12 +6,18 @@ import json
 import logging
 import os
 import re
+import sqlite3
 import time
 from pathlib import Path
 
 from fastapi import BackgroundTasks
 
 from sci_fi_dashboard import _deps as deps
+from sci_fi_dashboard.action_receipts import (
+    ActionReceipt,
+    guard_reply_against_unreceipted_claims,
+    render_receipt_contract,
+)
 from sci_fi_dashboard.dual_cognition import CognitiveMerge
 from sci_fi_dashboard.llm_router import LLMResult
 from sci_fi_dashboard.observability import get_child_logger
@@ -22,6 +28,7 @@ from sci_fi_dashboard.prompt_tiers import (
     get_prompt_tier_policy,
     prompt_tier_for_role,
 )
+from sci_fi_dashboard.stance import decide_turn_stance
 from sci_fi_dashboard.schemas import ChatRequest
 
 logger = logging.getLogger(__name__)
@@ -212,6 +219,7 @@ def _build_runtime_info_block() -> str:
 
     try:
         from synapse_config import SynapseConfig
+
         cfg = SynapseConfig.load()
         mappings = getattr(cfg, "model_mappings", None) or {}
     except Exception:
@@ -296,6 +304,100 @@ def _format_memory_context_for_tier(
     if mem_response.get("affect_hints"):
         parts.append(str(mem_response.get("affect_hints")))
     return "\n\n".join(parts).strip() or "(No relevant memories retrieved)"
+
+
+def _message_requests_recent_session_recall(user_msg: str) -> bool:
+    """Detect prompts that ask about the immediately previous conversation."""
+
+    msg = (user_msg or "").lower()
+    recall_markers = (
+        "remember",
+        "what was i",
+        "what were we",
+        "what did we",
+        "before this",
+        "fresh session",
+        "previous session",
+        "last session",
+        "just discussed",
+        "earlier",
+    )
+    temporal_markers = (
+        "fresh session",
+        "previous session",
+        "last session",
+        "before this",
+        "just",
+        "earlier",
+        "ago",
+    )
+    return any(marker in msg for marker in recall_markers) and any(
+        marker in msg for marker in temporal_markers
+    )
+
+
+def _fetch_recent_session_recall_context(
+    user_msg: str,
+    db_path: str | Path,
+    *,
+    limit: int = 2,
+    max_chars: int = 1800,
+) -> str:
+    """Fetch the newest archived session docs for temporal recall prompts."""
+
+    if not _message_requests_recent_session_recall(user_msg):
+        return ""
+
+    try:
+        path = Path(db_path)
+        if not path.exists():
+            return ""
+        with sqlite3.connect(path) as conn:
+            rows = conn.execute(
+                """
+                SELECT id, created_at, content
+                FROM documents
+                WHERE filename = 'session'
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (max(1, int(limit)),),
+            ).fetchall()
+    except Exception:
+        return ""
+
+    entries: list[str] = []
+    remaining = max(200, int(max_chars))
+    for doc_id, created_at, content in rows:
+        if not content or remaining <= 0:
+            continue
+        snippet = _format_recent_session_snippet(str(content), remaining)
+        entries.append(f"* doc {doc_id} at {created_at}: {snippet}")
+        remaining -= len(snippet)
+
+    if not entries:
+        return ""
+    return (
+        "[RECENT ARCHIVED SESSION - highest priority for 'what just happened' recall]\n"
+        "Use this before older semantic memories when the user asks about the previous/fresh session.\n"
+        + "\n".join(entries)
+    )
+
+
+def _format_recent_session_snippet(content: str, max_chars: int) -> str:
+    """Preserve both session setup and latest turns for recency recall."""
+
+    compact = " ".join(str(content or "").split())
+    if len(compact) <= max_chars:
+        return compact
+    budget = max(200, int(max_chars))
+    head_chars = min(360, max(80, budget // 3))
+    tail_chars = max(80, budget - head_chars - 38)
+    return (
+        compact[:head_chars].rstrip()
+        + " ... [middle truncated; latest turns follow] ... "
+        + compact[-tail_chars:].lstrip()
+    )
 
 
 def _build_cognitive_context_for_tier(cognitive_merge, policy: PromptTierPolicy) -> str:
@@ -436,7 +538,9 @@ def _is_relationship_voice_turn(user_msg: str, role: str, session_mode: str) -> 
     if session_mode == "spicy" or str(role).lower() != "casual":
         return False
     msg = " ".join(str(user_msg or "").lower().split())
-    memory_turn = any(marker in msg for marker in ("remember ", "remember:", "save my", "save this"))
+    memory_turn = any(
+        marker in msg for marker in ("remember ", "remember:", "save my", "save this")
+    )
     if _message_requests_external_action(user_msg) and not memory_turn:
         return False
 
@@ -488,6 +592,10 @@ def _is_relationship_voice_turn(user_msg: str, role: str, session_mode: str) -> 
         "shopping",
         "travel",
         "goa",
+        "alone",
+        "quiet",
+        "jealous",
+        "guilt",
         "small joy",
         "life update",
         "personal update",
@@ -515,12 +623,25 @@ def _build_relationship_voice_contract(
     msg = " ".join(str(user_msg or "").lower().split())
     crush_turn = any(marker in msg for marker in ("crush", "love", "date", "naina"))
     anxious_turn = any(
-        marker in msg
-        for marker in ("anxious", "scared", "fear", "panic", "stressed", "pressure")
+        marker in msg for marker in ("anxious", "scared", "fear", "panic", "stressed", "pressure")
     )
     anger_turn = any(
+        marker in msg for marker in ("angry", "irritated", "annoyed", "pissed", "defensive", "hurt")
+    )
+    tender_turn = any(
         marker in msg
-        for marker in ("angry", "irritated", "annoyed", "pissed", "defensive", "hurt")
+        for marker in (
+            "lonely",
+            "alone",
+            "guilty",
+            "guilt",
+            "sad",
+            "hurt",
+            "quiet",
+            "jealous",
+            "miss",
+            "cried",
+        )
     )
     vent_turn = any(
         marker in msg
@@ -545,7 +666,14 @@ def _build_relationship_voice_contract(
         )
     if anxious_turn:
         situational.append(
-            "If he is anxious: one warm line, one next action, one reason. No ten-option menus."
+            "If he is anxious: ground him like a friend first. Keep fixes tiny and only after "
+            "the feeling has been met. No ten-option menus."
+        )
+    if tender_turn and not anxious_turn:
+        situational.append(
+            "If this is tender daily-life emotion: stay soft, but do not become a warm therapist. "
+            "Add one tiny leg-pull or subtle sarcasm when safe, like a real friend keeping the "
+            "room from getting too heavy."
         )
     if anger_turn:
         situational.append(
@@ -554,9 +682,11 @@ def _build_relationship_voice_contract(
         )
     if vent_turn:
         situational.append(
-            "If he is venting: join the frustration like a friend when he has a point. "
-            "Do not stay neutral just to sound safe. If he is being unfair or spiraling, "
-            "push back clearly and kindly."
+            "If he is venting: side with the user's frustration first when he has a point. "
+            "Say the annoying part plainly, with a little bite. Do not rush into coaching, "
+            "checklists, or productivity mode. Do not end every vent reply with an offer to "
+            "draft/fix/plan something. If he is being unfair or spiraling, push back clearly "
+            "and kindly after you have met the emotion."
         )
 
     length_line = (
@@ -572,9 +702,10 @@ def _build_relationship_voice_contract(
         "RELATIONSHIP VOICE CONTRACT - highest priority for this reply:\n"
         "- Speak like the user's close friend, not a customer-support assistant.\n"
         "- Have a real stance. React first; do not only summarize what he said.\n"
-        "- Use warmth, tiny teasing, and opinion when safe. Be kind, not sycophantic.\n"
-        "- If the user is ranting and has a point, rant with them a little; if they are wrong, contradict them with care.\n"
-        "- For personal/emotional updates: mirror the feeling in human words, then give one useful move.\n"
+        "- Use warmth, tiny teasing, subtle sarcasm, and opinion when safe. Be kind, not sycophantic.\n"
+        "- Add one tiny leg-pull when the user is safe enough for it; skip it for acute distress, shame, grief, or danger.\n"
+        "- If the user is ranting and has a point, rant with them a little before advising; if they are wrong, contradict them with care.\n"
+        "- For personal/emotional updates: mirror the feeling in human words, then give one next action or useful move.\n"
         "- Avoid bot phrases: 'It sounds like', 'I understand', 'Here are', 'I recommend', 'As an AI'.\n"
         "- Avoid headings and therapy-template bullet dumps unless explicitly asked.\n"
         f"- {length_line}\n"
@@ -669,7 +800,9 @@ def _build_compact_casual_system_prompt(
         workspace_prefix = _load_agent_workspace_prefix_for_session(session_key, "small")
     except Exception:
         workspace_prefix = ""
-    workspace_excerpt = _truncate_text(workspace_prefix, 1_400) if workspace_prefix else ""
+    workspace_excerpt = (
+        _build_compact_workspace_excerpt(workspace_prefix) if workspace_prefix else ""
+    )
     sbs_excerpt = _truncate_text(sbs_prompt, sbs_limit) if sbs_prompt else ""
     if workspace_excerpt and sbs_excerpt:
         return (
@@ -682,6 +815,51 @@ def _build_compact_casual_system_prompt(
     if sbs_excerpt:
         return f"{compact_rules}\n\nPERSONA EXCERPT:\n{sbs_excerpt}"
     return compact_rules
+
+
+def _build_compact_workspace_excerpt(workspace_prefix: str) -> str:
+    """Keep high-priority identity/protocol sections under compact prompt budgets."""
+    sections = _split_agent_workspace_sections(workspace_prefix)
+    if not sections:
+        return _truncate_text(workspace_prefix, 1_800)
+
+    selected: list[str] = []
+    section_limits = {
+        "SOUL": 520,
+        "CORE": 620,
+        "USER": 520,
+        "MEMORY": 460,
+        "AGENTS": 620,
+    }
+    for name in ("SOUL", "CORE", "USER", "MEMORY", "AGENTS"):
+        body = sections.get(name, "").strip()
+        if not body:
+            continue
+        if name in {"USER", "MEMORY"}:
+            body = _extract_dynamic_profile_block(body) or body
+        selected.append(f"[{name}]\n{_truncate_text(body, section_limits[name])}")
+    return "\n\n".join(selected).strip()
+
+
+def _split_agent_workspace_sections(workspace_prefix: str) -> dict[str, str]:
+    pattern = re.compile(r"^# ===== ([A-Z_]+)\.md =====\s*$", re.MULTILINE)
+    matches = list(pattern.finditer(workspace_prefix or ""))
+    sections: dict[str, str] = {}
+    for idx, match in enumerate(matches):
+        start = match.end()
+        end = matches[idx + 1].start() if idx + 1 < len(matches) else len(workspace_prefix)
+        sections[match.group(1)] = workspace_prefix[start:end].strip()
+    return sections
+
+
+def _extract_dynamic_profile_block(text: str) -> str:
+    start_marker = "<!-- SYNAPSE:DYNAMIC_USER_PROFILE:BEGIN -->"
+    end_marker = "<!-- SYNAPSE:DYNAMIC_USER_PROFILE:END -->"
+    start = text.find(start_marker)
+    end = text.find(end_marker)
+    if start == -1 or end == -1 or end <= start:
+        return ""
+    return text[start + len(start_marker) : end].strip()
 
 
 def _dual_cognition_llm_fn(user_msg: str, history: list | None, call_ag_oracle):
@@ -742,7 +920,66 @@ def _message_requests_external_action(message: str) -> bool:
         "debug",
         "test ",
     )
-    return any(phrase in msg for phrase in trigger_phrases)
+    return any(phrase in msg for phrase in trigger_phrases) or _is_practical_web_lookup(msg)
+
+
+def _is_practical_web_lookup(message: str) -> bool:
+    """Detect practical local/help requests where a safe web lookup beats asking first."""
+    msg = " ".join(str(message or "").lower().split())
+    if not msg:
+        return False
+
+    lookup_intent = (
+        "check",
+        "find",
+        "look for",
+        "recommend",
+        "fastest",
+        "quickest",
+        "best way",
+        "legit way",
+        "how do i",
+        "how can i",
+        "can you check",
+        "where can i",
+        "near me",
+        "nearby",
+        "closest",
+        "open now",
+        "service center",
+        "repair shop",
+    )
+    practical_domains = (
+        "service center",
+        "repair",
+        "mechanic",
+        "roadside",
+        "towing",
+        "tow",
+        "rsa",
+        "authorized",
+        "authorised",
+        "booking",
+        "scooter",
+        "bike",
+        "car",
+        "phone",
+        "laptop",
+        "clinic",
+        "doctor",
+        "pharmacy",
+        "restaurant",
+        "cafe",
+        "hotel",
+        "shop",
+        "store",
+        "salon",
+        "plumber",
+        "electrician",
+    )
+    return any(marker in msg for marker in lookup_intent) and any(
+        marker in msg for marker in practical_domains
+    )
 
 
 def _extract_first_url(text: str) -> str | None:
@@ -773,7 +1010,7 @@ def _should_prefetch_web_query(user_msg: str) -> bool:
     msg = " ".join(str(user_msg or "").lower().split())
     if _extract_first_url(user_msg):
         return False
-    return any(
+    return _is_practical_web_lookup(msg) or any(
         phrase in msg
         for phrase in (
             "search the web",
@@ -789,6 +1026,11 @@ def _should_prefetch_web_query(user_msg: str) -> bool:
 
 def _extract_web_query(text: str) -> str:
     query = str(text or "").strip()
+    if _is_practical_web_lookup(query):
+        practical_query = _normalize_practical_web_query(query)
+        if practical_query:
+            return practical_query
+
     lowered = query.lower()
     prefixes = (
         "search the web for ",
@@ -796,11 +1038,226 @@ def _extract_web_query(text: str) -> str:
         "look up ",
         "find online ",
         "search for ",
+        "find ",
+        "recommend ",
     )
     for prefix in prefixes:
         if lowered.startswith(prefix):
             return query[len(prefix) :].strip(" .")
     return query.strip(" .")
+
+
+def _normalize_practical_web_query(text: str) -> str:
+    """Convert conversational urgency into a clean search query."""
+    original = str(text or "").strip()
+    msg = " ".join(original.split())
+    lowered = msg.lower()
+    if not msg:
+        return ""
+
+    stop_upper = {
+        "I",
+        "AI",
+        "DM",
+        "OK",
+        "LOL",
+        "OMG",
+    }
+    brands = [
+        token
+        for token in re.findall(r"\b[A-Z][A-Z0-9&+-]{1,8}\b", msg)
+        if token not in stop_upper
+    ]
+
+    known_domains = (
+        "roadside",
+        "roadside assistance",
+        "towing",
+        "tow",
+        "service center",
+        "service centre",
+        "authorized service center",
+        "authorised service centre",
+        "authorised service center",
+        "authorized service centre",
+        "repair",
+        "mechanic",
+        "booking",
+        "appointment",
+        "clinic",
+        "doctor",
+        "pharmacy",
+        "restaurant",
+        "cafe",
+        "hotel",
+        "shop",
+        "store",
+        "salon",
+        "plumber",
+        "electrician",
+    )
+    domain_terms: list[str] = []
+    for term in known_domains:
+        if term in lowered:
+            if term == "roadside":
+                domain_terms.append("roadside assistance")
+            elif term == "tow":
+                domain_terms.append("towing")
+            elif term == "service centre":
+                domain_terms.append("service center")
+            elif term.startswith("authorised"):
+                domain_terms.append(term.replace("authorised", "authorised"))
+            else:
+                domain_terms.append(term)
+
+    # Add the object category when it helps the search but avoid emotional filler.
+    for noun in ("scooter", "bike", "car", "phone", "laptop"):
+        if noun in lowered:
+            domain_terms.append(noun)
+
+    location = ""
+    loc_match = re.search(
+        r"\b(?:near|in|at|around|from)\s+([A-Za-z][A-Za-z\s-]{1,60}?)(?=[.?!,;]| can you\b| please\b|$)",
+        msg,
+        flags=re.I,
+    )
+    if loc_match:
+        location = " ".join(loc_match.group(1).split())
+        location = re.sub(
+            r"\b(?:here|right now|rn|today|tonight|fastest|legit|way|help)\b.*$",
+            "",
+            location,
+            flags=re.I,
+        ).strip()
+
+    normalized_parts: list[str] = []
+    normalized_parts.extend(brands[:2])
+    normalized_parts.extend(dict.fromkeys(domain_terms))
+    if location:
+        normalized_parts.append(location)
+
+    if any(marker in lowered for marker in ("official", "legit", "authorized", "authorised", "roadside", "towing")):
+        normalized_parts.append("official")
+
+    normalized = " ".join(part for part in normalized_parts if part).strip()
+    if normalized:
+        return normalized
+
+    # Generic fallback: remove common conversational wrappers but preserve the
+    # user's nouns, service words, and location hints.
+    cleaned = re.sub(
+        r"\b(?:bro|bhai|please|pls|can you|could you|would you|i think|ig|my)\b",
+        " ",
+        msg,
+        flags=re.I,
+    )
+    cleaned = re.sub(
+        r"\b(?:fucked|gave up|just|fastest|legit|way|help here|right now|rn)\b",
+        " ",
+        cleaned,
+        flags=re.I,
+    )
+    return " ".join(cleaned.split()).strip(" .?!")
+
+
+def _is_deferred_tool_promise(reply: str) -> bool:
+    """Detect promise-to-check replies after a tool result already exists."""
+    msg = " ".join(str(reply or "").lower().split())
+    if not msg or len(msg) > 260:
+        return False
+    if "http://" in msg or "https://" in msg or "found" in msg or "searched" in msg:
+        return False
+
+    promise_markers = (
+        "one sec",
+        "one second",
+        "give me a sec",
+        "give me a second",
+        "lemme check",
+        "let me check",
+        "i'll check",
+        "i will check",
+        "i can check",
+        "i'll look",
+        "i will look",
+        "let me look",
+        "lemme look",
+        "i'll search",
+        "i will search",
+        "let me search",
+        "lemme search",
+        "i'll pull",
+        "i will pull",
+        "let me pull",
+    )
+    return any(marker in msg for marker in promise_markers)
+
+
+def _sharpen_generic_helper_ending(reply: str) -> str:
+    """Turn passive assistant offers into direct next moves."""
+    text = str(reply or "")
+    if not text:
+        return text
+
+    def _cap(match: re.Match[str]) -> str:
+        first = match.group(1)
+        return first[:1].upper() + first[1:]
+
+    patterns = (
+        r"(?i)\bif you want,\s*(send me\b)",
+        r"(?i)\bif you want,\s*(give me\b)",
+        r"(?i)\bif you want,\s*(tell me\b)",
+        r"(?i)\bif you want,\s*(share\b)",
+        r"(?i)\bif you want,\s*(drop\b)",
+        r"(?i)\bif you want,\s*(paste\b)",
+    )
+    for pattern in patterns:
+        text = re.sub(pattern, _cap, text)
+    text = re.sub(
+        r"(?i)\bif you want,\s*i can help you\s+([^.\n!?]+)([.!?])?",
+        lambda match: (
+            "Send me the raw details and I'll help you "
+            + match.group(1).strip()
+            + (match.group(2) or ".")
+        ),
+        text,
+    )
+    text = re.sub(
+        r"(?i)\bif you want,\s*i can\s+([^.\n!?]+)([.!?])?",
+        lambda match: (
+            "Send me the raw details and I'll "
+            + match.group(1).strip()
+            + (match.group(2) or ".")
+        ),
+        text,
+    )
+    return text
+
+
+def _repair_empty_template_slots(reply: str) -> str:
+    """Replace empty model template blanks with explicit fillable labels."""
+    text = str(reply or "")
+    if not text:
+        return text
+
+    replacements = (
+        (
+            r"(?i)\baiming for\s*,\s*with\s+as\b",
+            "aiming for [target date], with [next milestone] as",
+        ),
+        (
+            r"(?i)\bis\s*,\s*and\s+(we(?:'|’)re|we are)\s+handling it by\s*\.",
+            "is [risk], and we're handling it by [mitigation].",
+        ),
+        (
+            r"(?i)\btradeoff is\s*,\s*so the safest path is\s*\.",
+            "tradeoff is [tradeoff], so the safest path is [path].",
+        ),
+    )
+    for pattern, replacement in replacements:
+        text = re.sub(pattern, replacement, text)
+    text = re.sub(r"(?i)\buser_nickname\b", "friend", text)
+    return re.sub(r" {2,}", " ", text)
 
 
 def _should_skip_skill_routing(user_msg: str) -> bool:
@@ -879,6 +1336,79 @@ def _has_user_visible_reply(text: str) -> bool:
     return bool(cleaned)
 
 
+def _should_include_response_metadata(request: ChatRequest) -> bool:
+    """Return True only for explicit debug/diagnostic response metadata opt-in."""
+    for attr in ("include_debug_metadata", "show_debug_metadata", "debug_response_metadata"):
+        if bool(getattr(request, attr, False)):
+            return True
+
+    env_value = os.environ.get("SYNAPSE_DEBUG_RESPONSE_METADATA", "")
+    if str(env_value).strip().lower() in {"1", "true", "yes", "on"}:
+        return True
+
+    session_cfg = getattr(getattr(deps, "_synapse_cfg", None), "session", {}) or {}
+    if isinstance(session_cfg, dict):
+        return bool(
+            session_cfg.get("show_response_metadata") or session_cfg.get("debug_response_metadata")
+        )
+    return False
+
+
+async def _recover_empty_visible_reply(
+    role: str,
+    messages: list[dict],
+    *,
+    target: str,
+) -> LLMResult | None:
+    """Retry once without tools when a provider returns no visible user text."""
+    if not hasattr(deps.synapse_llm_router, "call_with_metadata"):
+        return None
+
+    recovery_messages = [
+        *messages,
+        {
+            "role": "system",
+            "content": (
+                "The previous model attempt produced no visible message for the user. "
+                "Reply now in plain text only. Do not call tools, do not include metadata, "
+                "and answer the user's last message directly in a natural conversational voice."
+            ),
+        },
+    ]
+    try:
+        recovery_result = await deps.synapse_llm_router.call_with_metadata(
+            role,
+            recovery_messages,
+            temperature=0.65 if role != "code" else 0.2,
+            max_tokens=700,
+        )
+    except Exception as exc:
+        _log.warning(
+            "empty_model_reply_recovery_failed",
+            extra={"target": target, "error": str(exc)},
+        )
+        return None
+
+    if _has_user_visible_reply(getattr(recovery_result, "text", "")):
+        _log.info(
+            "empty_model_reply_recovered",
+            extra={
+                "target": target,
+                "model": getattr(recovery_result, "model", "unknown"),
+            },
+        )
+        return recovery_result
+
+    _log.warning(
+        "empty_model_reply_recovery_empty",
+        extra={
+            "target": target,
+            "model": getattr(recovery_result, "model", "unknown"),
+        },
+    )
+    return None
+
+
 # Conditional imports -- same pattern as original api_gateway.py
 with contextlib.suppress(ImportError):
     from sci_fi_dashboard.tool_registry import (
@@ -952,6 +1482,7 @@ def _is_owner_sender(user_id: str | None) -> bool:
         return True
     try:
         from sci_fi_dashboard.owner_registry import is_owner
+
         return is_owner(user_id)
     except Exception:
         return False
@@ -1188,7 +1719,7 @@ async def persona_chat(
     cognitive_merge = None
     cognitive_context = ""
     if deps._synapse_cfg.session.get("dual_cognition_enabled", True):
-        dc_timeout = deps._synapse_cfg.session.get("dual_cognition_timeout", 5.0)
+        dc_timeout = deps._synapse_cfg.session.get("dual_cognition_timeout", 10.0)
         try:
             from sci_fi_dashboard.llm_wrappers import call_ag_oracle
 
@@ -1201,6 +1732,9 @@ async def persona_chat(
                     target=target,
                     llm_fn=cognition_llm_fn,
                     pre_cached_memory=mem_response,
+                    max_llm_calls=int(
+                        deps._synapse_cfg.session.get("dual_cognition_foreground_max_llm_calls", 1)
+                    ),
                 ),
                 timeout=dc_timeout,
             )
@@ -1461,6 +1995,17 @@ async def persona_chat(
     prompt_depth = _prompt_depth_for_turn(user_msg, role, session_mode, request.history)
     prompt_policy = _compact_prompt_policy(base_prompt_policy, prompt_depth)
     memory_context = _format_memory_context_for_tier(_permanent_facts, mem_response, prompt_policy)
+    recent_session_context = ""
+    _db_dir = getattr(deps._synapse_cfg, "db_dir", None)
+    if _db_dir is not None:
+        recent_session_context = _fetch_recent_session_recall_context(
+            user_msg,
+            Path(_db_dir) / "memory.db",
+            limit=2,
+            max_chars=1800 if prompt_depth == "full" else 1200,
+        )
+    if recent_session_context:
+        memory_context = f"{recent_session_context}\n\n{memory_context}"
     cognitive_context = _build_cognitive_context_for_tier(cognitive_merge, prompt_policy)
 
     with contextlib.suppress(Exception):
@@ -1560,7 +2105,7 @@ async def persona_chat(
     # Small models (Gemma4:e4b) have strong recency bias -- context far from
     # the user message gets ignored. Placing this last ensures it's read.
     _profile_reminder = _format_profile_reminder(_permanent_facts, prompt_policy)
-    if _profile_reminder and prompt_depth == "full":
+    if _profile_reminder:
         messages.append({"role": "system", "content": _profile_reminder})
 
     _relationship_voice_contract = _build_relationship_voice_contract(
@@ -1571,6 +2116,24 @@ async def persona_chat(
     )
     if _relationship_voice_contract:
         messages.append({"role": "system", "content": _relationship_voice_contract})
+
+    _stance_decision = decide_turn_stance(
+        user_msg,
+        role=role,
+        session_mode=session_mode,
+        cognitive_merge=cognitive_merge,
+    )
+    messages.append({"role": "system", "content": _stance_decision.to_prompt()})
+    with contextlib.suppress(Exception):
+        _log.info(
+            "turn_stance_selected",
+            extra={
+                "stance": _stance_decision.stance,
+                "emotion": _stance_decision.emotional_label,
+                "humor_dose": _stance_decision.humor_dose,
+                "autonomy": _stance_decision.autonomy,
+            },
+        )
 
     messages.append({"role": "user", "content": user_msg})
 
@@ -1598,6 +2161,7 @@ async def persona_chat(
     tool_schemas: list | None = None
     pre_tools_used: list[str] = []
     pre_tool_fallback: str = ""
+    action_receipts: list[ActionReceipt] = []
 
     if use_tools:
         request_channel_id = getattr(request, "channel_id", None) or "api"
@@ -1647,6 +2211,24 @@ async def persona_chat(
                             "I fetched the URL. Here is the extracted content I found:\n"
                             f"{_truncate_tool_result(tool_result.content, 1200)}"
                         )
+                        action_receipts.append(
+                            ActionReceipt(
+                                action="web_search",
+                                status="verified",
+                                evidence=f"Fetched URL {url}; content returned.",
+                                confidence=0.85,
+                            )
+                        )
+                    else:
+                        action_receipts.append(
+                            ActionReceipt(
+                                action="web_search",
+                                status="failed",
+                                evidence=_truncate_tool_result(tool_result.content, 240),
+                                confidence=0.0,
+                                next_best_action="Say the fetch failed; do not claim the URL was checked.",
+                            )
+                        )
                     messages.append(
                         {
                             "role": "system",
@@ -1664,6 +2246,15 @@ async def persona_chat(
                         },
                     )
                 except Exception as exc:
+                    action_receipts.append(
+                        ActionReceipt(
+                            action="web_search",
+                            status="failed",
+                            evidence=str(exc)[:240],
+                            confidence=0.0,
+                            next_best_action="Say the URL fetch failed; use offline guidance only.",
+                        )
+                    )
                     _log.warning(
                         "prefetch_tool_failed",
                         extra={"tool": "web_search", "error": str(exc)},
@@ -1679,12 +2270,17 @@ async def persona_chat(
                     )
                     pre_tools_used.append("web_query")
                     if not bool(getattr(tool_result, "is_error", False)):
+                        usable_count = 0
                         try:
                             payload = json.loads(tool_result.content)
                             results = payload.get("results", [])[:5]
-                            lines = [
-                                "I searched the web and found these starting points:"
-                            ]
+                            usable_count = sum(
+                                1
+                                for item in results
+                                if str(item.get("title", "")).strip()
+                                and str(item.get("url", "")).strip()
+                            )
+                            lines = ["I searched the web and found these starting points:"]
                             for item in results:
                                 title = str(item.get("title", "")).strip()
                                 url = str(item.get("url", "")).strip()
@@ -1698,12 +2294,51 @@ async def persona_chat(
                                 "I searched the web. Here is what I found:\n"
                                 f"{_truncate_tool_result(tool_result.content, 1200)}"
                             )
+                        action_receipts.append(
+                            ActionReceipt(
+                                action="web_query",
+                                status="verified" if usable_count else "inferred",
+                                evidence=(
+                                    f"Search query {query!r}; "
+                                    f"{usable_count} usable result(s) returned."
+                                ),
+                                confidence=0.86 if usable_count else 0.35,
+                                next_best_action=(
+                                    "Use the returned results directly; prefer official sources."
+                                    if usable_count
+                                    else "Say the lookup ran but did not return usable hits."
+                                ),
+                            )
+                        )
+                    else:
+                        pre_tool_fallback = (
+                            "I tried to search, but the local web lookup failed. "
+                            "I can still help narrow the request or use any details you already have."
+                        )
+                        action_receipts.append(
+                            ActionReceipt(
+                                action="web_query",
+                                status="failed",
+                                evidence=_truncate_tool_result(tool_result.content, 240),
+                                confidence=0.0,
+                                next_best_action="Say the search failed; do not claim live results.",
+                            )
+                        )
                     messages.append(
                         {
                             "role": "system",
                             "content": (
                                 "Tool result from web_query for the user search request "
-                                f"{query!r}:\n{_truncate_tool_result(tool_result.content, 3000)}"
+                                f"{query!r}:\n{_truncate_tool_result(tool_result.content, 3000)}\n\n"
+                                "Use these results directly in the next reply. "
+                                "Do not say you will check, search, or look in a moment; "
+                                "the lookup already happened. "
+                                "Prefer official/manufacturer results before directories. "
+                                "Do not use vague wording like 'official-ish'; label sources "
+                                "as official only when the domain/title supports it, otherwise "
+                                "say third-party directory or fallback listing. "
+                                "If this result is an error or has no usable results, say that plainly. "
+                                "Do not claim you searched successfully unless the result contains usable hits."
                             ),
                         }
                     )
@@ -1715,10 +2350,64 @@ async def persona_chat(
                         },
                     )
                 except Exception as exc:
+                    action_receipts.append(
+                        ActionReceipt(
+                            action="web_query",
+                            status="failed",
+                            evidence=str(exc)[:240],
+                            confidence=0.0,
+                            next_best_action="Say the lookup failed; use offline guidance only.",
+                        )
+                    )
+                    pre_tool_fallback = (
+                        "I tried to search, but the local web lookup failed. "
+                        "I can still help with a safer next step from the details you gave me."
+                    )
+                    messages.append(
+                        {
+                            "role": "system",
+                            "content": (
+                                "The web_query prefetch failed before returning results. "
+                                "Do not claim you searched or checked live results. "
+                                f"Failure summary: {str(exc)[:300]}"
+                            ),
+                        }
+                    )
                     _log.warning(
                         "prefetch_tool_failed",
                         extra={"tool": "web_query", "error": str(exc)},
                     )
+            else:
+                action_receipts.append(
+                    ActionReceipt(
+                        action="web_query",
+                        status="unavailable",
+                        evidence="No web_query tool available in this session.",
+                        confidence=0.0,
+                        next_best_action="Do not claim live search; ask for one missing detail if needed.",
+                    )
+                )
+                messages.append(
+                    {
+                        "role": "system",
+                        "content": (
+                            "The user asked for a practical searchable lookup, but no web_query "
+                            "tool is available in this session. Do not claim you searched live. "
+                            "Offer the best offline next step and ask for only the missing detail."
+                        ),
+                    }
+                )
+
+    receipt_contract = render_receipt_contract(action_receipts)
+    insert_at = (
+        len(messages) - 1 if messages and messages[-1].get("role") == "user" else len(messages)
+    )
+    if (
+        insert_at > 0
+        and str(messages[insert_at - 1].get("content", "")).startswith("TURN STANCE DECISION")
+    ):
+        insert_at -= 1
+    messages.insert(insert_at, {"role": "system", "content": receipt_contract})
 
     if session_mode == "spicy":
         # === THE VAULT (Local Stheno) ===
@@ -1833,6 +2522,7 @@ async def persona_chat(
             # Cumulative-token abort -- prevents runaway context growth
             try:
                 from litellm import get_model_info as _gmi
+
                 _mi = _gmi(getattr(result, "model", "unknown")) if result else {}
                 _ctx_max = (_mi or {}).get("max_input_tokens") or 128_000
             except Exception:
@@ -1840,7 +2530,11 @@ async def persona_chat(
             if _cumulative_tokens > int(_ctx_max * tool_loop_token_ratio_abort):
                 _log.warning(
                     "tool_loop_token_ratio_exceeded",
-                    extra={"round": round_num, "cum_tokens": _cumulative_tokens, "ctx_max": _ctx_max},
+                    extra={
+                        "round": round_num,
+                        "cum_tokens": _cumulative_tokens,
+                        "ctx_max": _ctx_max,
+                    },
                 )
                 reply = getattr(result, "text", "") or "Token budget reached."
                 break
@@ -2017,6 +2711,19 @@ async def persona_chat(
                 total_result_chars += len(content)
                 total_tool_time += time.time() - t_start
                 tools_used.append(tc.name)
+                action_receipts.append(
+                    ActionReceipt(
+                        action=str(tc.name),
+                        status="failed" if bool(getattr(tr, "is_error", False)) else "verified",
+                        evidence=_truncate_tool_result(content, 240),
+                        confidence=0.0 if bool(getattr(tr, "is_error", False)) else 0.82,
+                        next_best_action=(
+                            "Say the action failed; do not claim success."
+                            if bool(getattr(tr, "is_error", False))
+                            else "Use this result directly if relevant."
+                        ),
+                    )
+                )
                 messages.append(
                     {
                         "role": "tool",
@@ -2058,6 +2765,17 @@ async def persona_chat(
                 },
             )
 
+        if pre_tool_fallback and _is_deferred_tool_promise(reply):
+            _log.info(
+                "prefetched_result_replaced_deferred_promise",
+                extra={"tools": tools_used},
+            )
+            reply = pre_tool_fallback
+
+        reply = _sharpen_generic_helper_ending(reply)
+        reply = _repair_empty_template_slots(reply)
+        reply = guard_reply_against_unreceipted_claims(reply, action_receipts)
+
     # --- Programmatic Footer Injection ---
     elapsed = time.perf_counter() - t0
     if result is None:
@@ -2068,6 +2786,27 @@ async def persona_chat(
             completion_tokens=0,
             total_tokens=0,
         )
+
+    if not _has_user_visible_reply(reply):
+        _log.warning(
+            "empty_model_reply",
+            extra={
+                "target": target,
+                "model": getattr(result, "model", "unknown"),
+                "prompt_tokens": getattr(result, "prompt_tokens", 0) or 0,
+                "completion_tokens": getattr(result, "completion_tokens", 0) or 0,
+            },
+        )
+        recovery_result = await _recover_empty_visible_reply(role, messages, target=target)
+        if recovery_result is not None:
+            result = recovery_result
+            reply = recovery_result.text.strip()
+        else:
+            reply = (
+                pre_tool_fallback
+                or "I hit an empty response there, but I heard you. Please try again in a moment."
+            )
+
     out_tokens = result.completion_tokens or 0
     in_tokens = result.prompt_tokens or 0
     total_tokens = result.total_tokens or 0
@@ -2085,21 +2824,6 @@ async def persona_chat(
 
     usage_pct = (total_tokens / max_context) * 100 if max_context else 0
 
-    if not _has_user_visible_reply(reply):
-        _log.warning(
-            "empty_model_reply",
-            extra={
-                "target": target,
-                "model": actual_model,
-                "prompt_tokens": in_tokens,
-                "completion_tokens": out_tokens,
-            },
-        )
-        reply = (
-            pre_tool_fallback
-            or "I hit an empty response there, but I heard you. Please try again in a moment."
-        )
-
     # Phase 5: Include tool usage info in footer
     tools_footer = ""
     try:
@@ -2115,14 +2839,16 @@ async def persona_chat(
     except NameError:
         pass
 
-    stats_footer = (
-        f"\n\n---\n"
-        f"**Context Usage:** {total_tokens:,} / {max_context:,} ({usage_pct:.1f}%)\n"
-        f"**Model:** {actual_model}\n"
-        f"**Tokens:** {in_tokens:,} in / {out_tokens:,} out / {total_tokens:,} total\n"
-        f"**Response Time:** {elapsed:.1f}s"
-        f"{tools_footer}"
-    )
+    stats_footer = ""
+    if _should_include_response_metadata(request):
+        stats_footer = (
+            f"\n\n---\n"
+            f"**Context Usage:** {total_tokens:,} / {max_context:,} ({usage_pct:.1f}%)\n"
+            f"**Model:** {actual_model}\n"
+            f"**Tokens:** {in_tokens:,} in / {out_tokens:,} out / {total_tokens:,} total\n"
+            f"**Response Time:** {elapsed:.1f}s"
+            f"{tools_footer}"
+        )
 
     final_reply = reply + stats_footer
     _log.info(
@@ -2155,6 +2881,7 @@ async def persona_chat(
         "persona": f"synapse_{target}",
         "memory_method": retrieval_method,
         "model": model_used,
+        "action_receipts": [receipt.to_dict() for receipt in action_receipts],
     }
     try:
         if session_mode != "spicy" and tools_used:

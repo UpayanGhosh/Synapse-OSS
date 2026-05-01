@@ -26,6 +26,17 @@ _DEFAULT_PATTERNS: dict[str, list[str]] = {
 }
 
 
+def _adjust_style_ratio(style: dict[str, Any], delta: float) -> None:
+    """Adjust whichever linguistic ratio schema the profile currently uses."""
+
+    ratio_keys = [key for key in ("primary_language_ratio", "banglish_ratio") if key in style]
+    if not ratio_keys:
+        ratio_keys = ["banglish_ratio"]
+    for key in ratio_keys:
+        current_ratio = style.get(key, 0.3)
+        style[key] = max(0.0, min(1.0, current_ratio + delta))
+
+
 def _load_patterns() -> dict[str, list[str]]:
     """Load feedback patterns from language_patterns.yaml, falling back to built-ins."""
     yaml_path = Path(__file__).parent / "language_patterns.yaml"
@@ -110,15 +121,13 @@ class ImplicitFeedbackDetector:
         style = linguistic.get("current_style", {})
 
         if signal_type == "correction_formal":
-            # Increase banglish ratio (more casual/banglish)
-            current_ratio = style.get("banglish_ratio", 0.3)
-            style["banglish_ratio"] = min(1.0, current_ratio + 0.2)
+            # Increase the user's preferred primary/casual language ratio.
+            _adjust_style_ratio(style, 0.2)
             needs_linguistic_update = True
 
         elif signal_type == "correction_casual":
-            # Decrease banglish ratio (more formal/english)
-            current_ratio = style.get("banglish_ratio", 0.3)
-            style["banglish_ratio"] = max(0.0, current_ratio - 0.2)
+            # Decrease the user's preferred primary/casual language ratio.
+            _adjust_style_ratio(style, -0.2)
             needs_linguistic_update = True
 
         elif signal_type == "correction_length":

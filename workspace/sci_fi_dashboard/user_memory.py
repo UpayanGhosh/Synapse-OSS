@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import json
 import re
 import sqlite3
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+
+from sci_fi_dashboard.memory_affect import AffectTags, extract_affect
 
 EXTRACTOR_VERSION = "deterministic-v1"
 
@@ -19,6 +22,7 @@ class UserMemoryFact:
     confidence: float
     source_doc_id: int | None
     evidence: str
+    affect: AffectTags = field(default_factory=AffectTags)
     status: str = "active"
 
 
@@ -42,7 +46,8 @@ _RESPONSE_STYLE_RULES: tuple[tuple[str, tuple[str, ...], str, float], ...] = (
         (
             r"\bgentle\b",
             r"\bsoft\b",
-            r"\bkind\b",
+            r"\bbe kind\b",
+            r"\bkindly\b",
             r"\breassuring\b",
         ),
         "Prefers gentle, emotionally supportive responses.",
@@ -74,6 +79,45 @@ _CODENAME_PATTERNS: tuple[str, ...] = (
     r"\buse\s+([A-Za-z][A-Za-z0-9_-]{1,31})\s+as my codename\b",
 )
 
+_RELATIONSHIP_NAME_STOPWORDS = frozenset(
+    {
+        "actually",
+        "also",
+        "and",
+        "before",
+        "bro",
+        "but",
+        "final",
+        "give",
+        "if",
+        "it",
+        "keep",
+        "memory",
+        "no",
+        "now",
+        "okay",
+        "part",
+        "patch",
+        "please",
+        "quick",
+        "remember",
+        "say",
+        "so",
+        "the",
+        "then",
+        "this",
+        "tiny",
+        "today",
+        "tomorrow",
+        "tonight",
+        "user",
+        "yeah",
+        "yes",
+        "don",
+        "dont",
+    }
+)
+
 
 def _slug(value: str, *, max_len: int = 48) -> str:
     slug = re.sub(r"[^a-z0-9_-]+", "_", value.lower()).strip("_")
@@ -98,15 +142,49 @@ def ensure_user_memory_facts_table(conn: sqlite3.Connection) -> None:
             source_doc_id   INTEGER,
             evidence        TEXT,
             status          TEXT NOT NULL DEFAULT 'active',
+            sentiment       TEXT NOT NULL DEFAULT 'neutral',
+            mood            TEXT NOT NULL DEFAULT 'neutral',
+            emotional_intensity REAL NOT NULL DEFAULT 0.0,
+            tension_type    TEXT NOT NULL DEFAULT 'none',
+            user_need       TEXT NOT NULL DEFAULT 'none',
+            response_style_hint TEXT NOT NULL DEFAULT 'warm',
+            emotion_tags_json TEXT NOT NULL DEFAULT '[]',
+            affect_topics_json TEXT NOT NULL DEFAULT '[]',
             first_seen      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             last_seen       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             UNIQUE(user_id, kind, key)
         )
     """)
+    existing_cols = {row[1] for row in conn.execute("PRAGMA table_info(user_memory_facts)")}
+    migrations = {
+        "sentiment": "TEXT NOT NULL DEFAULT 'neutral'",
+        "mood": "TEXT NOT NULL DEFAULT 'neutral'",
+        "emotional_intensity": "REAL NOT NULL DEFAULT 0.0",
+        "tension_type": "TEXT NOT NULL DEFAULT 'none'",
+        "user_need": "TEXT NOT NULL DEFAULT 'none'",
+        "response_style_hint": "TEXT NOT NULL DEFAULT 'warm'",
+        "emotion_tags_json": "TEXT NOT NULL DEFAULT '[]'",
+        "affect_topics_json": "TEXT NOT NULL DEFAULT '[]'",
+    }
+    for column, ddl in migrations.items():
+        if column not in existing_cols:
+            conn.execute(f"ALTER TABLE user_memory_facts ADD COLUMN {column} {ddl}")
     conn.execute(
         """
         CREATE INDEX IF NOT EXISTS idx_user_memory_facts_user_kind_status
             ON user_memory_facts(user_id, kind, status)
+        """
+    )
+    conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_user_memory_facts_mood
+            ON user_memory_facts(mood)
+        """
+    )
+    conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_user_memory_facts_tension
+            ON user_memory_facts(tension_type)
         """
     )
     conn.execute(
@@ -228,11 +306,12 @@ def _distill_relationships(user_text: str) -> list[tuple[str, str, str, float]]:
         "remembered",
         "liked",
         "asked",
+        "asking",
         "said",
     )
     sentence_pattern = r"[^.!?]*\b[A-Z][A-Za-z0-9_-]{1,31}\b[^.!?]*(?:[.!?]|$)"
     name_pattern = r"\b[A-Z][A-Za-z0-9_-]{1,31}\b"
-    skip_names = {"user", "me", "i", "synapse", "jarvis"}
+    skip_names = {"me", "i", "synapse", "jarvis"} | _RELATIONSHIP_NAME_STOPWORDS
     for match in re.finditer(sentence_pattern, user_text):
         sentence = _clean_value(match.group(0), max_len=180)
         if not sentence:
@@ -376,6 +455,58 @@ def _distill_preferences_and_patterns(user_text: str) -> list[tuple[str, str, st
     return facts
 
 
+def _distill_money_boundaries(user_text: str) -> list[tuple[str, str, str, float]]:
+    facts: list[tuple[str, str, str, float]] = []
+    seen_keys: set[str] = set()
+    relation_terms = (
+        "cousin",
+        "brother",
+        "sister",
+        "father",
+        "mother",
+        "parent",
+        "friend",
+        "partner",
+        "roommate",
+        "colleague",
+        "coworker",
+    )
+    relation_pattern = "|".join(re.escape(term) for term in relation_terms)
+    money_pattern = (
+        rf"\b(?:my\s+)?(?P<relation>{relation_pattern})\b"
+        r"(?P<context>[^.!?]{0,220}\b(?:borrowed|lent|loaned|owes|owe|pay back|paid back|asking it back|asking for it back|repay|repayment)\b[^.!?]{0,220})"
+    )
+    for match in re.finditer(money_pattern, user_text, re.IGNORECASE):
+        relation = _clean_value(match.group("relation").lower(), max_len=32)
+        context = _clean_value(f"{relation} {match.group('context')}", max_len=220)
+        if not relation or not context:
+            continue
+
+        person_key = f"person_{_slug(relation)}"
+        boundary_key = f"money_boundary_{_slug(relation)}"
+        if person_key not in seen_keys:
+            seen_keys.add(person_key)
+            facts.append(
+                (
+                    person_key,
+                    relation,
+                    f"User has money-boundary context with their {relation}.",
+                    0.72,
+                )
+            )
+        if boundary_key not in seen_keys:
+            seen_keys.add(boundary_key)
+            facts.append(
+                (
+                    boundary_key,
+                    context,
+                    f"Money boundary with user's {relation}: {context}.",
+                    0.84,
+                )
+            )
+    return facts
+
+
 def _distill_commitments(user_text: str) -> list[tuple[str, str, str, float]]:
     facts: list[tuple[str, str, str, float]] = []
     commitment_patterns = (
@@ -447,6 +578,7 @@ def distill_user_memory_facts(
 
     clean_status = str(status or "active").strip() or "active"
     facts: list[UserMemoryFact] = []
+    affect = extract_affect(user_text)
 
     style = _distill_response_style(user_text)
     if style is not None:
@@ -461,6 +593,7 @@ def distill_user_memory_facts(
                 confidence=_clamp_confidence(confidence),
                 source_doc_id=source_doc_id,
                 evidence=evidence,
+                affect=affect,
                 status=clean_status,
             )
         )
@@ -478,6 +611,7 @@ def distill_user_memory_facts(
                 confidence=_clamp_confidence(confidence),
                 source_doc_id=source_doc_id,
                 evidence=evidence,
+                affect=affect,
                 status=clean_status,
             )
         )
@@ -493,6 +627,7 @@ def distill_user_memory_facts(
                 confidence=_clamp_confidence(confidence),
                 source_doc_id=source_doc_id,
                 evidence=value,
+                affect=affect,
                 status=clean_status,
             )
         )
@@ -508,6 +643,7 @@ def distill_user_memory_facts(
                 confidence=_clamp_confidence(confidence),
                 source_doc_id=source_doc_id,
                 evidence=summary,
+                affect=affect,
                 status=clean_status,
             )
         )
@@ -523,6 +659,7 @@ def distill_user_memory_facts(
                 confidence=_clamp_confidence(confidence),
                 source_doc_id=source_doc_id,
                 evidence=summary,
+                affect=affect,
                 status=clean_status,
             )
         )
@@ -538,6 +675,24 @@ def distill_user_memory_facts(
                 confidence=_clamp_confidence(confidence),
                 source_doc_id=source_doc_id,
                 evidence=value,
+                affect=affect,
+                status=clean_status,
+            )
+        )
+
+    for key, value, summary, confidence in _distill_money_boundaries(user_text):
+        kind = "relationship" if key.startswith("person_") else "preference"
+        facts.append(
+            UserMemoryFact(
+                user_id=clean_user_id,
+                kind=kind,
+                key=key,
+                value=value,
+                summary=summary,
+                confidence=_clamp_confidence(confidence),
+                source_doc_id=source_doc_id,
+                evidence=value,
+                affect=affect,
                 status=clean_status,
             )
         )
@@ -553,6 +708,7 @@ def distill_user_memory_facts(
                 confidence=_clamp_confidence(confidence),
                 source_doc_id=source_doc_id,
                 evidence=value,
+                affect=affect,
                 status=clean_status,
             )
         )
@@ -568,6 +724,7 @@ def distill_user_memory_facts(
                 confidence=_clamp_confidence(confidence),
                 source_doc_id=source_doc_id,
                 evidence=summary,
+                affect=affect,
                 status=clean_status,
             )
         )
@@ -584,8 +741,10 @@ def upsert_user_memory_facts(conn: sqlite3.Connection, facts: list[UserMemoryFac
             """
             INSERT INTO user_memory_facts
                 (user_id, kind, key, value, summary, confidence,
-                 source_doc_id, evidence, status, first_seen, last_seen)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                 source_doc_id, evidence, status, sentiment, mood, emotional_intensity,
+                 tension_type, user_need, response_style_hint, emotion_tags_json, affect_topics_json,
+                 first_seen, last_seen)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
             ON CONFLICT(user_id, kind, key) DO UPDATE SET
                 value = excluded.value,
                 summary = excluded.summary,
@@ -593,6 +752,14 @@ def upsert_user_memory_facts(conn: sqlite3.Connection, facts: list[UserMemoryFac
                 source_doc_id = excluded.source_doc_id,
                 evidence = excluded.evidence,
                 status = excluded.status,
+                sentiment = excluded.sentiment,
+                mood = excluded.mood,
+                emotional_intensity = excluded.emotional_intensity,
+                tension_type = excluded.tension_type,
+                user_need = excluded.user_need,
+                response_style_hint = excluded.response_style_hint,
+                emotion_tags_json = excluded.emotion_tags_json,
+                affect_topics_json = excluded.affect_topics_json,
                 last_seen = CURRENT_TIMESTAMP
             """,
             (
@@ -605,6 +772,14 @@ def upsert_user_memory_facts(conn: sqlite3.Connection, facts: list[UserMemoryFac
                 fact.source_doc_id,
                 fact.evidence,
                 fact.status,
+                fact.affect.sentiment,
+                fact.affect.mood,
+                float(fact.affect.emotional_intensity),
+                fact.affect.tension_type,
+                fact.affect.user_need,
+                fact.affect.response_style_hint,
+                json.dumps(fact.affect.emotion_tags, separators=(",", ":")),
+                json.dumps(fact.affect.topics, separators=(",", ":")),
             ),
         )
         count += 1

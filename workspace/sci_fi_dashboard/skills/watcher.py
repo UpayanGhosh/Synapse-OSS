@@ -37,6 +37,7 @@ class SkillWatcher:
         self._poll_thread: threading.Thread | None = None
         self._stop_event = threading.Event()
         self._last_reload: float = 0.0
+        self._last_snapshot: tuple[tuple[str, int, int], ...] = self._snapshot()
 
     def _try_reload(self) -> None:
         """Attempt registry reload with debounce protection. Never crashes."""
@@ -46,8 +47,30 @@ class SkillWatcher:
         self._last_reload = now
         try:
             self._registry.reload()
+            self._last_snapshot = self._snapshot()
         except Exception as exc:
             logger.warning("[Skills] Watcher: reload failed: %s", exc)
+
+    def _snapshot(self) -> tuple[tuple[str, int, int], ...]:
+        """Return a cheap fingerprint of all skill manifests."""
+        if not self._skills_dir.exists():
+            return ()
+        rows: list[tuple[str, int, int]] = []
+        for path in self._skills_dir.rglob("SKILL.md"):
+            try:
+                stat = path.stat()
+            except OSError:
+                continue
+            rel = str(path.relative_to(self._skills_dir)).replace("\\", "/")
+            rows.append((rel, int(stat.st_mtime_ns), int(stat.st_size)))
+        return tuple(sorted(rows))
+
+    def _poll_changed(self) -> bool:
+        snapshot = self._snapshot()
+        if snapshot == self._last_snapshot:
+            return False
+        self._last_snapshot = snapshot
+        return True
 
     def start(self) -> None:
         """Start watching for filesystem changes."""
@@ -113,10 +136,11 @@ class SkillWatcher:
             while not self._stop_event.is_set():
                 self._stop_event.wait(timeout=interval)
                 if not self._stop_event.is_set():
-                    try:
-                        self._registry.reload()
-                    except Exception as exc:
-                        logger.warning("[Skills] Poll reload failed: %s", exc)
+                    if self._poll_changed():
+                        try:
+                            self._registry.reload()
+                        except Exception as exc:
+                            logger.warning("[Skills] Poll reload failed: %s", exc)
 
         self._poll_thread = threading.Thread(
             target=_poll_loop,

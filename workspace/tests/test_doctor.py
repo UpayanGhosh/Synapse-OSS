@@ -256,6 +256,28 @@ def test_checks_1_through_7_are_config_and_disk_only(tmp_path, monkeypatch):
     # Don't assert on _check_no_legacy_dirs result — just confirm it doesn't crash
 
 
+def test_doctor_accepts_synapse_json_with_utf8_bom(tmp_path):
+    """Windows editors sometimes add a BOM; doctor should still read config."""
+    from cli.doctor import (
+        _check_config_valid,
+        _check_gateway_token,
+        _check_provider_configured,
+    )
+
+    config = {
+        "providers": {"gemini": {"api_key": "fake-key"}},
+        "gateway": {"token": "a" * 48},
+    }
+    (tmp_path / "synapse.json").write_text(
+        json.dumps(config),
+        encoding="utf-8-sig",
+    )
+
+    assert _check_config_valid(tmp_path).passed
+    assert _check_gateway_token(tmp_path).passed
+    assert _check_provider_configured(tmp_path).passed
+
+
 # ===========================================================================
 # wait_for_gateway_reachable — timeout behaviour
 # ===========================================================================

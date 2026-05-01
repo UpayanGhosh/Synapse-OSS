@@ -391,3 +391,308 @@ async def test_ingest_records_user_memory_failure_and_completes(
     completed_rows = [row for row in rows if row[0] == "completed"]
     assert completed_rows, f"Expected completed row, got: {rows}"
     assert completed_rows[-1][2] == 1
+
+
+@pytest.mark.asyncio
+async def test_ingest_writes_atomic_facts_and_links_triples_to_source_doc(
+    tmp_memory_db: Path, tmp_transcript: Path
+) -> None:
+    from sci_fi_dashboard import session_ingest
+
+    mock_cfg = MagicMock()
+    mock_cfg.db_dir = tmp_memory_db.parent
+    mock_cfg.kg_extraction.enabled = True
+    mock_cfg.kg_extraction.kg_role = "casual"
+
+    conn = sqlite3.connect(str(tmp_memory_db))
+    try:
+        conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS atomic_facts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                entity TEXT,
+                content TEXT NOT NULL,
+                category TEXT,
+                source_doc_id INTEGER,
+                unix_timestamp INTEGER,
+                embedding_model TEXT DEFAULT 'nomic-embed-text',
+                embedding_version TEXT DEFAULT 'ollama-v1',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE IF NOT EXISTS entity_links (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                subject TEXT NOT NULL,
+                relation TEXT NOT NULL,
+                object TEXT NOT NULL,
+                archived INTEGER DEFAULT 0,
+                source_fact_id INTEGER,
+                source_doc_id INTEGER,
+                confidence REAL DEFAULT 1.0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE IF NOT EXISTS documents (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                filename TEXT,
+                content TEXT,
+                kg_processed INTEGER DEFAULT 0
+            );
+            INSERT INTO documents (id, filename, content, kg_processed)
+            VALUES (321, 'session', 'test', 0);
+            """
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    async def _fake_load_messages(path: Path) -> list[dict]:  # noqa: ARG001
+        return [
+            {"role": "user", "content": "Baba is my father and he called me today."},
+            {"role": "assistant", "content": "That mattered."},
+        ]
+
+    class _MockExtractor:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def extract(self, text: str) -> dict:  # noqa: ARG002
+            return {
+                "facts": [
+                    {
+                        "entity": "Baba",
+                        "content": "Baba is user's father.",
+                        "category": "Relationship",
+                    }
+                ],
+                "triples": [["Baba", "related_to", "user"]],
+                "validated_triples": [(["Baba", "related_to", "user"], 1.0)],
+            }
+
+    mock_deps = types.SimpleNamespace(
+        memory_engine=types.SimpleNamespace(
+            add_memory=lambda **kwargs: {"status": "stored", "id": 321, "embedded": True}
+        ),
+        brain=types.SimpleNamespace(
+            add_node=lambda *args, **kwargs: None,
+            add_relation=lambda *args, **kwargs: None,
+            save_graph=lambda *args, **kwargs: None,
+        ),
+        synapse_llm_router=object(),
+    )
+
+    with (
+        _DepsPatch(mock_deps),
+        patch("synapse_config.SynapseConfig.load", return_value=mock_cfg),
+        patch(
+            "sci_fi_dashboard.multiuser.transcript.load_messages",
+            new=_fake_load_messages,
+        ),
+        patch("sci_fi_dashboard.conv_kg_extractor.ConvKGExtractor", _MockExtractor),
+    ):
+        await session_ingest._ingest_session_background(
+            archived_path=tmp_transcript,
+            agent_id="the_creator",
+            session_key="agent:the_creator:telegram:dm:123",
+            hemisphere="safe",
+        )
+
+    conn = sqlite3.connect(str(tmp_memory_db))
+    try:
+        doc_kg_processed = conn.execute(
+            "SELECT kg_processed FROM documents WHERE id = 321"
+        ).fetchone()
+        fact = conn.execute(
+            "SELECT id, entity, content, category, source_doc_id, unix_timestamp, created_at FROM atomic_facts"
+        ).fetchone()
+        link = conn.execute(
+            "SELECT subject, relation, object, source_doc_id, source_fact_id, created_at FROM entity_links"
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert doc_kg_processed == (1,)
+    assert fact is not None
+    assert fact[1:5] == ("Baba", "Baba is user's father.", "Relationship", 321)
+    assert isinstance(fact[5], int)
+    assert fact[6]
+    assert link is not None
+    assert link[:4] == ("Baba", "related_to", "user", 321)
+    assert link[4] == fact[0]
+    assert link[5]
+
+
+def test_kg_entity_links_schema_adds_source_doc_id_for_legacy_tables() -> None:
+    from sci_fi_dashboard.conv_kg_extractor import (
+        _ensure_entity_links,
+        _write_triple_to_entity_links,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    try:
+        conn.execute(
+            """
+            CREATE TABLE entity_links (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                subject TEXT NOT NULL,
+                relation TEXT NOT NULL,
+                object TEXT NOT NULL,
+                archived INTEGER DEFAULT 0,
+                source_fact_id INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+
+        _ensure_entity_links(conn)
+        _write_triple_to_entity_links(
+            conn,
+            "Baba",
+            "related_to",
+            "user",
+            fact_id=44,
+            confidence=0.9,
+            source_doc_id=321,
+        )
+        conn.commit()
+
+        cols = {row[1] for row in conn.execute("PRAGMA table_info(entity_links)")}
+        row = conn.execute(
+            "SELECT subject, relation, object, source_doc_id, source_fact_id FROM entity_links"
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert "source_doc_id" in cols
+    assert row == ("Baba", "related_to", "user", 321, 44)
+
+
+@pytest.mark.asyncio
+async def test_ingest_normalizes_first_person_and_skips_vague_pronoun_kg_entities(
+    tmp_memory_db: Path, tmp_transcript: Path
+) -> None:
+    from sci_fi_dashboard import session_ingest
+
+    mock_cfg = MagicMock()
+    mock_cfg.db_dir = tmp_memory_db.parent
+    mock_cfg.kg_extraction.enabled = True
+    mock_cfg.kg_extraction.kg_role = "casual"
+
+    conn = sqlite3.connect(str(tmp_memory_db))
+    try:
+        conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS documents (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                filename TEXT,
+                content TEXT,
+                kg_processed INTEGER DEFAULT 0
+            );
+            INSERT INTO documents (id, filename, content, kg_processed)
+            VALUES (654, 'session', 'test', 0);
+            """
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    async def _fake_load_messages(path: Path) -> list[dict]:  # noqa: ARG001
+        return [
+            {"role": "user", "content": "I like Mira, but she owes me nothing."},
+            {"role": "assistant", "content": "Fair."},
+        ]
+
+    class _MockExtractor:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def extract(self, text: str) -> dict:  # noqa: ARG002
+            return {
+                "facts": [
+                    {"entity": "I", "content": "I like Mira.", "category": "Relationship"},
+                    {
+                        "entity": "I",
+                        "content": "likes the person I like.",
+                        "category": "Relationship",
+                    },
+                    {
+                        "entity": "I",
+                        "content": "likes the person",
+                        "category": "Relationship",
+                    },
+                    {
+                        "entity": "I",
+                        "content": 'likes "someone the user likes"',
+                        "category": "Relationship",
+                    },
+                    {
+                        "entity": "I",
+                        "content": (
+                            'Seeing "the person I like" get comfortable with "someone else" '
+                            "made User feel small."
+                        ),
+                        "category": "Relationship",
+                    },
+                    {"entity": "she", "content": "She owes me nothing.", "category": "Relationship"},
+                ],
+                "triples": [
+                    ["I", "interested_in", "Mira"],
+                    ["user", "likes", "person I like"],
+                    ["someone", "related_to", "attention"],
+                ],
+                "validated_triples": [
+                    (["I", "interested_in", "Mira"], 1.0),
+                    (["user", "likes", "person I like"], 1.0),
+                    (["someone", "related_to", "attention"], 1.0),
+                ],
+            }
+
+    mock_deps = types.SimpleNamespace(
+        memory_engine=types.SimpleNamespace(
+            add_memory=lambda **kwargs: {"status": "stored", "id": 654, "embedded": True}
+        ),
+        brain=types.SimpleNamespace(
+            add_node=lambda *args, **kwargs: None,
+            add_relation=lambda *args, **kwargs: None,
+            save_graph=lambda *args, **kwargs: None,
+        ),
+        synapse_llm_router=object(),
+    )
+
+    with (
+        _DepsPatch(mock_deps),
+        patch("synapse_config.SynapseConfig.load", return_value=mock_cfg),
+        patch(
+            "sci_fi_dashboard.multiuser.transcript.load_messages",
+            new=_fake_load_messages,
+        ),
+        patch("sci_fi_dashboard.conv_kg_extractor.ConvKGExtractor", _MockExtractor),
+    ):
+        await session_ingest._ingest_session_background(
+            archived_path=tmp_transcript,
+            agent_id="the_creator",
+            session_key="agent:the_creator:telegram:dm:123",
+            hemisphere="safe",
+        )
+
+    conn = sqlite3.connect(str(tmp_memory_db))
+    try:
+        fact_entities = [
+            row[0] for row in conn.execute("SELECT entity FROM atomic_facts ORDER BY id")
+        ]
+        fact_contents = [
+            row[0] for row in conn.execute("SELECT content FROM atomic_facts ORDER BY id")
+        ]
+        links = conn.execute(
+            "SELECT subject, relation, object FROM entity_links ORDER BY id"
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert fact_entities == ["user", "user", "user", "user", "user"]
+    assert fact_contents == [
+        "User likes Mira.",
+        "User likes someone.",
+        "User likes someone.",
+        "User likes someone.",
+        "Seeing someone the user likes get comfortable with someone else made the user feel small.",
+    ]
+    assert links == [("user", "interested_in", "Mira")]

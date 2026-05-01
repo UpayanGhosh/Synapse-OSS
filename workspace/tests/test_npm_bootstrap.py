@@ -72,6 +72,17 @@ def test_synapse_install_bootstraps_uv_python_and_product_home():
     assert "Install helper not present yet" not in content
 
 
+def test_synapse_install_is_idempotent_with_existing_venv():
+    content = SYNAPSE_BIN.read_text(encoding="utf-8")
+    ensure_dirs_block = content.split("function ensureDirs(home) {", 1)[1].split(
+        "function runtimeEnv(home) {", 1
+    )[0]
+
+    assert '".venv"' not in ensure_dirs_block
+    assert "fs.existsSync(pythonPath(home))" in content
+    assert '"--clear"' in content
+
+
 def test_npm_start_requires_installed_python_and_loopback_default():
     content = SYNAPSE_BIN.read_text(encoding="utf-8")
 
@@ -81,6 +92,16 @@ def test_npm_start_requires_installed_python_and_loopback_default():
     assert "SYNAPSE_GATEWAY_PORT" in content
     assert '"8000"' in content
     assert '"0.0.0.0"' not in content
+
+
+def test_npm_stop_kills_gateway_process_tree_on_windows():
+    content = SYNAPSE_BIN.read_text(encoding="utf-8")
+
+    assert "function stopProcessTree" in content
+    assert "taskkill" in content
+    assert '"/T"' in content
+    assert '"/PID"' in content
+    assert "stopProcessTree(pid)" in content
 
 
 def test_npm_package_manifest_excludes_tests_and_state():

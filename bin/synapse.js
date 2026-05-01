@@ -56,7 +56,6 @@ function ensureDirs(home) {
     "runtime/python-bin",
     "runtime/python-cache",
     "runtime/playwright",
-    ".venv",
     "logs",
     "state",
   ]) {
@@ -154,10 +153,17 @@ function installPythonRuntime(home, uv) {
     "--install-dir",
     path.join(home, "runtime", "pythons"),
   ], { env, cwd: home });
-  runRequired(uv, ["venv", path.join(home, ".venv"), "--python", PYTHON_VERSION], {
-    env,
-    cwd: home,
-  });
+  if (!fs.existsSync(pythonPath(home))) {
+    const venvPath = path.join(home, ".venv");
+    const venvArgs = ["venv", venvPath, "--python", PYTHON_VERSION];
+    if (fs.existsSync(venvPath)) {
+      venvArgs.push("--clear");
+    }
+    runRequired(uv, venvArgs, {
+      env,
+      cwd: home,
+    });
+  }
   runRequired(uv, ["pip", "install", "--python", pythonPath(home), packageRoot()], {
     env,
     cwd: packageRoot(),
@@ -232,6 +238,26 @@ function isRunning(pid) {
   }
 }
 
+function stopProcessTree(pid) {
+  if (!pid || !isRunning(pid)) {
+    return;
+  }
+  if (process.platform === "win32") {
+    const result = spawnSync("taskkill", ["/T", "/PID", String(pid)], {
+      stdio: "ignore",
+      shell: false,
+    });
+    if (result.status !== 0 && isRunning(pid)) {
+      spawnSync("taskkill", ["/F", "/T", "/PID", String(pid)], {
+        stdio: "ignore",
+        shell: false,
+      });
+    }
+    return;
+  }
+  process.kill(pid);
+}
+
 function runStart(home) {
   const python = requirePython(home);
   const pidPath = pidFile(home);
@@ -279,7 +305,7 @@ function runStop(home) {
   }
   const pid = Number(fs.readFileSync(pidPath, "utf8").trim());
   if (pid && isRunning(pid)) {
-    process.kill(pid);
+    stopProcessTree(pid);
   }
   fs.rmSync(pidPath, { force: true });
   console.log("Synapse gateway stopped.");

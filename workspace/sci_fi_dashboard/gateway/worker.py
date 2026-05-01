@@ -284,7 +284,7 @@ class MessageWorker:
                 logger.error("Worker-%d task failed: %s", worker_id, error_msg, exc_info=True)
 
                 # Notify user of error (ASCII-safe for Windows cp1252)
-                warn_msg = "[WARN] A technical glitch occurred. Please try again."
+                warn_msg = "I hit a glitch on my side. Try once more in a moment."
                 if channel:
                     await channel.send(chat_id, warn_msg)
                 elif self.sender:

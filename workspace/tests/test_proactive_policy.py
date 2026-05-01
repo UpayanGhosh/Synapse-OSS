@@ -91,6 +91,48 @@ def test_policy_blocks_recent_contact_without_high_urgency() -> None:
     assert decision.reason == "recent_contact"
 
 
+def test_policy_allows_urgent_emotional_memory_before_full_silence_gap() -> None:
+    from sci_fi_dashboard.proactive_policy import ProactivePolicyInput, ProactivePolicyScorer
+
+    decision = ProactivePolicyScorer().score(
+        ProactivePolicyInput(
+            user_id="the_creator",
+            channel_id="telegram",
+            now_hour=17,
+            recent_memory_summaries=[
+                "User is anxious about the 5:10 meeting and asked for a reminder check-in."
+            ],
+            seconds_since_last_message=70 * 60,
+            emotional_need=0.9,
+        )
+    )
+
+    assert decision.should_reach_out is True
+    assert decision.reason == "policy_score"
+    assert decision.score >= 0.62
+    assert "memory_urgency" in decision.evidence
+
+
+def test_policy_still_blocks_urgent_memory_too_soon_after_contact() -> None:
+    from sci_fi_dashboard.proactive_policy import ProactivePolicyInput, ProactivePolicyScorer
+
+    decision = ProactivePolicyScorer().score(
+        ProactivePolicyInput(
+            user_id="the_creator",
+            channel_id="telegram",
+            now_hour=17,
+            recent_memory_summaries=[
+                "User is anxious about the 5:10 meeting and asked for a reminder check-in."
+            ],
+            seconds_since_last_message=10 * 60,
+            emotional_need=0.9,
+        )
+    )
+
+    assert decision.should_reach_out is False
+    assert decision.reason == "recent_contact"
+
+
 def test_policy_input_can_compute_gap_from_last_message_timestamp() -> None:
     from sci_fi_dashboard.proactive_policy import ProactivePolicyInput
 

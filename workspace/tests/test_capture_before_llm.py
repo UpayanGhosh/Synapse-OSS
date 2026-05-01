@@ -37,8 +37,10 @@ async def test_user_message_is_saved_when_persona_chat_hangs(tmp_path, monkeypat
     monkeypatch.setattr("synapse_config.SynapseConfig.load", classmethod(lambda cls: cfg))
     monkeypatch.setattr("sci_fi_dashboard.chat_pipeline.persona_chat", _hang_persona_chat)
     monkeypatch.setattr("sci_fi_dashboard.subagent.spawn.maybe_spawn_agent", _never_spawn)
-    monkeypatch.setattr(ph.deps, "_resolve_target", lambda _chat_id: "the_creator")
-    monkeypatch.setattr(ph.deps, "conversation_cache", ConversationCache(max_entries=20, ttl_s=60))
+    monkeypatch.setattr(ph.deps, "_resolve_target", lambda _chat_id: "the_creator", raising=False)
+    monkeypatch.setattr(
+        ph.deps, "conversation_cache", ConversationCache(max_entries=20, ttl_s=60), raising=False
+    )
 
     user_msg = "please remember this even if llm hangs"
     chat_id = "+15550001111"

@@ -338,6 +338,50 @@ async def test_chat_completion_gpt54_uses_stream_shape_and_parses_sse(monkeypatc
 
 
 @pytest.mark.asyncio
+async def test_chat_completion_gpt52_uses_stream_shape_with_instructions(monkeypatch):
+    creds = openai_codex_oauth.OpenAICodexCredentials(
+        access_token="access-token",
+        refresh_token="refresh-token",
+        expires_at=time.time() + 3600,
+        email="user@example.com",
+        account_id="acct-1",
+        profile_name="user@example.com",
+    )
+    monkeypatch.setattr(codex.openai_codex_oauth, "load_credentials", lambda: creds)
+    monkeypatch.setattr(codex.openai_codex_oauth, "refresh_access_token", lambda c: c)
+    monkeypatch.setattr(codex.openai_codex_oauth, "save_credentials", lambda c: None)
+
+    sse = "\n".join(
+        [
+            "event: response.output_text.delta",
+            'data: {"type":"response.output_text.delta","delta":"ok"}',
+            "event: response.completed",
+            (
+                'data: {"type":"response.completed","response":{"model":"gpt-5.2",'
+                '"status":"completed","usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}}'
+            ),
+        ]
+    )
+    fake_http = _FakeAsyncClient([httpx.Response(200, text=sse)])
+    client = codex.OpenAICodexClient(http_client=fake_http)
+
+    result = await client.chat_completion(
+        messages=[{"role": "user", "content": "Ping"}],
+        model="openai_codex/gpt-5.2",
+        max_tokens=128,
+    )
+
+    assert result.text == "ok"
+    payload = _payload_from_call(fake_http.calls[0])
+    assert payload["model"] == "gpt-5.2"
+    assert payload["stream"] is True
+    assert payload["store"] is False
+    assert payload["instructions"] == "You are a helpful assistant."
+    assert payload["input"][0]["role"] == "user"
+    assert "max_output_tokens" not in payload
+
+
+@pytest.mark.asyncio
 async def test_chat_completion_refreshes_once_after_401_and_saves_token(monkeypatch):
     old_creds = openai_codex_oauth.OpenAICodexCredentials(
         access_token="old-token",

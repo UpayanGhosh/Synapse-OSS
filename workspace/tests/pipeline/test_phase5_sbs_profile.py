@@ -107,6 +107,20 @@ def test_save_and_reload_layer(pipeline_profile_manager, pipeline_profile_dir):
     ), f"Persisted value must survive a new ProfileManager. Got: {layer['current_dominant_mood']}"
 
 
+def test_load_layer_accepts_utf8_bom(pipeline_profile_manager):
+    """Installed/manual profile edits may include a UTF-8 BOM; load_layer must survive it."""
+    pm = pipeline_profile_manager
+    path = pm.current_dir / "linguistic.json"
+    path.write_text(
+        '{"current_style":{"banglish_ratio":0.42},"style_history":[],"last_updated":null}',
+        encoding="utf-8-sig",
+    )
+
+    layer = pm.load_layer("linguistic")
+
+    assert layer["current_style"]["banglish_ratio"] == 0.42
+
+
 # ===========================================================================
 # Test 5 — snapshot_version() increments on each call
 # ===========================================================================

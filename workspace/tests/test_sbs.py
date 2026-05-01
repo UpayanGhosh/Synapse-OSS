@@ -201,23 +201,8 @@ class TestConversationLogger:
         assert row["role"] == "user"
         assert row["is_question"] == 1  # SQLite stores bool as int
 
-    @pytest.mark.xfail(
-        reason="C1 regression: logger.py line 69 writes literal '\\\\n' instead of real newline",
-        strict=True,
-    )
     def test_jsonl_has_proper_newlines(self, logger, sample_msg):
-        """REGRESSION (C1): JSONL entries must end with a real newline, not a
-        literal backslash-n.
-
-        The current code writes:
-            f.write(message.model_dump_json() + "\\\\n")
-        which produces a literal two-char sequence (0x5C 0x6E) instead of a
-        real newline (0x0A).  This means the JSONL file cannot be parsed
-        line-by-line with standard tools.
-
-        This test is marked xfail so the suite stays green while the bug is
-        tracked.  Remove the xfail marker once C1 is fixed.
-        """
+        """JSONL entries must end with real newlines and parse line-by-line."""
         logger.log(sample_msg)
 
         raw_bytes = logger.jsonl_path.read_bytes()

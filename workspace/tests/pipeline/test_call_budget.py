@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from sci_fi_dashboard.dual_cognition import CognitiveMerge
 from sci_fi_dashboard.dual_cognition import DualCognitionEngine
 from sci_fi_dashboard.llm_router import LLMResult
 from sci_fi_dashboard.schemas import ChatRequest
@@ -199,7 +200,7 @@ async def test_empty_model_text_does_not_send_metadata_only_reply(fresh_pipeline
     assert isinstance(result, dict)
     assert not result["reply"].lstrip().startswith("---")
     assert "empty response" in result["reply"]
-    assert "**Context Usage:**" in result["reply"]
+    assert "**Context Usage:**" not in result["reply"]
 
 
 @pytest.mark.asyncio
@@ -294,6 +295,376 @@ async def test_tool_context_preserves_channel_id(fresh_pipeline):
 
 
 @pytest.mark.asyncio
+async def test_practical_service_lookup_prefetches_before_reply(fresh_pipeline):
+    """Local service/help requests should do a safe web lookup before answering."""
+    chat_pipeline, llm_wrappers, deps = fresh_pipeline
+    deps._TOOL_REGISTRY_AVAILABLE = True
+    deps.tool_registry = MagicMock()
+    web_query = types.SimpleNamespace(
+        name="web_query",
+        description="Search web",
+        serial=False,
+        execute=AsyncMock(
+            return_value=types.SimpleNamespace(
+                content='{"query":"scooter service center Indiranagar","results":[{"title":"Indiranagar Scooter Repair","url":"https://example.test/scooter"}]}',
+                is_error=False,
+            )
+        ),
+    )
+    deps.tool_registry.resolve.return_value = [web_query]
+    deps.tool_registry.get_schemas.return_value = [
+        {
+            "type": "function",
+            "function": {
+                "name": "web_query",
+                "description": "Search web",
+                "parameters": {"type": "object", "properties": {}},
+            },
+        }
+    ]
+    deps.synapse_llm_router.call_with_tools = AsyncMock(
+        return_value=_make_llm_result("I found a nearby scooter repair option.")
+    )
+
+    request = ChatRequest(
+        message="My scooter broke near Indiranagar. Find a service center nearby.",
+        user_id="tg-chat",
+        channel_id="telegram",
+        history=[],
+        session_type="safe",
+    )
+    with patch.object(llm_wrappers, "route_traffic_cop", AsyncMock(return_value="CASUAL")):
+        result = await chat_pipeline.persona_chat(request, target="the_creator")
+
+    assert isinstance(result, dict)
+    assert web_query.execute.await_count == 1
+    query = web_query.execute.await_args.args[0]["query"].lower()
+    assert "scooter" in query
+    assert "indiranagar" in query
+    assert deps.synapse_llm_router.call_with_tools.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_prefetched_lookup_adds_action_receipt_contract(fresh_pipeline):
+    """A successful prefetch must give the model a concrete receipt to speak from."""
+    chat_pipeline, llm_wrappers, deps = fresh_pipeline
+    deps._TOOL_REGISTRY_AVAILABLE = True
+    deps.tool_registry = MagicMock()
+    web_query = types.SimpleNamespace(
+        name="web_query",
+        description="Search web",
+        serial=False,
+        execute=AsyncMock(
+            return_value=types.SimpleNamespace(
+                content='{"query":"TVS RSA Kolkata","results":[{"title":"Roadside Assistance - TVS Motor Company","url":"https://www.tvsmotor.com/our-service/rsa"}]}',
+                is_error=False,
+            )
+        ),
+    )
+    deps.tool_registry.resolve.return_value = [web_query]
+    deps.tool_registry.get_schemas.return_value = [
+        {
+            "type": "function",
+            "function": {
+                "name": "web_query",
+                "description": "Search web",
+                "parameters": {"type": "object", "properties": {}},
+            },
+        }
+    ]
+    captured = {}
+
+    async def _capture(_role, messages, **_kwargs):
+        captured["messages"] = messages
+        return _make_llm_result("I searched the web and found TVS RSA.")
+
+    deps.synapse_llm_router.call_with_tools = AsyncMock(side_effect=_capture)
+
+    request = ChatRequest(
+        message="Bro can you check TVS towing help around Kolkata?",
+        user_id="tg-chat",
+        channel_id="telegram",
+        history=[],
+        session_type="safe",
+    )
+    with patch.object(llm_wrappers, "route_traffic_cop", AsyncMock(return_value="CASUAL")):
+        result = await chat_pipeline.persona_chat(request, target="the_creator")
+
+    prompt_text = "\n".join(str(m.get("content", "")) for m in captured["messages"])
+    assert "ACTION RECEIPTS" in prompt_text
+    assert "web_query" in prompt_text
+    assert "verified" in prompt_text
+    assert "Only claim an action happened when its receipt status supports it" in prompt_text
+    assert "I searched the web" in result["reply"]
+
+
+@pytest.mark.asyncio
+async def test_unreceipted_action_claim_is_repaired_before_reply(fresh_pipeline):
+    """The final answer cannot say it checked/searched when no receipt exists."""
+    chat_pipeline, llm_wrappers, deps = fresh_pipeline
+    deps.synapse_llm_router.call_with_metadata = AsyncMock(
+        return_value=_make_llm_result("I checked the live results and everything is fine.")
+    )
+
+    with patch.object(llm_wrappers, "route_traffic_cop", AsyncMock(return_value="CASUAL")):
+        result = await chat_pipeline.persona_chat(
+            _make_request("Can you sanity check this?"),
+            target="the_creator",
+        )
+
+    assert "I checked the live results" not in result["reply"]
+    assert "I haven't verified that live in this turn" in result["reply"]
+
+
+@pytest.mark.asyncio
+async def test_practical_lookup_prefetches_for_check_fastest_legit_route(fresh_pipeline):
+    """Users say "check the fastest legit way", not always "find nearby"."""
+    chat_pipeline, llm_wrappers, deps = fresh_pipeline
+    deps._TOOL_REGISTRY_AVAILABLE = True
+    deps.tool_registry = MagicMock()
+    web_query = types.SimpleNamespace(
+        name="web_query",
+        description="Search web",
+        serial=False,
+        execute=AsyncMock(
+            return_value=types.SimpleNamespace(
+                content='{"query":"tvs rsa","results":[{"title":"Roadside Assistance - TVS Motor","url":"https://example.test/tvs-rsa"}]}',
+                is_error=False,
+            )
+        ),
+    )
+    deps.tool_registry.resolve.return_value = [web_query]
+    deps.tool_registry.get_schemas.return_value = [
+        {
+            "type": "function",
+            "function": {
+                "name": "web_query",
+                "description": "Search web",
+                "parameters": {"type": "object", "properties": {}},
+            },
+        }
+    ]
+    deps.synapse_llm_router.call_with_tools = AsyncMock(
+        return_value=_make_llm_result("I found the official TVS RSA page.")
+    )
+
+    request = ChatRequest(
+        message=(
+            "Bro my scooter just gave up near south Kolkata. Can you check the "
+            "fastest legit way to get TVS roadside/towing help here?"
+        ),
+        user_id="tg-chat",
+        channel_id="telegram",
+        history=[],
+        session_type="safe",
+    )
+    with patch.object(llm_wrappers, "route_traffic_cop", AsyncMock(return_value="CASUAL")):
+        result = await chat_pipeline.persona_chat(request, target="the_creator")
+
+    assert isinstance(result, dict)
+    assert web_query.execute.await_count == 1
+    query = web_query.execute.await_args.args[0]["query"].lower()
+    assert "tvs" in query
+    assert "kolkata" in query
+    assert "roadside" in query
+    assert "towing" in query
+    assert "official" in query
+    assert "bro" not in query
+    assert "gave up" not in query
+
+
+@pytest.mark.asyncio
+async def test_prefetched_lookup_promise_reply_falls_back_to_results(fresh_pipeline):
+    """If a model says it will check after prefetch, send the checked result."""
+    chat_pipeline, llm_wrappers, deps = fresh_pipeline
+    deps._TOOL_REGISTRY_AVAILABLE = True
+    deps.tool_registry = MagicMock()
+    web_query = types.SimpleNamespace(
+        name="web_query",
+        description="Search web",
+        serial=False,
+        execute=AsyncMock(
+            return_value=types.SimpleNamespace(
+                content='{"query":"TVS RSA Kolkata","results":[{"title":"Roadside Assistance - TVS Motor Company","url":"https://www.tvsmotor.com/our-service/rsa"}]}',
+                is_error=False,
+            )
+        ),
+    )
+    deps.tool_registry.resolve.return_value = [web_query]
+    deps.tool_registry.get_schemas.return_value = [
+        {
+            "type": "function",
+            "function": {
+                "name": "web_query",
+                "description": "Search web",
+                "parameters": {"type": "object", "properties": {}},
+            },
+        }
+    ]
+    deps.synapse_llm_router.call_with_tools = AsyncMock(
+        return_value=_make_llm_result("Lemme check the official route - one sec.")
+    )
+
+    request = ChatRequest(
+        message=(
+            "Bro my scooter is stuck near Kolkata. Can you check TVS towing help?"
+        ),
+        user_id="tg-chat",
+        channel_id="telegram",
+        history=[],
+        session_type="safe",
+    )
+    with patch.object(llm_wrappers, "route_traffic_cop", AsyncMock(return_value="CASUAL")):
+        result = await chat_pipeline.persona_chat(request, target="the_creator")
+
+    assert isinstance(result, dict)
+    reply = result["reply"]
+    assert "Roadside Assistance - TVS Motor Company" in reply
+    assert "https://www.tvsmotor.com/our-service/rsa" in reply
+    assert "one sec" not in reply.lower()
+
+
+@pytest.mark.asyncio
+async def test_lookup_helper_ending_is_sharpened_to_next_move(fresh_pipeline):
+    """Friend-mode replies should avoid generic assistant offer endings."""
+    chat_pipeline, llm_wrappers, deps = fresh_pipeline
+    deps._TOOL_REGISTRY_AVAILABLE = True
+    deps.tool_registry = MagicMock()
+    web_query = types.SimpleNamespace(
+        name="web_query",
+        description="Search web",
+        serial=False,
+        execute=AsyncMock(
+            return_value=types.SimpleNamespace(
+                content='{"query":"TVS RSA Kolkata","results":[{"title":"Roadside Assistance - TVS Motor Company","url":"https://www.tvsmotor.com/our-service/rsa"}]}',
+                is_error=False,
+            )
+        ),
+    )
+    deps.tool_registry.resolve.return_value = [web_query]
+    deps.tool_registry.get_schemas.return_value = [
+        {
+            "type": "function",
+            "function": {
+                "name": "web_query",
+                "description": "Search web",
+                "parameters": {"type": "object", "properties": {}},
+            },
+        }
+    ]
+    deps.synapse_llm_router.call_with_tools = AsyncMock(
+        return_value=_make_llm_result(
+            "Use the official TVS RSA page first. If you want, send me the exact area and I'll sanity-check the fallback listing."
+        )
+    )
+
+    request = ChatRequest(
+        message="Bro my scooter is stuck near Kolkata. Can you check TVS towing help?",
+        user_id="tg-chat",
+        channel_id="telegram",
+        history=[],
+        session_type="safe",
+    )
+    with patch.object(llm_wrappers, "route_traffic_cop", AsyncMock(return_value="CASUAL")):
+        result = await chat_pipeline.persona_chat(request, target="the_creator")
+
+    assert isinstance(result, dict)
+    reply = result["reply"]
+    assert "If you want" not in reply
+    assert "Send me the exact area" in reply
+
+
+def test_generic_help_offer_ending_is_sharpened():
+    from sci_fi_dashboard.chat_pipeline import _sharpen_generic_helper_ending
+
+    reply = _sharpen_generic_helper_ending(
+        "Do the three-point prep first. If you want, I can help you make the 3 call points right now."
+    )
+
+    assert "If you want" not in reply
+    assert reply.endswith("Send me the raw details and I'll help you make the 3 call points right now.")
+
+
+def test_blank_template_slots_are_repaired():
+    from sci_fi_dashboard.chat_pipeline import _repair_empty_template_slots
+
+    reply = _repair_empty_template_slots(
+        "On timeline, we're still aiming for , with  as the next milestone.\n"
+        "The main risk right now is , and we're handling it by .\n"
+        "The tradeoff is , so the safest path is ."
+    )
+
+    assert "for ," not in reply
+    assert "with  as" not in reply
+    assert "is ," not in reply
+    assert "[target date]" in reply
+    assert "[risk]" in reply
+    assert "[tradeoff]" in reply
+
+
+def test_user_nickname_placeholder_is_repaired():
+    from sci_fi_dashboard.chat_pipeline import _repair_empty_template_slots
+
+    reply = _repair_empty_template_slots(
+        "Straight answer, user_nickname: I actually searched that turn."
+    )
+
+    assert "user_nickname" not in reply
+    assert reply == "Straight answer, friend: I actually searched that turn."
+
+
+@pytest.mark.asyncio
+async def test_empty_tool_reply_gets_plain_text_recovery(fresh_pipeline):
+    """Tool-enabled turns must recover with visible text instead of generic empty fallback."""
+    chat_pipeline, llm_wrappers, deps = fresh_pipeline
+    deps._TOOL_REGISTRY_AVAILABLE = True
+    deps.tool_registry = MagicMock()
+    deps.tool_registry.resolve.return_value = [
+        types.SimpleNamespace(name="memory_search", description="Search memory", serial=False)
+    ]
+    deps.tool_registry.get_schemas.return_value = [
+        {
+            "type": "function",
+            "function": {
+                "name": "memory_search",
+                "description": "Search memory",
+                "parameters": {"type": "object", "properties": {}},
+            },
+        }
+    ]
+    deps.synapse_llm_router.call_with_tools = AsyncMock(
+        return_value=LLMResult(
+            text="",
+            model="test/tool-empty",
+            prompt_tokens=500,
+            completion_tokens=132,
+            total_tokens=632,
+        )
+    )
+    deps.synapse_llm_router.call_with_metadata = AsyncMock(
+        return_value=_make_llm_result(
+            "I remember the demo anxiety, Rohan dumping cleanup on you, and Mira being in your head."
+        )
+    )
+
+    request = ChatRequest(
+        message="What do you remember about why I'm anxious tonight?",
+        user_id="tg-chat",
+        channel_id="telegram",
+        history=[],
+        session_type="safe",
+    )
+    with patch.object(llm_wrappers, "route_traffic_cop", AsyncMock(return_value="CASUAL")):
+        result = await chat_pipeline.persona_chat(request, target="the_creator")
+
+    assert isinstance(result, dict)
+    assert deps.synapse_llm_router.call_with_tools.call_count == 1
+    assert deps.synapse_llm_router.call_with_metadata.call_count == 1
+    assert "demo anxiety" in result["reply"]
+    assert "empty response" not in result["reply"].lower()
+
+
+@pytest.mark.asyncio
 async def test_light_casual_prompt_stays_compact(fresh_pipeline):
     """Tiny casual turns must not compile the full 16k-token workspace prompt."""
     chat_pipeline, llm_wrappers, deps = fresh_pipeline
@@ -345,6 +716,73 @@ async def test_reflective_casual_keeps_emotional_context_while_compact(fresh_pip
     assert "Affect: user is worried" in prompt_text
     assert "memory architecture may still feel generic" in prompt_text
     assert "GRAPH CONTEXT SHOULD NOT BE IN REFLECTIVE CASUAL" not in prompt_text
+
+
+@pytest.mark.asyncio
+async def test_turn_stance_contract_is_injected_next_to_user_turn(fresh_pipeline):
+    """Every casual reply gets an explicit stance object, not just vibe text."""
+    chat_pipeline, llm_wrappers, deps = fresh_pipeline
+
+    with patch.object(llm_wrappers, "route_traffic_cop", AsyncMock(return_value="CASUAL")):
+        result = await chat_pipeline.persona_chat(
+            _make_request("I am scared this dinner will get awkward and I will look stupid."),
+            target="the_creator",
+        )
+
+    assert isinstance(result, dict)
+    messages = deps.synapse_llm_router.call_with_metadata.call_args.args[1]
+    assert messages[-2]["role"] == "system"
+    assert "TURN STANCE DECISION" in messages[-2]["content"]
+    assert "steady close friend" in messages[-2]["content"]
+    assert "No therapy-template phrasing" in messages[-2]["content"]
+    assert messages[-1]["role"] == "user"
+
+
+@pytest.mark.asyncio
+async def test_dual_cognition_default_timeout_is_not_too_short(fresh_pipeline):
+    """Default installs should give dual cognition enough time to finish."""
+    chat_pipeline, llm_wrappers, deps = fresh_pipeline
+    deps._synapse_cfg.session = {"dual_cognition_enabled": True}
+    deps.dual_cognition.think = AsyncMock(
+        return_value=CognitiveMerge(
+            inner_monologue="The user needs grounded reassurance.",
+            tension_level=0.4,
+            response_strategy="support",
+            suggested_tone="warm",
+        )
+    )
+    captured = {}
+    async def _capture_wait_for(awaitable, timeout):
+        captured["timeout"] = timeout
+        return await awaitable
+
+    with (
+        patch.object(llm_wrappers, "route_traffic_cop", AsyncMock(return_value="CASUAL")),
+        patch.object(chat_pipeline.asyncio, "wait_for", _capture_wait_for),
+    ):
+        result = await chat_pipeline.persona_chat(
+            _make_request("I'm anxious about this demo and I need you to talk me down."),
+            target="the_creator",
+        )
+
+    assert isinstance(result, dict)
+    assert captured["timeout"] >= 10.0
+
+
+def test_relationship_voice_contract_prioritizes_venting_over_coaching(fresh_pipeline):
+    """Vent turns should ask the model to join the rant before offering fixes."""
+    chat_pipeline, _llm_wrappers, _deps = fresh_pipeline
+
+    contract = chat_pipeline._build_relationship_voice_contract(
+        "Rohan dumped the cleanup on me again and I'm pissed.",
+        role="casual",
+        session_mode="safe",
+        prompt_depth="full",
+    )
+
+    assert "side with the user's frustration first" in contract
+    assert "Do not rush into coaching" in contract
+    assert "Do not end every vent reply with an offer" in contract
 
 
 @pytest.mark.asyncio

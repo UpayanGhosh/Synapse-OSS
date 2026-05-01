@@ -54,6 +54,14 @@ def test_user_memory_schema_created_on_first_boot() -> None:
             "source_doc_id",
             "evidence",
             "status",
+            "sentiment",
+            "mood",
+            "emotional_intensity",
+            "tension_type",
+            "user_need",
+            "response_style_hint",
+            "emotion_tags_json",
+            "affect_topics_json",
             "first_seen",
             "last_seen",
         }.issubset(cols)
@@ -62,6 +70,8 @@ def test_user_memory_schema_created_on_first_boot() -> None:
         assert "idx_user_memory_facts_user_kind_status" in indexes
         assert "idx_user_memory_facts_last_seen" in indexes
         assert "idx_user_memory_facts_source_doc_id" in indexes
+        assert "idx_user_memory_facts_mood" in indexes
+        assert "idx_user_memory_facts_tension" in indexes
     finally:
         if db_path.exists():
             db_path.unlink()
@@ -91,13 +101,11 @@ def test_distill_and_upsert_response_style_and_codename() -> None:
             ("codename", "Nova"),
         }
 
-        rows = conn.execute(
-            """
+        rows = conn.execute("""
             SELECT kind, key, value, source_doc_id, status
             FROM user_memory_facts
             ORDER BY key
-            """
-        ).fetchall()
+            """).fetchall()
         assert rows == [
             ("identity", "codename", "Nova", 101, "active"),
             ("preference", "response_style", "direct", 101, "active"),
@@ -172,6 +180,183 @@ def test_distill_day_to_day_personality_facts() -> None:
     assert "Naina" in summaries
     assert "Raghav" in summaries
     assert "Kestrel" in summaries
+
+
+def test_distill_relationships_ignores_sentence_initial_fillers() -> None:
+    from sci_fi_dashboard.user_memory import distill_user_memory_facts
+
+    facts = distill_user_memory_facts(
+        text=(
+            "User: Okay, one more real check before I try sleeping: I'm still mad about Rohan, "
+            "but I also know if I go into tomorrow visibly pissed, he'll win the optics game. "
+            "User: Keep it human. User: Say it like a friend, not a report."
+        ),
+        user_id="agent:the_creator:telegram:dm:123",
+        source_doc_id=404,
+    )
+
+    keys = {(fact.kind, fact.key) for fact in facts}
+    assert ("relationship", "person_rohan") in keys
+    assert ("relationship", "person_okay") not in keys
+    assert ("relationship", "person_keep") not in keys
+    assert ("relationship", "person_say") not in keys
+
+
+def test_relationships_ignores_natural_sentence_starters() -> None:
+    from sci_fi_dashboard.user_memory import distill_user_memory_facts
+
+    facts = distill_user_memory_facts(
+        text=(
+            "User: Tiny good thing before I sleep: the client actually liked the prototype today. "
+            "User: It wasn't even dramatic, but my brain is replaying it like evidence in court. "
+            "User: Don't make it a wellness poster, just talk sense into me. "
+            "User: If Mira says no, I know the mature thing is to respect it. "
+            "User: This is the part I don't like admitting. "
+            "User: Part of me wants to read hope into every comma. "
+            "User: Give me the brother answer, not the motivational answer."
+        ),
+        user_id="agent:the_creator:telegram:dm:123",
+        source_doc_id=505,
+    )
+
+    keys = {(fact.kind, fact.key) for fact in facts}
+    assert ("relationship", "person_tiny") not in keys
+    assert ("relationship", "person_it") not in keys
+    assert ("relationship", "person_don") not in keys
+    assert ("relationship", "person_if") not in keys
+    assert ("relationship", "person_this") not in keys
+    assert ("relationship", "person_part") not in keys
+    assert ("relationship", "person_give") not in keys
+    assert ("relationship", "person_mira") in keys
+
+
+def test_kind_of_person_does_not_set_soft_response_style() -> None:
+    from sci_fi_dashboard.user_memory import distill_user_memory_facts
+
+    facts = distill_user_memory_facts(
+        text=(
+            "User: How do I not become the kind of person who quietly punishes "
+            "someone for not giving me attention?"
+        ),
+        user_id="agent:the_creator:telegram:dm:123",
+        source_doc_id=606,
+    )
+
+    assert ("preference", "response_style") not in {(fact.kind, fact.key) for fact in facts}
+
+
+def test_joined_session_does_not_promote_give_as_person() -> None:
+    from sci_fi_dashboard.user_memory import distill_user_memory_facts
+
+    facts = distill_user_memory_facts(
+        text=(
+            "User: I’m thinking of asking Mira out tomorrow, but I also know I’m low sleep "
+            "and a bit needy tonight. Give me the brother answer, not the motivational "
+            "answer: am I making a clean move or trying to get relief from uncertainty? "
+            "User: If I’m honest, when she mentions other guys I want to act unbothered."
+        ),
+        user_id="agent:the_creator:telegram:dm:123",
+        source_doc_id=808,
+    )
+
+    keys = {(fact.kind, fact.key) for fact in facts}
+    assert ("relationship", "person_mira") in keys
+    assert ("relationship", "person_give") not in keys
+
+
+def test_user_memory_facts_persist_affect_tags_for_realtime_turns() -> None:
+    from sci_fi_dashboard.user_memory import distill_and_upsert_user_memory_facts
+
+    conn = sqlite3.connect(":memory:")
+    try:
+        facts = distill_and_upsert_user_memory_facts(
+            conn,
+            text=(
+                "User: Mira posted a story with someone and I felt lonely and jealous. "
+                "Ma called and I felt guilty for ignoring it."
+            ),
+            user_id="agent:the_creator:telegram:dm:123",
+            source_doc_id=None,
+        )
+        conn.commit()
+
+        assert facts
+        row = conn.execute(
+            """
+            SELECT mood, sentiment, emotional_intensity, user_need, emotion_tags_json, affect_topics_json
+            FROM user_memory_facts
+            WHERE user_id = ? AND status = 'active'
+            ORDER BY last_seen DESC
+            LIMIT 1
+            """,
+            ("agent:the_creator:telegram:dm:123",),
+        ).fetchone()
+
+        assert row is not None
+        assert row[0] in {"lonely", "guilty", "hurt", "sad"}
+        assert row[1] in {"negative", "mixed"}
+        assert row[2] > 0
+        assert row[3] in {"comfort", "validation", "reassurance"}
+        assert "lonely" in row[4].lower() or "guilty" in row[4].lower()
+        assert "mira" in row[5].lower() or "lonely" in row[5].lower()
+    finally:
+        conn.close()
+
+
+def test_user_memory_does_not_promote_remember_as_person() -> None:
+    from sci_fi_dashboard.user_memory import distill_user_memory_facts
+
+    facts = distill_user_memory_facts(
+        text=(
+            "User: Remember this little thing: Baba is my father. "
+            "Blue-kulfi night means I felt quietly happy and loved, but also lonely."
+        ),
+        user_id="agent:the_creator:telegram:dm:123",
+        source_doc_id=None,
+    )
+
+    keys = {(fact.kind, fact.key) for fact in facts}
+    assert ("relationship", "person_baba") in keys
+    assert ("relationship", "person_remember") not in keys
+
+    baba = next(fact for fact in facts if fact.key == "person_baba")
+    assert {"happy", "loving", "lonely"}.issubset(set(baba.affect.emotion_tags))
+
+
+def test_distill_family_money_boundary_with_anger_affect() -> None:
+    from sci_fi_dashboard.user_memory import distill_and_upsert_user_memory_facts
+
+    conn = sqlite3.connect(":memory:")
+    try:
+        facts = distill_and_upsert_user_memory_facts(
+            conn,
+            text=(
+                "User: I am angry at my cousin because he borrowed money and now "
+                "acts like I am rude for asking it back."
+            ),
+            user_id="agent:the_creator:telegram:dm:123",
+            source_doc_id=None,
+        )
+        conn.commit()
+
+        by_key = {fact.key: fact for fact in facts}
+        assert "person_cousin" in by_key
+        assert "money_boundary_cousin" in by_key
+
+        row = conn.execute("""
+            SELECT mood, sentiment, emotion_tags_json, tension_type, user_need
+            FROM user_memory_facts
+            WHERE key = 'money_boundary_cousin'
+            """).fetchone()
+
+        assert row is not None
+        assert row[0] == "angry"
+        assert row[1] == "negative"
+        assert "angry" in row[2]
+        assert row[3] in {"boundary", "conflict", "none"}
+        assert row[4] in {"space", "validation", "clarity", "none"}
+    finally:
+        conn.close()
 
 
 def test_forget_that_does_not_duplicate_forget_rule() -> None:
@@ -325,6 +510,34 @@ def test_compiled_prompt_includes_synced_preference_string(tmp_path) -> None:
 
     prompt = PromptCompiler(profile_mgr).compile()
     assert "Preferred response style: direct." in prompt
+
+
+def test_compiled_prompt_prioritizes_learned_style_before_examples(tmp_path) -> None:
+    from sci_fi_dashboard.sbs.injection.compiler import PromptCompiler
+    from sci_fi_dashboard.sbs.profile.manager import ProfileManager
+
+    profile_mgr = ProfileManager(tmp_path / "profiles")
+    interaction = profile_mgr.load_layer("interaction")
+    interaction["preferred_response_style"] = "blunt, warm, and compact"
+    interaction["correction_rules"] = ["Do not call the user bro."]
+    profile_mgr.save_layer("interaction", interaction)
+
+    exemplars = profile_mgr.load_layer("exemplars")
+    exemplars["pairs"] = [
+        {
+            "user": f"example {idx}",
+            "assistant": "long exemplar " * 40,
+            "context": {"mood": "neutral"},
+        }
+        for idx in range(10)
+    ]
+    profile_mgr.save_layer("exemplars", exemplars)
+
+    prompt = PromptCompiler(profile_mgr).compile()
+
+    assert "Preferred response style: blunt, warm, and compact." in prompt
+    assert "Correction rules: Do not call the user bro." in prompt
+    assert prompt.index("[INTERACTION PATTERN]") < prompt.index("[EXAMPLE INTERACTIONS]")
 
 
 def test_compiled_prompt_includes_rich_user_memory_facts(tmp_path) -> None:
@@ -494,3 +707,59 @@ def test_sync_user_memory_clears_synced_fields_when_no_active_facts(tmp_path) ->
     domain = profile_mgr.load_layer("domain")
     assert "preferred_response_style" not in interaction
     assert "stable_identity_notes" not in domain
+
+
+def test_orchestrator_sync_writes_runtime_workspace_and_clears_prompt_cache(
+    tmp_path, monkeypatch
+) -> None:
+    from sci_fi_dashboard.sbs.orchestrator import SBSOrchestrator
+    from sci_fi_dashboard.user_memory import ensure_user_memory_facts_table
+
+    user_id = "agent:creator:whatsapp:dm:+15551230000"
+    db_path = tmp_path / "sync-memory.db"
+    conn = sqlite3.connect(str(db_path))
+    try:
+        ensure_user_memory_facts_table(conn)
+        conn.execute(
+            """
+            INSERT INTO user_memory_facts
+                (user_id, kind, key, value, summary, confidence, source_doc_id, evidence, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                user_id,
+                "preference",
+                "response_style",
+                "compact",
+                "Prefers compact reassurance.",
+                0.9,
+                501,
+                "keep it compact",
+                "active",
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    cleared: list[str | None] = []
+    import sci_fi_dashboard.chat_pipeline as chat_pipeline
+
+    monkeypatch.setattr(
+        chat_pipeline,
+        "clear_agent_workspace_session_prefix",
+        lambda session_key=None: cleared.append(session_key),
+    )
+
+    runtime_workspace = tmp_path / "workspace"
+    orchestrator = SBSOrchestrator(
+        data_dir=str(tmp_path / "sbs"),
+        workspace_dir=runtime_workspace,
+    )
+    result = orchestrator.sync_user_memory(user_id, str(db_path))
+
+    assert result["workspace_files_updated"] > 0
+    assert "Prefers compact reassurance." in (runtime_workspace / "USER.md").read_text(
+        encoding="utf-8"
+    )
+    assert cleared == [user_id]

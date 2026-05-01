@@ -66,6 +66,13 @@ def _print(msg: str) -> None:
         print(safe_plain)
 
 
+def _load_synapse_json(config_path: Path) -> dict:
+    """Load synapse.json while tolerating common editor-added UTF-8 BOMs."""
+    with open(config_path, encoding="utf-8-sig") as fh:
+        raw = json.load(fh)
+    return raw if isinstance(raw, dict) else {}
+
+
 # ---------------------------------------------------------------------------
 # Check result dataclass
 # ---------------------------------------------------------------------------
@@ -100,8 +107,7 @@ def _check_config_valid(data_root: Path) -> CheckResult:
         return CheckResult(False, label, f"Not found: {config_path}")
 
     try:
-        with open(config_path, encoding="utf-8") as fh:
-            json.load(fh)
+        _load_synapse_json(config_path)
     except json.JSONDecodeError as exc:
         return CheckResult(False, label, f"JSON parse error: {exc}")
 
@@ -147,8 +153,7 @@ def _check_gateway_token(data_root: Path) -> CheckResult:
         return CheckResult(False, label, "synapse.json not found")
 
     try:
-        with open(config_path, encoding="utf-8") as fh:
-            raw = json.load(fh)
+        raw = _load_synapse_json(config_path)
     except (json.JSONDecodeError, OSError):
         return CheckResult(False, label, "Cannot read synapse.json")
 
@@ -167,8 +172,7 @@ def _check_provider_configured(data_root: Path) -> CheckResult:
         return CheckResult(False, label, "synapse.json not found")
 
     try:
-        with open(config_path, encoding="utf-8") as fh:
-            raw = json.load(fh)
+        raw = _load_synapse_json(config_path)
     except (json.JSONDecodeError, OSError):
         return CheckResult(False, label, "Cannot read synapse.json")
 

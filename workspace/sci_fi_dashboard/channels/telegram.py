@@ -40,6 +40,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import re
 import time
 from datetime import datetime
 from pathlib import Path
@@ -59,6 +60,28 @@ logger = logging.getLogger(__name__)
 
 # Default state directory for offset persistence
 _DEFAULT_STATE_DIR = Path.home() / ".synapse" / "state"
+_DEFAULT_POLL_STALL_THRESHOLD_S = 30 * 60.0
+
+
+def _sanitize_outbound_text(text: str) -> str:
+    """Final channel-boundary cleanup before Telegram delivery."""
+    try:
+        from sci_fi_dashboard.pipeline_helpers import _ensure_user_visible_reply
+
+        return _ensure_user_visible_reply(text)
+    except Exception:
+        cleaned = str(text or "")
+        cleaned = re.sub(r"<think\b[^>]*>[\s\S]*?</think>", "", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r"</?final\b[^>]*>", "", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r"</?think\b[^>]*>", "", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(
+            r"(?im)^\s*thought\s+for\s+\d+(?:\.\d+)?\s*(?:s|sec|secs|seconds?)\s*$\n?",
+            "",
+            cleaned,
+        )
+        cleaned = re.split(r"\n\s*---\s*\n\*\*Context Usage:\*\*", cleaned, maxsplit=1)[0]
+        cleaned = cleaned.strip()
+        return cleaned or "Done."
 
 
 class TelegramChannel(BaseChannel):
@@ -214,7 +237,7 @@ class TelegramChannel(BaseChannel):
                 logger.info("[TEL] Seeded server offset=%d", self._last_offset + 1)
                 await self._updater.start_polling(drop_pending_updates=False)
             else:
-                await self._updater.start_polling(drop_pending_updates=True)
+                await self._updater.start_polling(drop_pending_updates=False)
 
             await self._app.start()
 
@@ -223,8 +246,13 @@ class TelegramChannel(BaseChannel):
             self._bot_info = {"username": bot_me.username, "id": bot_me.id}
             logger.info("[TEL] Polling as @%s (id=%d)", bot_me.username, bot_me.id)
 
-            # Start stall watchdog
-            self._watchdog = PollingWatchdog(restart_callback=self._restart_polling)
+            # Telegram long polling can be healthy while idle for long stretches.
+            # Keep the watchdog for real dead pollers, but do not restart every
+            # quiet minute just because nobody messaged the bot.
+            self._watchdog = PollingWatchdog(
+                restart_callback=self._restart_polling,
+                stall_threshold_s=_DEFAULT_POLL_STALL_THRESHOLD_S,
+            )
             await self._watchdog.start()
 
             # Park here until CancelledError from ChannelRegistry.stop_all().
@@ -340,7 +368,7 @@ class TelegramChannel(BaseChannel):
         if not self._app:
             return False
 
-        chunks = self._split_message(text)
+        chunks = self._split_message(_sanitize_outbound_text(text))
         all_ok = True
         for i, chunk in enumerate(chunks):
             try:

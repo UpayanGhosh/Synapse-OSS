@@ -57,7 +57,7 @@ class ProfileManager:
             "core_identity": {
                 "assistant_name": "Synapse",
                 "user_name": "primary_user",
-                "user_nickname": "user_nickname",
+                "user_nickname": "",
                 "relationship": "trusted_technical_companion",
                 "base_language": "english",
                 "base_tone": "casual_caring_witty",
@@ -214,7 +214,7 @@ class ProfileManager:
         with lock:
             if not path.exists():
                 return {}
-            with open(path, encoding="utf-8") as f:
+            with open(path, encoding="utf-8-sig") as f:
                 return json.load(f)
 
     def _write_json(self, path: Path, data: dict):

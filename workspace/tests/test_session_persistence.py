@@ -545,6 +545,49 @@ class TestSessionResetCommand:
         assert "[WhatsApp session" in vec_calls[0]
 
     @pytest.mark.asyncio
+    async def test_background_ingestion_labels_telegram_sessions(self, tmp_path, monkeypatch):
+        """Archived Telegram transcripts should not be mislabeled as WhatsApp."""
+        import sci_fi_dashboard._deps as deps
+        from sci_fi_dashboard import session_ingest
+        from sci_fi_dashboard.multiuser.transcript import append_message
+
+        archived = tmp_path / "tg.jsonl.deleted.1234567890000"
+        archived.parent.mkdir(parents=True, exist_ok=True)
+        await append_message(archived, {"role": "user", "content": "my scooter broke"})
+        await append_message(archived, {"role": "assistant", "content": "use official RSA"})
+
+        vec_calls = []
+
+        def mock_add_memory(content, category=None, hemisphere=None):
+            vec_calls.append(content)
+            return {}
+
+        monkeypatch.setattr(deps.memory_engine, "add_memory", mock_add_memory)
+        monkeypatch.setattr(session_ingest, "BATCH_SIZE", 3)
+        monkeypatch.setattr(session_ingest, "BATCH_SLEEP_S", 0.0)
+
+        class MockExtractor:
+            def __init__(self, *a, **kw):
+                pass
+
+            async def extract(self, text):
+                return {"facts": [], "triples": [], "validated_triples": []}
+
+        from sci_fi_dashboard import conv_kg_extractor
+
+        monkeypatch.setattr(conv_kg_extractor, "ConvKGExtractor", MockExtractor)
+
+        await session_ingest._ingest_session_background(
+            archived_path=archived,
+            agent_id="the_creator",
+            session_key="agent:the_creator:telegram:dm:123456",
+        )
+
+        assert vec_calls
+        assert "[Telegram session" in vec_calls[0]
+        assert "[WhatsApp session" not in vec_calls[0]
+
+    @pytest.mark.asyncio
     async def test_history_empty_after_new(self, tmp_path):
         import sci_fi_dashboard.pipeline_helpers as ph
         from sci_fi_dashboard.multiuser.session_store import SessionStore

@@ -58,7 +58,7 @@ def register_optional_channels():
     tg_token = ch_cfg.get("telegram", {}).get("token", "").strip()
     if tg_token:
         try:
-            from channels.telegram import TelegramChannel
+            from sci_fi_dashboard.channels.telegram import TelegramChannel
 
             tel_enqueue = _make_flood_enqueue("telegram")
             deps.channel_registry.register(TelegramChannel(token=tg_token, enqueue_fn=tel_enqueue))
@@ -78,7 +78,7 @@ def register_optional_channels():
     ds_token = ch_cfg.get("discord", {}).get("token", "").strip()
     if ds_token:
         try:
-            from channels.discord_channel import DiscordChannel
+            from sci_fi_dashboard.channels.discord_channel import DiscordChannel
 
             ds_allowed = [int(x) for x in ch_cfg.get("discord", {}).get("allowed_channel_ids", [])]
             dis_enqueue = _make_flood_enqueue("discord")
@@ -106,7 +106,7 @@ def register_optional_channels():
     slk_app = slk_cfg.get("app_token", "").strip()
     if slk_enabled and slk_bot and slk_app:
         try:
-            from channels.slack import SlackChannel
+            from sci_fi_dashboard.channels.slack import SlackChannel
 
             slk_enqueue = _make_flood_enqueue("slack")
             deps.channel_registry.register(

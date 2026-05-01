@@ -227,6 +227,23 @@ class TestSkillWatcher:
         watcher = SkillWatcher(tmp_path, mock_registry)
         watcher.stop()  # Should not raise
 
+    def test_polling_fallback_reloads_only_when_skill_manifest_changes(self, tmp_path):
+        """Polling fallback must not re-embed every interval when files are unchanged."""
+        from sci_fi_dashboard.skills.watcher import SkillWatcher
+
+        _make_skill(tmp_path, "alpha")
+        mock_registry = MagicMock()
+        watcher = SkillWatcher(tmp_path, mock_registry, debounce_seconds=0.1)
+
+        assert watcher._poll_changed() is False
+
+        (tmp_path / "alpha" / "SKILL.md").write_text(
+            "---\nname: alpha\ndescription: Changed\nversion: 1.0.0\n---\n",
+            encoding="utf-8",
+        )
+        assert watcher._poll_changed() is True
+        assert watcher._poll_changed() is False
+
 
 # ---------------------------------------------------------------------------
 # TestSkillsEndpoint — GET /skills FastAPI endpoint

@@ -263,7 +263,7 @@ def build_responses_request(
 def _requires_stream_protocol(model_name: str) -> bool:
     """Return True when this model requires ChatGPT streaming request shape."""
     lowered = str(model_name or "").strip().lower()
-    return lowered.startswith("gpt-5.4")
+    return lowered.startswith("gpt-5.")
 
 
 def _extract_instructions(messages: list[dict[str, Any]]) -> str:

@@ -18,6 +18,10 @@ import psutil
 from synapse_config import SynapseConfig
 
 from sci_fi_dashboard import _deps as deps
+from sci_fi_dashboard.action_receipts import (
+    ActionReceipt,
+    guard_reply_against_unreceipted_claims,
+)
 from sci_fi_dashboard.conv_kg_extractor import run_batch_extraction
 from sci_fi_dashboard.multiuser.session_key import build_session_key
 from sci_fi_dashboard.schemas import ChatRequest
@@ -31,9 +35,79 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
+class ReceiptReply(str):
+    """String reply that carries verified action receipts for downstream guards."""
+
+    action_receipts: list[ActionReceipt]
+
+    def __new__(cls, value: str, receipts: list[ActionReceipt]):
+        obj = str.__new__(cls, value)
+        obj.action_receipts = list(receipts)
+        return obj
+
+
+def _receipts_from_value(value) -> list[ActionReceipt]:
+    raw = getattr(value, "action_receipts", None)
+    if raw is None and isinstance(value, dict):
+        raw = value.get("action_receipts")
+    receipts: list[ActionReceipt] = []
+    for item in raw or []:
+        receipt = ActionReceipt.from_mapping(item)
+        if receipt is not None:
+            receipts.append(receipt)
+    return receipts
+
+
+def _serialize_receipts(receipts: list[ActionReceipt]) -> list[dict]:
+    return [receipt.to_dict() for receipt in receipts]
+
+
+def _prepare_history_for_llm(messages: list[dict]) -> list[dict]:
+    """Strip transcript-only metadata and inject recent action proof as context."""
+
+    prepared: list[dict] = []
+    for message in messages or []:
+        if not isinstance(message, dict):
+            continue
+        role = str(message.get("role") or "").strip().lower()
+        if role not in {"system", "user", "assistant"}:
+            continue
+        content = message.get("content")
+        if content is None:
+            continue
+        prepared.append({"role": role, "content": str(content)})
+
+    receipt_context = _format_recent_action_receipt_context(messages)
+    if receipt_context:
+        prepared.append({"role": "system", "content": receipt_context})
+    return prepared
+
+
+def _format_recent_action_receipt_context(messages: list[dict], limit: int = 6) -> str:
+    receipts: list[ActionReceipt] = []
+    for message in reversed(messages or []):
+        for receipt in _receipts_from_value(message):
+            receipts.append(receipt)
+            if len(receipts) >= limit:
+                break
+        if len(receipts) >= limit:
+            break
+    receipts.reverse()
+    if not receipts:
+        return ""
+
+    lines = [
+        "RECENT ACTION RECEIPTS:",
+        "Use these to answer follow-up questions about what Synapse actually did in prior turns.",
+        "Do not contradict verified receipts.",
+    ]
+    lines.extend(receipt.to_prompt_line() for receipt in receipts)
+    return "\n".join(lines)
+
+
 def _ensure_user_visible_reply(reply: str) -> str:
     """Prevent empty or diagnostics-only replies from reaching chat channels."""
-    text = str(reply or "")
+    text = _strip_reasoning_wrappers(str(reply or ""))
     for marker in ("\u200b", "\u200c", "\u200d", "\ufeff", "\x00"):
         text = text.replace(marker, "")
     sep = text.find("\n\n---\n**Context Usage:**")
@@ -45,6 +119,20 @@ def _ensure_user_visible_reply(reply: str) -> str:
     if not visible or visible.startswith("---\n**Context Usage:**"):
         return "I heard you. I hit an empty response there, so please try that once more."
     return visible
+
+
+def _strip_reasoning_wrappers(text: str) -> str:
+    """Remove model-internal reasoning/meta wrappers before channel delivery."""
+    cleaned = str(text or "")
+    cleaned = re.sub(r"<think\b[^>]*>[\s\S]*?</think>", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"</?final\b[^>]*>", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"</?think\b[^>]*>", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(
+        r"(?im)^\s*thought\s+for\s+\d+(?:\.\d+)?\s*(?:s|sec|secs|seconds?)\s*$\n?",
+        "",
+        cleaned,
+    )
+    return cleaned
 
 
 def _strip_channel_markdown(text: str) -> str:
@@ -151,6 +239,29 @@ _RELATIVE_BEFORE_RE = re.compile(
     r"(?P<unit>minutes?|mins?|min|hours?|hrs?|hr|days?|day)\s+before\b(?:\s+it)?",
     re.IGNORECASE,
 )
+_PASSIVE_COMMITMENT_TERMS = (
+    "appointment",
+    "call",
+    "class",
+    "date",
+    "deadline",
+    "demo",
+    "dinner",
+    "doctor",
+    "exam",
+    "flight",
+    "interview",
+    "meeting",
+    "presentation",
+    "review",
+    "standup",
+    "train",
+)
+_TIME_HINT_RE = re.compile(
+    r"\b(?:at\s+)?\d{1,2}(?::\d{2})?\s*(?:am|pm)?\b",
+    re.IGNORECASE,
+)
+_NO_ARTICLE_EVENTS = {"breakfast", "brunch", "dinner", "lunch"}
 
 
 def _duration_from_match(match: re.Match[str]) -> timedelta:
@@ -175,6 +286,15 @@ def _get_local_reminder_tz() -> timezone:
 
     local_offset = datetime.now(UTC).astimezone().utcoffset()
     return timezone(local_offset) if local_offset else UTC
+
+
+def _event_article(event: str) -> str:
+    lowered = event.strip().lower()
+    if lowered.startswith(("the ", "my ", "a ", "an ")):
+        return ""
+    if lowered in _NO_ARTICLE_EVENTS:
+        return ""
+    return "the "
 
 
 def _is_reminder_request(text: str) -> bool:
@@ -224,8 +344,7 @@ def _extract_reminder_task(text: str) -> str:
         if event and action_match:
             action = action_match.group("action").strip(" .,!?:;")
             if event.lower() not in action.lower():
-                article = "" if event.lower().startswith(("the ", "my ")) else "the "
-                return f"{action} for {article}{event}".strip()
+                return f"{action} for {_event_article(event)}{event}".strip()
             return action or event
         if event:
             return event
@@ -276,6 +395,12 @@ def _parse_reminder_request(text: str, now: datetime | None = None) -> ParsedRem
     parse_text = _RELATIVE_BEFORE_RE.sub(" ", text)
     parse_text = _DURATION_RE.sub(" ", parse_text)
     lowered = text.lower()
+    date_explicit = bool(
+        re.search(
+            r"\b(today|tomorrow|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\w*\b",
+            lowered,
+        )
+    )
     if "tomorrow" in lowered:
         parse_text = re.sub(
             r"\btomorrow\b",
@@ -292,7 +417,12 @@ def _parse_reminder_request(text: str, now: datetime | None = None) -> ParsedRem
         )
 
     try:
-        when = date_parser.parse(parse_text, fuzzy=True, default=base.replace(second=0, microsecond=0))
+        when = date_parser.parse(
+            parse_text,
+            fuzzy=True,
+            default=base.replace(second=0, microsecond=0),
+            ignoretz=True,
+        )
     except (ValueError, OverflowError, TypeError):
         return None
 
@@ -314,6 +444,129 @@ def _parse_reminder_request(text: str, now: datetime | None = None) -> ParsedRem
         when = candidate
 
     return ParsedReminder(task=_extract_reminder_task(text), when=when)
+
+
+def _is_passive_commitment_candidate(text: str) -> bool:
+    """Detect natural commitments worth nudging without explicit reminder words."""
+    lowered = str(text or "").lower()
+    if _is_reminder_request(lowered):
+        return False
+    if not _TIME_HINT_RE.search(lowered):
+        return False
+    return any(term in lowered for term in _PASSIVE_COMMITMENT_TERMS)
+
+
+def _extract_passive_event_name(text: str) -> str | None:
+    patterns = (
+        r"\b(?:i\s+have|i've\s+got|ive\s+got|got|there(?:'s| is))\s+"
+        r"(?:a\s+|an\s+|my\s+|the\s+)?"
+        r"(?P<event>[a-z0-9][a-z0-9 '\-]{2,80}?)\s+"
+        r"(?:today\s+|tomorrow\s+)?(?:at|by)\b",
+        r"\b(?:today\s+|tomorrow\s+)?(?:a\s+|an\s+|my\s+|the\s+)?"
+        r"(?P<event>[a-z0-9][a-z0-9 '\-]{2,80}?)\s+"
+        r"(?:is|starts|happens)\s+at\b",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if not match:
+            continue
+        event = re.sub(r"\s+", " ", match.group("event")).strip(" .,!?:;")
+        if event and any(term in event.lower() for term in _PASSIVE_COMMITMENT_TERMS):
+            return event
+    return _extract_event_name(text)
+
+
+def _extract_passive_commitment_task(text: str) -> str:
+    event = _extract_passive_event_name(text) or "that thing"
+    action_match = re.search(
+        r"\bneed\s+(?:at\s+least\s+)?"
+        r"(?:\d{1,3}\s*(?:minutes?|mins?|min|hours?|hrs?|hr)\s+before\s+it\s+)?"
+        r"to\s+(?P<action>[^.!?]+)",
+        text,
+        re.IGNORECASE,
+    )
+    if action_match:
+        action = action_match.group("action").strip(" .,!?:;")
+        if action:
+            return f"{action} for {_event_article(event)}{event}".strip()
+    return f"get ready for {_event_article(event)}{event}".strip()
+
+
+def _parse_passive_commitment_nudge(
+    text: str,
+    now: datetime | None = None,
+    *,
+    default_lead: timedelta = timedelta(minutes=15),
+) -> ParsedReminder | None:
+    """Create a proactive nudge from natural event timing, without hijacking chat."""
+    if not _is_passive_commitment_candidate(text):
+        return None
+
+    try:
+        from dateutil import parser as date_parser
+    except Exception:
+        return None
+
+    base = now or datetime.now(_get_local_reminder_tz())
+    if base.tzinfo is None:
+        base = base.replace(tzinfo=_get_local_reminder_tz())
+
+    parse_text = _RELATIVE_BEFORE_RE.sub(" ", text)
+    parse_text = _DURATION_RE.sub(" ", parse_text)
+    lowered = text.lower()
+    date_explicit = bool(
+        re.search(
+            r"\b(today|tomorrow|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\w*\b",
+            lowered,
+        )
+    )
+    if "tomorrow" in lowered:
+        parse_text = re.sub(
+            r"\btomorrow\b",
+            (base + timedelta(days=1)).strftime("%B %d %Y"),
+            parse_text,
+            flags=re.IGNORECASE,
+        )
+    elif "today" in lowered:
+        parse_text = re.sub(
+            r"\btoday\b",
+            base.strftime("%B %d %Y"),
+            parse_text,
+            flags=re.IGNORECASE,
+        )
+
+    try:
+        event_at = date_parser.parse(
+            parse_text,
+            fuzzy=True,
+            default=base.replace(second=0, microsecond=0),
+            ignoretz=True,
+        )
+    except (ValueError, OverflowError, TypeError):
+        return None
+
+    if event_at.tzinfo is None:
+        event_at = event_at.replace(tzinfo=base.tzinfo)
+    if event_at <= base:
+        if "today" in lowered:
+            return None
+        if not date_explicit:
+            event_at = event_at + timedelta(days=1)
+        else:
+            try:
+                event_at = event_at.replace(year=event_at.year + 1)
+            except ValueError:
+                event_at = event_at + timedelta(days=365)
+
+    before_matches = list(_RELATIVE_BEFORE_RE.finditer(text))
+    lead = _duration_from_match(before_matches[-1]) if before_matches else default_lead
+    nudge_at = event_at - lead
+    if nudge_at <= base and event_at > base:
+        nudge_at = min(event_at - timedelta(minutes=1), base + timedelta(minutes=1))
+    if nudge_at <= base:
+        return None
+
+    return ParsedReminder(task=_extract_passive_commitment_task(text), when=nudge_at)
 
 
 def _format_tools_command(channel_id: str, chat_id: str) -> str:
@@ -386,9 +639,124 @@ async def _maybe_handle_reminder_command(
             "enabled": True,
         }
     )
-    return (
+    receipts = [
+        ActionReceipt(
+            action="reminder_schedule",
+            status="verified",
+            evidence=f"Cron job {getattr(job, 'id', 'unknown')} scheduled for {parsed.when.isoformat()}",
+            confidence=0.96,
+        )
+    ]
+    return guard_reply_against_unreceipted_claims(
         f"Done - I'll nudge you at {parsed.when.strftime('%Y-%m-%d %H:%M %Z')}: "
-        f"{parsed.task}."
+        f"{parsed.task}.",
+        receipts,
+    )
+
+
+def _cron_has_matching_nudge(
+    cron_service,
+    *,
+    name: str,
+    at_iso: str,
+    channel_id: str,
+    chat_id: str,
+) -> bool:
+    list_jobs = getattr(cron_service, "list", None)
+    if not callable(list_jobs):
+        return False
+    try:
+        jobs = list_jobs(enabled_only=True)
+    except TypeError:
+        jobs = list_jobs()
+    except Exception:
+        return False
+
+    for job in jobs or []:
+        schedule = getattr(job, "schedule", None)
+        delivery = getattr(job, "delivery", None)
+        if not schedule or not delivery:
+            continue
+        if str(getattr(job, "name", "")) != name:
+            continue
+        if str(getattr(schedule, "at", "")) != at_iso:
+            continue
+        if str(getattr(delivery, "channel", "")) != str(channel_id):
+            continue
+        if str(getattr(delivery, "to", "")) != str(chat_id):
+            continue
+        return True
+    return False
+
+
+async def _maybe_schedule_passive_commitment_nudge(
+    user_msg: str,
+    chat_id: str,
+    channel_id: str,
+    *,
+    now: datetime | None = None,
+) -> str | None:
+    parsed = _parse_passive_commitment_nudge(user_msg, now=now)
+    if parsed is None:
+        return None
+
+    cron_service = getattr(deps, "cron_service", None)
+    if cron_service is None:
+        logger.info("passive commitment nudge skipped: cron scheduler unavailable")
+        return None
+
+    at_iso = parsed.when.isoformat()
+    job_name = f"Passive nudge: {parsed.task[:80]}"
+    if _cron_has_matching_nudge(
+        cron_service,
+        name=job_name,
+        at_iso=at_iso,
+        channel_id=channel_id,
+        chat_id=chat_id,
+    ):
+        return None
+
+    delivery_prompt = (
+        "CRON DELIVERY MODE: Output only the Telegram reminder text. No headers, "
+        "labels, or meta-commentary. Your reply is delivered directly to the user.\n\n"
+        f"Reminder due now: {parsed.task}.\n"
+        f"Original message: {user_msg}\n"
+        "Write one short, warm, close-friend nudge. Sound natural, not like a task bot."
+    )
+    job = cron_service.add(
+        {
+            "name": job_name,
+            "schedule": {"kind": "at", "at": at_iso},
+            "payload": {
+                "kind": "systemEvent",
+                "message": delivery_prompt,
+                "timeout_seconds": 60,
+            },
+            "delivery": {
+                "mode": "announce",
+                "channel": channel_id,
+                "to": chat_id,
+            },
+            "session_target": "main",
+            "wake_mode": "now",
+            "enabled": True,
+        }
+    )
+    receipts = [
+        ActionReceipt(
+            action="reminder_schedule",
+            status="verified",
+            evidence=f"Cron job {getattr(job, 'id', 'unknown')} scheduled for {at_iso}",
+            confidence=0.94,
+        )
+    ]
+    return ReceiptReply(
+        guard_reply_against_unreceipted_claims(
+            f"I'll nudge you at {parsed.when.strftime('%Y-%m-%d %H:%M %Z')}: "
+            f"{parsed.task}.",
+            receipts,
+        ),
+        receipts,
     )
 
 
@@ -874,15 +1242,42 @@ async def process_direct_persona_chat(
         messages = await load_messages(t_path, limit=history_limit)
         deps.conversation_cache.put(session_key, messages)
 
-    history_for_llm = list(messages) if messages else list(request.history or [])
+    history_for_llm = (
+        _prepare_history_for_llm(list(messages))
+        if messages
+        else _prepare_history_for_llm(list(request.history or []))
+    )
+    action_receipts: list[ActionReceipt] = []
     user_dict = {"role": "user", "content": request.message}
     await append_message(t_path, user_dict)
+    action_receipts.append(
+        ActionReceipt(
+            action="message_capture",
+            status="verified",
+            evidence=f"User turn appended to transcript for {session_key}.",
+            confidence=0.99,
+        )
+    )
     deps.conversation_cache.append(session_key, user_dict)
-    _sync_user_turn_memory(
+    fact_count = _sync_user_turn_memory(
         user_msg=request.message,
         session_key=session_key,
         target=target,
         cfg=cfg,
+    )
+    if fact_count:
+        action_receipts.append(
+            ActionReceipt(
+                action="memory_save",
+                status="verified",
+                evidence=f"{fact_count} user memory fact(s) persisted.",
+                confidence=0.92,
+            )
+        )
+    passive_nudge_reply = await _maybe_schedule_passive_commitment_nudge(
+        request.message,
+        chat_id=request.user_id or session_key,
+        channel_id=request.channel_id or "cli",
     )
 
     raw_timeout = session_cfg.get("chat_timeout_seconds", 90.0)
@@ -906,7 +1301,13 @@ async def process_direct_persona_chat(
         )
         if not isinstance(result, dict):
             result = {"reply": str(result or "")}
+        action_receipts.extend(_receipts_from_value(result))
+        if passive_nudge_reply:
+            action_receipts.extend(_receipts_from_value(passive_nudge_reply))
         reply = _ensure_user_visible_reply(str(result.get("reply", "")))
+        if passive_nudge_reply:
+            reply = f"{reply.rstrip()}\n\n{passive_nudge_reply}"
+        reply = guard_reply_against_unreceipted_claims(reply, action_receipts)
     except TimeoutError:
         logger.warning(
             "direct persona_chat timed out after %.2fs for %s",
@@ -923,6 +1324,7 @@ async def process_direct_persona_chat(
             "memory_method": "saved_before_timeout",
             "model": "timeout",
         }
+        reply = guard_reply_against_unreceipted_claims(reply, action_receipts)
     except Exception:
         logger.exception("direct persona_chat failed for %s", session_key)
         reply = (
@@ -935,8 +1337,13 @@ async def process_direct_persona_chat(
             "memory_method": "saved_before_error",
             "model": "error",
         }
+        reply = guard_reply_against_unreceipted_claims(reply, action_receipts)
 
-    asst_dict = {"role": "assistant", "content": reply}
+    asst_dict = {
+        "role": "assistant",
+        "content": reply,
+        "action_receipts": _serialize_receipts(action_receipts),
+    }
     await append_message(t_path, asst_dict)
     deps.conversation_cache.append(session_key, asst_dict)
     await _maybe_schedule_periodic_memory_flush(
@@ -949,6 +1356,8 @@ async def process_direct_persona_chat(
     )
 
     result.setdefault("reply", reply)
+    result["reply"] = reply
+    result["action_receipts"] = _serialize_receipts(action_receipts)
     result.setdefault("persona", f"synapse_{target}")
     result.setdefault("memory_method", "direct_session")
     return result
@@ -1087,15 +1496,38 @@ async def process_message_pipeline(
     # ------------------------------------------------------------------
     # Step 5: Capture user turn first, then call persona_chat with timeout
     # ------------------------------------------------------------------
-    history_for_llm = list(messages)
+    history_for_llm = _prepare_history_for_llm(list(messages))
+    action_receipts: list[ActionReceipt] = []
     user_dict = {"role": "user", "content": user_msg}
     await append_message(t_path, user_dict)
+    action_receipts.append(
+        ActionReceipt(
+            action="message_capture",
+            status="verified",
+            evidence=f"User turn appended to transcript for {session_key}.",
+            confidence=0.99,
+        )
+    )
     deps.conversation_cache.append(session_key, user_dict)
-    _sync_user_turn_memory(
+    fact_count = _sync_user_turn_memory(
         user_msg=user_msg,
         session_key=session_key,
         target=target,
         cfg=cfg,
+    )
+    if fact_count:
+        action_receipts.append(
+            ActionReceipt(
+                action="memory_save",
+                status="verified",
+                evidence=f"{fact_count} user memory fact(s) persisted.",
+                confidence=0.92,
+            )
+        )
+    passive_nudge_reply = await _maybe_schedule_passive_commitment_nudge(
+        user_msg,
+        chat_id=chat_id,
+        channel_id=channel_id,
     )
 
     raw_timeout = session_cfg.get("chat_timeout_seconds", 90.0)
@@ -1117,29 +1549,41 @@ async def process_message_pipeline(
             persona_chat(chat_req, target, None, mcp_context=mcp_context),
             timeout=chat_timeout_seconds,
         )
+        action_receipts.extend(_receipts_from_value(result))
+        if passive_nudge_reply:
+            action_receipts.extend(_receipts_from_value(passive_nudge_reply))
         reply = _ensure_user_visible_reply(result.get("reply", ""))
+        if passive_nudge_reply:
+            reply = f"{reply.rstrip()}\n\n{passive_nudge_reply}"
+        reply = guard_reply_against_unreceipted_claims(reply, action_receipts)
     except TimeoutError:
         logger.warning("persona_chat timed out after %.2fs for %s", chat_timeout_seconds, session_key)
         reply = (
             "I saved your message, but I timed out while generating a reply. "
             "Please try again."
         )
+        reply = guard_reply_against_unreceipted_claims(reply, action_receipts)
     except Exception:
         logger.exception("persona_chat failed for %s", session_key)
         reply = (
             "I saved your message, but hit an error while generating a reply. "
             "Please try again."
         )
+        reply = guard_reply_against_unreceipted_claims(reply, action_receipts)
 
     # ------------------------------------------------------------------
     # Step 6: Fire-and-forget assistant append + compaction (per D-11, D-12, D-14-D-17)
     # ------------------------------------------------------------------
-    asst_dict = {"role": "assistant", "content": reply}
+    asst_dict = {
+        "role": "assistant",
+        "content": reply,
+        "action_receipts": _serialize_receipts(action_receipts),
+    }
+    deps.conversation_cache.append(session_key, asst_dict)
 
     async def _save_and_compact():
         try:
             await append_message(t_path, asst_dict)
-            deps.conversation_cache.append(session_key, asst_dict)
             await _maybe_schedule_periodic_memory_flush(
                 session_key=session_key,
                 agent_id=target,

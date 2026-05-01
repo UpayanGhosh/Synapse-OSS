@@ -12,13 +12,14 @@ import sqlite3
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
-EXTRACTOR_VERSION = "heuristic-v1"
+EXTRACTOR_VERSION = "heuristic-v2"
 
 
 @dataclass(frozen=True)
 class AffectTags:
     sentiment: str = "neutral"
     mood: str = "neutral"
+    emotion_tags: list[str] = field(default_factory=list)
     emotional_intensity: float = 0.0
     tension_type: str = "none"
     user_need: str = "none"
@@ -29,6 +30,42 @@ class AffectTags:
 
 
 MOOD_PATTERNS: dict[str, list[str]] = {
+    "angry": [
+        r"\bangry\b",
+        r"\bpissed\b",
+        r"\bmad\b",
+        r"\birritated\b",
+        r"\bfurious\b",
+    ],
+    "guilty": [r"\bguilt\b", r"\bguilty\b", r"\bregret\b", r"\bashamed\b"],
+    "sad": [r"\bsad\b", r"\bsorrow\b", r"\bheavy\b", r"\bheartbroken\b"],
+    "loving": [
+        r"\blove\b",
+        r"\bloved\b",
+        r"\bsoft about\b",
+        r"\bcrush\b",
+        r"\baffection\b",
+        r"\bi like (?:her|him|them|someone)\b",
+    ],
+    "jealous": [
+        r"\bjealous\b",
+        r"\bjealousy\b",
+        r"\bpossessive\b",
+        r"\bstomach (?:just )?(?:drop|drops|dropped)\b",
+        r"\bgut-?drop\b",
+        r"\bneedy\b",
+        r"\binsecure\b",
+        r"\boverthink(?:ing)?\b",
+        r"\bmessing with my head\b",
+        r"\banother guy\b",
+        r"\bfeel(?:ing)? small\b",
+        r"\bmade me feel small\b",
+        r"\bchest (?:is )?(?:doing )?drama\b",
+        r"\breplaced\b",
+        r"\bcomfortable with someone else\b",
+        r"\bperson i like\b.*\bsomeone else\b",
+    ],
+    "happy": [r"\bhappy\b", r"\bgrateful\b", r"\bjoy\b", r"\bglad\b"],
     "hurt": [
         r"\bhurt\b",
         r"\bunseen\b",
@@ -64,6 +101,24 @@ MOOD_PATTERNS: dict[str, list[str]] = {
 TENSION_PATTERNS: dict[str, list[str]] = {
     "neglect": [r"\bunseen\b", r"\bignored?\b", r"\bforgot\b", r"\bpriority\b", r"\babsent\b"],
     "rejection": [r"\breject", r"\bdesired\b", r"\bunwanted\b", r"\bnot enough\b"],
+    "insecurity": [
+        r"\bjealous\b",
+        r"\bjealousy\b",
+        r"\bpossessive\b",
+        r"\binsecure\b",
+        r"\bneedy\b",
+        r"\bstomach (?:just )?(?:drop|drops|dropped)\b",
+        r"\bgut-?drop\b",
+        r"\boverthink(?:ing)?\b",
+        r"\bmessing with my head\b",
+        r"\banother guy\b",
+        r"\bfeel(?:ing)? small\b",
+        r"\bmade me feel small\b",
+        r"\bchest (?:is )?(?:doing )?drama\b",
+        r"\breplaced\b",
+        r"\bcomfortable with someone else\b",
+        r"\bperson i like\b.*\bsomeone else\b",
+    ],
     "conflict": [r"\bfight\b", r"\bargument\b", r"\bwrong\b", r"\bmisunderstood\b"],
     "uncertainty": [r"\bconfused\b", r"\bunsure\b", r"\bdon't know\b", r"\buncertain\b"],
     "pressure": [r"\bstressed\b", r"\bdeadline\b", r"\bpressure\b", r"\boverwhelmed\b", r"\bwork\b"],
@@ -77,7 +132,23 @@ NEED_PATTERNS: dict[str, list[str]] = {
     "validation": [r"\bunseen\b", r"\bignored?\b", r"\bheard\b", r"\bunderstood\b"],
     "reassurance": [r"\breassur", r"\bscared\b", r"\banxious\b", r"\bworried\b"],
     "clarity": [r"\bstuck\b", r"\bconfused\b", r"\bwhat should\b", r"\bdeadline\b", r"\bwork\b"],
-    "comfort": [r"\bhurt\b", r"\bcry", r"\bsad\b", r"\blonely\b"],
+    "comfort": [r"\bhurt\b", r"\bcry", r"\bsad\b", r"\blonely\b", r"\bguilt", r"\bguilty\b"],
+    "grounding": [
+        r"\bjealous\b",
+        r"\bjealousy\b",
+        r"\binsecure\b",
+        r"\bneedy\b",
+        r"\boverthink",
+        r"\bspiral",
+        r"\bstomach (?:just )?(?:drop|drops|dropped)\b",
+        r"\bmessing with my head\b",
+        r"\banother guy\b",
+        r"\bfeel(?:ing)? small\b",
+        r"\bmade me feel small\b",
+        r"\bchest (?:is )?(?:doing )?drama\b",
+        r"\breplaced\b",
+        r"\bcomfortable with someone else\b",
+    ],
     "space": [r"\bspace\b", r"\bboundar", r"\blimit\b"],
     "accountability": [r"\bforgot\b", r"\bagain\b", r"\bchanged?\b", r"\beffort\b"],
     "encouragement": [r"\bfinished\b", r"\bshipped\b", r"\btrying\b", r"\bprogress\b"],
@@ -91,6 +162,7 @@ STYLE_FOR_NEED = {
     "reassurance": "soft",
     "clarity": "grounding",
     "comfort": "soft",
+    "grounding": "grounding",
     "space": "firm",
     "accountability": "direct",
     "encouragement": "celebratory",
@@ -125,6 +197,17 @@ NEGATIVE_PATTERNS = [
     r"\bfrustrated\b",
     r"\boverwhelmed\b",
     r"\bscared\b",
+    r"\bjealous\b",
+    r"\bjealousy\b",
+    r"\binsecure\b",
+    r"\bneedy\b",
+    r"\bstomach (?:just )?(?:drop|drops|dropped)\b",
+    r"\boverthink(?:ing)?\b",
+    r"\bmessing with my head\b",
+    r"\bfeel(?:ing)? small\b",
+    r"\bmade me feel small\b",
+    r"\bchest (?:is )?(?:doing )?drama\b",
+    r"\breplaced\b",
 ]
 
 STOPWORDS = {
@@ -189,6 +272,16 @@ def _best_label(scores: dict[str, int], default: str) -> str:
     return max(scores, key=lambda key: (scores[key], -list(scores).index(key)))
 
 
+def _ranked_labels(scores: dict[str, int]) -> list[str]:
+    return [
+        label
+        for label, _score in sorted(
+            scores.items(),
+            key=lambda item: (-item[1], list(MOOD_PATTERNS).index(item[0])),
+        )
+    ]
+
+
 def _count_patterns(text: str, patterns: list[str]) -> int:
     return sum(1 for pattern in patterns if re.search(pattern, text, re.IGNORECASE))
 
@@ -217,9 +310,27 @@ def _topics(text: str) -> list[str]:
     return topics
 
 
+def _emotion_source_text(text: str) -> str:
+    """Prefer user-authored turns when extracting stored emotional metadata."""
+    raw = str(text or "")
+    user_lines: list[str] = []
+    for line in raw.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("User:"):
+            user_lines.append(stripped.removeprefix("User:").strip())
+    if user_lines:
+        return " ".join(user_lines)
+    inline_turns = re.findall(
+        r"User:\s*(.*?)(?=\s+(?:Me|Assistant|Bot|Synapse):|$)",
+        raw,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    return " ".join(turn.strip() for turn in inline_turns if turn.strip()) if inline_turns else raw
+
+
 def extract_affect(text: str) -> AffectTags:
     """Extract deterministic affect tags from text."""
-    compact = " ".join(str(text or "").split())
+    compact = " ".join(_emotion_source_text(text).split())
     if not compact:
         return AffectTags()
 
@@ -233,6 +344,10 @@ def extract_affect(text: str) -> AffectTags:
     user_need = _best_label(need_scores, "none")
     if mood == "hurt" and tension_type == "neglect":
         user_need = "validation"
+    elif mood == "jealous" and user_need == "none":
+        user_need = "grounding"
+    elif mood in {"sad", "lonely", "guilty"} and user_need == "none":
+        user_need = "comfort"
     elif tension_type == "pressure":
         user_need = "clarity"
     response_style_hint = STYLE_FOR_NEED.get(user_need, "warm")
@@ -250,6 +365,7 @@ def extract_affect(text: str) -> AffectTags:
     return AffectTags(
         sentiment=sentiment,
         mood=mood,
+        emotion_tags=_ranked_labels(mood_scores),
         emotional_intensity=round(emotional_intensity, 3),
         tension_type=tension_type,
         user_need=user_need,

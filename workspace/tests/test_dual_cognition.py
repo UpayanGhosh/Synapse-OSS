@@ -212,7 +212,7 @@ class TestThink:
         assert merge.tension_type == "none"
         assert llm_fn.call_count == 2  # analyze + merge
 
-    async def test_deep_path_uses_search_intent(self, engine):
+    async def test_deep_path_uses_analyze_and_merge(self, engine):
         intent_resp = json.dumps(["Python", "interview", "preparation"])
         analyze_resp = json.dumps(
             {
@@ -241,7 +241,30 @@ class TestThink:
         msg = "I'm stuck and can't do this anymore. I told you I'd never fail but actually I did."
         merge = await engine.think(msg, chat_id="c1", conversation_history=history, llm_fn=llm_fn)
         assert isinstance(merge, CognitiveMerge)
-        assert llm_fn.call_count == 3  # intent + analyze + merge
+        assert llm_fn.call_count == 2  # analyze + merge
+
+    async def test_foreground_single_llm_mode_skips_present_analysis(self, engine):
+        merge_resp = json.dumps(
+            {
+                "thought": "The user is venting about unfair office politics.",
+                "tension_level": 0.5,
+                "tension_type": "growth",
+                "contradictions": [],
+                "response_strategy": "support",
+                "suggested_tone": "firm",
+                "inner_monologue": "Side with the fair frustration before giving advice.",
+            }
+        )
+        llm_fn = AsyncMock(return_value=merge_resp)
+        msg = "I'm pissed because Rohan dumped cleanup on me. I can't sleep and feel anxious."
+
+        merge = await engine.think(msg, chat_id="c1", llm_fn=llm_fn, max_llm_calls=1)
+
+        assert isinstance(merge, CognitiveMerge)
+        assert llm_fn.call_count == 1
+        prompt_text = llm_fn.call_args.args[0][0]["content"]
+        assert "Intent: venting" in prompt_text
+        assert "Emotional state: anxious" in prompt_text
 
     async def test_none_history_safe(self, engine):
         merge = await engine.think("hi", chat_id="c1", conversation_history=None)

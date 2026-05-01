@@ -76,11 +76,13 @@ class ProactivePolicyScorer:
         quiet_start_hour: int = 23,
         quiet_end_hour: int = 8,
         silence_gap_seconds: float = 8 * 3600,
+        urgent_recent_gap_seconds: float = 45 * 60,
     ) -> None:
         self.threshold = float(threshold)
         self.quiet_start_hour = int(quiet_start_hour)
         self.quiet_end_hour = int(quiet_end_hour)
         self.silence_gap_seconds = float(silence_gap_seconds)
+        self.urgent_recent_gap_seconds = float(urgent_recent_gap_seconds)
 
     def score(self, policy_input: ProactivePolicyInput) -> ProactiveDecision:
         hour = policy_input.now_hour
@@ -95,7 +97,13 @@ class ProactivePolicyScorer:
 
         gap = policy_input.resolved_seconds_since_last_message()
         urgency, urgency_evidence = self._urgency(policy_input)
-        if gap is not None and gap < self.silence_gap_seconds and urgency < 0.75:
+        urgent_recent_allowed = self._allows_urgent_recent_contact(
+            gap,
+            urgency,
+            policy_input.emotional_need,
+            policy_input.recent_memory_summaries,
+        )
+        if gap is not None and gap < self.silence_gap_seconds and not urgent_recent_allowed:
             return ProactiveDecision(
                 should_reach_out=False,
                 score=0.0,
@@ -105,6 +113,8 @@ class ProactivePolicyScorer:
             )
 
         recent_contact = 1.0 if gap is None else min(1.0, gap / self.silence_gap_seconds)
+        if urgent_recent_allowed:
+            recent_contact = max(recent_contact, 0.45)
         relevance = min(1.0, 0.35 * len(policy_input.recent_memory_summaries))
         if policy_input.calendar_events and policy_input.recent_memory_summaries:
             relevance = min(1.0, relevance + 0.25)
@@ -170,12 +180,26 @@ class ProactivePolicyScorer:
 
         memory_text = " ".join(policy_input.recent_memory_summaries).lower()
         if memory_text and any(term in memory_text for term in _MEMORY_URGENCY_TERMS):
-            score += 0.42
+            score += 0.55
             evidence.append("memory_urgency")
         elif memory_text and policy_input.emotional_need >= 0.75:
             score += 0.28
             evidence.append("memory_emotional_need")
         return _clamp(score), evidence
+
+    def _allows_urgent_recent_contact(
+        self,
+        gap: float | None,
+        urgency: float,
+        emotional_need: float,
+        recent_memory_summaries: list[str],
+    ) -> bool:
+        if gap is None or gap >= self.silence_gap_seconds:
+            return True
+        if gap < self.urgent_recent_gap_seconds:
+            return False
+        has_memory = bool(recent_memory_summaries)
+        return has_memory and urgency >= 0.5 and _clamp(emotional_need) >= 0.75
 
 
 def _memory_evidence(policy_input: ProactivePolicyInput) -> list[str]:

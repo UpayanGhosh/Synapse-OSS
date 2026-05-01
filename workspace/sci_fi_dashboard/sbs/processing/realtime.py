@@ -27,6 +27,51 @@ MOOD_KEYWORDS = {
         r"\ber\s*upor\b",
         r"\bjhame+la\b",
     ],
+    "anxious": [
+        r"\banxious\b",
+        r"\bscared\b",
+        r"\bnervous\b",
+        r"\bpanic(?:king)?\b",
+        r"\boverwhelm(?:ed|ing)?\b",
+        r"\bawkward\b",
+        r"\bstomach\b.*\b(nonsense|drop|knot|twist)",
+        r"\bchest\b.*\b(drama|tight|heavy|drop)",
+        r"\blook\s+stupid\b",
+    ],
+    "sad": [
+        r"\bsad\b",
+        r"\blonely\b",
+        r"\bhurt\b",
+        r"\bbroke\s+me\b",
+        r"\bheartbroken\b",
+        r"\bmiss\s+(her|him|them|you)\b",
+        r"\bfeel\s+small\b",
+    ],
+    "angry": [
+        r"\bangry\b",
+        r"\bfurious\b",
+        r"\bpissed\b",
+        r"\bunfair\b",
+        r"\bdisrespect(?:ed|ful)?\b",
+        r"\bbetray(?:ed|al)?\b",
+    ],
+    "affectionate": [
+        r"\bcrush\b",
+        r"\bin\s+love\b",
+        r"\bi\s+love\b",
+        r"\bi\s+like\s+(her|him|them|you)\b",
+        r"\bdate\b",
+        r"\bbirthday\s+dinner\b",
+    ],
+    "problem_solving": [
+        r"\bcan\s+you\s+(check|find|look\s+up|search|help)\b",
+        r"\bofficial(?:-ish)?\b",
+        r"\bsafest\b",
+        r"\bservice\b",
+        r"\btowing\b",
+        r"\broute\b",
+        r"\bbooking\b",
+    ],
     "playful": [r"\blol\b", r"\bhaha+\b", r"\brofl\b", r"\bmoja\b", r"\bmaza\b"],
     "tired": [r"\bl[yi]a+dh\b", r"\bghu+m\b", r"\bthak\w*\b", r"\buff+\b", r"\[sleep\]"],
     "focused": [r"\bimplement\b", r"\bbuild\b", r"\bcode\b", r"\bdebug\b", r"\bfix\b", r"\bdeploy\b"],
@@ -83,6 +128,9 @@ class RealtimeProcessor:
             "love": 0.7,
             "perfect": 0.8,
             "jhakkas": 0.9,
+            "sweet": 0.4,
+            "like": 0.3,
+            "crush": 0.4,
             "[FIRE]": 0.6,
             "[HEART]": 0.5,
             "[HAPPY]": 0.4,
@@ -95,6 +143,17 @@ class RealtimeProcessor:
             "hate": -0.7,
             "pagol": -0.3,
             "uff": -0.4,
+            "scared": -0.5,
+            "awkward": -0.3,
+            "anxious": -0.6,
+            "nervous": -0.5,
+            "stomach": -0.2,
+            "nonsense": -0.2,
+            "angry": -0.7,
+            "unfair": -0.6,
+            "sad": -0.6,
+            "lonely": -0.6,
+            "hurt": -0.5,
             "[TRIUMPH]": -0.5,
             "[SAD]": -0.6,
             "wtf": -0.6,
@@ -190,7 +249,7 @@ class RealtimeProcessor:
             len(self._mood_buffer) >= self._FLUSH_BATCH
             or (now - self._last_flush) >= self._FLUSH_INTERVAL
         )
-        if should_flush:
+        if should_flush or mood:
             self._safe_flush("hot_update")
 
     def _retry_pending_flush(self):

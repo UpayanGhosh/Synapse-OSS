@@ -333,7 +333,14 @@ def _run_non_interactive(
     config["gateway"] = gw_cfg
 
     # --- Session defaults ---
-    config["session"] = {"dmScope": _ONBOARDING_DEFAULT_DM_SCOPE, "identityLinks": {}}
+    config["session"] = {
+        "dmScope": _ONBOARDING_DEFAULT_DM_SCOPE,
+        "identityLinks": {},
+        "dual_cognition_enabled": True,
+        "dual_cognition_timeout": 10.0,
+        "dual_cognition_cloud_mode": "deep_only",
+        "dual_cognition_foreground_max_llm_calls": 1,
+    }
 
     # --- Model mappings ---
     config["model_mappings"] = _build_model_mappings(list(config["providers"].keys()))
@@ -2131,7 +2138,14 @@ def _run_interactive_impl(
         "providers": {},
         "model_mappings": {},
         "channels": {},
-        "session": {"dmScope": _ONBOARDING_DEFAULT_DM_SCOPE, "identityLinks": {}},
+        "session": {
+            "dmScope": _ONBOARDING_DEFAULT_DM_SCOPE,
+            "identityLinks": {},
+            "dual_cognition_enabled": True,
+            "dual_cognition_timeout": 10.0,
+            "dual_cognition_cloud_mode": "deep_only",
+            "dual_cognition_foreground_max_llm_calls": 1,
+        },
     }
     selected_channels: list = []
 

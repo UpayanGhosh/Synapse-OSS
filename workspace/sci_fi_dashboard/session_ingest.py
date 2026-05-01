@@ -16,8 +16,10 @@ from __future__ import annotations
 import asyncio
 import importlib
 import logging
+import re
 import sqlite3
 import sys
+import time
 import traceback as _traceback_mod
 from datetime import UTC, datetime
 from pathlib import Path
@@ -28,6 +30,170 @@ BATCH_SIZE = 5  # conversation turns per batch (1 turn = 1 user + 1 assistant)
 BATCH_SLEEP_S = 1.0  # seconds between batches (rate-limit safety)
 KG_EXTRACT_TIMEOUT_SECONDS = 45.0
 _TRACEBACK_MAX_BYTES = 4096  # truncate stored tracebacks to 4 KB
+_FIRST_PERSON_ENTITIES = {"i", "me", "my", "mine", "myself"}
+_VAGUE_KG_ENTITIES = {
+    "he",
+    "him",
+    "his",
+    "she",
+    "her",
+    "hers",
+    "they",
+    "them",
+    "their",
+    "theirs",
+    "someone",
+    "somebody",
+    "person",
+    "people",
+    "person i like",
+    "the person i like",
+    "someone i like",
+    "someone the user likes",
+}
+
+
+def _ensure_atomic_facts_table(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS atomic_facts (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            entity          TEXT,
+            content         TEXT NOT NULL,
+            category        TEXT,
+            source_doc_id   INTEGER,
+            unix_timestamp  INTEGER,
+            embedding_model TEXT DEFAULT 'nomic-embed-text',
+            embedding_version TEXT DEFAULT 'ollama-v1',
+            created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(atomic_facts)").fetchall()}
+    migrations = {
+        "entity": "TEXT",
+        "category": "TEXT",
+        "source_doc_id": "INTEGER",
+        "unix_timestamp": "INTEGER",
+        "embedding_model": "TEXT DEFAULT 'nomic-embed-text'",
+        "embedding_version": "TEXT DEFAULT 'ollama-v1'",
+    }
+    for column, ddl in migrations.items():
+        if column not in cols:
+            conn.execute(f"ALTER TABLE atomic_facts ADD COLUMN {column} {ddl}")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_atomic_facts_source_doc_id ON atomic_facts(source_doc_id)"
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_atomic_facts_entity ON atomic_facts(entity)")
+
+
+def _write_atomic_facts(
+    conn: sqlite3.Connection,
+    facts: list[dict],
+    *,
+    source_doc_id: int | None,
+) -> list[int]:
+    _ensure_atomic_facts_table(conn)
+    fact_ids: list[int] = []
+    for fact in facts:
+        if not isinstance(fact, dict):
+            continue
+        content = _normalize_atomic_fact_content(fact.get("content"))
+        if not content:
+            continue
+        entity = _normalize_kg_entity_for_storage(fact.get("entity"))
+        if entity is None:
+            continue
+        category = str(fact.get("category") or "").strip() or None
+        conn.execute(
+            """
+            INSERT INTO atomic_facts
+                (entity, content, category, source_doc_id, unix_timestamp)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (entity, content, category, source_doc_id, int(time.time())),
+        )
+        fact_ids.append(int(conn.execute("SELECT last_insert_rowid()").fetchone()[0]))
+    return fact_ids
+
+
+def _fact_id_for_triple(
+    facts: list[dict],
+    fact_ids: list[int],
+    *,
+    subject: str,
+) -> int:
+    if not fact_ids:
+        return 0
+    subject_lower = str(subject or "").strip().lower()
+    for idx, fact in enumerate(facts[: len(fact_ids)]):
+        if not isinstance(fact, dict):
+            continue
+        entity = str(fact.get("entity") or "").strip().lower()
+        if entity and entity == subject_lower:
+            return fact_ids[idx]
+    return fact_ids[0]
+
+
+def _normalize_kg_entity_for_storage(raw: object) -> str | None:
+    entity = str(raw or "").strip()
+    if not entity:
+        return None
+    lowered = entity.lower()
+    if lowered in _FIRST_PERSON_ENTITIES:
+        return "user"
+    if lowered in _VAGUE_KG_ENTITIES:
+        return None
+    return entity
+
+
+def _normalize_atomic_fact_content(raw: object) -> str:
+    """Clean first-person artifacts from LLM-extracted atomic facts."""
+    content = " ".join(str(raw or "").strip().split())
+    if not content:
+        return ""
+    content = re.sub(r"[\"“”]", "", content)
+    if re.fullmatch(
+        r"(?:User )?likes (?:(?:the )?person I like|the person|the person they like|someone the user likes)\.?",
+        content,
+        flags=re.IGNORECASE,
+    ):
+        return "User likes someone."
+    content = re.sub(
+        r"^I like ([^.!?]+)\.?$",
+        r"User likes \1.",
+        content,
+        flags=re.IGNORECASE,
+    )
+    content = re.sub(
+        r"\bUser likes (?:the )?person I like\b\.?",
+        "User likes someone.",
+        content,
+        flags=re.IGNORECASE,
+    )
+    content = re.sub(
+        r"\bthe person I like\b|\bperson I like\b",
+        "someone the user likes",
+        content,
+        flags=re.IGNORECASE,
+    )
+    content = re.sub(
+        r"\bmade User feel\b",
+        "made the user feel",
+        content,
+        flags=re.IGNORECASE,
+    )
+    content = re.sub(r"\bUser's\b", "the user's", content)
+    return content
+
+
+def _mark_document_kg_processed(conn: sqlite3.Connection, doc_id: int | None) -> None:
+    if doc_id is None:
+        return
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(documents)").fetchall()}
+    if "kg_processed" not in cols:
+        return
+    conn.execute("UPDATE documents SET kg_processed = 1 WHERE id = ?", (doc_id,))
 
 
 def _record_ingest_failure(
@@ -84,7 +250,21 @@ def _record_ingest_failure(
         log.warning("[session_ingest] failed to record ingest_failure row: %s", insert_err)
 
 
-def _format_batch(messages: list[dict], date_str: str) -> str:
+def _session_channel_label(session_key: str | None) -> str:
+    parts = str(session_key or "").split(":")
+    channel = parts[2].strip().lower() if len(parts) >= 3 else ""
+    labels = {
+        "telegram": "Telegram",
+        "whatsapp": "WhatsApp",
+        "discord": "Discord",
+        "slack": "Slack",
+        "cli": "CLI",
+        "api": "API",
+    }
+    return labels.get(channel, "Chat")
+
+
+def _format_batch(messages: list[dict], date_str: str, channel_label: str = "Chat") -> str:
     """Format a list of messages into a readable text block for embedding + KG extraction.
 
     Example:
@@ -92,7 +272,10 @@ def _format_batch(messages: list[dict], date_str: str) -> str:
         User: hey what book did you mention?
         Me: The Feynman one — Surely You're Joking
     """
-    lines = [f"[WhatsApp session — {date_str}]"]
+    clean_channel = re.sub(r"[^A-Za-z0-9 _-]+", "", str(channel_label or "Chat")).strip()
+    if not clean_channel:
+        clean_channel = "Chat"
+    lines = [f"[{clean_channel} session — {date_str}]"]
     for msg in messages:
         role = msg.get("role", "user")
         content = str(msg.get("content", "")).strip()
@@ -206,7 +389,7 @@ async def _ingest_session_background(
     ingested_kg = 0
 
     for i, batch in enumerate(batches):
-        text = _format_batch(batch, date_str)
+        text = _format_batch(batch, date_str, _session_channel_label(session_key))
 
         # ── 1. Vector ingestion ──
         try:
@@ -304,17 +487,33 @@ async def _ingest_session_background(
                 )
                 validated = result.get("validated_triples", [])
 
+                conn = None
                 if validated:
                     conn = sqlite3.connect(memory_db_path, timeout=5.0)
                     conn.execute("PRAGMA busy_timeout = 5000")
                     try:
                         _ensure_entity_links(conn)
+                        extracted_facts = result.get("facts", [])
+                        fact_ids = _write_atomic_facts(
+                            conn,
+                            extracted_facts if isinstance(extracted_facts, list) else [],
+                            source_doc_id=doc_id,
+                        )
                         for triple, confidence in validated:
                             if len(triple) < 3:
                                 continue
-                            subj, rel, obj = str(triple[0]), str(triple[1]), str(triple[2])
+                            subj = _normalize_kg_entity_for_storage(triple[0])
+                            rel = str(triple[1])
+                            obj = _normalize_kg_entity_for_storage(triple[2])
+                            if subj is None or obj is None:
+                                continue
                             if not subj.strip() or not rel.strip() or not obj.strip():
                                 continue
+                            fact_id = _fact_id_for_triple(
+                                extracted_facts if isinstance(extracted_facts, list) else [],
+                                fact_ids,
+                                subject=subj,
+                            )
                             # Write to SQLiteGraph (in-memory + persisted on save_graph)
                             deps.brain.add_node(subj)
                             deps.brain.add_node(obj)
@@ -325,14 +524,24 @@ async def _ingest_session_background(
                                 subj,
                                 rel,
                                 obj,
-                                fact_id=0,
+                                fact_id=fact_id,
                                 confidence=confidence,
+                                source_doc_id=doc_id,
                             )
+                        _mark_document_kg_processed(conn, doc_id)
                         conn.commit()
                     finally:
                         conn.close()
 
                     ingested_kg += len(validated)
+                else:
+                    conn = sqlite3.connect(memory_db_path, timeout=5.0)
+                    conn.execute("PRAGMA busy_timeout = 5000")
+                    try:
+                        _mark_document_kg_processed(conn, doc_id)
+                        conn.commit()
+                    finally:
+                        conn.close()
             except asyncio.TimeoutError as exc:
                 log.error(
                     "[session_ingest] KG batch %d/%d timed out after %.1fs",

@@ -209,6 +209,21 @@ def test_relationship_voice_contract_joins_fair_vent_but_keeps_spine():
     assert "share a real opinion" in contract
 
 
+def test_relationship_voice_contract_keeps_daily_life_playful_without_therapy_mode():
+    from sci_fi_dashboard.chat_pipeline import _build_relationship_voice_contract
+
+    contract = _build_relationship_voice_contract(
+        "I went to the lake alone and felt lonely, then ignored Ma's call and felt guilty.",
+        "casual",
+        "safe",
+        "casual_reflective",
+    )
+
+    assert "subtle sarcasm" in contract
+    assert "tiny leg-pull" in contract
+    assert "warm therapist" in contract
+
+
 class TestSkillRoutingSource:
     """WA-FIX-05 red→green source-level signal.
 

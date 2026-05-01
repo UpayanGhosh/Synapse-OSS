@@ -43,19 +43,27 @@ class PromptCompiler:
         sections.append(emotional_block)
         char_budget -= len(emotional_block)
 
-        # === SECTION 3: Active Vocabulary ===
+        # === SECTION 3: Learned user interaction notes ===
+        # Learned style/corrections must stay near the top so compact prompts do
+        # not lose the very facts that make Synapse user-shaped.
+        interaction_block = self._compile_interaction(profile["interaction"], profile["domain"])
+        if interaction_block and len(interaction_block) < char_budget:
+            sections.append(interaction_block)
+            char_budget -= len(interaction_block)
+
+        # === SECTION 4: Active Vocabulary ===
         vocab_block = self._compile_vocabulary(profile["vocabulary"], char_budget)
         if vocab_block:
             sections.append(vocab_block)
             char_budget -= len(vocab_block)
 
-        # === SECTION 4: Communication Style ===
+        # === SECTION 5: Communication Style ===
         style_block = self._compile_style(profile["linguistic"])
         if style_block and len(style_block) < char_budget:
             sections.append(style_block)
             char_budget -= len(style_block)
 
-        # === SECTION 5: Few-Shot Exemplars ===
+        # === SECTION 6: Few-Shot Exemplars ===
         exemplar_block = self._compile_exemplars(
             profile["exemplars"], max_chars=min(char_budget, 2400)
         )
@@ -63,16 +71,11 @@ class PromptCompiler:
             sections.append(exemplar_block)
             char_budget -= len(exemplar_block)
 
-        # === SECTION 6: Domain Context ===
+        # === SECTION 7: Domain Context ===
         domain_block = self._compile_domain(profile["domain"])
         if domain_block and len(domain_block) < char_budget:
             sections.append(domain_block)
             char_budget -= len(domain_block)
-
-        # === SECTION 7: Interaction Notes ===
-        interaction_block = self._compile_interaction(profile["interaction"], profile["domain"])
-        if interaction_block and len(interaction_block) < char_budget:
-            sections.append(interaction_block)
 
         compiled = "\n\n".join(sections)
 
@@ -81,10 +84,18 @@ class PromptCompiler:
     def _compile_core(self, core: dict) -> str:
         pillars = "\n".join(f"  - {p}" for p in core.get("personality_pillars", []))
         red_lines = "\n".join(f"  - {r}" for r in core.get("red_lines", []))
+        nickname = str(core.get("user_nickname") or "").strip()
+        if nickname.lower() in {"user_nickname", "primary_user"}:
+            nickname = ""
+        address_line = (
+            f'Call them "{nickname}".'
+            if nickname
+            else "Use their preferred name once learned; otherwise address them naturally without placeholder names."
+        )
 
         return f"""[IDENTITY]
 You are {core.get("assistant_name", "Synapse")}, {core.get("user_name", "primary_user")}'s {core.get("relationship", "trusted_technical_companion")}.
-Call him "{core.get("user_nickname", "user_nickname")}".
+{address_line}
 Base tone: {core.get("base_tone", "casual_caring_witty")}.
 Language default: {core.get("base_language", "banglish_with_english_technical")}.
 
@@ -183,16 +194,18 @@ Emoji usage: {"common" if style.get("emoji_frequency", 0) > 0.2 else "occasional
 
         parts = []
         if active:
-            parts.append(
-                f"User is currently focused on: {', '.join(active[:3])}."
-            )
+            parts.append(f"User is currently focused on: {', '.join(active[:3])}.")
             parts.append("Tailor technical depth accordingly.")
         if important_projects:
-            projects = "; ".join(str(item).strip() for item in important_projects[:5] if str(item).strip())
+            projects = "; ".join(
+                str(item).strip() for item in important_projects[:5] if str(item).strip()
+            )
             if projects:
                 parts.append(f"Important projects: {projects}")
         if important_people:
-            people = "; ".join(str(item).strip() for item in important_people[:5] if str(item).strip())
+            people = "; ".join(
+                str(item).strip() for item in important_people[:5] if str(item).strip()
+            )
             if people:
                 parts.append(f"Important people: {people}")
 
@@ -228,13 +241,17 @@ Emoji usage: {"common" if style.get("emoji_frequency", 0) > 0.2 else "occasional
 
         routines = interaction.get("stable_routines", [])
         if isinstance(routines, list) and routines:
-            routine_line = "; ".join(str(item).strip() for item in routines[:5] if str(item).strip())
+            routine_line = "; ".join(
+                str(item).strip() for item in routines[:5] if str(item).strip()
+            )
             if routine_line:
                 parts.append(f"User routines: {routine_line}")
 
         corrections = interaction.get("correction_rules", [])
         if isinstance(corrections, list) and corrections:
-            correction_line = "; ".join(str(item).strip() for item in corrections[:5] if str(item).strip())
+            correction_line = "; ".join(
+                str(item).strip() for item in corrections[:5] if str(item).strip()
+            )
             if correction_line:
                 parts.append(f"Correction rules: {correction_line}")
 

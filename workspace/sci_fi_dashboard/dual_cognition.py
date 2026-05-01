@@ -215,6 +215,7 @@ class DualCognitionEngine:
         target: str = "the_creator",
         llm_fn=None,
         pre_cached_memory: dict = None,
+        max_llm_calls: int | None = None,
     ) -> CognitiveMerge:
         """Main entry: routes through fast/standard/deep paths based on complexity."""
 
@@ -243,6 +244,36 @@ class DualCognitionEngine:
                     suggested_tone="warm",
                     inner_monologue="Simple message, no deep analysis needed.",
                 )
+
+            if max_llm_calls is not None and max_llm_calls <= 1:
+                with contextlib.suppress(Exception):
+                    _get_emitter().emit("cognition.single_call_mode", {"complexity": complexity})
+                present = self._analyze_present_heuristic(user_message, conversation_history)
+                with contextlib.suppress(Exception):
+                    _get_emitter().emit(
+                        "cognition.recall_start", {"from_cache": pre_cached_memory is not None}
+                    )
+                memory = await self._recall_memory(
+                    user_message, chat_id, target, pre_cached_memory
+                )
+                with contextlib.suppress(Exception):
+                    _get_emitter().emit(
+                        "cognition.recall_done",
+                        {
+                            "fact_count": len(getattr(memory, "relevant_facts", [])),
+                            "has_graph_context": bool(getattr(memory, "graph_connections", "")),
+                        },
+                    )
+                merge = await self._merge_streams(
+                    present,
+                    memory,
+                    target,
+                    llm_fn,
+                    use_cot=(complexity == "deep"),
+                )
+                if self.trajectory:
+                    self.trajectory.record(merge, present.topics)
+                return merge
 
             # STANDARD PATH: analyze + recall + merge (2 LLM calls)
             if complexity == "standard":
@@ -336,11 +367,74 @@ class DualCognitionEngine:
                 suggested_tone="warm",
             )
 
+    def _analyze_present_heuristic(
+        self, message: str, history: list = None
+    ) -> PresentStream:
+        """Cheap foreground present-stream analysis used before a single merge call."""
+        msg = str(message or "")
+        msg_lower = msg.lower()
+        present = PresentStream(raw_message=msg)
+
+        negative_markers = (
+            "annoyed",
+            "angry",
+            "pissed",
+            "irritated",
+            "frustrated",
+            "anxious",
+            "scared",
+            "sad",
+            "hurt",
+            "stressed",
+            "can't",
+            "dumped",
+            "unfair",
+        )
+        positive_markers = ("happy", "excited", "proud", "love", "great", "won", "finished")
+        if any(marker in msg_lower for marker in negative_markers):
+            present.sentiment = "negative"
+        elif any(marker in msg_lower for marker in positive_markers):
+            present.sentiment = "positive"
+
+        if any(marker in msg_lower for marker in ("vent", "rant", "bitch", "pissed", "annoyed")):
+            present.intent = "venting"
+        elif "?" in msg:
+            present.intent = "question"
+        elif any(marker in msg_lower for marker in ("please", "help", "can you", "could you")):
+            present.intent = "request"
+
+        if any(marker in msg_lower for marker in ("anxious", "scared", "panic", "stressed")):
+            present.emotional_state = "anxious"
+        elif any(marker in msg_lower for marker in ("pissed", "angry", "irritated", "annoyed")):
+            present.emotional_state = "angry"
+        elif any(marker in msg_lower for marker in ("sad", "hurt", "lonely")):
+            present.emotional_state = "vulnerable"
+        elif any(marker in msg_lower for marker in ("happy", "excited", "proud")):
+            present.emotional_state = "excited"
+
+        topic_markers = {
+            "work": ("work", "office", "demo", "boss", "cleanup", "project"),
+            "relationships": ("crush", "date", "love", "mira", "relationship"),
+            "sleep": ("sleep", "tired", "night"),
+            "money": ("money", "budget", "shopping", "buy"),
+        }
+        for topic, markers in topic_markers.items():
+            if any(marker in msg_lower for marker in markers):
+                present.topics.append(topic)
+
+        if history:
+            present.conversational_pattern = "continuation"
+        if any(marker in msg_lower for marker in ("but", "actually", "however", "even though")):
+            present.conversational_pattern = "escalation"
+
+        present.claims = [msg[:220]] if msg else []
+        return present
+
     async def _analyze_present(
         self, message: str, history: list = None, llm_fn=None
     ) -> PresentStream:
         """Stream 1: Analyze current message with conversation context."""
-        present = PresentStream(raw_message=message)
+        present = self._analyze_present_heuristic(message, history)
 
         if not llm_fn:
             return present
@@ -529,6 +623,7 @@ JSON only:"""
                 merge.memory_insights = memory.relevant_facts[:3]
         except Exception as e:
             logger.warning("Merge failed: %s", e)
+            merge.inner_monologue = "I'm having trouble thinking through this right now."
 
         return merge
 

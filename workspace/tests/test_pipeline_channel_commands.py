@@ -38,8 +38,13 @@ async def test_channel_pipeline_uses_telegram_session_key(tmp_path, monkeypatch)
     monkeypatch.setattr("synapse_config.SynapseConfig.load", classmethod(lambda cls: cfg))
     monkeypatch.setattr("sci_fi_dashboard.chat_pipeline.persona_chat", _persona_chat)
     monkeypatch.setattr("sci_fi_dashboard.subagent.spawn.maybe_spawn_agent", _never_spawn)
-    monkeypatch.setattr(ph.deps, "_resolve_target", lambda _chat_id: "the_creator")
-    monkeypatch.setattr(ph.deps, "conversation_cache", ConversationCache(max_entries=20, ttl_s=60))
+    monkeypatch.setattr(ph.deps, "_resolve_target", lambda _chat_id: "the_creator", raising=False)
+    monkeypatch.setattr(
+        ph.deps,
+        "conversation_cache",
+        ConversationCache(max_entries=20, ttl_s=60),
+        raising=False,
+    )
 
     await ph.process_message_pipeline("telegram memory", "12345", channel_id="telegram")
 
@@ -72,6 +77,124 @@ async def test_channel_pipeline_uses_telegram_session_key(tmp_path, monkeypatch)
 
 
 @pytest.mark.asyncio
+async def test_channel_pipeline_preserves_inner_verified_search_receipt(tmp_path, monkeypatch):
+    import sci_fi_dashboard.pipeline_helpers as ph
+    from sci_fi_dashboard.multiuser.conversation_cache import ConversationCache
+
+    async def _persona_chat(request, *args, **kwargs):
+        return {
+            "reply": "I searched and found the official route.",
+            "action_receipts": [
+                {
+                    "action": "web_query",
+                    "status": "verified",
+                    "evidence": "1 usable result",
+                    "confidence": 0.9,
+                }
+            ],
+        }
+
+    async def _never_spawn(*args, **kwargs):
+        return None
+
+    cfg = SimpleNamespace(
+        data_root=tmp_path,
+        session={
+            "dmScope": "per-channel-peer",
+            "identityLinks": {},
+            "chat_timeout_seconds": 1,
+        },
+        channels={"telegram": {"dmHistoryLimit": 50}},
+        tts={"enabled": False},
+    )
+
+    monkeypatch.setattr("synapse_config.SynapseConfig.load", classmethod(lambda cls: cfg))
+    monkeypatch.setattr("sci_fi_dashboard.chat_pipeline.persona_chat", _persona_chat)
+    monkeypatch.setattr("sci_fi_dashboard.subagent.spawn.maybe_spawn_agent", _never_spawn)
+    monkeypatch.setattr(ph.deps, "_resolve_target", lambda _chat_id: "the_creator", raising=False)
+    monkeypatch.setattr(
+        ph.deps,
+        "conversation_cache",
+        ConversationCache(max_entries=20, ttl_s=60),
+        raising=False,
+    )
+
+    reply = await ph.process_message_pipeline(
+        "look up TVS service route",
+        "12345",
+        channel_id="telegram",
+    )
+
+    assert reply == "I searched and found the official route."
+
+
+@pytest.mark.asyncio
+async def test_channel_pipeline_carries_previous_action_receipts_into_next_turn(
+    tmp_path, monkeypatch
+):
+    import sci_fi_dashboard.pipeline_helpers as ph
+    from sci_fi_dashboard.multiuser.conversation_cache import ConversationCache
+
+    calls = []
+
+    async def _persona_chat(request, *args, **kwargs):
+        calls.append(request)
+        if len(calls) == 1:
+            return {
+                "reply": "I searched and found the official route.",
+                "action_receipts": [
+                    {
+                        "action": "web_query",
+                        "status": "verified",
+                        "evidence": "TVS official locator result",
+                        "confidence": 0.9,
+                    }
+                ],
+            }
+        return {"reply": "Yes, I actually searched that turn."}
+
+    async def _never_spawn(*args, **kwargs):
+        return None
+
+    cfg = SimpleNamespace(
+        data_root=tmp_path,
+        session={
+            "dmScope": "per-channel-peer",
+            "identityLinks": {},
+            "chat_timeout_seconds": 1,
+        },
+        channels={"telegram": {"dmHistoryLimit": 50}},
+        tts={"enabled": False},
+    )
+
+    monkeypatch.setattr("synapse_config.SynapseConfig.load", classmethod(lambda cls: cfg))
+    monkeypatch.setattr("sci_fi_dashboard.chat_pipeline.persona_chat", _persona_chat)
+    monkeypatch.setattr("sci_fi_dashboard.subagent.spawn.maybe_spawn_agent", _never_spawn)
+    monkeypatch.setattr(ph.deps, "_resolve_target", lambda _chat_id: "the_creator", raising=False)
+    monkeypatch.setattr(
+        ph.deps,
+        "conversation_cache",
+        ConversationCache(max_entries=20, ttl_s=60),
+        raising=False,
+    )
+
+    await ph.process_message_pipeline("look up TVS service route", "12345", channel_id="telegram")
+    await ph.asyncio.sleep(0)
+    await ph.process_message_pipeline(
+        "Did you actually search that?",
+        "12345",
+        channel_id="telegram",
+    )
+
+    second_history_text = "\n".join(
+        str(message.get("content", "")) for message in calls[1].history
+    )
+    assert "RECENT ACTION RECEIPTS" in second_history_text
+    assert "web_query" in second_history_text
+    assert "TVS official locator result" in second_history_text
+
+
+@pytest.mark.asyncio
 async def test_tools_command_lists_resolved_tools(monkeypatch):
     import sci_fi_dashboard.pipeline_helpers as ph
     from sci_fi_dashboard.tool_registry import SynapseTool, ToolResult, ToolRegistry
@@ -89,6 +212,7 @@ async def test_tools_command_lists_resolved_tools(monkeypatch):
         )
     )
     monkeypatch.setattr(ph.deps, "tool_registry", registry)
+    monkeypatch.setattr(ph.deps, "_resolve_target", lambda _chat_id: "the_creator", raising=False)
 
     reply = await ph.process_message_pipeline("/tools", "chat-1", channel_id="telegram")
 
@@ -126,6 +250,46 @@ def test_parse_reminder_request_nudge_before_event():
     assert parsed.when.isoformat().startswith("2026-05-01T11:00:00")
 
 
+def test_parse_passive_commitment_nudge_from_meeting_time():
+    import sci_fi_dashboard.pipeline_helpers as ph
+
+    parsed = ph._parse_passive_commitment_nudge(
+        (
+            "I have a client call today at 5:10 PM and I need 20 minutes "
+            "before it to calm down."
+        ),
+        now=datetime(2026, 5, 1, 15, 0, tzinfo=UTC),
+    )
+
+    assert parsed is not None
+    assert parsed.task == "calm down for the client call"
+    assert parsed.when.isoformat().startswith("2026-05-01T16:50:00")
+
+
+def test_parse_passive_commitment_does_not_reschedule_past_today_event():
+    import sci_fi_dashboard.pipeline_helpers as ph
+
+    parsed = ph._parse_passive_commitment_nudge(
+        "I have a client call today at 5:10 PM.",
+        now=datetime(2026, 5, 1, 18, 0, tzinfo=UTC),
+    )
+
+    assert parsed is None
+
+
+def test_parse_passive_commitment_rolls_unspecified_past_time_to_tomorrow():
+    import sci_fi_dashboard.pipeline_helpers as ph
+
+    parsed = ph._parse_passive_commitment_nudge(
+        "I have dinner at 5 PM and I need 15 minutes before it to settle down.",
+        now=datetime(2026, 5, 1, 18, 0, tzinfo=UTC),
+    )
+
+    assert parsed is not None
+    assert parsed.task == "settle down for dinner"
+    assert parsed.when.isoformat().startswith("2026-05-02T16:45:00")
+
+
 def test_channel_reply_strips_markdown_and_diagnostics():
     import sci_fi_dashboard.pipeline_helpers as ph
 
@@ -138,6 +302,31 @@ def test_channel_reply_strips_markdown_and_diagnostics():
     )
 
     assert reply == "Done - check Kestrel now.\n- one thing"
+
+
+def test_channel_reply_strips_reasoning_wrappers():
+    import sci_fi_dashboard.pipeline_helpers as ph
+
+    reply = ph._ensure_user_visible_reply(
+        "<think>I should not be visible.</think>\n"
+        "Thought for 12s\n"
+        "<final>Bhai, done. I checked the route.</final>"
+    )
+
+    assert reply == "Bhai, done. I checked the route."
+
+
+def test_channel_reply_does_not_allow_diagnostics_only_after_reasoning_strip():
+    import sci_fi_dashboard.pipeline_helpers as ph
+
+    reply = ph._ensure_user_visible_reply(
+        "<think>private chain</think>\n\n"
+        "---\n"
+        "**Context Usage:** 1 / 100\n"
+        "**Model:** test"
+    )
+
+    assert reply.startswith("I heard you.")
 
 
 @pytest.mark.asyncio
@@ -171,6 +360,100 @@ async def test_reminder_command_creates_cron_job(monkeypatch):
     }
     assert "Reminder due now: send Mira the wireframe." in cron.jobs[0]["payload"]["message"]
     assert "Output only the Telegram reminder text" in cron.jobs[0]["payload"]["message"]
+
+
+@pytest.mark.asyncio
+async def test_passive_commitment_nudge_creates_cron_job(monkeypatch):
+    import sci_fi_dashboard.pipeline_helpers as ph
+
+    class FakeCron:
+        def __init__(self):
+            self.jobs = []
+
+        def add(self, job):
+            self.jobs.append(job)
+            return SimpleNamespace(id="job1", state=SimpleNamespace(next_run_at_ms=1))
+
+        def list(self, enabled_only=False):
+            return []
+
+    cron = FakeCron()
+    monkeypatch.setattr(ph.deps, "cron_service", cron, raising=False)
+
+    reply = await ph._maybe_schedule_passive_commitment_nudge(
+        (
+            "I have a client call today at 5:10 PM and I need 20 minutes "
+            "before it to calm down."
+        ),
+        chat_id="tg-chat",
+        channel_id="telegram",
+        now=datetime(2026, 5, 1, 15, 0, tzinfo=UTC),
+    )
+
+    assert reply is not None
+    assert "I'll nudge you" in reply
+    assert cron.jobs[0]["delivery"] == {
+        "mode": "announce",
+        "channel": "telegram",
+        "to": "tg-chat",
+    }
+    assert cron.jobs[0]["schedule"]["at"].startswith("2026-05-01T16:50:00")
+    assert "Reminder due now: calm down for the client call." in cron.jobs[0]["payload"]["message"]
+
+
+@pytest.mark.asyncio
+async def test_channel_pipeline_preserves_passive_nudge_receipt(tmp_path, monkeypatch):
+    import sci_fi_dashboard.pipeline_helpers as ph
+    from sci_fi_dashboard.multiuser.conversation_cache import ConversationCache
+
+    class FakeCron:
+        def __init__(self):
+            self.jobs = []
+
+        def add(self, job):
+            self.jobs.append(job)
+            return SimpleNamespace(id="job1", state=SimpleNamespace(next_run_at_ms=1))
+
+        def list(self, enabled_only=False):
+            return []
+
+    async def _persona_chat(request, *args, **kwargs):
+        return {"reply": "Breathe first, then call. Drama department can wait."}
+
+    async def _never_spawn(*args, **kwargs):
+        return None
+
+    cfg = SimpleNamespace(
+        data_root=tmp_path,
+        session={
+            "dmScope": "per-channel-peer",
+            "identityLinks": {},
+            "chat_timeout_seconds": 1,
+        },
+        channels={"telegram": {"dmHistoryLimit": 50}},
+        tts={"enabled": False},
+    )
+
+    monkeypatch.setattr("synapse_config.SynapseConfig.load", classmethod(lambda cls: cfg))
+    monkeypatch.setattr("sci_fi_dashboard.chat_pipeline.persona_chat", _persona_chat)
+    monkeypatch.setattr("sci_fi_dashboard.subagent.spawn.maybe_spawn_agent", _never_spawn)
+    monkeypatch.setattr(ph.deps, "_resolve_target", lambda _chat_id: "the_creator", raising=False)
+    monkeypatch.setattr(ph.deps, "cron_service", FakeCron(), raising=False)
+    monkeypatch.setattr(
+        ph.deps,
+        "conversation_cache",
+        ConversationCache(max_entries=20, ttl_s=60),
+        raising=False,
+    )
+
+    reply = await ph.process_message_pipeline(
+        "I have a client call today at 5:10 PM and I need 20 minutes before it to calm down.",
+        "tg-chat",
+        channel_id="telegram",
+    )
+
+    assert "I'll nudge you" in reply
+    assert "I haven't scheduled that in this turn." not in reply
 
 
 @pytest.mark.asyncio

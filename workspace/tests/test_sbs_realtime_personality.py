@@ -28,6 +28,47 @@ def test_literal_lol_sets_playful(tmp_path):
     assert result["rt_mood_signal"] == "playful"
 
 
+def test_common_anxiety_language_sets_anxious(tmp_path):
+    processor = _processor(tmp_path)
+    result = processor.process(
+        RawMessage(
+            role="user",
+            content=(
+                "I am scared this birthday dinner will get awkward and my stomach "
+                "is doing nonsense."
+            ),
+        )
+    )
+    assert result["rt_mood_signal"] == "anxious"
+
+
+def test_common_relationship_language_sets_affectionate(tmp_path):
+    processor = _processor(tmp_path)
+    result = processor.process(
+        RawMessage(role="user", content="I think I have a crush and I really like her.")
+    )
+    assert result["rt_mood_signal"] == "affectionate"
+
+
+def test_common_anger_language_sets_angry(tmp_path):
+    processor = _processor(tmp_path)
+    result = processor.process(
+        RawMessage(role="user", content="I am so angry, that whole thing felt unfair.")
+    )
+    assert result["rt_mood_signal"] == "angry"
+
+
+def test_practical_help_language_sets_problem_solving(tmp_path):
+    processor = _processor(tmp_path)
+    result = processor.process(
+        RawMessage(
+            role="user",
+            content="Can you check the safest official TVS service or towing route?",
+        )
+    )
+    assert result["rt_mood_signal"] == "problem_solving"
+
+
 def test_user_mood_updates_profile_immediately(tmp_path):
     from sci_fi_dashboard.sbs.orchestrator import SBSOrchestrator
 

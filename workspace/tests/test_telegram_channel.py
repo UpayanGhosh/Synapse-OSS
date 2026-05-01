@@ -40,7 +40,10 @@ pytestmark = pytest.mark.skipif(
 )
 
 if TEL_AVAILABLE:
-    from sci_fi_dashboard.channels.telegram import TelegramChannel
+    from sci_fi_dashboard.channels.telegram import (
+        _DEFAULT_POLL_STALL_THRESHOLD_S,
+        TelegramChannel,
+    )
     from telegram.constants import ChatAction
     from telegram.error import Conflict, InvalidToken, TelegramError
 
@@ -182,6 +185,62 @@ async def test_start_calls_delete_webhook(monkeypatch):
         await start_task
 
     mock_app.bot.delete_webhook.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_start_preserves_pending_updates_without_existing_offset(monkeypatch, tmp_path):
+    """First installed start must process messages sent while the gateway was down."""
+    mock_app = _make_mock_app()
+    _mock_app_builder(monkeypatch, mock_app)
+
+    mock_updater = _make_mock_updater()
+    monkeypatch.setattr(
+        "sci_fi_dashboard.channels.telegram.Updater",
+        MagicMock(return_value=mock_updater),
+    )
+
+    channel = TelegramChannel(token="123456:fake-token", state_dir=tmp_path)
+
+    start_task = asyncio.create_task(channel.start())
+    await asyncio.sleep(0)
+    await asyncio.sleep(0)
+
+    start_task.cancel()
+    with contextlib.suppress(asyncio.CancelledError, Exception):
+        await start_task
+
+    mock_updater.start_polling.assert_awaited_once_with(drop_pending_updates=False)
+
+
+@pytest.mark.asyncio
+async def test_start_uses_idle_tolerant_polling_watchdog(monkeypatch, tmp_path):
+    """Quiet Telegram chats must not restart polling every 90s while healthy."""
+    mock_app = _make_mock_app()
+    _mock_app_builder(monkeypatch, mock_app)
+
+    mock_updater = _make_mock_updater()
+    monkeypatch.setattr(
+        "sci_fi_dashboard.channels.telegram.Updater",
+        MagicMock(return_value=mock_updater),
+    )
+
+    watchdog_cls = MagicMock()
+    watchdog = AsyncMock()
+    watchdog_cls.return_value = watchdog
+    monkeypatch.setattr("sci_fi_dashboard.channels.telegram.PollingWatchdog", watchdog_cls)
+
+    channel = TelegramChannel(token="123456:fake-token", state_dir=tmp_path)
+    start_task = asyncio.create_task(channel.start())
+    await asyncio.sleep(0)
+    await asyncio.sleep(0)
+
+    start_task.cancel()
+    with contextlib.suppress(asyncio.CancelledError, Exception):
+        await start_task
+
+    watchdog_cls.assert_called_once()
+    assert watchdog_cls.call_args.kwargs["stall_threshold_s"] == _DEFAULT_POLL_STALL_THRESHOLD_S
+    assert _DEFAULT_POLL_STALL_THRESHOLD_S >= 30 * 60
 
 
 @pytest.mark.asyncio
@@ -329,6 +388,28 @@ async def test_send_calls_bot_send_message():
     result = await channel.send("12345", "Hello!")
 
     channel._app.bot.send_message.assert_awaited_once_with(chat_id=12345, text="Hello!")
+    assert result is True
+
+
+@pytest.mark.asyncio
+async def test_send_sanitizes_reasoning_and_debug_footer():
+    """TEL-03: channel boundary must strip hidden reasoning and diagnostics."""
+    channel = TelegramChannel(token="x")
+    channel._app = MagicMock(bot=AsyncMock())
+
+    result = await channel.send(
+        "12345",
+        "<think>private notes</think>\n"
+        "Thought for 12s\n"
+        "<final>**Done** - check `Kestrel` now.</final>\n\n"
+        "---\n"
+        "**Context Usage:** 1 / 100",
+    )
+
+    channel._app.bot.send_message.assert_awaited_once_with(
+        chat_id=12345,
+        text="Done - check Kestrel now.",
+    )
     assert result is True
 
 

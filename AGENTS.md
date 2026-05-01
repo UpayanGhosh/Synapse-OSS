@@ -67,6 +67,38 @@ Run this combo as the default operating loop for repo work:
 
 If MemPalace context conflicts with repo state, repo + graph win.
 
+## Reference Parity Gate
+
+Developer-only instruction for Codex and local maintainers. This is not a
+Synapse runtime instruction, must not be seeded into `.synapse`, and must not be
+shown to end users.
+
+Synapse is being rebuilt against the maintainer's local reference assistant as
+a behavioral reference. After any fix that touches personality, memory, tools,
+proactivity, channels, background work, or delivery reliability:
+
+1. Recheck the matching local reference behavior when that private reference is
+   available on the developer machine.
+2. Compare concept, not private user specifics.
+3. Verify Synapse has the same product-level guarantee, or record the gap.
+4. Run at least one Synapse regression/canary that proves the guarantee.
+5. Do not call the fix complete until the reference parity result is known, or
+   explicitly record that the private reference was unavailable.
+
+Current reference loop:
+
+`recognize state -> choose social stance -> do useful action -> report evidence -> remember pattern`
+
+Important parity surfaces:
+
+- background task status and worker health;
+- durable inbound capture before processing;
+- verified action receipts for search/write/send/schedule claims;
+- outbound retry/dead-letter behavior;
+- cron/proactive delivery proof;
+- memory/KG/affect writes with timestamps;
+- no raw diagnostics, reasoning tags, or fake tool claims in user chat.
+
 ## MemPalace (Default Behavior)
 
 This repo uses MemPalace as the default external memory layer for Codex.

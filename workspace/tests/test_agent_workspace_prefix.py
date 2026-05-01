@@ -212,9 +212,9 @@ def test_load_agent_workspace_prefix_section_order():
     ]
     indices = [prefix.find(f"# ===== {name}.md =====") for name in expected_order]
     assert all(i >= 0 for i in indices), "All section headers should be present"
-    assert indices == sorted(indices), (
-        f"Sections out of order: {list(zip(expected_order, indices, strict=False))}"
-    )
+    assert indices == sorted(
+        indices
+    ), f"Sections out of order: {list(zip(expected_order, indices, strict=False))}"
 
 
 @pytest.mark.unit
@@ -249,9 +249,7 @@ def test_load_agent_workspace_prefix_mtime_cache_invalidation(tmp_path, monkeypa
     ]
     for name in files:
         filename = (
-            f"{name}.md"
-            if name in {"INSTRUCTIONS", "CORE", "AGENTS"}
-            else f"{name}.md.template"
+            f"{name}.md" if name in {"INSTRUCTIONS", "CORE", "AGENTS"} else f"{name}.md.template"
         )
         (fake_repo_dir / filename).write_text(
             f"# {name} initial content\n\nbody for {name}",
@@ -301,9 +299,7 @@ def test_agent_workspace_prefix_is_frozen_per_session(tmp_path, monkeypatch):
     ]
     for name in files:
         filename = (
-            f"{name}.md"
-            if name in {"INSTRUCTIONS", "CORE", "AGENTS"}
-            else f"{name}.md.template"
+            f"{name}.md" if name in {"INSTRUCTIONS", "CORE", "AGENTS"} else f"{name}.md.template"
         )
         (fake_repo_dir / filename).write_text(
             f"# {name} initial content\n\nbody for {name}",
@@ -465,6 +461,101 @@ def test_load_agent_workspace_prefix_returns_empty_when_nothing_resolves(tmp_pat
     assert prefix == ""
 
 
+@pytest.mark.unit
+def test_compact_casual_prompt_preserves_protocol_and_dynamic_profile(monkeypatch):
+    """Compact casual prompt keeps high-priority tail sections instead of blind truncation."""
+    long_front = "front filler " * 500
+    workspace_prefix = "\n\n".join(
+        [
+            "# ===== INSTRUCTIONS.md =====\n" + long_front,
+            "# ===== SOUL.md =====\nReact before advising. Use memory quietly.",
+            "# ===== CORE.md =====\nDo not treat personal chat like a support ticket.",
+            "# ===== USER.md =====\n<!-- SYNAPSE:DYNAMIC_USER_PROFILE:BEGIN -->\nPrefers blunt, compact replies.\n<!-- SYNAPSE:DYNAMIC_USER_PROFILE:END -->",
+            "# ===== MEMORY.md =====\nCorrection rules:\n- Do not call the user bro.",
+            "# ===== AGENTS.md =====\nAlways produce visible text for the user. Never expose token metadata.",
+        ]
+    )
+    monkeypatch.setattr(
+        chat_pipeline,
+        "_load_agent_workspace_prefix_for_session",
+        lambda *_args, **_kwargs: workspace_prefix,
+    )
+
+    prompt = chat_pipeline._build_compact_casual_system_prompt(
+        "casual_reflective",
+        _NoopSBS(),
+        "base",
+        "",
+        session_key="s1",
+    )
+
+    assert "React before advising" in prompt
+    assert "Do not treat personal chat like a support ticket" in prompt
+    assert "Prefers blunt, compact replies" in prompt
+    assert "Do not call the user bro" in prompt
+    assert "Always produce visible text" in prompt
+
+
+@pytest.mark.asyncio
+async def test_casual_persona_chat_omits_footer_and_keeps_profile_reminder(monkeypatch):
+    """Normal casual chat returns clean user text and injects profile reminder near user turn."""
+    captured: dict[str, list[dict]] = {}
+
+    class CapturingRouter:
+        async def call_with_metadata(self, role, messages, **_kwargs):
+            captured["messages"] = messages
+            return _DummyLLMResult(
+                "yeah, I got you.",
+                model="test/mock",
+                prompt_tokens=11,
+                completion_tokens=4,
+                total_tokens=15,
+            )
+
+    monkeypatch.setattr(chat_pipeline.deps, "synapse_llm_router", CapturingRouter())
+    monkeypatch.setattr(chat_pipeline.deps, "get_sbs_for_target", lambda _target: _NoopSBS())
+    monkeypatch.setattr(chat_pipeline.deps, "memory_engine", _NoopMemory())
+    monkeypatch.setattr(chat_pipeline.deps, "toxic_scorer", _NoopToxic())
+    monkeypatch.setattr(
+        chat_pipeline,
+        "CognitiveMerge",
+        lambda: types.SimpleNamespace(response_strategy="none"),
+    )
+    monkeypatch.setattr(
+        chat_pipeline,
+        "_format_profile_reminder",
+        lambda *_args, **_kwargs: "USER PROFILE: Prefers direct reassurance.",
+    )
+    import sci_fi_dashboard.llm_wrappers as llm_wrappers
+
+    async def _casual_route(_message):
+        return "CASUAL"
+
+    monkeypatch.setattr(llm_wrappers, "route_traffic_cop", _casual_route)
+    monkeypatch.setattr(llm_wrappers, "STRATEGY_TO_ROLE", {})
+
+    request = chat_pipeline.ChatRequest(
+        message="I feel weird about that voice note",
+        user_id="user-1",
+        session_key="s1",
+        session_type="safe",
+        history=[],
+    )
+
+    result = await chat_pipeline.persona_chat(request, "the_creator")
+
+    assert result["reply"] == "yeah, I got you."
+    prompt_text = "\n\n".join(str(message.get("content", "")) for message in captured["messages"])
+    assert "USER PROFILE: Prefers direct reassurance." in prompt_text
+    user_index = next(
+        idx for idx, message in enumerate(captured["messages"]) if message.get("role") == "user"
+    )
+    assert any(
+        message.get("content") == "USER PROFILE: Prefers direct reassurance."
+        for message in captured["messages"][:user_index]
+    )
+
+
 # ---------------------------------------------------------------------------
 # Integration sanity checks — wiring + old nudge removal
 # ---------------------------------------------------------------------------
@@ -477,12 +568,12 @@ def test_old_nudge_is_removed_from_chat_pipeline():
     source = pipeline_path.read_text(encoding="utf-8")
     # The literal multi-line nudge text — must not appear in any system message body.
     assert '"CORE RULES:\\n"' not in source, "Old CORE RULES nudge string still present"
-    assert "do NOT surrender and report the error" not in source, (
-        "Old surrender nudge still present"
-    )
-    assert "Chain multiple tool calls across rounds" not in source, (
-        "Old chain-tools nudge still present"
-    )
+    assert (
+        "do NOT surrender and report the error" not in source
+    ), "Old surrender nudge still present"
+    assert (
+        "Chain multiple tool calls across rounds" not in source
+    ), "Old chain-tools nudge still present"
 
 
 @pytest.mark.integration
