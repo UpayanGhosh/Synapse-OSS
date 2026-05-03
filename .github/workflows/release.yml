@@ -1,0 +1,40 @@
+name: Release artifacts (SBOM + signed)
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write       # softprops/action-gh-release needs this to upload artifacts
+  id-token: write       # cosign keyless OIDC signing
+
+jobs:
+  release:
+    name: Build SBOM and sign
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate CycloneDX SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          format: cyclonedx-json
+          output-file: sbom.json
+          path: .
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign SBOM (keyless / OIDC)
+        run: cosign sign-blob --yes sbom.json --output-signature sbom.json.sig
+
+      - name: Attach to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            sbom.json
+            sbom.json.sig
+          fail_on_unmatched_files: true

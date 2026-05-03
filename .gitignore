@@ -46,6 +46,7 @@ env/
 .env
 .env.*
 !.env.example
+!.env.example.advanced
 
 # OAuth / credential files
 workspace/skills/gog/client_secret.json
@@ -93,6 +94,9 @@ REDUNDANCY_ARCHIVE_*/
 !workspace/sci_fi_dashboard/runtime_assets/baileys-bridge/package.json
 !workspace/sci_fi_dashboard/runtime_assets/baileys-bridge/package-lock.json
 !synapse.json.example
+!synapse.demo.json
+!synapse.local-only.json
+!docs/_generated/metrics.json
 !baileys-bridge/package.json
 !baileys-bridge/package-lock.json
 !.planning/config.json
@@ -199,3 +203,7 @@ landing/
 # MemPalace per-project files (issue #185)
 mempalace.yaml
 entities.json
+
+# /interview-prep skill output (regenerated on demand)
+interview-prep.html
+content/generated/

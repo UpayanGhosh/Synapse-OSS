@@ -1,5 +1,5 @@
 """
-Antigravity Gateway v2 -- The Soul + Brain Assembly Line
+Synapse Gateway -- The Soul + Brain Assembly Line
 
 Thin orchestrator: app creation, lifespan, middleware, router includes.
 All business logic lives in dedicated modules:
@@ -45,6 +45,7 @@ from sci_fi_dashboard.routes import (
     health,
     knowledge,
     persona,
+    playground,
     sessions,
     websocket,
     whatsapp,
@@ -55,11 +56,6 @@ from sci_fi_dashboard.routes import (
 from sci_fi_dashboard.whatsapp_bridge import ensure_bridge_db
 
 logger = logging.getLogger(__name__)
-
-# Backwards-compatible test/operator handles. Runtime code should use deps/routes directly.
-from sci_fi_dashboard.channels.whatsapp import WhatsAppChannel  # noqa: E402
-
-channel_registry = deps.channel_registry
 
 # Register optional channels (Telegram/Discord/Slack) if tokens configured
 register_optional_channels()
@@ -96,7 +92,7 @@ except Exception as _emb_exc:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     apply_logging_config(deps._synapse_cfg)
-    print("[MEM] Booting Antigravity Gateway v2...")
+    print("[Synapse] Booting gateway...")
     ensure_bridge_db()
     worker_task = asyncio.create_task(gentle_worker_loop())
 
@@ -565,6 +561,7 @@ app.include_router(websocket.router)
 app.include_router(pipeline_routes.router)
 app.include_router(agents_routes.router)
 app.include_router(cron_routes.router)
+app.include_router(playground.router)
 
 # Dashboard static files
 _static_dir = _Path(__file__).parent / "static"

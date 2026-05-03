@@ -1,0 +1,26 @@
+# Five-minute demo path — fastembed + free-tier model, no cloud keys required (besides one optional Gemini key).
+# Usage:
+#   docker compose -f docker-compose.demo.yml up
+#   docker compose -f docker-compose.demo.yml exec synapse python -m workspace.main chat
+services:
+  synapse:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: synapse:demo
+    ports: ["8000:8000"]
+    environment:
+      - SYNAPSE_PROFILE=demo
+      - SYNAPSE_EMBEDDING_PROVIDER=fastembed
+      - SYNAPSE_CONFIG=/etc/synapse/synapse.demo.json
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+    volumes:
+      - synapse-data:/root/.synapse
+      - ./synapse.demo.json:/etc/synapse/synapse.demo.json:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+volumes:
+  synapse-data:

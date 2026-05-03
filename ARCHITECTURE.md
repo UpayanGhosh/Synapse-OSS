@@ -93,6 +93,48 @@
 
 ---
 
+## API Gateway: orchestrator + routes/ package
+
+`api_gateway.py` is **no longer a monolith**. After the routes/ refactor it is a
+~600-line orchestrator that wires FastAPI lifespan hooks, initializes singletons
+in `_deps`, mounts middleware, and `include_router()`s a set of focused router
+modules under `sci_fi_dashboard/routes/`. The chat pipeline itself lives in
+`chat_pipeline.py` (`persona_chat`); the gateway no longer owns that logic.
+
+See [Multiuser layer](docs/multiuser.md) for per-user keying — sessions, agent
+registries, and SBS personas are scoped per agent_id via the `multiuser/`
+subsystem rather than living in a single global store.
+
+### Route modules (FastAPI APIRouter)
+
+Each module under `workspace/sci_fi_dashboard/routes/` exports a single
+`router = APIRouter()`. Path prefixes are declared inline per-route (no
+constructor `prefix=`); the column below lists the dominant prefix(es) each
+module owns.
+
+| File | Path prefix | Purpose |
+|------|-------------|---------|
+| `routes/health.py` | `/`, `/health`, `/gateway/status`, `/memory_health` | Liveness + ingestion-health probes; root status. |
+| `routes/chat.py` | `/chat`, `/v1/chat/completions` | Async chat webhook + OpenAI-compatible completions endpoint. |
+| `routes/whatsapp.py` | `/channels/{channel_id}/webhook`, `/channels/whatsapp/*`, `/whatsapp/*`, `/qr` | Unified channel webhook plus WhatsApp/Baileys lifecycle (QR, status, logout, relink, retry queue, jobs). |
+| `routes/persona.py` | `/persona/*`, `/sbs/status` | SBS persona rebuild + profile/status inspection. |
+| `routes/knowledge.py` | `/ingest`, `/add`, `/query` | Knowledge graph fact ingest, memory add, hybrid RAG query. |
+| `routes/sessions.py` | `/api/sessions` | Per-agent SessionStore listing + management (multiuser-aware). |
+| `routes/websocket.py` | `/ws` | WebSocket gateway entry point (chat.send, channels.status, etc.). |
+| `routes/pipeline.py` | `/pipeline/events`, `/pipeline/state`, `/pipeline/send` | SSE stream + JSON snapshot for the live pipeline visualizer dashboard. |
+| `routes/agents.py` | `/api/agents`, `/api/agents/{agent_id}` | SubAgent registry: list, detail, cancel. |
+| `routes/cron.py` | `/api/cron/jobs`, `/api/cron/jobs/{job_id}/run` | CronService inspection and manual job triggering. |
+| `routes/snapshots.py` | `/snapshots` | Zone 2 snapshot listing (rollback metadata). |
+| `routes/skills.py` | `/skills` | Skill registry inventory (loaded skills + metadata). |
+
+> **Wiring note:** `agents`, `chat`, `cron`, `health`, `knowledge`, `persona`,
+> `pipeline`, `sessions`, `websocket`, `whatsapp` are mounted via
+> `app.include_router(...)` in `api_gateway.py`. `snapshots` and `skills` ship
+> as routers but are not yet wired into the main app — flip them on by adding
+> the corresponding `include_router` call.
+
+---
+
 ## Diagram 2: Background Tasks (Memory, KG, Maintenance)
 
 ```

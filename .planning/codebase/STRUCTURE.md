@@ -120,8 +120,6 @@ sci_fi_dashboard/
 ├── conv_kg_extractor.py        # Background KG extraction from conversations
 ├── triple_extractor.py         # RDF triple extraction from text
 ├── migrate_graph.py            # Knowledge graph migration utilities
-├── verify_dual_cognition.py    # Dual cognition verification script
-├── verify_soul.py              # Soul profile verification script
 ├── auth_profiles.py            # Provider auth profile rotation
 └── _deps.py                    # (see Singleton Registry)
 ```

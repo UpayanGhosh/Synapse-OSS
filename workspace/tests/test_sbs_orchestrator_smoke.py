@@ -6,7 +6,7 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from sbs.orchestrator import SBSOrchestrator
+from sci_fi_dashboard.sbs.orchestrator import SBSOrchestrator
 
 
 def test_sbs_conversation_ingestion():

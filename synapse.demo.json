@@ -1,0 +1,20 @@
+{
+  "_comment": "Demo profile — runs without local LLMs and without paid keys when paired with a free OpenRouter key. Real users should copy this to ~/.synapse/synapse.json and customize. See docs/demo-profile.md for details.",
+  "embedding": {
+    "provider": "fastembed"
+  },
+  "model_mappings": {
+    "traffic_cop": { "model": "openrouter/google/gemini-2.0-flash-exp:free" },
+    "casual":      { "model": "openrouter/google/gemini-2.0-flash-exp:free" },
+    "code":        { "model": "openrouter/google/gemini-2.0-flash-exp:free" },
+    "analysis":    { "model": "openrouter/google/gemini-2.0-flash-exp:free" },
+    "oracle":      { "model": "openrouter/google/gemini-2.0-flash-exp:free" }
+  },
+  "providers": {
+    "openrouter": { "api_base": "https://openrouter.ai/api/v1" }
+  },
+  "session": {
+    "dual_cognition_enabled": false,
+    "auto_flush_enabled": true
+  }
+}

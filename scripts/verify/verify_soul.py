@@ -2,8 +2,10 @@ import os
 import sys
 import time
 
-# Add current directory to path so we can import modules
-sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
+# This script was relocated from workspace/sci_fi_dashboard/ to scripts/verify/.
+# Resolve workspace/ relative to repo root (two levels up from this file).
+_REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+sys.path.insert(0, os.path.join(_REPO_ROOT, "workspace"))
 
 from sci_fi_dashboard.knowledge_graph import TransparentBrain
 from sci_fi_dashboard.smart_entity import EntityGate

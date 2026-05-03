@@ -45,6 +45,18 @@ You should see **300+ tests passing**. If something fails, open an issue and we'
 
 ---
 
+## Naming and identifiers
+
+The project has accumulated a few names over its history. To keep things unambiguous for new contributors and end users, follow this policy:
+
+- **Canonical name:** **Synapse**. Use this in all user-facing surfaces — README, docs, log banners, GitHub release notes, issue/PR titles, blog posts.
+- **Python package:** `workspace/sci_fi_dashboard` (legacy). New code should still import from this package — a full rename is deferred and will ship as a single coordinated PR. When adding new modules, prefer creating them under `sci_fi_dashboard` until that rename lands. Do not invent a parallel `synapse/` package in the meantime.
+- **Legacy strings to remove on sight:** `"Antigravity Gateway"`, `"AG Gateway"`, `"Antigravity v2"`. If you touch a file that contains any of these, replace them with `"Synapse"` or `"Synapse gateway"` as appropriate. Do not introduce new occurrences.
+
+Rationale: three names for one product confuses newcomers reading the code, end users reading logs, and contributors searching the issue tracker. Standardizing on **Synapse** for everything user-facing — while leaving the package path stable until a coordinated rename — gets us the clarity win without churning every import line in the repo.
+
+---
+
 ## Project Structure
 
 ```

@@ -20,21 +20,30 @@ Terminal CLI or Your Phone (WhatsApp)
   Synapse API Gateway        ← the brain: memory, routing, persona
         ↓
   ┌──────────────────┬──────────────────────────────────────┐
-  │  Gemini / Claude │  Ollama (nomic-embed-text)           │
-  │  (cloud LLMs)    │  ← REQUIRED for memory & ingestion   │
+  │  Gemini / Claude │  FastEmbed (local ONNX, default)     │
+  │  (cloud LLMs)    │  or Gemini API (fallback) or Ollama  │
   └──────────────────┴──────────────────────────────────────┘
         ↓
   LanceDB + SQLite           ← memory databases (embedded, zero Docker)
 ```
 
-**What runs on your machine:** Ollama, the Synapse API gateway, the Baileys WhatsApp bridge, and the databases.
+**What runs on your machine:** the Synapse API gateway, the embedding provider (FastEmbed by default — local ONNX), the Baileys WhatsApp bridge, and the databases. Ollama is optional.
 **What lives in the cloud:** The LLM API you configure (Gemini, Claude, OpenRouter, etc.).
 
-> **Why Ollama is required:** Every message you send and every fact Synapse learns is
-> converted into a 768-dimensional embedding vector using Ollama's `nomic-embed-text` model.
-> These vectors are what make memory retrieval semantic (meaning-aware) rather than just
-> keyword matching. Without Ollama running, ingestion falls back to pure full-text search —
-> Synapse will still chat but will have no real long-term memory.
+## How embeddings work
+
+Synapse picks an embedding provider in this order:
+
+1. **FastEmbed** (default) — local ONNX, no external service, ~150 MB on first run.
+2. **Gemini API** — fallback if FastEmbed isn't installed and `GEMINI_API_KEY` is set.
+
+If neither is available, the embedding factory raises and the gateway logs an error
+on startup — Synapse won't ingest new memory until you install one of the two.
+
+You **do not** need Ollama for embeddings. Ollama is only used if you point a chat
+role at a local model (e.g. the `vault` role for private conversations, or the
+[no-cloud profile](#no-cloud-profile) below). See `workspace/sci_fi_dashboard/embedding/factory.py`
+for the exact cascade.
 
 ---
 
@@ -43,16 +52,18 @@ Terminal CLI or Your Phone (WhatsApp)
 | Stage | Time |
 |-------|------|
 | Installing prerequisites | 15–30 min (mostly downloads) |
-| Pulling Ollama model (`nomic-embed-text`, ~900 MB) | 5–15 min depending on connection |
-| First-time onboarding | 5–10 min |
+| First-time onboarding (downloads FastEmbed model on first ingest, ~150 MB) | 5–10 min |
 | Optional WhatsApp QR code | 2 min |
-| **Total** | **~30–60 min** |
+| Optional Ollama install + model pull (only if you want a local LLM role) | 5–15 min |
+| **Total** | **~25–50 min** |
 
 ---
 
 ## Part 1 — Install Prerequisites
 
-You need **three things** before you start. Install them in order. (Docker is no longer required — LanceDB is embedded.)
+You need **two things** before you start: **Git** and **Python 3.11+**. Ollama is optional —
+only install it if you want a fully-local LLM path (see [How embeddings work](#how-embeddings-work)).
+(Docker is no longer required — LanceDB is embedded.)
 
 ---
 
@@ -103,13 +114,14 @@ You need version **3.11 or higher**. 3.12 and 3.13 also work.
 
 ---
 
-### 1.3 — Ollama (Required — powers memory and ingestion)
+### 1.3 — Ollama (Optional — only for local LLM roles)
 
-Ollama runs the `nomic-embed-text` embedding model locally. This model converts every
-message and memory into a 768-dimensional vector — the foundation of Synapse's semantic
-memory system. **Without it, memory ingestion does not work.**
+Ollama is **not** required for embeddings — Synapse uses FastEmbed (local ONNX) by
+default and falls back to the Gemini API. See [How embeddings work](#how-embeddings-work).
 
-Ollama also enables fully local response paths when configured.
+You only need Ollama if you want a fully-local response path (e.g. the `vault` role
+for private conversations, or the [no-cloud profile](#no-cloud-profile)). If you're
+fine with a cloud LLM (Gemini / Claude / OpenRouter), you can skip this section.
 
 #### Install Ollama
 
@@ -128,41 +140,35 @@ Ollama also enables fully local response paths when configured.
 ollama --version
 ```
 
-#### Pull the required embedding model
+#### Pull a local LLM model (optional)
 
-> **The onboarding script pulls `nomic-embed-text` automatically and waits for it to
-> complete before continuing.** If you pre-installed Ollama, you can optionally pull now:
+If you decided to use Ollama for a local LLM role, pull a chat model. Common picks:
 
 ```bash
-ollama pull nomic-embed-text
+ollama pull llama3.2:3b      # ~2 GB — used by the vault role in the default config
+ollama pull mistral          # ~4 GB — bigger, better reasoning
 ```
 
-You can check download progress:
+You can check what's installed:
+
 ```bash
 ollama list
-# When done, you'll see:
-# NAME                    ID              SIZE      MODIFIED
-# nomic-embed-text:latest 0a109f422b47    274 MB    ...
 ```
 
-> **Why this specific model?** The memory database schema uses 768-dimensional vectors,
-> which is exactly what `nomic-embed-text` produces. The sentence-transformers fallback
-> (`all-MiniLM-L6-v2`) produces 384-dimensional vectors — the wrong size — which means
-> embeddings silently fail to store. Always use `nomic-embed-text`.
+For the [no-cloud profile](#no-cloud-profile), pull the specific models referenced
+by `synapse.local-only.json` (see [docs/local-only-benchmark.md](docs/local-only-benchmark.md)).
 
-#### Verify Ollama is serving and the model works
+#### Verify Ollama is serving
 
 ```bash
 # Start Ollama (if not already running as a background service)
 ollama serve &    # macOS / Linux — runs in background
 # On Windows: Ollama runs as a system service after install, no manual start needed
 
-# Test embedding generation
-ollama embeddings nomic-embed-text "hello world"
-# Expected: a long JSON array of 768 numbers — {"embedding": [0.12, -0.34, ...]}
+# Smoke test
+curl http://localhost:11434
+# Expected: "Ollama is running"
 ```
-
-If you see the embedding array, Ollama is working correctly.
 
 ---
 
@@ -264,6 +270,20 @@ WHATSAPP_BRIDGE_TOKEN=""            # Leave blank — set automatically during o
 > who has admin-level access. Without it, Synapse starts but ignores all incoming messages.
 
 Save the file and close it.
+
+### .env file — minimal vs advanced
+
+The default [.env.example](.env.example) is minimal — one required key
+(`GEMINI_API_KEY`) and a few common optional ones. If you want the full set of
+12 supported providers and every flag Synapse honors, see
+[.env.example.advanced](.env.example.advanced).
+
+Quick start:
+
+```bash
+cp .env.example .env
+$EDITOR .env   # fill in GEMINI_API_KEY
+```
 
 ---
 
@@ -473,7 +493,8 @@ abort) so you can add a key later without re-running the full onboard.
 | Service | Purpose |
 |---------|---------|
 | LanceDB (embedded) | Vector database for semantic memory |
-| Ollama | Embedding model (`nomic-embed-text`) — required for memory ingestion |
+| FastEmbed (in-process) | Local ONNX embedding provider (default) — no separate service |
+| Ollama (optional) | Started only if a chat role points at a local model |
 | Synapse API Gateway | The brain — handles memory, routing, persona |
 
 The Baileys WhatsApp bridge is spawned automatically by the API gateway on startup —
@@ -547,7 +568,7 @@ synapse_start.bat
 
 The start script automatically:
 - Initializes LanceDB vector store (embedded, no Docker needed)
-- Starts Ollama (required for memory embedding)
+- Starts Ollama if it is installed and any chat role uses a local model (otherwise skipped)
 - Starts the Synapse API Gateway (which in turn spawns the Baileys WhatsApp bridge)
 
 Then message Synapse on WhatsApp — it's live.
@@ -582,11 +603,12 @@ Expected output:
 ```
 [OK] Gateway    (8000)
 [OK] LanceDB    (embedded)
-[OK] Ollama     (11434)
+[OK] Ollama     (11434)   ← only shown if Ollama is installed/used
 ```
 
-All three must show green for Synapse to function fully. If Ollama is red, memory ingestion
-is disabled — see the [Troubleshooting](#troubleshooting) section.
+The Gateway and LanceDB rows must show green for Synapse to function. The Ollama row
+only appears when you've configured a local LLM role (it is not used for embeddings —
+see [How embeddings work](#how-embeddings-work)).
 
 #### Windows
 
@@ -604,7 +626,8 @@ netstat -ano | findstr ":8000 :11434"
 |---------|------|----------|--------------|
 | Synapse API Gateway | 8000 | Yes | Main brain — memory, routing, persona |
 | LanceDB | embedded | Yes | Vector memory database (`~/.synapse/workspace/db/lancedb/`) |
-| Ollama | 11434 | Yes | Embedding model (`nomic-embed-text`) for ingestion |
+| FastEmbed | in-process | Yes (default) | Local ONNX embedding provider — no port, no daemon |
+| Ollama | 11434 | Optional | Only used when a chat role points at a local model, or for the [no-cloud profile](#no-cloud-profile) |
 | Baileys Bridge | 5010 | Internal | WhatsApp bridge — managed by the gateway, not user-facing |
 
 ---
@@ -759,6 +782,51 @@ to add sample conversations that show the tone you want:
 
 ---
 
+## No-cloud profile
+
+Synapse can run with zero cloud egress. A starter profile is checked into the
+repo:
+
+```bash
+mkdir -p ~/.synapse
+cp synapse.local-only.json ~/.synapse/synapse.json
+```
+
+This requires Ollama running locally with the models referenced in the file
+pre-pulled. See [docs/local-only-benchmark.md](docs/local-only-benchmark.md) for
+the methodology / known regressions versus the cloud default. Note that dual
+cognition timeout is bumped to 10s because local models are slower; you can
+tune this via `session.dual_cognition_timeout` in `synapse.json`.
+
+---
+
+## Production deployment
+
+For production-style deployments (rather than the demo compose), see
+[deploy/README.md](deploy/README.md), which covers:
+
+- a multi-stage Dockerfile (root of repo)
+- a hardened systemd unit (`deploy/synapse.service`)
+- environment-file conventions (`/etc/synapse/synapse.env`)
+
+For the fastest demo path (single command, no production hardening), use:
+
+```bash
+docker compose -f docker-compose.demo.yml up
+```
+
+---
+
+## Scaling notes
+
+Synapse today is **single-user-per-instance**. The `multiuser/` layer (see
+[docs/multiuser.md](docs/multiuser.md)) adds per-user keying, but the underlying
+store is SQLite — concurrent writers from many users will hit lock contention
+regardless of WAL. A Postgres backend for multi-user is on the roadmap; track
+it via PRODUCT_ISSUES.md issue 7.1.
+
+---
+
 ## Troubleshooting
 
 ### Synapse doesn't reply to my WhatsApp messages
@@ -868,9 +936,11 @@ Or change the gateway port by adding `SERVER_PORT=8001` to your `.env`.
 
 ---
 
-### Ollama is not running or `nomic-embed-text` is missing
+### Ollama is not running (only relevant if you configured a local LLM role)
 
-Ollama must be running and `nomic-embed-text` must be pulled for memory ingestion to work.
+Ollama is **not** required for embeddings — that path is FastEmbed by default. You
+only need Ollama if you pointed a chat role (e.g. `vault`) at a local model, or if
+you're running the [no-cloud profile](#no-cloud-profile).
 
 **Check if Ollama is running:**
 ```bash
@@ -888,41 +958,29 @@ ollama serve &
 ollama serve
 ```
 
-**Check if the model is pulled:**
+**Check what models are pulled:**
 ```bash
 ollama list
-# You should see: nomic-embed-text:latest
 ```
 
-**Pull it if missing (this is ~900 MB):**
-```bash
-ollama pull nomic-embed-text
-```
+**Check which embedding provider the gateway picked at startup:**
 
-**Verify the model produces embeddings:**
-```bash
-ollama embeddings nomic-embed-text "test"
-# Expected: {"embedding": [0.12, -0.34, 0.56, ...]} — 768 numbers
-```
-
-**Check which embedding mode the gateway is using:**
-
-Look at the gateway startup log:
 ```bash
 # macOS / Linux
-grep -i "retriever\|embed\|ollama" ~/.synapse/logs/gateway.log | head -5
+grep -i "embedding.*selected\|embedding.*provider" ~/.synapse/logs/gateway.log | head -5
 
 # Windows
-findstr /i "retriever embed ollama" "%USERPROFILE%\.synapse\logs\gateway.log"
+findstr /i "embedding" "%USERPROFILE%\.synapse\logs\gateway.log"
 ```
 
-You want to see:
+You want to see one of:
 ```
-[OK] Retriever: Using Ollama (nomic-embed-text) -- exact DB match
+[Embedding] Selected provider: FastEmbed (ONNX, local)
+[Embedding] Selected provider: Gemini API
 ```
 
-If you see `sentence-transformers` or `fts_only` instead, Ollama is not reachable.
-Fix Ollama first, then restart the gateway.
+If you see neither and the gateway logs `No embedding provider available`,
+install fastembed (`pip install fastembed`) or set `GEMINI_API_KEY`.
 
 ---
 
@@ -966,27 +1024,27 @@ After installing, restart Synapse. The bridge starts automatically.
 ### Run the API gateway directly (for development)
 
 ```bash
-cd workspace
-source ../.venv/bin/activate   # Mac/Linux
-# ..\.venv\Scripts\activate.bat  ← Windows
+# Mac/Linux
+( cd workspace && source ../.venv/bin/activate && uvicorn sci_fi_dashboard.api_gateway:app --host 127.0.0.1 --port 8000 --reload )
 
-uvicorn sci_fi_dashboard.api_gateway:app --host 127.0.0.1 --port 8000 --reload
+# Windows (cmd)
+pushd workspace && ..\.venv\Scripts\activate.bat && uvicorn sci_fi_dashboard.api_gateway:app --host 127.0.0.1 --port 8000 --reload & popd
 ```
 
-`--reload` auto-restarts on code changes. Remove it in production.
+`--reload` auto-restarts on code changes. Remove it in production. The
+parenthesised subshell on Mac/Linux means the `cd` doesn't pollute your current
+shell — you stay in the repo root after the gateway exits.
 
 ---
 
 ### CLI interface
 
 ```bash
-cd workspace
-source ../.venv/bin/activate
-
-python main.py chat      # Interactive chat in terminal (bypasses WhatsApp)
-python main.py ingest    # Ingest facts into knowledge graph
-python main.py vacuum    # Prune and optimize databases
-python main.py verify    # Run 3-point inspection (health, air-gap, latency)
+# Mac/Linux — subshell form keeps your current shell's cwd intact
+( cd workspace && source ../.venv/bin/activate && python main.py chat )      # Interactive chat (bypasses WhatsApp)
+( cd workspace && source ../.venv/bin/activate && python main.py ingest )    # Ingest facts into knowledge graph
+( cd workspace && source ../.venv/bin/activate && python main.py vacuum )    # Prune and optimize databases
+( cd workspace && source ../.venv/bin/activate && python main.py verify )    # 3-point inspection (health, air-gap, latency)
 ```
 
 ---
@@ -1061,23 +1119,22 @@ All log files, databases, and persona profiles will be placed under that directo
 | Start Synapse | `synapse start` | `synapse start` |
 | Stop Synapse | `synapse stop` | `synapse stop` |
 | Health check | `synapse doctor` | `synapse doctor` |
-| Check Ollama | `curl http://localhost:11434` | `curl.exe http://localhost:11434` |
-| Pull embedding model | `ollama pull nomic-embed-text` | same |
-| Verify embeddings work | `ollama embeddings nomic-embed-text "test"` | same |
+| Check Ollama (only if you use a local LLM role) | `curl http://localhost:11434` | `curl.exe http://localhost:11434` |
+| Pull a local LLM model | `ollama pull llama3.2:3b` | same |
+| Verify Ollama serves a chat model | `ollama run llama3.2:3b "hi"` | same |
 | View gateway log | `tail -f ~/.synapse/logs/gateway.log` | `type "%USERPROFILE%\.synapse\logs\gateway.log"` |
 | Get WhatsApp QR code | `curl http://localhost:8000/qr` | `curl.exe http://localhost:8000/qr` |
 | Check bridge status | `curl http://localhost:8000/channels/whatsapp/health` | same |
 
 ### Targeted Test Commands (Workspace/Doctor)
 
-Run from repo root:
+Run from repo root (subshell keeps your shell cwd intact):
 
 ```bash
-cd workspace
-pytest tests/test_doctor.py -v
-pytest tests/test_onboard.py -k ensure_agent_workspace -v
-pytest tests/test_agent_workspace_prefix.py -v
-pytest tests/test_multiuser.py -k bootstrap -v
+( cd workspace && pytest tests/test_doctor.py -v )
+( cd workspace && pytest tests/test_onboard.py -k ensure_agent_workspace -v )
+( cd workspace && pytest tests/test_agent_workspace_prefix.py -v )
+( cd workspace && pytest tests/test_multiuser.py -k bootstrap -v )
 ```
 
 ---

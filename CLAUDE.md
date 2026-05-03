@@ -48,16 +48,16 @@ synapse_start.bat           # Start all (Windows)
 ./synapse_stop.sh           # Stop all
 
 # API server only
-cd workspace/sci_fi_dashboard && uvicorn api_gateway:app --host 0.0.0.0 --port 8000 --reload
+( cd workspace/sci_fi_dashboard && uvicorn api_gateway:app --host 0.0.0.0 --port 8000 --reload )
 
 # Baileys WhatsApp bridge only (Node.js subprocess — normally auto-spawned by WhatsAppChannel)
-cd baileys-bridge && npm install && node index.js
+( cd baileys-bridge && npm install && node index.js )
 
 # CLI
-cd workspace && python main.py chat|ingest|vacuum|verify
+( cd workspace && python main.py chat|ingest|vacuum|verify )
 
 # Tests — run from workspace/
-cd workspace && pytest tests/ -v
+( cd workspace && pytest tests/ -v )
 pytest tests/ -m unit|integration|smoke          # filter by marker
 pytest tests/test_flood.py -v                    # single file
 pytest tests/test_flood.py::TestFloodGate::test_batch -v  # single test
@@ -146,8 +146,6 @@ Per-channel policy via `DmPolicy` enum: `pairing | allowlist | open | disabled`.
 | `gmail_server.py`, `calendar_server.py`, `slack_server.py` | — | external integrations |
 
 MCP tools are **not** offered to the LLM during persona chat — they are only called by `ProactiveAwarenessEngine` or external MCP clients.
-
-**Known bug in `tools_server.py`**: `read_file`/`write_file` call `Sentinel().agent_read_file()` which is incorrect — `agent_read_file` is a module-level function in `sbs/sentinel/tools.py`, not a method on `Sentinel`. These tools raise `TypeError` at runtime until fixed.
 
 ## Key Files
 

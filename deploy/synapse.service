@@ -1,0 +1,32 @@
+[Unit]
+Description=Synapse Gateway
+Documentation=https://github.com/UpayanGhosh/Synapse-OSS
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=synapse
+Group=synapse
+# Repo cloned to /opt/synapse, gateway runs from the workspace/ subdir because
+# api_gateway.py imports `from sci_fi_dashboard ...` (no `workspace.` prefix).
+WorkingDirectory=/opt/synapse/workspace
+EnvironmentFile=-/etc/synapse/synapse.env
+ExecStart=/usr/bin/uvicorn sci_fi_dashboard.api_gateway:app --host 127.0.0.1 --port 8000
+Restart=on-failure
+RestartSec=5
+KillSignal=SIGINT
+TimeoutStopSec=30
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/var/lib/synapse /opt/synapse
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+
+[Install]
+WantedBy=multi-user.target

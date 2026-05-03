@@ -1,4 +1,10 @@
-# CLAUDE.md
+# CLAUDE.md (Archived — pre-rewrite snapshot)
+
+> **Archived snapshot.** This is the pre-rewrite CLAUDE.md, kept as a reference for
+> what changed during the project's rewrite. The current canonical instructions
+> are in [CLAUDE.md](../../CLAUDE.md) at the repo root.
+
+---
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 

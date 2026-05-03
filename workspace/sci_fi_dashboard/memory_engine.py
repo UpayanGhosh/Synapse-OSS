@@ -615,6 +615,145 @@ class MemoryEngine:
             return heuristic
         return await self._score_importance_llm(content, llm_fn)
 
+    # ------------------------------------------------------------------
+    # Memory inspector primitives (PRODUCT_ISSUES.md §5.3)
+    # ------------------------------------------------------------------
+    # NOTE: The `documents` schema has no per-user column. The `user` filter
+    # in list_documents() is accepted by the route layer for forward-compat
+    # but ignored at the SQL level — we list across all docs in the chosen
+    # hemisphere. delete_document() cascades to FTS, sqlite-vec, LanceDB,
+    # memory_affect (FK ON DELETE CASCADE), and entity_links rows whose
+    # source_doc_id == doc_id. It does NOT prune orphan KG nodes/edges
+    # whose only mention came from the deleted doc — pruning is left to
+    # the gentle worker loop's prune_weak_edges pass. This is a known
+    # limitation; a stricter cleanup is deferred.
+    def list_documents(
+        self,
+        *,
+        user: str | None = None,
+        hemisphere: str = "safe",
+        search: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> dict:
+        """Paginated read of stored docs.
+
+        Returns {"items": [...], "total": int, "limit": int, "offset": int,
+                 "hemisphere": str}. Each item: id, content, hemisphere,
+                 importance, unix_timestamp, created_at, processed.
+        """
+        if hemisphere not in ("safe", "spicy"):
+            hemisphere = "safe"
+        # Clamp limits defensively even though the route already validates.
+        limit = max(1, min(int(limit), 500))
+        offset = max(0, int(offset))
+
+        where_parts: list[str] = ["hemisphere_tag = ?"]
+        params: list = [hemisphere]
+        if search:
+            where_parts.append("content LIKE ?")
+            params.append(f"%{search}%")
+        where_sql = " AND ".join(where_parts)
+
+        conn = None
+        try:
+            conn = get_db_connection()
+            cur = conn.cursor()
+            total = cur.execute(
+                f"SELECT COUNT(*) FROM documents WHERE {where_sql}",  # noqa: S608
+                params,
+            ).fetchone()[0]
+            rows = cur.execute(
+                "SELECT id, content, hemisphere_tag, importance, "
+                "unix_timestamp, created_at, processed "
+                f"FROM documents WHERE {where_sql} "  # noqa: S608
+                "ORDER BY COALESCE(unix_timestamp, 0) DESC, id DESC "
+                "LIMIT ? OFFSET ?",
+                [*params, limit, offset],
+            ).fetchall()
+            items = [
+                {
+                    "id": r[0],
+                    "content": r[1],
+                    "hemisphere": r[2],
+                    "importance": r[3],
+                    "unix_timestamp": r[4],
+                    "created_at": r[5],
+                    "processed": bool(r[6]) if r[6] is not None else False,
+                }
+                for r in rows
+            ]
+            return {
+                "items": items,
+                "total": int(total),
+                "limit": limit,
+                "offset": offset,
+                "hemisphere": hemisphere,
+                "user_filter_applied": False,
+                "user": user,
+            }
+        finally:
+            if conn is not None:
+                conn.close()
+
+    def delete_document(self, doc_id) -> bool:
+        """Delete a doc and propagate to FTS / sqlite-vec / LanceDB / KG.
+
+        Returns True if a row was deleted, False if doc_id wasn't found.
+        memory_affect rows are removed via FK ON DELETE CASCADE.
+        Orphan KG nodes whose only mention came from this doc are NOT
+        pruned here — see class-level NOTE.
+        """
+        coerced = _coerce_doc_id(doc_id)
+        if coerced is None:
+            return False
+
+        conn = None
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            row = cursor.execute(
+                "SELECT 1 FROM documents WHERE id = ? LIMIT 1", (coerced,)
+            ).fetchone()
+            if row is None:
+                return False
+
+            # FTS5 with content=documents does NOT auto-cascade — must mirror
+            # the delete on the FTS shadow table to keep the index in sync.
+            try:
+                cursor.execute("DELETE FROM documents_fts WHERE rowid = ?", (coerced,))
+            except Exception as fts_err:
+                print(f"[WARN] documents_fts delete failed for {coerced}: {fts_err}")
+
+            # sqlite-vec virtual table
+            try:
+                cursor.execute("DELETE FROM vec_items WHERE document_id = ?", (coerced,))
+            except Exception as vec_err:
+                print(f"[WARN] vec_items delete failed for {coerced}: {vec_err}")
+
+            # KG triples linked back to this doc
+            try:
+                cursor.execute(
+                    "DELETE FROM entity_links WHERE source_doc_id = ?", (coerced,)
+                )
+            except Exception as kg_err:
+                print(f"[WARN] entity_links delete failed for {coerced}: {kg_err}")
+
+            # The documents row itself (memory_affect cascades via FK).
+            cursor.execute("DELETE FROM documents WHERE id = ?", (coerced,))
+            conn.commit()
+
+            # LanceDB delete — separate store, separate failure domain.
+            try:
+                self.vector_store.delete_by_id(coerced)
+            except Exception as ldb_err:
+                print(f"[WARN] LanceDB delete failed for {coerced}: {ldb_err}")
+
+            return True
+        finally:
+            if conn is not None:
+                conn.close()
+
     def think(self, prompt: str, system: str = "You are a helpful, concise assistant.") -> dict:
         """Local LLM call with zero persistence."""
         try:

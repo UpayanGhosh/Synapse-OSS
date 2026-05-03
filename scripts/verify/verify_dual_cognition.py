@@ -2,16 +2,16 @@ import asyncio
 import os
 import sys
 
-try:
-    from synapse_config import SynapseConfig  # noqa: PLC0415
-except ImportError:
-    import os as _os
-    import sys as _sys
+# This script was relocated from workspace/sci_fi_dashboard/ to scripts/verify/.
+# Resolve workspace/ relative to repo root (two levels up from this file).
+_REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+sys.path.insert(0, os.path.join(_REPO_ROOT, "workspace"))
+sys.path.insert(0, os.path.join(_REPO_ROOT, "workspace", "sci_fi_dashboard"))
 
-    _sys.path.insert(0, _os.path.abspath(_os.path.join(_os.path.dirname(__file__), "..")))
-    from synapse_config import SynapseConfig
+from synapse_config import SynapseConfig  # noqa: E402
 
-# Add workspace to path
+# Also append paths derived from the user's configured Synapse data_root, in
+# case that differs from the repo location at runtime.
 _synapse_home = str(SynapseConfig.load().data_root)
 sys.path.insert(0, os.path.join(_synapse_home, "workspace", "sci_fi_dashboard"))
 sys.path.insert(0, os.path.join(_synapse_home, "workspace"))

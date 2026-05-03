@@ -3,7 +3,7 @@ import sys
 import tempfile
 import time
 
-sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from sci_fi_dashboard.conflict_resolver import ConflictManager
 
