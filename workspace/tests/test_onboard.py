@@ -393,8 +393,8 @@ def test_provider_validation_calls_max_tokens_1(tmp_path, monkeypatch):
 # ===========================================================================
 
 
-def test_rate_limit_error_accepts_key(tmp_path, monkeypatch):
-    """ONB-03: RateLimitError means key is VALID (quota exhausted, not invalid auth)."""
+def test_rate_limit_error_rejects_provider_readiness(tmp_path, monkeypatch):
+    """ONB-03: RateLimitError means auth may be valid, but chat would fail."""
     from cli.provider_steps import validate_provider
     from litellm import RateLimitError
 
@@ -402,14 +402,14 @@ def test_rate_limit_error_accepts_key(tmp_path, monkeypatch):
         raise RateLimitError(
             message="quota exceeded",
             llm_provider="gemini",
-            model="gemini/gemini-2.0-flash",
+            model="gemini/gemini-2.5-flash-lite",
             response=MagicMock(status_code=429),
         )
 
     with patch("litellm.acompletion", new_callable=AsyncMock, side_effect=_raise_rate_limit):
         result = validate_provider("gemini", "valid-key-but-quota")
 
-    assert result.ok is True, f"RateLimitError must yield ok=True, got {result}"
+    assert result.ok is False, f"RateLimitError must fail readiness, got {result}"
     assert result.error == "quota_exceeded"
 
 
@@ -697,10 +697,9 @@ def test_collect_provider_keys_openai_codex_device_flow():
     }
 
 
-def test_openai_codex_device_flow_retries_once_on_unknown_device_auth():
-    """openai_codex device flow retries once when OpenAI returns unknown device auth."""
+def test_openai_codex_device_flow_does_not_auto_refresh_on_unknown_device_auth():
+    """openai_codex device flow should not request a fresh code automatically."""
     import asyncio
-    from types import SimpleNamespace
 
     from cli.provider_steps import openai_codex_device_flow
 
@@ -711,35 +710,25 @@ def test_openai_codex_device_flow_retries_once_on_unknown_device_auth():
         def print(self, msg):
             self.messages.append(str(msg))
 
-    fake_creds = SimpleNamespace(
-        email="me@example.com",
-        profile_name="me@example.com",
-        account_id="acct-123",
-    )
-
     console = _CaptureConsole()
     with patch(
         "sci_fi_dashboard.openai_codex_oauth.get_active_credentials",
         return_value=None,
     ), patch(
         "sci_fi_dashboard.openai_codex_oauth.login_device_code",
-        side_effect=[
-            RuntimeError("OpenAI OAuth HTTP 403: Device authorization is unknown. Please try again."),
-            fake_creds,
-        ],
+        side_effect=RuntimeError(
+            "OpenAI OAuth device authorization remained unknown until the code expired."
+        ),
     ) as mock_login, patch(
         "sci_fi_dashboard.openai_codex_oauth.import_codex_cli_credentials",
         return_value=None,
     ):
         metadata = asyncio.run(openai_codex_device_flow(console))
 
-    assert mock_login.call_count == 2
-    assert metadata == {
-        "email": "me@example.com",
-        "profile_name": "me@example.com",
-        "account_id": "acct-123",
-    }
-    assert any("retrying once" in m.lower() for m in console.messages)
+    mock_login.assert_called_once()
+    assert metadata is None
+    assert any("device code authorization for codex" in m.lower() for m in console.messages)
+    assert not any("fresh code" in m.lower() and "retrying" in m.lower() for m in console.messages)
 
 
 def test_openai_codex_device_flow_shows_security_guidance_on_repeated_unknown_device_auth():
@@ -761,17 +750,14 @@ def test_openai_codex_device_flow_shows_security_guidance_on_repeated_unknown_de
         return_value=None,
     ), patch(
         "sci_fi_dashboard.openai_codex_oauth.login_device_code",
-        side_effect=[
-            RuntimeError("OpenAI OAuth HTTP 403: Device authorization is unknown. Please try again."),
-            RuntimeError("OpenAI OAuth HTTP 403: Device authorization is unknown. Please try again."),
-        ],
+        side_effect=RuntimeError("OpenAI OAuth HTTP 403: Device authorization is unknown. Please try again."),
     ) as mock_login, patch(
         "sci_fi_dashboard.openai_codex_oauth.import_codex_cli_credentials",
         return_value=None,
     ):
         metadata = asyncio.run(openai_codex_device_flow(console))
 
-    assert mock_login.call_count == 2
+    mock_login.assert_called_once()
     assert metadata is None
     assert any("device code authorization for codex" in m.lower() for m in console.messages)
 
@@ -1112,6 +1098,42 @@ def test_pick_model_fuzzy_falls_back_after_prompt_library_error(monkeypatch):
     assert selected == "openai/gpt-4o"
 
 
+def test_interactive_model_mapping_prompts_even_with_single_available_model(monkeypatch):
+    """Single-model catalogs must still expose picker/manual model selection."""
+    from cli import onboard
+
+    prompter = MagicMock()
+    picked = []
+
+    def _fake_pick(role, desc, flat, prompter_arg):
+        picked.append((role, desc, flat, prompter_arg))
+        return "openai_codex/gpt-5.4-mini"
+
+    monkeypatch.setattr(
+        onboard,
+        "_fetch_live_catalog",
+        lambda providers, config: {
+            "openai_codex": [
+                onboard._make_entry(
+                    "openai_codex/gpt-5.4",
+                    "GPT-5.4 (ChatGPT subscription Codex backend)",
+                )
+            ]
+        },
+    )
+    monkeypatch.setattr(onboard, "_pick_model_fuzzy", _fake_pick)
+
+    mappings = onboard._build_model_mappings_interactive(
+        ["openai_codex"],
+        prompter,
+        {"providers": {"openai_codex": {}}, "model_mappings": {}, "channels": {}},
+    )
+
+    assert len(picked) == len(onboard._ROLES)
+    assert all(choice[2][0]["value"] == "openai_codex/gpt-5.4" for choice in picked)
+    assert mappings["code"]["model"] == "openai_codex/gpt-5.4-mini"
+
+
 def test_subscription_provider_fallback_catalog_uses_reachable_model_ids():
     """Fallback models are real user-facing IDs, not stale synthetic aliases."""
     from cli.onboard import _KNOWN_MODELS
@@ -1163,6 +1185,32 @@ def test_provider_validation_uses_current_anthropic_model():
     from cli.provider_steps import VALIDATION_MODELS
 
     assert VALIDATION_MODELS["anthropic"] == "anthropic/claude-3-5-haiku-latest"
+
+
+def test_provider_validation_uses_gemini_flash_lite_for_current_free_tier():
+    """Gemini validation should use the broadest current Flash-Lite quota bucket."""
+    from cli.provider_steps import VALIDATION_MODELS
+
+    assert VALIDATION_MODELS["gemini"] == "gemini/gemini-2.5-flash-lite"
+
+
+def test_gemini_live_catalog_sorts_flash_before_gemma_and_pro():
+    """Live Gemini /models can return Gemma/Pro entries; Flash should lead."""
+    from cli.onboard import _gemini_catalog_sort_key, _make_entry
+
+    entries = [
+        _make_entry("gemini/gemma-4-31b-it", "gemma-4-31b-it"),
+        _make_entry("gemini/gemini-2.5-pro", "gemini-2.5-pro"),
+        _make_entry("gemini/gemini-2.5-flash", "gemini-2.5-flash"),
+        _make_entry("gemini/gemini-2.5-flash-lite", "gemini-2.5-flash-lite"),
+    ]
+
+    sorted_values = [entry["value"] for entry in sorted(entries, key=_gemini_catalog_sort_key)]
+
+    assert sorted_values[:2] == [
+        "gemini/gemini-2.5-flash-lite",
+        "gemini/gemini-2.5-flash",
+    ]
 
 
 def test_fetch_copilot_models_without_token_quietly_falls_back(monkeypatch):
@@ -1496,6 +1544,56 @@ def test_reset_invalid_scope_exits_1(tmp_path, monkeypatch):
         _handle_reset("invalid-scope", tmp_path)
 
     assert exc_info.value.exit_code == 1
+
+
+def test_reset_command_moves_config_with_yes(tmp_path, monkeypatch):
+    """Top-level `synapse reset` should expose the reset helper for re-onboarding."""
+    from typer.testing import CliRunner
+
+    from synapse_cli import app
+
+    monkeypatch.setenv("SYNAPSE_HOME", str(tmp_path))
+    existing_config = tmp_path / "synapse.json"
+    existing_config.write_text('{"providers": {}}', encoding="utf-8")
+
+    result = CliRunner().invoke(app, ["reset", "--scope", "config", "--yes"])
+
+    assert result.exit_code == 0, result.output
+    assert not existing_config.exists()
+    assert list((tmp_path / "backups").rglob("synapse.json"))
+
+
+def test_reset_command_rejects_invalid_scope(tmp_path, monkeypatch):
+    """Top-level reset command should fail before touching files for invalid scopes."""
+    from typer.testing import CliRunner
+
+    from synapse_cli import app
+
+    monkeypatch.setenv("SYNAPSE_HOME", str(tmp_path))
+
+    result = CliRunner().invoke(app, ["reset", "--scope", "invalid", "--yes"])
+
+    assert result.exit_code == 1
+    assert "Invalid reset scope" in result.output
+
+
+def test_reset_command_reonboard_dispatches_wizard(tmp_path, monkeypatch):
+    """`synapse reset --reonboard` should launch onboarding after the backup reset."""
+    from typer.testing import CliRunner
+
+    from synapse_cli import app
+
+    monkeypatch.setenv("SYNAPSE_HOME", str(tmp_path))
+    (tmp_path / "synapse.json").write_text("{}", encoding="utf-8")
+
+    with patch("cli.onboard.run_wizard") as mock_wizard:
+        result = CliRunner().invoke(
+            app,
+            ["reset", "--scope", "config", "--yes", "--reonboard", "--flow", "advanced"],
+        )
+
+    assert result.exit_code == 0, result.output
+    mock_wizard.assert_called_once_with(flow="advanced", force_interactive=True)
 
 
 # ===========================================================================

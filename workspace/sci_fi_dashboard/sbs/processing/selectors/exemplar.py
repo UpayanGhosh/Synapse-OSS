@@ -23,7 +23,7 @@ class ExemplarSelector:
     |  [4] RECENT HIGH-QUALITY     -- last 48h, best   |
     |  [3] TOPIC-DIVERSE           -- one per top topic |
     |  [2] MOOD-DIVERSE            -- different moods   |
-    |  [2] BANGLISH SHOWCASE       -- best code-switch  |
+    |  [2] LANGUAGE-MIX SHOWCASE   -- best code-switch  |
     |  [2] PERSONALITY HIGHLIGHT   -- humor/care/tech   |
     |  [1] WILDCARD                -- random for variety |
     +--------------------------------------------------+
@@ -175,9 +175,9 @@ class ExemplarSelector:
             days_ago = (now - msg_time).days
             recency_score = math.exp(-0.05 * days_ago)  # Half-life ~14 days
 
-            # Language richness: bonus for Banglish/mixed
+            # Language richness: bonus for local-language or mixed examples
             lang = user_msg.get("rt_language", "en")
-            lang_score = 1.5 if lang == "banglish" else 1.2 if lang == "mixed" else 1.0
+            lang_score = 1.5 if lang in {"local", "regional", "banglish"} else 1.2 if lang == "mixed" else 1.0
 
             # Mood signal presence: bonus
             mood_score = 1.3 if user_msg.get("rt_mood_signal") else 1.0
@@ -235,12 +235,12 @@ class ExemplarSelector:
         return list(mood_best.values())[:count]
 
     def _select_banglish_showcase(self, pairs, used_ids, count) -> list[dict]:
-        """Best pairs that demonstrate Banglish code-switching."""
+        """Best pairs that demonstrate user-specific code-switching."""
         candidates = [
             p
             for p in pairs
             if p["pair_id"] not in used_ids
-            and p["user_msg"].get("rt_language") in ("banglish", "mixed")
+            and p["user_msg"].get("rt_language") in ("local", "regional", "banglish", "mixed")
         ]
         return candidates[:count]
 

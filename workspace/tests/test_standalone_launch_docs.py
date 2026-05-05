@@ -45,6 +45,15 @@ def test_launch_scripts_delegate_to_installed_synapse_cli_without_legacy_bootstr
     assert "synapse stop" in _read("synapse_stop.bat")
 
 
+def test_node_launcher_exposes_reset_command() -> None:
+    content = _read("bin/synapse.js")
+
+    assert '"reset"' in content
+    assert "install|onboard|reset|start|stop|doctor|chat" in content
+    assert "function runReset" in content
+    assert "config+creds+sessions" in content
+
+
 def test_readme_quick_start_is_npm_first_and_developer_setup_is_separate() -> None:
     content = _read("README.md")
     quick_start = _section(content, "## Quick Start", "## Docs")

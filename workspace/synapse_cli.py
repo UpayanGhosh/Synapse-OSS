@@ -11,7 +11,9 @@ Run from the workspace/ directory:
     python synapse_cli.py chat
 """
 
+import os
 from datetime import UTC
+from pathlib import Path
 
 import typer
 
@@ -266,6 +268,59 @@ def install_home() -> None:
 
     result = ensure_product_home()
     typer.echo(f"Synapse product home ready: {result['data_root']}")
+
+
+@app.command("reset")
+def reset_synapse(
+    scope: str = typer.Option(
+        "config",
+        "--scope",
+        "-s",
+        help="Reset scope: config | config+creds+sessions | full",
+    ),
+    yes: bool = typer.Option(
+        False,
+        "--yes",
+        "-y",
+        help="Confirm the reset without prompting.",
+    ),
+    reonboard: bool = typer.Option(
+        False,
+        "--reonboard",
+        help="Launch onboarding immediately after the reset completes.",
+    ),
+    flow: str = typer.Option(
+        "quickstart",
+        "--flow",
+        help="Onboarding flow to use with --reonboard: quickstart or advanced.",
+    ),
+) -> None:
+    """Back up Synapse state so you can re-onboard or test a fresh setup."""
+    from cli.onboard import _RESET_SCOPES, _handle_reset, run_wizard  # noqa: PLC0415
+
+    data_root = Path(os.environ.get("SYNAPSE_HOME", Path.home() / ".synapse"))
+    if scope not in _RESET_SCOPES:
+        typer.echo(
+            f"Invalid reset scope {scope!r}. Valid values: {', '.join(_RESET_SCOPES)}",
+            err=True,
+        )
+        raise typer.Exit(1)
+
+    if not yes:
+        typer.echo(f"Synapse home: {data_root}")
+        typer.echo(
+            "Reset backs up matching files into <synapse-home>/backups/ before removing "
+            "them from the active install."
+        )
+        confirmed = typer.confirm(f"Continue with reset scope '{scope}'?", default=False)
+        if not confirmed:
+            typer.echo("Reset cancelled.")
+            raise typer.Exit(0)
+
+    _handle_reset(scope, data_root)
+
+    if reonboard:
+        run_wizard(flow=flow, force_interactive=True)
 
 
 @app.command()

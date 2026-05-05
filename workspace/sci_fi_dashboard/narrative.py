@@ -37,7 +37,7 @@ NARRATIVE_MAP = {
         ("[BALANCE] Balancing logic vs empathy...", "Sentiment score calculated..."),
     ],
     "language_nuance": [
-        ("[SPEAK] Refining Banglish dialect...", "Parsing slang and context..."),
+        ("[SPEAK] Refining local language style...", "Parsing slang and context..."),
         ("[READ] Updating vocabulary...", "Nuance adjustment complete..."),
     ],
     "growth_log": [

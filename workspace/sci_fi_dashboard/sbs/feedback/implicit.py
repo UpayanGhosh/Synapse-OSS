@@ -7,31 +7,58 @@ from ..profile.manager import ProfileManager
 
 # Built-in fallback patterns (English only) used when language_patterns.yaml is absent.
 _DEFAULT_PATTERNS: dict[str, list[str]] = {
-    "correction_formal": [
+    "tone_more_casual": [
         r"why (are you|so) formal",
         r"stop being (formal|robotic)",
         r"sound[s]? like a robot",
     ],
-    "correction_casual": [r"too casual", r"be serious", r"professional"],
-    "correction_length": [
+    "tone_more_professional": [
+        r"too casual",
+        r"\b(be|stay|keep it) serious\b",
+        r"\b(be|stay|sound|act)\s+(more\s+)?professional\b",
+        r"\bkeep it professional\b",
+        r"\buse a professional tone\b",
+        r"\bformal tone\b",
+        r"\bno jokes\b",
+        r"\bstop joking\b",
+        r"\bstop being (quirky|witty|playful|casual)\b",
+    ],
+    "length_shorter": [
         r"too long",
         r"keep it short",
         r"tl;dr",
         r"stop yapping",
         r"too much text",
     ],
-    "correction_short": [r"elaborate", r"explain more", r"too short"],
+    "length_more_detailed": [r"elaborate", r"explain more", r"too short"],
     "praise": [r"good (boy|job)", r"perfect", r"exactly", r"love this tone"],
     "rejection": [r"no that'?s wrong", r"not what i meant", r"shut up"],
+}
+
+_SIGNAL_ALIASES = {
+    "correction_formal": "tone_more_casual",
+    "correction_casual": "tone_more_professional",
+    "correction_length": "length_shorter",
+    "correction_short": "length_more_detailed",
+}
+_CORRECTION_SIGNALS = {
+    "tone_more_casual",
+    "tone_more_professional",
+    "length_shorter",
+    "length_more_detailed",
 }
 
 
 def _adjust_style_ratio(style: dict[str, Any], delta: float) -> None:
     """Adjust whichever linguistic ratio schema the profile currently uses."""
 
-    ratio_keys = [key for key in ("primary_language_ratio", "banglish_ratio") if key in style]
+    ratio_keys = [
+        key
+        for key in ("primary_language_ratio", "language_mix_ratio", "banglish_ratio")
+        if key in style
+    ]
     if not ratio_keys:
-        ratio_keys = ["banglish_ratio"]
+        ratio_keys = ["language_mix_ratio"]
     for key in ratio_keys:
         current_ratio = style.get(key, 0.3)
         style[key] = max(0.0, min(1.0, current_ratio + delta))
@@ -48,10 +75,19 @@ def _load_patterns() -> dict[str, list[str]]:
                 data = yaml.safe_load(fh)
             if isinstance(data, dict):
                 # Strip comment-only keys and keep non-empty lists
-                return {k: v for k, v in data.items() if isinstance(v, list) and v}
+                loaded: dict[str, list[str]] = {}
+                for key, value in data.items():
+                    if isinstance(value, list) and value:
+                        canonical = _SIGNAL_ALIASES.get(str(key), str(key))
+                        loaded.setdefault(canonical, []).extend(value)
+                return loaded
         except Exception as exc:  # pragma: no cover
             print(f"[WARN] Could not load language_patterns.yaml: {exc}. Using built-ins.")
     return _DEFAULT_PATTERNS
+
+
+def _canonical_signal_type(signal_type: str) -> str:
+    return _SIGNAL_ALIASES.get(signal_type, signal_type)
 
 
 class ImplicitFeedbackDetector:
@@ -97,7 +133,7 @@ class ImplicitFeedbackDetector:
         # Prioritize corrections over general praise
         primary_signal = detected_signals[0]
         for signal in detected_signals:
-            if signal.startswith("correction_") or signal == "rejection":
+            if signal in _CORRECTION_SIGNALS or signal == "rejection":
                 primary_signal = signal
                 break
 
@@ -111,7 +147,7 @@ class ImplicitFeedbackDetector:
         """
         Act on the detected feedback signal to adjust the persona profile immediately.
         """
-        signal_type = signal["type"]
+        signal_type = _canonical_signal_type(signal["type"])
         linguistic = self.profile_mgr.load_layer("linguistic")
         interaction = self.profile_mgr.load_layer("interaction")
 
@@ -120,23 +156,26 @@ class ImplicitFeedbackDetector:
 
         style = linguistic.get("current_style", {})
 
-        if signal_type == "correction_formal":
-            # Increase the user's preferred primary/casual language ratio.
+        if signal_type == "tone_more_casual":
+            # User says Synapse is too formal/robotic; move toward a warmer style.
+            style["preferred_style"] = "casual_and_witty"
             _adjust_style_ratio(style, 0.2)
             needs_linguistic_update = True
 
-        elif signal_type == "correction_casual":
-            # Decrease the user's preferred primary/casual language ratio.
+        elif signal_type == "tone_more_professional":
+            # User asks for seriousness/professionalism; switch tone, not only
+            # language mix. This must affect the very next compiled prompt.
+            style["preferred_style"] = "formal_and_precise"
             _adjust_style_ratio(style, -0.2)
             needs_linguistic_update = True
 
-        elif signal_type == "correction_length":
+        elif signal_type == "length_shorter":
             # Drastically reduce preferred response length
             current_len = interaction.get("avg_response_length", 50)
             interaction["avg_response_length"] = max(10, current_len // 2)
             needs_interaction_update = True
 
-        elif signal_type == "correction_short":
+        elif signal_type == "length_more_detailed":
             # Increase preferred response length
             current_len = interaction.get("avg_response_length", 50)
             interaction["avg_response_length"] = min(500, current_len * 2)

@@ -19,7 +19,7 @@ class BatchProcessor:
 
     Responsibilities:
     1. Vocabulary Census -- track all terms, frequencies, emergence dates
-    2. Linguistic Style Analysis -- Banglish ratio trends, sentence length trends
+    2. Linguistic Style Analysis -- language-mix trends, sentence length trends
     3. Interaction Pattern Analysis -- active hours, response length preferences
     4. Domain Map Update -- what topics are hot right now
     5. Exemplar Re-selection -- pick the best few-shot examples
@@ -140,17 +140,19 @@ class BatchProcessor:
             decay_factor = math.exp(-0.03 * days_since)
             data["effective_weight"] = round(data["total_count"] * decay_factor, 2)
 
-        # Extract top Banglish terms (for quick prompt access)
-        banglish_terms = {}
+        # Extract top local/personal terms (for quick prompt access). The current detector
+        # still ships a legacy South Asian lexicon, but prompt consumers treat this as
+        # user-learned local vocabulary rather than a default language instruction.
+        local_terms = {}
         from .realtime import COMPILED_BANGLISH
 
         for word, data in word_registry.items():
             for pattern, normalized in COMPILED_BANGLISH.items():
                 if pattern.search(word) and (
-                    normalized not in banglish_terms
-                    or data["effective_weight"] > banglish_terms[normalized]["weight"]
+                    normalized not in local_terms
+                    or data["effective_weight"] > local_terms[normalized]["weight"]
                 ):
-                    banglish_terms[normalized] = {
+                    local_terms[normalized] = {
                         "weight": data["effective_weight"],
                         "variants": [word],
                         "last_seen": data["last_seen"],
@@ -170,8 +172,8 @@ class BatchProcessor:
             vocab["archived_count"] = vocab.get("archived_count", 0) + evict_count
 
         vocab["registry"] = word_registry
-        vocab["top_banglish"] = dict(
-            sorted(banglish_terms.items(), key=lambda x: x[1]["weight"], reverse=True)[:30]
+        vocab["top_local_terms"] = dict(
+            sorted(local_terms.items(), key=lambda x: x[1]["weight"], reverse=True)[:30]
         )  # Keep top 30
         vocab["total_unique_words"] = len(word_registry)
         vocab["last_updated"] = now.isoformat()
@@ -185,7 +187,7 @@ class BatchProcessor:
         linguistic = self.profile_mgr.load_layer("linguistic")
 
         # Analyze this batch
-        banglish_msgs = 0
+        local_language_msgs = 0
         english_msgs = 0
         mixed_msgs = 0
         total_words = 0
@@ -196,8 +198,8 @@ class BatchProcessor:
 
         for msg in messages:
             lang = msg.get("rt_language", "en")
-            if lang == "banglish":
-                banglish_msgs += 1
+            if lang in {"local", "regional", "banglish", "bn"}:
+                local_language_msgs += 1
             elif lang == "en":
                 english_msgs += 1
             else:
@@ -215,7 +217,7 @@ class BatchProcessor:
         # Update rolling averages
         current_batch = {
             "timestamp": datetime.now().isoformat(),
-            "banglish_ratio": round(banglish_msgs / max(total_msgs, 1), 3),
+            "language_mix_ratio": round(local_language_msgs / max(total_msgs, 1), 3),
             "english_ratio": round(english_msgs / max(total_msgs, 1), 3),
             "mixed_ratio": round(mixed_msgs / max(total_msgs, 1), 3),
             "avg_message_length": round(sum(avg_lengths) / max(len(avg_lengths), 1), 1),
@@ -234,9 +236,27 @@ class BatchProcessor:
         weights = [1.0 + (i * 0.2) for i in range(len(style_history))]
         total_weight = sum(weights)
 
+        previous_style = dict(linguistic.get("current_style", {}))
         current_style = {
-            "banglish_ratio": round(
-                sum(h["banglish_ratio"] * w for h, w in zip(style_history, weights, strict=False))
+            **{
+                key: previous_style[key]
+                for key in (
+                    "preferred_style",
+                    "preferred_language",
+                    "region",
+                    "locality",
+                    "local_language_examples",
+                    "local_language_confidence",
+                    "ask_user_to_teach",
+                    "primary_language_ratio",
+                )
+                if key in previous_style
+            },
+            "language_mix_ratio": round(
+                sum(
+                    h.get("language_mix_ratio", h.get("banglish_ratio", 0.0)) * w
+                    for h, w in zip(style_history, weights, strict=False)
+                )
                 / total_weight,
                 3,
             ),
@@ -254,17 +274,22 @@ class BatchProcessor:
                 3,
             ),
         }
+        # Backwards-compatible alias for older profile readers/tests. New code should
+        # prefer language_mix_ratio because the local language is user-configured.
+        current_style["banglish_ratio"] = current_style["language_mix_ratio"]
 
         # Detect drift (compare current vs first half of history)
         if len(style_history) >= 4:
-            old_banglish = sum(
-                h["banglish_ratio"] for h in style_history[: len(style_history) // 2]
+            old_mix = sum(
+                h.get("language_mix_ratio", h.get("banglish_ratio", 0.0))
+                for h in style_history[: len(style_history) // 2]
             ) / (len(style_history) // 2)
-            new_banglish = sum(
-                h["banglish_ratio"] for h in style_history[len(style_history) // 2 :]
+            new_mix = sum(
+                h.get("language_mix_ratio", h.get("banglish_ratio", 0.0))
+                for h in style_history[len(style_history) // 2 :]
             ) / (len(style_history) - len(style_history) // 2)
-            drift = new_banglish - old_banglish
-            current_style["banglish_drift"] = round(drift, 3)
+            drift = new_mix - old_mix
+            current_style["language_mix_drift"] = round(drift, 3)
             current_style["drift_direction"] = (
                 "increasing" if drift > 0.05 else "decreasing" if drift < -0.05 else "stable"
             )

@@ -14,6 +14,11 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+try:
+    from synapse_config import SynapseConfig
+except ImportError:  # pragma: no cover - import path is established by the CLI entrypoint
+    SynapseConfig = None  # type: ignore[assignment]
+
 # ---------------------------------------------------------------------------
 # Conditional Rich import — matches the pattern in cli/onboard.py
 # ---------------------------------------------------------------------------
@@ -310,11 +315,14 @@ def run_verify(non_interactive: bool = False) -> int:
         0 — all checks passed (or skipped, e.g. WhatsApp).
         1 — at least one check failed, or synapse.json is missing.
     """
-    from synapse_config import SynapseConfig  # noqa: PLC0415
-
     # ------------------------------------------------------------------
     # Guard: synapse.json must exist
     # ------------------------------------------------------------------
+    if SynapseConfig is None:
+        _print("[red]Error loading config: synapse_config is unavailable.[/red]")
+        _print("[yellow]Run 'synapse setup' first to create synapse.json.[/yellow]")
+        return 1
+
     try:
         config = SynapseConfig.load()
     except Exception as exc:  # noqa: BLE001
@@ -379,4 +387,3 @@ def run_verify(non_interactive: bool = False) -> int:
 
     _print(f"\n[green]All {len(all_results)} component(s) verified successfully.[/green]")
     return 0
-

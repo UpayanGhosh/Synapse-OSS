@@ -115,7 +115,7 @@ class RealtimeProcessor:
     def _load_sentiment_lexicon(self) -> dict:
         """
         Simple lexicon-based sentiment. Not using VADER because
-        it doesn't understand Banglish. Custom bilingual lexicon.
+        it does not understand many user-specific local-language terms.
         """
         return {
             # Positive
@@ -189,7 +189,11 @@ class RealtimeProcessor:
         return {"rt_sentiment": sentiment, "rt_language": language, "rt_mood_signal": mood}
 
     def _detect_language(self, text: str, words: list) -> str:
-        """Classify as en, bn, banglish, or mixed."""
+        """Classify as English, local-language, or mixed.
+
+        The current local-language detector uses a legacy South Asian seed lexicon
+        until user-taught regional vocabularies are generalized.
+        """
         banglish_count = 0
         english_count = 0
 

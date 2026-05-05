@@ -50,16 +50,18 @@ def decide_turn_stance(
     role: str = "casual",
     session_mode: str = "safe",
     cognitive_merge=None,
+    style_policy=None,
 ) -> StanceDecision:
     """Choose stance, humor dose, and autonomy from the current user turn."""
 
     msg = " ".join(str(user_msg or "").lower().split())
     role_l = str(role or "").lower()
+    tone_policy = str(getattr(style_policy, "tone", "") or "").lower()
     strategy = str(getattr(cognitive_merge, "response_strategy", "") or "").lower()
     tone = str(getattr(cognitive_merge, "suggested_tone", "") or "").lower()
     tension = float(getattr(cognitive_merge, "tension_level", 0.0) or 0.0)
 
-    if session_mode == "spicy" or role_l != "casual":
+    if session_mode == "spicy" or role_l != "casual" or tone_policy == "professional_precise":
         return StanceDecision(
             stance="precise operator",
             emotional_label="task focused",
@@ -67,7 +69,10 @@ def decide_turn_stance(
             autonomy="answer directly, use tools only when needed",
             response_shape=(
                 "Give the useful answer first.",
-                "Keep personality light; do not force closeness into non-casual work.",
+                (
+                    "Keep personality light; do not force closeness into professional "
+                    "or non-casual work."
+                ),
             ),
             forbidden_moves=("Do not perform friend banter where precision is more important.",),
         )

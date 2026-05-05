@@ -6,7 +6,7 @@ Defines:
   - VALIDATION_MODELS: cheapest model per provider for max_tokens=1 validation ping
   - _KEY_MAP: env var names per provider (mirrors llm_router.py exactly)
   - PROVIDER_GROUPS: grouped provider list for questionary.checkbox() display
-  - PROVIDER_LIST: flat list of all 19 provider keys
+  - PROVIDER_LIST: flat list of all supported provider keys
   - validate_provider(): litellm.acompletion validation call for cloud providers
   - validate_ollama(): httpx GET /api/version health check (no litellm)
   - github_copilot_device_flow(): OAuth device code flow for GitHub Copilot
@@ -47,7 +47,7 @@ class ValidationResult:
     """Result of a provider validation attempt.
 
     Fields:
-      ok     — True if the key is usable (even if quota is exceeded).
+      ok     — True if the key is usable right now.
       error  — Short error code: "invalid_key" | "quota_exceeded" | "timeout"
                | "network_error" | "bad_request" | "http_error" | "not_running" | "unknown"
       detail — Raw exception / HTTP message for display in the wizard.
@@ -65,7 +65,9 @@ class ValidationResult:
 VALIDATION_MODELS: dict[str, str] = {
     "anthropic": "anthropic/claude-3-5-haiku-latest",
     "openai": "openai/gpt-4o-mini",
-    "gemini": "gemini/gemini-2.0-flash",
+    # Flash-Lite has the broadest current free-tier availability; older 2.0
+    # Flash and Pro models can legitimately return per-project quota limit: 0.
+    "gemini": "gemini/gemini-2.5-flash-lite",
     "groq": "groq/llama-3.3-70b-versatile",
     "openrouter": "openrouter/auto",
     "mistral": "mistral/mistral-small-latest",
@@ -194,8 +196,10 @@ async def _validate_async(provider: str, api_key: str) -> ValidationResult:
     except AuthenticationError as exc:
         return ValidationResult(ok=False, error="invalid_key", detail=str(exc))
     except RateLimitError as exc:
-        # Rate limit means the key IS valid — quota is exhausted
-        return ValidationResult(ok=True, error="quota_exceeded", detail=str(exc))
+        # Auth succeeded, but the provider/model is not usable right now. Treat
+        # this as a failed readiness check so onboarding does not save a key
+        # that immediately breaks chat.
+        return ValidationResult(ok=False, error="quota_exceeded", detail=str(exc))
     except Timeout as exc:
         return ValidationResult(ok=False, error="timeout", detail=str(exc))
     except APIConnectionError as exc:
@@ -219,16 +223,18 @@ def validate_provider(provider: str, api_key: str) -> ValidationResult:
 
     Returns ValidationResult — never raises.
 
-    Special case: RateLimitError → ok=True, error="quota_exceeded".
-    The key is accepted with a warning; the user can still configure the provider.
+    Special case: RateLimitError → ok=False, error="quota_exceeded".
+    The key may be syntactically valid, but the provider/model is not usable
+    right now, so onboarding should not silently accept it.
 
     Vertex AI is handled specially: it uses GCP ADC / service-account JSON credentials
     already set in the environment by the caller (VERTEXAI_PROJECT, VERTEXAI_LOCATION,
     GOOGLE_APPLICATION_CREDENTIALS). The api_key arg is ignored (the caller may pass
     the project_id for logging purposes).
     """
-    if provider == "vertex_ai":
-        # Vertex AI uses GCP ADC / SA creds already injected into env by the caller.
+    if provider in {"bedrock", "vertex_ai"}:
+        # Bedrock and Vertex AI use provider-specific credentials already injected
+        # into env by the caller; there is no single API key env var to manage here.
         return asyncio.run(_validate_async(provider, api_key))
     env_var = _KEY_MAP[provider]
     old = os.environ.get(env_var)
@@ -243,7 +249,7 @@ def validate_provider(provider: str, api_key: str) -> ValidationResult:
 
 
 def validate_ollama(
-    api_base: str = "http://localhost:11434", model: str | None = None
+    api_base: str | None = "http://localhost:11434", model: str | None = None
 ) -> ValidationResult:
     """Validate Ollama availability via a synchronous httpx GET to /api/version.
 
@@ -261,6 +267,8 @@ def validate_ollama(
       ValidationResult(ok=False, error="not_running")     — connection refused
       ValidationResult(ok=False, error="timeout")         — 5 s timeout exceeded
     """
+    api_base = (api_base or "http://localhost:11434").strip().rstrip("/")
+
     try:
         resp = httpx.get(f"{api_base}/api/version", timeout=5.0)
         if resp.status_code == 200:
@@ -467,73 +475,60 @@ async def openai_codex_device_flow(console) -> dict | None:
             console.print(f"Enter code: [bold yellow]{user_code}[/bold yellow]\n")
         printed_code["done"] = True
 
-    creds = None
-    for attempt in range(2):
-        try:
-            creds = await asyncio.to_thread(
-                openai_codex_oauth.login_device_code,
-                open_browser=True,
-                code_sink=_code_sink,
+    try:
+        creds = await asyncio.to_thread(
+            openai_codex_oauth.login_device_code,
+            open_browser=True,
+            code_sink=_code_sink,
+        )
+    except Exception as exc:  # noqa: BLE001
+        detail = str(exc)
+        lowered = detail.lower()
+        unknown_device_auth = (
+            "device authorization is unknown" in lowered
+            or "device authorization unknown" in lowered
+            or "device authorization remained unknown" in lowered
+        )
+        if unknown_device_auth:
+            console.print(
+                "[yellow]Enable Device Code Authorization for Codex in "
+                "ChatGPT Security Settings, then retry this flow with a "
+                "fresh device code.[/yellow]"
             )
-            break
-        except Exception as exc:  # noqa: BLE001
-            detail = str(exc)
-            lowered = detail.lower()
-            unknown_device_auth = (
-                "device authorization is unknown" in lowered
-                or "device authorization unknown" in lowered
+        if "cloudflare challenge" in lowered:
+            console.print(
+                "[yellow]OpenAI auth endpoint returned a Cloudflare challenge "
+                "page to this terminal session.[/yellow]"
             )
-            if unknown_device_auth and attempt == 0:
-                console.print(
-                    "[yellow]OpenAI device authorization was not recognized. "
-                    "Requesting a fresh code and retrying once...[/yellow]"
-                )
-                printed_code["done"] = False
-                continue
-            if unknown_device_auth:
-                console.print(
-                    "[yellow]Enable Device Code Authorization for Codex in "
-                    "ChatGPT Security Settings, then retry this flow with a "
-                    "fresh device code.[/yellow]"
-                )
-            if "cloudflare challenge" in lowered:
-                console.print(
-                    "[yellow]OpenAI auth endpoint returned a Cloudflare challenge "
-                    "page to this terminal session.[/yellow]"
-                )
-                allow_codex_import = _env_truthy("SYNAPSE_OPENAI_CODEX_IMPORT_FROM_CODEX")
-                if allow_codex_import:
-                    try:
-                        imported = await asyncio.to_thread(
-                            openai_codex_oauth.import_codex_cli_credentials
-                        )
-                    except Exception:
-                        imported = None
-                    if imported and imported.access_token and imported.refresh_token:
-                        console.print(
-                            "[green]Imported OpenAI Codex credentials from local Codex CLI auth state.[/green] "
-                            f"{imported.email or '(email unavailable)'}"
-                        )
-                        return {
-                            "email": imported.email,
-                            "profile_name": imported.profile_name,
-                            "account_id": imported.account_id,
-                        }
-                console.print(
-                    "[yellow]Retry from a normal browser-authenticated network "
-                    "(disable strict bot-blocking/VPN/proxy), then rerun "
-                    "this Synapse setup flow for a fresh device code.[/yellow]"
-                )
-                if not allow_codex_import:
-                    console.print(
-                        "[dim]Tip: set SYNAPSE_OPENAI_CODEX_IMPORT_FROM_CODEX=1 "
-                        "only if you want to reuse your local Codex CLI account.[/dim]"
+            allow_codex_import = _env_truthy("SYNAPSE_OPENAI_CODEX_IMPORT_FROM_CODEX")
+            if allow_codex_import:
+                try:
+                    imported = await asyncio.to_thread(
+                        openai_codex_oauth.import_codex_cli_credentials
                     )
-            console.print(f"[red]OpenAI Codex authorization failed: {exc}[/red]")
-            return None
-
-    if creds is None:
-        console.print("[red]OpenAI Codex authorization failed: unknown OAuth error[/red]")
+                except Exception:
+                    imported = None
+                if imported and imported.access_token and imported.refresh_token:
+                    console.print(
+                        "[green]Imported OpenAI Codex credentials from local Codex CLI auth state.[/green] "
+                        f"{imported.email or '(email unavailable)'}"
+                    )
+                    return {
+                        "email": imported.email,
+                        "profile_name": imported.profile_name,
+                        "account_id": imported.account_id,
+                    }
+            console.print(
+                "[yellow]Retry from a normal browser-authenticated network "
+                "(disable strict bot-blocking/VPN/proxy), then rerun "
+                "this Synapse setup flow for a fresh device code.[/yellow]"
+            )
+            if not allow_codex_import:
+                console.print(
+                    "[dim]Tip: set SYNAPSE_OPENAI_CODEX_IMPORT_FROM_CODEX=1 "
+                    "only if you want to reuse your local Codex CLI account.[/dim]"
+                )
+        console.print(f"[red]OpenAI Codex authorization failed: {exc}[/red]")
         return None
 
     if not printed_code["done"]:

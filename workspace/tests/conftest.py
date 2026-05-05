@@ -138,12 +138,25 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "acceptance: Acceptance tests")
     config.addinivalue_line("markers", "performance: Performance tests")
     config.addinivalue_line("markers", "smoke: Smoke tests")
+    config.addinivalue_line("markers", "live_provider: Opt-in live LLM provider smoke tests")
 
 
 # Custom pytest options
 def pytest_addoption(parser):
     """Add custom command line options."""
     parser.addoption("--run-slow", action="store_true", default=False, help="Run slow tests")
+    parser.addoption(
+        "--run-live-providers",
+        action="store_true",
+        default=False,
+        help="Run live provider smoke tests when matching credentials/services are present",
+    )
+    parser.addoption(
+        "--live-provider",
+        action="append",
+        default=[],
+        help="Limit live provider tests to one provider key; can be passed multiple times",
+    )
 
 
 def pytest_collection_modifyitems(config, items):
@@ -153,6 +166,11 @@ def pytest_collection_modifyitems(config, items):
         for item in items:
             if "slow" in item.keywords:
                 item.add_marker(skip_slow)
+    if not config.getoption("--run-live-providers"):
+        skip_live = pytest.mark.skip(reason="need --run-live-providers option to run")
+        for item in items:
+            if "live_provider" in item.keywords:
+                item.add_marker(skip_live)
 
 
 # ---------------------------------------------------------------------------

@@ -67,7 +67,7 @@ The system automatically generates its "soul" data when you first start the API 
 ### Key Files to Edit:
 *   **core_identity.json**: Define your name, the bot's name, and personality "pillars".
 *   **exemplars.json**: Replace the default `pairs` with your own (Few-Shot learning).
-*   **linguistic.json**: Change `primary_language_ratio` (0.0 for neutral/formal, 1.0 for maximum local-language mix).
+*   **linguistic.json**: Set `preferred_language`, region/locality, local examples, and `language_mix_ratio` (0.0 for neutral default usage, 1.0 for maximum local-language mix).
 
 For example, to change who the bot thinks you are, edit `core_identity.json`:
 
@@ -162,10 +162,10 @@ under the relevant category:
 correction_formal:
   - "why (are you|so) formal"
   - "stop being (formal|robotic)"
-  # Bengali / Banglish:
-  # - "beshi formal hoyona"
   # Spanish:
   # - "deja de ser tan formal"
+  # Hindi/Urdu:
+  # - "bahut formal mat bolo"
 
 correction_length:
   - "too long"
@@ -208,7 +208,7 @@ Synapse includes an `ImplicitFeedbackDetector` that continuously monitors your m
 
 When you say things like:
 - **"Too long"** or **"keep it short"** → Synapse halves its preferred response length
-- **"Stop being formal"** or **"sound like a robot"** → Synapse increases its casual/Banglish ratio
+- **"Stop being formal"** or **"sound like a robot"** → Synapse increases its casual/local-language ratio
 - **"Be serious"** or **"professional"** → Synapse decreases casual language
 - **"Elaborate"** or **"explain more"** → Synapse doubles its response length
 - **"Good job"** or **"perfect"** → Synapse reinforces its current style
@@ -229,7 +229,7 @@ Open it, add your phrases under the relevant category, save, and restart. Exampl
 correction_formal:
   - "why (are you|so) formal"
   - "stop being (formal|robotic)"
-  - "beshi formal hoyona"     # your language here
+  - "bahut formal mat bolo"   # your language here
 
 praise:
   - "good (boy|job)"
@@ -243,7 +243,7 @@ to built-in English defaults automatically.
 
 | Category | What it adjusts |
 |---|---|
-| `correction_formal` | Raises `primary_language_ratio` (more casual/local-language) |
+| `correction_formal` | Raises `primary_language_ratio` / `language_mix_ratio` (more casual/local-language) |
 | `correction_casual` | Lowers `primary_language_ratio` (more formal) |
 | `correction_length` | Halves `avg_response_length` |
 | `correction_short` | Doubles `avg_response_length` |
@@ -261,6 +261,9 @@ to built-in English defaults automatically.
 | **Knowledge Graph** | A database that stores facts as connections (Subject → Relation → Object). |
 | **RAG** | Retrieval-Augmented Generation - looking up info before answering. |
 | **Subject-Relation-Object** | The way facts are stored: "User works_as Backend Engineer". |
-| **primary_language_ratio** | A setting controlling how strongly Synapse leans toward your casual/local-language style (0.0 = neutral/formal, 1.0 = maximum local flavor). Adjusted automatically by feedback phrases. |
+| **preferred_language** | The language or language mix Synapse should default to. |
+| **region/locality** | Cultural and dialect context supplied by the user. |
+| **local_language_examples** | User-taught phrases and corrections Synapse can imitate carefully. |
+| **primary_language_ratio / language_mix_ratio** | Settings controlling how strongly Synapse leans toward your casual/local-language style (0.0 = neutral default usage, 1.0 = maximum local flavor). Adjusted automatically by feedback phrases. |
 
 > **Tip:** For setup instructions and prerequisites, see [HOW_TO_RUN.md](HOW_TO_RUN.md).

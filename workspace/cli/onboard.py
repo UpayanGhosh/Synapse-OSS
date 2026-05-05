@@ -297,7 +297,7 @@ def _run_non_interactive(
             raise typer.Exit(1)
 
         result = validate_provider(provider, api_key)
-        if not result.ok and result.error != "quota_exceeded":
+        if not result.ok:
             typer.echo(
                 f"ERROR: Provider validation failed: {result.error} — {result.detail}",
                 err=True,
@@ -358,8 +358,23 @@ def _run_non_interactive(
     energy_level = os.environ.get("SYNAPSE_ENERGY_LEVEL", "").strip()
     interests_raw = os.environ.get("SYNAPSE_INTERESTS", "").strip()
     privacy_level = os.environ.get("SYNAPSE_PRIVACY_LEVEL", "").strip()
+    preferred_language = os.environ.get("SYNAPSE_PREFERRED_LANGUAGE", "").strip()
+    region = os.environ.get("SYNAPSE_REGION", "").strip()
+    locality = os.environ.get("SYNAPSE_LOCALITY", "").strip()
+    local_examples_raw = os.environ.get("SYNAPSE_LOCAL_LANGUAGE_EXAMPLES", "").strip()
 
-    if any([communication_style, energy_level, interests_raw, privacy_level]):
+    if any(
+        [
+            communication_style,
+            energy_level,
+            interests_raw,
+            privacy_level,
+            preferred_language,
+            region,
+            locality,
+            local_examples_raw,
+        ]
+    ):
         try:
             from cli.sbs_profile_init import (  # noqa: PLC0415
                 ENERGY_CHOICES,
@@ -406,6 +421,11 @@ def _run_non_interactive(
                     err=True,
                 )
                 parsed_interests = [i for i in parsed_interests if i in INTEREST_CHOICES]
+            local_examples = [
+                item.strip()
+                for item in local_examples_raw.split("|")
+                if item.strip()
+            ]
 
             initialize_sbs_from_wizard(
                 {
@@ -413,6 +433,11 @@ def _run_non_interactive(
                     "energy_level": energy_level or "calm_and_steady",
                     "interests": parsed_interests,
                     "privacy_level": privacy_level or "selective",
+                    "preferred_language": preferred_language or "English",
+                    "region": region,
+                    "locality": locality,
+                    "local_language_examples": local_examples,
+                    "ask_user_to_teach_language": True,
                 },
                 data_root=data_root,
             )
@@ -625,7 +650,7 @@ def _fetch_provider_models(
                     continue
                 ctx = m.get("inputTokenLimit")
                 out.append(_make_entry(f"gemini/{name}", name, context_window=ctx))
-            return sorted(out, key=lambda x: str(x["label"]))
+            return sorted(out, key=_gemini_catalog_sort_key)
 
         # --- Anthropic: custom auth headers ---
         if provider == "anthropic":
@@ -731,6 +756,30 @@ def _fetch_provider_models(
         return out
     except Exception:  # noqa: BLE001 — any network/parse error → empty list
         return []
+
+
+def _gemini_catalog_sort_key(entry: dict[str, object]) -> tuple[int, str]:
+    """Put broadly usable Gemini Flash models ahead of Gemma/Pro entries.
+
+    Google's live /models endpoint can include Gemma open models and Pro models
+    whose quota differs from Flash. Alphabetical sorting can surface Gemma first,
+    which makes onboarding feel like "Gemini validated" but chat used a very
+    different quota bucket. Keep all models available, but nudge safe defaults up.
+    """
+    label = str(entry.get("label") or entry.get("value") or "").lower()
+    if "gemini-2.5-flash-lite" in label:
+        rank = 0
+    elif "gemini-2.5-flash" in label:
+        rank = 1
+    elif "gemini" in label and "flash" in label:
+        rank = 2
+    elif "gemini" in label and "pro" in label:
+        rank = 4
+    elif "gemma" in label:
+        rank = 6
+    else:
+        rank = 8
+    return (rank, label)
 
 
 def _extract_provider_credentials(
@@ -1317,8 +1366,9 @@ def _build_model_mappings_interactive(
       4. Use a searchable fuzzy picker (InquirerPy.fuzzy or questionary.autocomplete)
          so the user types to filter. Always include an `[Enter model manually]`
          escape hatch for models not in the catalog.
-      5. No pre-selected defaults. Single-model collapse: auto-assign when
-         only one model is available. `vault` role is forced to Ollama.
+      5. No pre-selected defaults. Even a single discovered model still goes
+         through the picker so the manual-entry escape hatch is available.
+         `vault` role is forced to Ollama.
     """
     _print("\n[bold cyan]--- Fetching available models from providers ---[/]")
     catalog = _fetch_live_catalog(providers, config)
@@ -1330,22 +1380,6 @@ def _build_model_mappings_interactive(
             "Edit synapse.json → model_mappings manually.[/]"
         )
         return {}
-
-    # Single-model collapse — nothing to pick
-    if len(flat) == 1:
-        only = flat[0]
-        _print("\n[bold cyan]--- Model Selection ---[/]")
-        _print(
-            f"[green]Only one model available ({only['value']}) — "
-            "using it for all roles.[/]"
-        )
-        mappings: dict = {
-            role: {"model": only["value"], "fallback": None} for role, _, _ in _ROLES
-        }
-        if "ollama" in providers:
-            mappings["vault"] = {"model": "ollama_chat/llama3.3", "fallback": None}
-        _print_mapping_summary(mappings)
-        return mappings
 
     _print("\n[bold cyan]--- Model Selection ---[/]")
     _print(
@@ -1814,9 +1848,8 @@ def _collect_provider_keys(
                     result = validate_provider("bedrock", aws_key)
             else:
                 result = validate_provider("bedrock", aws_key)
-            if result.ok or result.error == "quota_exceeded":
-                quota_note = " (quota exceeded — key accepted)" if result.error else ""
-                _print(f"  [green]Bedrock credentials valid[/]{quota_note}")
+            if result.ok:
+                _print("  [green]Bedrock credentials valid[/]")
                 config["providers"]["bedrock"] = {
                     "aws_access_key_id": aws_key,
                     "aws_secret_access_key": aws_secret,
@@ -1881,9 +1914,8 @@ def _collect_provider_keys(
                     result = validate_provider("vertex_ai", project_id)
             else:
                 result = validate_provider("vertex_ai", project_id)
-            if result.ok or result.error == "quota_exceeded":
-                quota_note = " (quota exceeded — key accepted)" if result.error else ""
-                _print(f"  [green]Vertex AI credentials valid[/]{quota_note}")
+            if result.ok:
+                _print("  [green]Vertex AI credentials valid[/]")
                 config["providers"]["vertex_ai"] = {
                     "project_id": project_id,
                     "location": location,
@@ -1891,6 +1923,38 @@ def _collect_provider_keys(
                 }
             else:
                 _print(f"  [red]Vertex AI validation failed: {result.error}[/]")
+            continue
+
+        # Baidu Qianfan — litellm needs both QIANFAN_AK and QIANFAN_SK.
+        if provider == "qianfan":
+            access_key = prompter.text("Qianfan Access Key [QIANFAN_AK]:", password=True)  # type: ignore[attr-defined]
+            secret_key = prompter.text("Qianfan Secret Key [QIANFAN_SK]:", password=True)  # type: ignore[attr-defined]
+            if not all([access_key, secret_key]):
+                continue
+            old_secret = os.environ.get("QIANFAN_SK")
+            os.environ["QIANFAN_SK"] = secret_key.strip()
+            try:
+                if _RICH_AVAILABLE and console is not None:
+                    with console.status("[yellow]Validating qianfan credentials...[/]"):
+                        result = validate_provider("qianfan", access_key.strip())
+                else:
+                    result = validate_provider("qianfan", access_key.strip())
+            finally:
+                if old_secret is None:
+                    os.environ.pop("QIANFAN_SK", None)
+                else:
+                    os.environ["QIANFAN_SK"] = old_secret
+            if result.ok:
+                _print("  [green]checkmark[/] qianfan credentials valid")
+                config["providers"]["qianfan"] = {
+                    "api_key": access_key.strip(),
+                    "access_key": access_key.strip(),
+                    "secret_key": secret_key.strip(),
+                }
+            elif result.error == "quota_exceeded":
+                _print("  [red]x[/] qianfan quota exhausted — not saving unusable credentials.")
+            else:
+                _print(f"  [red]x[/] qianfan: {result.error} — {result.detail or 'check key'}")
             continue
 
         # Standard cloud provider: password prompt + validate_provider()
@@ -1913,16 +1977,16 @@ def _collect_provider_keys(
                 result = validate_provider(provider, key.strip())
 
             if result.ok:
-                quota_note = (
-                    " (quota exceeded — key accepted)" if result.error == "quota_exceeded" else ""
-                )
-                _print(f"  [green]checkmark[/] {provider} key valid{quota_note}")
+                _print(f"  [green]checkmark[/] {provider} key valid")
                 config["providers"][provider] = {"api_key": key.strip()}
                 break
             elif result.error == "quota_exceeded":
-                _print("  [yellow]  Key valid but quota exhausted — saving key.[/]")
-                config["providers"][provider] = {"api_key": key.strip()}
-                break
+                _print(
+                    "  [red]x[/] "
+                    f"{provider}: quota/rate limit exceeded on validation model — "
+                    "not saving an unusable provider. Check AI Studio quotas/billing "
+                    "or try a different key/project."
+                )
             elif result.error in ("timeout", "network_error") and attempt < MAX_KEY_ATTEMPTS - 1:
                 _print(f"  [yellow]  {result.error} — retrying in {NETWORK_RETRY_DELAY}s...[/]")
                 time.sleep(NETWORK_RETRY_DELAY)
@@ -1941,11 +2005,13 @@ def _run_sbs_questions(prompter: "object", data_root: Path) -> None:
     Called at the end of _run_interactive_impl(), after config is written
     but before the daemon install step. Failure here must never crash the wizard.
 
-    Asks 4 targeted questions:
+    Asks targeted questions:
       1. Communication style preference
       2. Energy / mood level
       3. Topic interests (multi-select)
       4. Privacy sensitivity
+      5. Region / locality / preferred language
+      6. Optional local-language examples
 
     Then offers an optional WhatsApp history import.
     """
@@ -1996,12 +2062,40 @@ def _run_sbs_questions(prompter: "object", data_root: Path) -> None:
         default="Selective - use judgment",
     )
 
+    # --- Q5: Region and language preference ---
+    region = prompter.text(  # type: ignore[attr-defined]
+        "What country or region should Synapse associate with your language/culture?",
+        default="",
+    ).strip()
+    locality = prompter.text(  # type: ignore[attr-defined]
+        "Any city, state, community, or locality Synapse should know? (optional)",
+        default="",
+    ).strip()
+    preferred_language = prompter.text(  # type: ignore[attr-defined]
+        "What language or language mix should Synapse use by default?",
+        default="English",
+    ).strip() or "English"
+    teach_local_language = prompter.confirm(  # type: ignore[attr-defined]
+        "Should Synapse ask you for examples when it is unsure about your local language or dialect?",
+        default=True,
+    )
+    example_text = prompter.text(  # type: ignore[attr-defined]
+        "Optional: teach one or two local phrases now (separate examples with |)",
+        default="",
+    ).strip()
+    local_examples = [item.strip() for item in example_text.split("|") if item.strip()]
+
     # --- Map display values to internal values ---
     answers = {
         "communication_style": STYLE_DISPLAY_MAP.get(style_display, "casual_and_witty"),
         "energy_level": ENERGY_DISPLAY_MAP.get(energy_display, "calm_and_steady"),
         "interests": [topic.lower() for topic in (interest_displays or [])],
         "privacy_level": PRIVACY_DISPLAY_MAP.get(privacy_display, "selective"),
+        "preferred_language": preferred_language,
+        "region": region,
+        "locality": locality,
+        "local_language_examples": local_examples,
+        "ask_user_to_teach_language": teach_local_language,
     }
 
     # --- Write profile layers ---
@@ -2287,7 +2381,7 @@ def _run_interactive_impl(
                 port=port,
             )
             code = run_cli_chat(options)
-        _raise_for_chat_exit_code(code)
+            _raise_for_chat_exit_code(code)
 
 
 def _resolve_whatsapp_bridge_dir() -> Path:

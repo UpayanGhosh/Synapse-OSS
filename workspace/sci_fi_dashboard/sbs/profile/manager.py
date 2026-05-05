@@ -79,7 +79,14 @@ class ProfileManager:
             },
             "linguistic": {
                 "current_style": {
-                    "banglish_ratio": 0.0,
+                    "preferred_language": "English",
+                    "region": "",
+                    "locality": "",
+                    "local_language_examples": [],
+                    "local_language_confidence": 0.0,
+                    "ask_user_to_teach": True,
+                    "language_mix_ratio": 0.0,
+                    "primary_language_ratio": 0.0,
                     "avg_message_length": 15,
                     "emoji_frequency": 0.1,
                 },
@@ -102,7 +109,7 @@ class ProfileManager:
             },
             "vocabulary": {
                 "registry": {},
-                "top_banglish": {},
+                "top_local_terms": {},
                 "total_unique_words": 0,
                 "archived_count": 0,
                 "last_updated": None,

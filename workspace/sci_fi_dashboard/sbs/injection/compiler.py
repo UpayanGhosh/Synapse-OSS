@@ -97,7 +97,7 @@ class PromptCompiler:
 You are {core.get("assistant_name", "Synapse")}, {core.get("user_name", "primary_user")}'s {core.get("relationship", "trusted_technical_companion")}.
 {address_line}
 Base tone: {core.get("base_tone", "casual_caring_witty")}.
-Language default: {core.get("base_language", "banglish_with_english_technical")}.
+Language default: {core.get("base_language", "neutral_english_until_user_preference_is_known")}.
 
 Personality:
 {pillars}
@@ -111,12 +111,12 @@ Absolute rules:
 
         # Generate adaptive instruction based on mood
         mood_instructions = {
-            "stressed": "He's under pressure right now. Be extra supportive, keep responses concise, offer to help prioritize.",
-            "playful": "He's in a good mood. Match his energy, joke around, use more Banglish slang.",
-            "tired": "He's fatigued. Keep it short, warm, suggest rest if appropriate.",
-            "focused": "He's in deep work mode. Be precise, technical, no fluff.",
-            "excited": "He's hyped about something. Share his excitement, be enthusiastic.",
-            "frustrated": "Something's annoying him. Be patient, acknowledge the frustration, help solve it.",
+            "stressed": "The user is under pressure right now. Be extra supportive, keep responses concise, offer to help prioritize.",
+            "playful": "The user is in a good mood. Match their energy and joke around in their preferred language style.",
+            "tired": "The user is fatigued. Keep it short, warm, suggest rest if appropriate.",
+            "focused": "The user is in deep work mode. Be precise, technical, no fluff.",
+            "excited": "The user is hyped about something. Share their excitement, be enthusiastic.",
+            "frustrated": "Something is annoying the user. Be patient, acknowledge the frustration, help solve it.",
             "neutral": "Normal mode. Be your usual self.",
             # Wizard-sourced moods (mapped from energy_level by sbs_profile_init)
             "energetic": "User is high-energy right now. Match their enthusiasm and keep the pace up.",
@@ -130,30 +130,60 @@ Current mood: {mood} (sentiment: {sentiment:+.2f})
 Instruction: {instruction}"""
 
     def _compile_vocabulary(self, vocab: dict, budget: int) -> str:
-        top_banglish = vocab.get("top_banglish", {})
-        if not top_banglish:
+        top_terms = vocab.get("top_local_terms") or vocab.get("top_banglish", {})
+        if not top_terms:
             return ""
 
         # Take top terms that fit in budget
-        terms = list(top_banglish.keys())[:15]
+        terms = list(top_terms.keys())[:15]
         term_list = ", ".join(terms)
 
         return f"""[ACTIVE VOCABULARY]
-User's current Banglish terms (use these naturally): {term_list}"""
+User's current local or personal vocabulary terms (use only when contextually natural): {term_list}"""
 
     def _compile_style(self, linguistic: dict) -> str:
         style = linguistic.get("current_style", {})
-        banglish_ratio = style.get("banglish_ratio", 0.3)
+        language_mix_ratio = style.get(
+            "language_mix_ratio",
+            style.get("primary_language_ratio", style.get("banglish_ratio", 0.0)),
+        )
         drift = style.get("drift_direction", "stable")
         preferred_style = style.get("preferred_style", "")
+        preferred_language = (style.get("preferred_language") or "English").strip()
+        region = (style.get("region") or "").strip()
+        locality = (style.get("locality") or "").strip()
+        examples = style.get("local_language_examples") or []
+        confidence = float(style.get("local_language_confidence", 0.0) or 0.0)
+        ask_to_teach = bool(style.get("ask_user_to_teach", False))
 
-        # Convert ratio to instruction
-        if banglish_ratio > 0.5:
-            lang_instruction = "Use heavy Banglish. Most of your response should be in Banglish."
-        elif banglish_ratio > 0.25:
-            lang_instruction = "Mix Banglish and English naturally. Technical terms in English, casual parts in Banglish."
+        # Convert ratio to a language-neutral instruction.
+        if language_mix_ratio > 0.5:
+            lang_instruction = (
+                f"Use {preferred_language} prominently, while keeping technical terms clear."
+            )
+        elif language_mix_ratio > 0.25:
+            lang_instruction = (
+                f"Blend {preferred_language} with English naturally when the user writes that way."
+            )
         else:
-            lang_instruction = "Primarily English with occasional Banglish flavor."
+            lang_instruction = (
+                f"Default to {preferred_language}. Do not add regional language flavor unless "
+                "the user uses it or has explicitly taught it."
+            )
+
+        locale_parts = [part for part in (region, locality) if part]
+        locale_line = f"User locale: {', '.join(locale_parts)}." if locale_parts else ""
+        example_line = ""
+        if examples:
+            example_line = "Local language examples learned: " + " | ".join(
+                str(item) for item in examples[:5]
+            )
+        learning_line = ""
+        if ask_to_teach and confidence < 0.4:
+            learning_line = (
+                "If local language nuance would help and you are uncertain, ask the user for "
+                "a short phrase, correction, or example instead of guessing."
+            )
 
         # Map preferred_style (written by setup wizard) to a tone directive
         style_directives = {
@@ -166,9 +196,12 @@ User's current Banglish terms (use these naturally): {term_list}"""
 
         return f"""[COMMUNICATION STYLE]
 {lang_instruction}
-Banglish trend: {drift}.
+Language mix trend: {drift}.
 Avg message length preference: {style.get("avg_message_length", 15)} words.
 Emoji usage: {"common" if style.get("emoji_frequency", 0) > 0.2 else "occasional" if style.get("emoji_frequency", 0) > 0.05 else "rare"}.
+{locale_line}
+{example_line}
+{learning_line}
 {tone_line}""".rstrip()
 
     def _compile_exemplars(self, exemplars: dict, max_chars: int) -> str:

@@ -704,10 +704,10 @@ class TestPromptCompiler:
         assert "[EMOTIONAL CONTEXT]" in result
 
     def test_compile_with_vocabulary(self, compiler):
-        """When vocabulary has top_banglish terms, they should appear in the prompt."""
+        """When vocabulary has top local terms, they should appear in the prompt."""
         comp, pm = compiler
         vocab = pm.load_layer("vocabulary")
-        vocab["top_banglish"] = {
+        vocab["top_local_terms"] = {
             "chai": {"weight": 5.0, "variants": ["chai"], "last_seen": "2025-06-01"},
             "bhai": {"weight": 3.0, "variants": ["bhai"], "last_seen": "2025-06-01"},
         }
@@ -869,32 +869,32 @@ class TestImplicitFeedback:
         return detector, pm
 
     def test_detect_formal_correction(self, feedback_env):
-        """'stop being robotic' should be detected as correction_formal."""
+        """'stop being robotic' should be detected as tone_more_casual."""
         detector, _ = feedback_env
         result = detector.analyze("stop being robotic")
         assert result is not None
-        assert result["type"] == "correction_formal"
+        assert result["type"] == "tone_more_casual"
 
     def test_detect_casual_correction(self, feedback_env):
-        """'be serious' or 'too casual' should be detected as correction_casual."""
+        """'be serious' or 'too casual' should be detected as tone_more_professional."""
         detector, _ = feedback_env
         result = detector.analyze("be serious please")
         assert result is not None
-        assert result["type"] == "correction_casual"
+        assert result["type"] == "tone_more_professional"
 
     def test_detect_length_correction(self, feedback_env):
-        """'too long' should be detected as correction_length."""
+        """'too long' should be detected as length_shorter."""
         detector, _ = feedback_env
         result = detector.analyze("that response was too long")
         assert result is not None
-        assert result["type"] == "correction_length"
+        assert result["type"] == "length_shorter"
 
     def test_detect_short_correction(self, feedback_env):
-        """'elaborate' should be detected as correction_short."""
+        """'elaborate' should be detected as length_more_detailed."""
         detector, _ = feedback_env
         result = detector.analyze("can you elaborate more?")
         assert result is not None
-        assert result["type"] == "correction_short"
+        assert result["type"] == "length_more_detailed"
 
     def test_detect_praise(self, feedback_env):
         """'perfect' or 'good job' should be detected as praise."""
@@ -919,13 +919,13 @@ class TestImplicitFeedback:
     def test_correction_prioritized_over_praise(self, feedback_env):
         """If both correction and praise are detected, correction should win."""
         detector, _ = feedback_env
-        # "perfect" is praise, "stop being robotic" is correction_formal
+        # "perfect" is praise, "stop being robotic" is tone_more_casual
         result = detector.analyze("stop being robotic, perfect example of what I dont want")
         assert result is not None
         assert result["type"].startswith("correction_") or result["type"] == "rejection"
 
     def test_apply_feedback_formal_increases_ratio(self, feedback_env):
-        """correction_formal should increase primary_language_ratio."""
+        """tone_more_casual should increase primary_language_ratio."""
         detector, pm = feedback_env
 
         # Set initial linguistic state
@@ -933,49 +933,64 @@ class TestImplicitFeedback:
         linguistic["current_style"] = {"primary_language_ratio": 0.3}
         pm.save_layer("linguistic", linguistic)
 
-        signal = {"type": "correction_formal", "matched_text": "why so formal", "context": None}
+        signal = {"type": "tone_more_casual", "matched_text": "why so formal", "context": None}
         detector.apply_feedback(signal)
 
         updated = pm.load_layer("linguistic")
         assert updated["current_style"]["primary_language_ratio"] == 0.5  # 0.3 + 0.2
 
     def test_apply_feedback_casual_decreases_ratio(self, feedback_env):
-        """correction_casual should decrease primary_language_ratio."""
+        """tone_more_professional should decrease primary_language_ratio."""
         detector, pm = feedback_env
 
         linguistic = pm.load_layer("linguistic")
         linguistic["current_style"] = {"primary_language_ratio": 0.5}
         pm.save_layer("linguistic", linguistic)
 
-        signal = {"type": "correction_casual", "matched_text": "be serious", "context": None}
+        signal = {"type": "tone_more_professional", "matched_text": "be serious", "context": None}
         detector.apply_feedback(signal)
 
         updated = pm.load_layer("linguistic")
         assert updated["current_style"]["primary_language_ratio"] == 0.3  # 0.5 - 0.2
+        assert updated["current_style"]["preferred_style"] == "formal_and_precise"
+
+    def test_apply_feedback_formal_switches_to_casual_style(self, feedback_env):
+        """'too formal' feedback should update preferred_style, not only ratios."""
+        detector, pm = feedback_env
+
+        linguistic = pm.load_layer("linguistic")
+        linguistic["current_style"] = {"preferred_style": "formal_and_precise"}
+        pm.save_layer("linguistic", linguistic)
+
+        signal = {"type": "tone_more_casual", "matched_text": "stop being robotic", "context": None}
+        detector.apply_feedback(signal)
+
+        updated = pm.load_layer("linguistic")
+        assert updated["current_style"]["preferred_style"] == "casual_and_witty"
 
     def test_apply_feedback_length_halves_response(self, feedback_env):
-        """correction_length should halve the avg_response_length."""
+        """length_shorter should halve the avg_response_length."""
         detector, pm = feedback_env
 
         interaction = pm.load_layer("interaction")
         interaction["avg_response_length"] = 100
         pm.save_layer("interaction", interaction)
 
-        signal = {"type": "correction_length", "matched_text": "too long", "context": None}
+        signal = {"type": "length_shorter", "matched_text": "too long", "context": None}
         detector.apply_feedback(signal)
 
         updated = pm.load_layer("interaction")
         assert updated["avg_response_length"] == 50  # 100 // 2
 
     def test_apply_feedback_short_doubles_response(self, feedback_env):
-        """correction_short should double the avg_response_length."""
+        """length_more_detailed should double the avg_response_length."""
         detector, pm = feedback_env
 
         interaction = pm.load_layer("interaction")
         interaction["avg_response_length"] = 50
         pm.save_layer("interaction", interaction)
 
-        signal = {"type": "correction_short", "matched_text": "elaborate", "context": None}
+        signal = {"type": "length_more_detailed", "matched_text": "elaborate", "context": None}
         detector.apply_feedback(signal)
 
         updated = pm.load_layer("interaction")
@@ -989,7 +1004,7 @@ class TestImplicitFeedback:
         linguistic["current_style"] = {"primary_language_ratio": 0.95}
         pm.save_layer("linguistic", linguistic)
 
-        signal = {"type": "correction_formal", "matched_text": "too formal", "context": None}
+        signal = {"type": "tone_more_casual", "matched_text": "too formal", "context": None}
         detector.apply_feedback(signal)
 
         updated = pm.load_layer("linguistic")
@@ -1003,7 +1018,7 @@ class TestImplicitFeedback:
         linguistic["current_style"] = {"primary_language_ratio": 0.05}
         pm.save_layer("linguistic", linguistic)
 
-        signal = {"type": "correction_casual", "matched_text": "too casual", "context": None}
+        signal = {"type": "tone_more_professional", "matched_text": "too casual", "context": None}
         detector.apply_feedback(signal)
 
         updated = pm.load_layer("linguistic")

@@ -252,7 +252,10 @@ class SBSOrchestrator:
             .get("current_style", {})
             .get(
                 "primary_language_ratio",
-                profile["linguistic"].get("current_style", {}).get("banglish_ratio"),
+                profile["linguistic"].get("current_style", {}).get(
+                    "language_mix_ratio",
+                    profile["linguistic"].get("current_style", {}).get("banglish_ratio"),
+                ),
             ),
             "vocab_size": profile["vocabulary"].get("total_unique_words", 0),
             "profile_version": profile["meta"].get("current_version", 0),

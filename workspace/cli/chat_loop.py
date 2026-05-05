@@ -143,6 +143,13 @@ def _send_message(
 
 def _diagnostic_hint(error: str) -> str:
     lowered = error.lower()
+    if "gateway authentication failed" in lowered or (
+        "http 401" in lowered and "invalid api key" in lowered
+    ):
+        return (
+            "Diagnostic hint: gateway token mismatch. This is not the Gemini/provider key. "
+            "Run /status, then restart the gateway or unset stale SYNAPSE_GATEWAY_TOKEN."
+        )
     if "unknown model" in lowered:
         return "Diagnostic hint: model route failed. Run /status, then synapse verify."
     return "Diagnostic hint: run /status, then synapse verify."

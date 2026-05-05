@@ -238,38 +238,41 @@ class TestPromptCompilerExtended:
         assert "14:00" in result
 
     @pytest.mark.unit
-    def test_compile_style_heavy_banglish(self, tmp_path):
-        """High banglish_ratio should produce heavy Banglish instruction."""
+    def test_compile_style_high_language_mix(self, tmp_path):
+        """High language_mix_ratio should use the configured preferred language."""
         pm = ProfileManager(tmp_path / "profiles")
         comp = PromptCompiler(pm)
 
         linguistic = pm.load_layer("linguistic")
         linguistic["current_style"] = {
-            "banglish_ratio": 0.7,
+            "preferred_language": "Spanish",
+            "language_mix_ratio": 0.7,
             "avg_message_length": 20,
             "emoji_frequency": 0.3,
         }
         pm.save_layer("linguistic", linguistic)
 
         result = comp.compile()
-        assert "heavy Banglish" in result
+        assert "Use Spanish prominently" in result
 
     @pytest.mark.unit
-    def test_compile_style_primarily_english(self, tmp_path):
-        """Low banglish_ratio should produce English instruction."""
+    def test_compile_style_defaults_to_preferred_language_without_regional_flavor(self, tmp_path):
+        """Low language_mix_ratio should not inject a hardcoded regional language."""
         pm = ProfileManager(tmp_path / "profiles")
         comp = PromptCompiler(pm)
 
         linguistic = pm.load_layer("linguistic")
         linguistic["current_style"] = {
-            "banglish_ratio": 0.1,
+            "preferred_language": "English",
+            "language_mix_ratio": 0.1,
             "avg_message_length": 15,
             "emoji_frequency": 0.01,
         }
         pm.save_layer("linguistic", linguistic)
 
         result = comp.compile()
-        assert "Primarily English" in result
+        assert "Default to English" in result
+        assert "Banglish" not in result
 
     @pytest.mark.unit
     def test_compile_no_exemplars_section_when_empty(self, tmp_path):
@@ -320,10 +323,10 @@ class TestImplicitFeedbackExtended:
     def test_default_patterns_have_all_categories(self):
         """_DEFAULT_PATTERNS should have all expected categories."""
         expected = {
-            "correction_formal",
-            "correction_casual",
-            "correction_length",
-            "correction_short",
+            "tone_more_casual",
+            "tone_more_professional",
+            "length_shorter",
+            "length_more_detailed",
             "praise",
             "rejection",
         }
@@ -352,6 +355,17 @@ class TestImplicitFeedbackExtended:
         result = detector.analyze("too long")
         assert result is not None
         assert result["context"] is None
+
+    @pytest.mark.unit
+    def test_professional_request_detected_as_casual_correction(self, tmp_path):
+        """Explicit professional tone requests should be detected immediately."""
+        pm = ProfileManager(tmp_path / "profiles")
+        detector = ImplicitFeedbackDetector(pm)
+
+        result = detector.analyze("Can you be professional from now on?")
+
+        assert result is not None
+        assert result["type"] == "tone_more_professional"
 
     @pytest.mark.unit
     def test_apply_feedback_praise_increments_count(self, tmp_path):
@@ -384,7 +398,7 @@ class TestImplicitFeedbackExtended:
 
     @pytest.mark.unit
     def test_apply_feedback_length_clamps_at_min(self, tmp_path):
-        """correction_length should not reduce below 10."""
+        """length_shorter should not reduce below 10."""
         pm = ProfileManager(tmp_path / "profiles")
         detector = ImplicitFeedbackDetector(pm)
 
@@ -392,7 +406,7 @@ class TestImplicitFeedbackExtended:
         interaction["avg_response_length"] = 15
         pm.save_layer("interaction", interaction)
 
-        signal = {"type": "correction_length", "matched_text": "too long", "context": None}
+        signal = {"type": "length_shorter", "matched_text": "too long", "context": None}
         detector.apply_feedback(signal)
 
         updated = pm.load_layer("interaction")
@@ -400,7 +414,7 @@ class TestImplicitFeedbackExtended:
 
     @pytest.mark.unit
     def test_apply_feedback_short_clamps_at_max(self, tmp_path):
-        """correction_short should not increase beyond 500."""
+        """length_more_detailed should not increase beyond 500."""
         pm = ProfileManager(tmp_path / "profiles")
         detector = ImplicitFeedbackDetector(pm)
 
@@ -408,7 +422,7 @@ class TestImplicitFeedbackExtended:
         interaction["avg_response_length"] = 300
         pm.save_layer("interaction", interaction)
 
-        signal = {"type": "correction_short", "matched_text": "elaborate", "context": None}
+        signal = {"type": "length_more_detailed", "matched_text": "elaborate", "context": None}
         detector.apply_feedback(signal)
 
         updated = pm.load_layer("interaction")
@@ -416,21 +430,21 @@ class TestImplicitFeedbackExtended:
 
     @pytest.mark.unit
     def test_tl_dr_detected_as_length_correction(self, tmp_path):
-        """'tl;dr' should be detected as correction_length."""
+        """'tl;dr' should be detected as length_shorter."""
         pm = ProfileManager(tmp_path / "profiles")
         detector = ImplicitFeedbackDetector(pm)
         result = detector.analyze("tl;dr give me the summary")
         assert result is not None
-        assert result["type"] == "correction_length"
+        assert result["type"] == "length_shorter"
 
     @pytest.mark.unit
     def test_stop_yapping_detected(self, tmp_path):
-        """'stop yapping' should be detected as correction_length."""
+        """'stop yapping' should be detected as length_shorter."""
         pm = ProfileManager(tmp_path / "profiles")
         detector = ImplicitFeedbackDetector(pm)
         result = detector.analyze("stop yapping about this")
         assert result is not None
-        assert result["type"] == "correction_length"
+        assert result["type"] == "length_shorter"
 
     @pytest.mark.unit
     def test_love_this_tone_detected_as_praise(self, tmp_path):

@@ -157,6 +157,43 @@ def test_relationship_voice_contract_for_personal_turns():
     assert "therapy-template" in contract
 
 
+def test_professional_style_override_suppresses_relationship_voice():
+    from sci_fi_dashboard.chat_pipeline import (
+        _build_relationship_voice_contract,
+        _is_relationship_voice_turn,
+        _turn_style_override,
+    )
+
+    user_msg = "I am stressed about office politics, but be professional and precise."
+
+    assert _turn_style_override(user_msg)
+    assert not _is_relationship_voice_turn(user_msg, "casual", "safe")
+    assert _build_relationship_voice_contract(user_msg, "casual", "safe", "full") == ""
+
+
+def test_professional_style_policy_suppresses_relationship_voice():
+    from sci_fi_dashboard.chat_pipeline import (
+        _build_relationship_voice_contract,
+        _is_relationship_voice_turn,
+    )
+    from sci_fi_dashboard.style_policy import StylePolicy
+
+    policy = StylePolicy(
+        tone="professional_precise",
+        length="normal",
+        scope="session",
+        source="session_override",
+        session_key="cli:the_creator:local",
+        reason="user requested professional tone",
+        updated_at=0,
+    )
+
+    user_msg = "I am stressed about office politics and need to vent."
+
+    assert not _is_relationship_voice_turn(user_msg, "casual", "safe", policy)
+    assert _build_relationship_voice_contract(user_msg, "casual", "safe", "full", policy) == ""
+
+
 def test_relationship_voice_contract_skips_tool_and_code_turns():
     from sci_fi_dashboard.chat_pipeline import _build_relationship_voice_contract
 

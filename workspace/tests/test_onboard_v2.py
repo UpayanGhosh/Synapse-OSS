@@ -149,6 +149,11 @@ class TestSBSProfileInit:
         mock_mgr = self._call_with_mock_mgr(
             {
                 "communication_style": "formal_and_precise",
+                "preferred_language": "Spanish",
+                "region": "Mexico",
+                "locality": "CDMX",
+                "local_language_examples": ["que onda = casual hello"],
+                "ask_user_to_teach_language": True,
                 "energy_level": "calm_and_steady",
                 "interests": [],
                 "privacy_level": "selective",
@@ -161,6 +166,12 @@ class TestSBSProfileInit:
         assert (
             linguistic_data.get("current_style", {}).get("preferred_style") == "formal_and_precise"
         )
+        style = linguistic_data.get("current_style", {})
+        assert style["preferred_language"] == "Spanish"
+        assert style["region"] == "Mexico"
+        assert style["locality"] == "CDMX"
+        assert style["local_language_examples"] == ["que onda = casual hello"]
+        assert style["ask_user_to_teach"] is True
 
     def test_initialize_sbs_writes_emotional_state_layer(self, tmp_path):
         """ONBOARD2-02: high_energy maps to current_dominant_mood='energetic'."""
@@ -261,6 +272,8 @@ class TestSBSProfileInit:
 
         # linguistic defaults to casual_and_witty
         assert save_calls["linguistic"]["current_style"]["preferred_style"] == "casual_and_witty"
+        assert save_calls["linguistic"]["current_style"]["preferred_language"] == "English"
+        assert save_calls["linguistic"]["current_style"]["ask_user_to_teach"] is True
         # emotional_state defaults: calm_and_steady → "calm"
         assert save_calls["emotional_state"]["current_dominant_mood"] == "calm"
         # interaction defaults to selective
@@ -475,6 +488,11 @@ class TestSBSQuestions:
                 "Music",
             ],
             "How sensitive are you about personal data in conversations?": "Selective - use judgment",
+            "What country or region should Synapse associate with your language/culture?": "India",
+            "Any city, state, community, or locality Synapse should know? (optional)": "Kolkata",
+            "What language or language mix should Synapse use by default?": "English",
+            "Should Synapse ask you for examples when it is unsure about your local language or dialect?": True,
+            "Optional: teach one or two local phrases now (separate examples with |)": "namaskar = hello",
             "Would you like to import existing WhatsApp chat history?": False,
         }
         if extra_answers:
@@ -501,6 +519,11 @@ class TestSBSQuestions:
         assert answers_passed.get("interests") == ["technology", "music"]
         # Selective - use judgment → selective
         assert answers_passed.get("privacy_level") == "selective"
+        assert answers_passed.get("preferred_language") == "English"
+        assert answers_passed.get("region") == "India"
+        assert answers_passed.get("locality") == "Kolkata"
+        assert answers_passed.get("local_language_examples") == ["namaskar = hello"]
+        assert answers_passed.get("ask_user_to_teach_language") is True
 
     def test_run_sbs_questions_whatsapp_import_offered_and_accepted(self, tmp_path):
         """ONBOARD2-03: accepting WhatsApp import runs subprocess with correct args."""
@@ -516,6 +539,11 @@ class TestSBSQuestions:
                 "How would you describe your typical energy level?": "Calm and steady",
                 "What topics are you most interested in? (select all that apply)": [],
                 "How sensitive are you about personal data in conversations?": "Selective - use judgment",
+                "What country or region should Synapse associate with your language/culture?": "India",
+                "Any city, state, community, or locality Synapse should know? (optional)": "Kolkata",
+                "What language or language mix should Synapse use by default?": "English",
+                "Should Synapse ask you for examples when it is unsure about your local language or dialect?": True,
+                "Optional: teach one or two local phrases now (separate examples with |)": "",
                 "Would you like to import existing WhatsApp chat history?": True,
                 "Path to WhatsApp export (.txt file)": fake_wa_path,
             }
@@ -609,6 +637,7 @@ class TestNonInteractiveSBS:
         assert "technology" in call_kwargs["interests"]
         assert "music" in call_kwargs["interests"]
         assert call_kwargs["privacy_level"] == "private"
+        assert call_kwargs["preferred_language"] == "English"
 
     def test_non_interactive_without_sbs_env_vars(self, tmp_path, monkeypatch):
         """ONBOARD2-04: No SBS env vars → initialize_sbs_from_wizard NOT called."""
@@ -814,8 +843,7 @@ class TestVerifySubcommand:
 
         with (
             patch("cli.verify_steps.SynapseConfig") as mock_cfg_cls,
-            patch("cli.verify_steps._validate_provider_async", return_value=("gemini", True, "")),
-            patch("asyncio.gather", return_value=[("gemini", True, "")]),
+            patch("asyncio.run", return_value=[("gemini", True, "")]),
         ):
             mock_cfg_cls.load.return_value = mock_cfg
             result = run_verify()

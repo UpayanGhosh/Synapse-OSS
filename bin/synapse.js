@@ -4,7 +4,7 @@ const fs = require("fs");
 const path = require("path");
 const { spawn, spawnSync } = require("child_process");
 
-const COMMANDS = new Set(["install", "onboard", "start", "stop", "doctor", "chat"]);
+const COMMANDS = new Set(["install", "onboard", "reset", "start", "stop", "doctor", "chat"]);
 const PYTHON_VERSION = process.env.SYNAPSE_PYTHON_VERSION || "3.12";
 const UV_INSTALL_SH = "https://astral.sh/uv/install.sh";
 const UV_INSTALL_PS1 = "https://astral.sh/uv/install.ps1";
@@ -312,8 +312,106 @@ function runStop(home) {
   return 0;
 }
 
+function utcTimestamp() {
+  return new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
+}
+
+function parseResetArgs(args) {
+  const opts = {
+    scope: "config",
+    yes: false,
+    reonboard: false,
+    flow: "quickstart",
+  };
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+    if (arg === "--yes" || arg === "-y") {
+      opts.yes = true;
+    } else if (arg === "--reonboard") {
+      opts.reonboard = true;
+    } else if (arg === "--scope" || arg === "-s") {
+      i += 1;
+      opts.scope = args[i] || "";
+    } else if (arg.startsWith("--scope=")) {
+      opts.scope = arg.slice("--scope=".length);
+    } else if (arg === "--flow") {
+      i += 1;
+      opts.flow = args[i] || "";
+    } else if (arg.startsWith("--flow=")) {
+      opts.flow = arg.slice("--flow=".length);
+    } else if (arg === "-h" || arg === "--help") {
+      opts.help = true;
+    } else {
+      throw new Error(`Unknown reset option: ${arg}`);
+    }
+  }
+  return opts;
+}
+
+function printResetHelp() {
+  console.log("Usage: synapse reset [--scope config|config+creds+sessions|full] [--yes] [--reonboard] [--flow quickstart|advanced]");
+}
+
+function moveIfExists(src, backupDir) {
+  if (!fs.existsSync(src)) {
+    return;
+  }
+  const dest = path.join(backupDir, path.basename(src));
+  fs.renameSync(src, dest);
+  console.log(`Moved ${src} -> ${dest}`);
+}
+
+function runReset(home, args) {
+  const opts = parseResetArgs(args);
+  if (opts.help) {
+    printResetHelp();
+    return 0;
+  }
+  const scopes = new Set(["config", "config+creds+sessions", "full"]);
+  if (!scopes.has(opts.scope)) {
+    console.error(`Invalid reset scope: ${opts.scope}`);
+    printResetHelp();
+    return 1;
+  }
+  if (!opts.yes) {
+    console.log(`Synapse home: ${home}`);
+    console.log("Reset moves matching files into <synapse-home>/backups/<timestamp>/.");
+    console.log("Re-run with --yes to confirm.");
+    return 1;
+  }
+
+  fs.mkdirSync(home, { recursive: true });
+  const backupDir = path.join(home, "backups", utcTimestamp());
+  fs.mkdirSync(backupDir, { recursive: true });
+
+  if (opts.scope === "config") {
+    moveIfExists(path.join(home, "synapse.json"), backupDir);
+  } else if (opts.scope === "config+creds+sessions") {
+    moveIfExists(path.join(home, "synapse.json"), backupDir);
+    moveIfExists(path.join(home, "credentials"), backupDir);
+    moveIfExists(path.join(home, "sessions"), backupDir);
+    moveIfExists(path.join(home, "state"), backupDir);
+  } else if (opts.scope === "full") {
+    for (const child of fs.readdirSync(home)) {
+      if (child === "backups") {
+        continue;
+      }
+      moveIfExists(path.join(home, child), backupDir);
+    }
+  }
+
+  console.log(`Reset complete. Backup at: ${backupDir}`);
+  if (opts.reonboard) {
+    if (opts.scope === "full" || !fs.existsSync(synapsePath(home))) {
+      runInstall(home);
+    }
+    return runSynapse(home, ["onboard", "--flow", opts.flow]);
+  }
+  return 0;
+}
+
 function printHelp() {
-  console.log("Usage: synapse <install|onboard|start|stop|doctor|chat> [args...]");
+  console.log("Usage: synapse <install|onboard|reset|start|stop|doctor|chat> [args...]");
 }
 
 function main(argv) {
@@ -337,6 +435,9 @@ function main(argv) {
     }
     if (command === "stop") {
       return runStop(home);
+    }
+    if (command === "reset") {
+      return runReset(home, args);
     }
     return runSynapse(home, [command, ...args]);
   } catch (error) {

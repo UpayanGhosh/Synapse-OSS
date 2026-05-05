@@ -29,9 +29,9 @@ def persona_dir(tmp_path):
     skills_dir = workspace / "skills" / "language"
     skills_dir.mkdir(parents=True)
 
-    # Create banglish dict
-    banglish = {"bhalobasha": "love", "achha": "okay", "arrey": "hey"}
-    (skills_dir / "banglish_dict.json").write_text(json.dumps(banglish))
+    # Create local vocabulary dict
+    local_terms = {"namaskar": "hello", "achha": "okay", "arrey": "hey"}
+    (skills_dir / "local_terms.json").write_text(json.dumps(local_terms))
 
     # Create identity files
     (workspace / "INSTRUCTIONS.MD").write_text("You are Synapse.")
@@ -80,16 +80,16 @@ class TestLoadDictionary:
     """Tests for dictionary loading."""
 
     def test_loads_valid_dict(self, manager):
-        """Should load banglish dictionary when file exists."""
-        assert isinstance(manager.banglish_data, dict)
-        assert "bhalobasha" in manager.banglish_data
+        """Should load local vocabulary dictionary when file exists."""
+        assert isinstance(manager.local_terms, dict)
+        assert "namaskar" in manager.local_terms
 
     def test_missing_dict_returns_empty(self, tmp_path):
         """Missing dict file should return empty dict."""
         workspace = tmp_path / "workspace"
         workspace.mkdir()
         mgr = PersonaManager(workspace_root=str(tmp_path))
-        assert mgr.banglish_data == {}
+        assert mgr.local_terms == {}
 
     def test_malformed_dict_returns_empty(self, tmp_path):
         """Malformed JSON dict should return empty dict."""
@@ -97,10 +97,10 @@ class TestLoadDictionary:
         workspace.mkdir()
         skills_dir = workspace / "skills" / "language"
         skills_dir.mkdir(parents=True)
-        (skills_dir / "banglish_dict.json").write_text("not valid json{{{")
+        (skills_dir / "local_terms.json").write_text("not valid json{{{")
 
         mgr = PersonaManager(workspace_root=str(tmp_path))
-        assert mgr.banglish_data == {}
+        assert mgr.local_terms == {}
 
 
 class TestReadFile:
@@ -143,7 +143,7 @@ class TestGetRandomWords:
     def test_count_exceeds_dict_size(self, manager):
         """Requesting more than dict size should return all keys."""
         words = manager.get_random_words(100)
-        assert len(words) == len(manager.banglish_data)
+        assert len(words) == len(manager.local_terms)
 
     def test_empty_dict_returns_empty(self, tmp_path):
         """Empty dict should return empty list."""
@@ -176,7 +176,7 @@ class TestGetSystemPrompt:
         """Prompt should contain the vocabulary injection section."""
         prompt = manager.get_system_prompt()
         assert "DYNAMIC_VOCABULARY_INJECTION" in prompt
-        assert "Required Bengali/Banglish Keywords" in prompt
+        assert "User-taught local or personal vocabulary" in prompt
 
     def test_contains_context_loading(self, manager):
         """Prompt should have context loading separator."""

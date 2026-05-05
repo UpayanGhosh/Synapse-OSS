@@ -21,6 +21,7 @@ class StartupDiagnostics:
     gateway_detail: str
     first_run_pending: bool
     next_action: str
+    style_policy: dict[str, Any] | None = None
 
 
 def collect_startup_diagnostics(
@@ -35,6 +36,7 @@ def collect_startup_diagnostics(
     port = int(options.port or (raw_config.get("gateway") or {}).get("port") or 8000)
     gateway_url = f"http://127.0.0.1:{port}"
     reachable, detail = _probe_gateway(client)
+    style_policy = _probe_style_policy(client, options.resolved_session_key())
 
     workspace_dir = options.workspace_dir or data_root / "workspace"
     first_run_pending = _first_run_pending(workspace_dir)
@@ -49,6 +51,7 @@ def collect_startup_diagnostics(
         gateway_detail=detail,
         first_run_pending=first_run_pending,
         next_action=_next_action(config_status, first_run_pending),
+        style_policy=style_policy,
     )
 
 
@@ -56,18 +59,24 @@ def build_startup_overview(diagnostics: StartupDiagnostics) -> str:
     model = diagnostics.safe_chat_model or "not configured"
     gateway = _format_gateway(diagnostics)
     first_run = "pending" if diagnostics.first_run_pending else "complete"
-    return "\n".join(
+    lines = [
+        "Hi, I'm Synapse.",
+        "Use this shell when setup, model routing, gateway, or local chat feels off.",
+        f"Config: {diagnostics.config_status} ({diagnostics.config_path})",
+        f"Safe-chat model: {model}",
+        f"Persona/default target: {diagnostics.target}",
+        gateway,
+    ]
+    style = _format_style(diagnostics.style_policy)
+    if style:
+        lines.append(style)
+    lines.extend(
         [
-            "Hi, I'm Synapse.",
-            "Use this shell when setup, model routing, gateway, or local chat feels off.",
-            f"Config: {diagnostics.config_status} ({diagnostics.config_path})",
-            f"Safe-chat model: {model}",
-            f"Persona/default target: {diagnostics.target}",
-            gateway,
             f"First-run: {first_run}",
             f"Next: {diagnostics.next_action}",
         ]
     )
+    return "\n".join(lines)
 
 
 def normalize_safe_chat_model(model: str | None) -> str | None:
@@ -156,6 +165,29 @@ def _probe_gateway(client: object | None) -> tuple[bool | None, str]:
     except Exception as exc:  # noqa: BLE001
         return False, str(exc)
     return bool(reachable), str(detail or "ok")
+
+
+def _probe_style_policy(client: object | None, session_key: str) -> dict[str, Any] | None:
+    probe = getattr(client, "get_style_policy", None)
+    if not callable(probe):
+        return None
+    try:
+        ok, payload = probe(session_key)
+    except Exception:
+        return None
+    if ok and isinstance(payload, dict):
+        return payload
+    return None
+
+
+def _format_style(policy: dict[str, Any] | None) -> str:
+    if not policy:
+        return ""
+    tone = str(policy.get("tone") or "unknown")
+    length = str(policy.get("length") or "unknown")
+    source = str(policy.get("source") or "unknown")
+    scope = str(policy.get("scope") or "unknown")
+    return f"Style: {tone}, {length}, source={source}, scope={scope}"
 
 
 def _first_run_pending(workspace_dir: Path) -> bool:

@@ -739,6 +739,26 @@ async def test_turn_stance_contract_is_injected_next_to_user_turn(fresh_pipeline
 
 
 @pytest.mark.asyncio
+async def test_explicit_professional_tone_override_is_last_system_contract(fresh_pipeline):
+    """A direct tone switch should outrank close-friend/stance contracts on the same turn."""
+    chat_pipeline, llm_wrappers, deps = fresh_pipeline
+
+    with patch.object(llm_wrappers, "route_traffic_cop", AsyncMock(return_value="CASUAL")):
+        result = await chat_pipeline.persona_chat(
+            _make_request("I am stressed about office politics, but be professional and precise."),
+            target="the_creator",
+        )
+
+    assert isinstance(result, dict)
+    messages = deps.synapse_llm_router.call_with_metadata.call_args.args[1]
+    assert messages[-2]["role"] == "system"
+    assert "TURN STYLE OVERRIDE" in messages[-2]["content"]
+    assert "professional, precise, restrained" in messages[-2]["content"]
+    assert "Do not use teasing" in messages[-2]["content"]
+    assert messages[-1]["role"] == "user"
+
+
+@pytest.mark.asyncio
 async def test_dual_cognition_default_timeout_is_not_too_short(fresh_pipeline):
     """Default installs should give dual cognition enough time to finish."""
     chat_pipeline, llm_wrappers, deps = fresh_pipeline

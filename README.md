@@ -11,6 +11,33 @@
 
 <!-- screenshot: docs/img/playground.png -->
 
+## Quick Start
+
+For normal users, install the standalone Synapse command and let it create the product home under `~/.synapse`. You do not need the GitHub repo for this path.
+
+```bash
+npm install -g synapse-oss
+synapse install
+synapse onboard
+synapse start
+```
+
+Re-testing onboarding? Back up active setup state and launch the wizard again:
+
+```bash
+synapse reset --scope config --reonboard
+```
+
+Developer setup stays separate in [CONTRIBUTING.md](CONTRIBUTING.md) and [HOW_TO_RUN.md](HOW_TO_RUN.md).
+
+## Docs
+
+| Document | Purpose |
+|---|---|
+| [HOW_TO_RUN.md](HOW_TO_RUN.md) | Install, onboarding, provider testing, reset, and production paths |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Developer setup, test commands, and PR guidelines |
+| [docs/provider-testing.md](docs/provider-testing.md) | Offline and live provider compatibility checks |
+
 ## Try it in 60 seconds
 
 ```bash

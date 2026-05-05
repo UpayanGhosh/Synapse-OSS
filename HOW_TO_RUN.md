@@ -634,8 +634,9 @@ netstat -ano | findstr ":8000 :11434"
 
 ## Part 9 — Make Synapse Yours
 
-Out of the box, Synapse is configured with the creator's personality (Upayan's Bengali/English
-mix). Here is how to make it respond to you in your own style.
+Out of the box, Synapse uses neutral English and asks for your region, locality, and
+preferred language during onboarding. It should only use regional language, dialect, or
+code-switching after you choose it, write that way, import examples, or teach it phrases.
 
 ### 9.1 — Map your phone number to a persona
 
@@ -680,8 +681,8 @@ correction_formal:
   - "why (are you|so) formal"
   - "stop being (formal|robotic)"
   # Add your language here:
-  # - "beshi formal hoyona"        # Bengali example
   # - "deja de ser tan formal"     # Spanish example
+  # - "bahut formal mat bolo"      # Hindi/Urdu example
 
 correction_length:
   - "too long"
@@ -721,19 +722,25 @@ Edit `core_identity.json` to set your name and personality:
 }
 ```
 
-Edit `linguistic.json` to control how strongly Synapse leans toward your primary language:
+Edit `linguistic.json` to control Synapse's language and regional style:
 
 ```json
 {
+  "preferred_language": "English",
+  "region": "",
+  "locality": "",
   "primary_language_ratio": 0.0,
-  "formality": "casual"
+  "language_mix_ratio": 0.0,
+  "ask_user_to_teach": true,
+  "local_language_examples": []
 }
 ```
 
-Set `primary_language_ratio` to `0.0` for neutral/formal tone, `1.0` for maximum
-casual/local-language mix. Synapse also adjusts this automatically when you send phrases
-defined in `language_patterns.yaml` (e.g. "stop being formal" raises it; "be professional"
-lowers it).
+Set `preferred_language` to the language or language mix you want by default. Set
+`language_mix_ratio` / `primary_language_ratio` to `0.0` for neutral default usage, or
+closer to `1.0` when Synapse should lean heavily into the local language. If
+`ask_user_to_teach` is true and Synapse is unsure, it should ask you for a phrase,
+correction, or example instead of guessing.
 
 ### 9.4 — Inject your background (jump-start memory)
 
@@ -1118,6 +1125,7 @@ All log files, databases, and persona profiles will be placed under that directo
 | First-time setup | `synapse onboard` | `synapse onboard` |
 | Start Synapse | `synapse start` | `synapse start` |
 | Stop Synapse | `synapse stop` | `synapse stop` |
+| Reset for re-onboarding | `synapse reset --scope config --reonboard` | same |
 | Health check | `synapse doctor` | `synapse doctor` |
 | Check Ollama (only if you use a local LLM role) | `curl http://localhost:11434` | `curl.exe http://localhost:11434` |
 | Pull a local LLM model | `ollama pull llama3.2:3b` | same |
@@ -1135,6 +1143,48 @@ Run from repo root (subshell keeps your shell cwd intact):
 ( cd workspace && pytest tests/test_onboard.py -k ensure_agent_workspace -v )
 ( cd workspace && pytest tests/test_agent_workspace_prefix.py -v )
 ( cd workspace && pytest tests/test_multiuser.py -k bootstrap -v )
+```
+
+Provider compatibility checks:
+
+```bash
+( cd workspace && pytest tests/providers/test_provider_contracts.py -q )
+( cd workspace && pytest tests/providers/test_provider_live.py --run-live-providers --live-provider gemini -q )
+```
+
+Contract tests do not spend quota. Live provider tests are opt-in and skip providers whose
+credentials are not present. See [docs/provider-testing.md](docs/provider-testing.md).
+
+---
+
+### Reset and re-onboard
+
+Use this when you are testing onboarding repeatedly, switching accounts/providers, or want a
+fresh setup without manually deleting `~/.synapse`.
+
+```bash
+synapse reset --scope config --reonboard
+```
+
+Reset scopes:
+
+| Scope | What it backs up before resetting |
+|---|---|
+| `config` | `synapse.json` only |
+| `config+creds+sessions` | config plus saved credentials and sessions |
+| `full` | all Synapse home contents except existing backups |
+
+All reset scopes move data into `~/.synapse/backups/<timestamp>/`; they do not delete it
+directly. Add `--yes` to skip the confirmation prompt:
+
+```bash
+synapse reset --scope full --yes --reonboard
+```
+
+The older hidden form still works for automation:
+
+```bash
+synapse onboard --reset config
 ```
 
 ---

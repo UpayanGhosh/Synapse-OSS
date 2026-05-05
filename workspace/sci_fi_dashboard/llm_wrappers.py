@@ -58,13 +58,13 @@ async def call_ag_review(messages: list) -> str:
 
 
 async def translate_banglish(text: str) -> str:
-    """Translate Banglish -> English via SynapseLLMRouter (translate role)."""
+    """Legacy helper: translate romanized local-language text to English."""
     messages = [
         {
             "role": "system",
             "content": (
-                "You are a translator. Translate Romanized Bengali (Banglish) "
-                "to English. OUTPUT ONLY ENGLISH."
+                "You are a translator. Translate romanized local-language or "
+                "code-switched text to English. OUTPUT ONLY ENGLISH."
             ),
         },
         {"role": "user", "content": text},

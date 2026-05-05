@@ -18,7 +18,10 @@ class PersonaManager:
             workspace_root = str(SynapseConfig.load().data_root)
         self.root = workspace_root
         self.workspace = os.path.join(self.root, "workspace")
-        self.dict_path = os.path.join(self.workspace, "skills/language/banglish_dict.json")
+        self.dict_path = os.path.join(self.workspace, "skills/language/local_terms.json")
+        self.legacy_dict_path = os.path.join(
+            self.workspace, "skills/language/banglish_dict.json"
+        )
 
         # Identity Files Configuration (Order matters for context layering)
         self.files = {
@@ -30,15 +33,16 @@ class PersonaManager:
             "user": os.path.join(self.workspace, "USER.md"),
         }
 
-        self.banglish_data = self.load_dictionary()
+        self.local_terms = self.load_dictionary()
+        self.banglish_data = self.local_terms  # backwards-compatible test/runtime alias
 
     def load_dictionary(self):
         try:
-            if os.path.exists(self.dict_path):
-                with open(self.dict_path, encoding="utf-8") as f:
+            path = self.dict_path if os.path.exists(self.dict_path) else self.legacy_dict_path
+            if os.path.exists(path):
+                with open(path, encoding="utf-8") as f:
                     return json.load(f)
         except Exception:
-            # print(f"[WARN] Persona Error: Could not load Banglish dict: {e}")
             pass
         return {}
 
@@ -53,9 +57,9 @@ class PersonaManager:
         return ""
 
     def get_random_words(self, count=5):
-        if not self.banglish_data:
+        if not self.local_terms:
             return []
-        return random.sample(list(self.banglish_data.keys()), min(count, len(self.banglish_data)))
+        return random.sample(list(self.local_terms.keys()), min(count, len(self.local_terms)))
 
     def get_system_prompt(self):
         """
@@ -69,9 +73,19 @@ class PersonaManager:
         identity = self.read_file("identity")
         user = self.read_file("user")
 
-        # 2. Dynamic Flavor (Banglish)
-        flavor_words = self.get_random_words(8)
-        flavor_text = ", ".join(flavor_words)
+        # 2. Dynamic local vocabulary, only when the user has provided a dictionary.
+        local_words = self.get_random_words(8)
+        local_text = ", ".join(local_words)
+        vocabulary_note = (
+            f"User-taught local or personal vocabulary to use only when natural: {local_text}"
+            if local_text
+            else "No user-taught local or personal vocabulary yet."
+        )
+        vocabulary_block = f"""
+<DYNAMIC_VOCABULARY_INJECTION>
+{vocabulary_note}
+</DYNAMIC_VOCABULARY_INJECTION>
+"""
 
         # 3. Assemble Prompt
         # Concatenating in logical override order
@@ -99,9 +113,6 @@ class PersonaManager:
 <IDENTITY_METADATA>
 {identity}
 </IDENTITY_METADATA>
-
-<DYNAMIC_VOCABULARY_INJECTION>
-Required Bengali/Banglish Keywords to use naturally: {flavor_text}
-</DYNAMIC_VOCABULARY_INJECTION>
+{vocabulary_block}
 """
         return prompt

@@ -870,6 +870,7 @@ _KEY_MAP: dict[str, str] = {
     "volcengine": "VOLCENGINE_API_KEY",
     "huggingface": "HUGGINGFACE_API_KEY",
     "nvidia_nim": "NVIDIA_NIM_API_KEY",
+    "qianfan": "QIANFAN_AK",
     "deepseek": "DEEPSEEK_API_KEY",
 }
 
@@ -883,6 +884,11 @@ _VERTEX_MAP: dict[str, str] = {
     "project_id": "VERTEXAI_PROJECT",
     "location": "VERTEXAI_LOCATION",
     "credentials_path": "GOOGLE_APPLICATION_CREDENTIALS",
+}
+
+_QIANFAN_MAP: dict[str, str] = {
+    "access_key": "QIANFAN_AK",
+    "secret_key": "QIANFAN_SK",
 }
 
 
@@ -918,6 +924,13 @@ def _inject_provider_keys(providers: dict) -> None:
     if isinstance(vertex_cfg, dict):
         for vertex_key, env_key in _VERTEX_MAP.items():
             val = vertex_cfg.get(vertex_key)
+            if val and env_key not in os.environ:
+                os.environ[env_key] = val
+
+    qianfan_cfg = providers.get("qianfan", {})
+    if isinstance(qianfan_cfg, dict):
+        for qianfan_key, env_key in _QIANFAN_MAP.items():
+            val = qianfan_cfg.get(qianfan_key)
             if val and env_key not in os.environ:
                 os.environ[env_key] = val
 

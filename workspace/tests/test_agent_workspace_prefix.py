@@ -496,6 +496,36 @@ def test_compact_casual_prompt_preserves_protocol_and_dynamic_profile(monkeypatc
     assert "Always produce visible text" in prompt
 
 
+@pytest.mark.unit
+def test_compact_prompt_honors_professional_profile(monkeypatch):
+    """Compact prompts must not hardcode close-friend casual over formal preference."""
+
+    class FormalSBS:
+        def get_system_prompt(self, *_args, **_kwargs):
+            return (
+                "[COMMUNICATION STYLE]\n"
+                "Keep your tone professional and precise. Avoid slang or excessive informality."
+            )
+
+    monkeypatch.setattr(
+        chat_pipeline,
+        "_load_agent_workspace_prefix_for_session",
+        lambda *_args, **_kwargs: "",
+    )
+
+    prompt = chat_pipeline._build_compact_casual_system_prompt(
+        "casual_reflective",
+        FormalSBS(),
+        "base",
+        "",
+        session_key="s1",
+    )
+
+    assert "professional, precise" in prompt
+    assert "close-friend AI" not in prompt
+    assert "Keep casual language" not in prompt
+
+
 @pytest.mark.asyncio
 async def test_casual_persona_chat_omits_footer_and_keeps_profile_reminder(monkeypatch):
     """Normal casual chat returns clean user text and injects profile reminder near user turn."""

@@ -1,6 +1,7 @@
 import base64
 import json
 import time
+from unittest.mock import patch
 
 import httpx
 import pytest
@@ -220,9 +221,13 @@ def test_poll_device_code_tolerates_transient_unknown_device_authorization():
     assert sleeps == [1]
 
 
-def test_poll_device_code_unknown_device_authorization_repeated_raises_helpful_error():
+def test_poll_device_code_unknown_device_authorization_waits_until_expiry():
     fake = _FakeSyncClient(
         [
+            httpx.Response(
+                403,
+                json={"error": "Device authorization is unknown. Please try again."},
+            ),
             httpx.Response(
                 403,
                 json={"error": "Device authorization is unknown. Please try again."},
@@ -246,17 +251,67 @@ def test_poll_device_code_unknown_device_authorization_repeated_raises_helpful_e
         device_auth_id="device-1",
         user_code="ABCD-EFGH",
         verification_uri="https://auth.openai.com/codex/device",
+        expires_in=4,
+        interval=1,
+    )
+    now = [1000.0]
+
+    def _sleep(seconds):
+        sleeps.append(seconds)
+        now[0] += seconds
+
+    with patch("sci_fi_dashboard.openai_codex_oauth.time.time", side_effect=lambda: now[0]):
+        with pytest.raises(RuntimeError, match="Device Code Authorization for Codex"):
+            poll_device_code(
+                code,
+                http_client=fake,
+                sleep_fn=_sleep,
+            )
+
+    assert sleeps == [1, 1, 1, 1]
+
+
+def test_poll_device_code_does_not_fail_after_three_unknown_device_authorizations():
+    fake = _FakeSyncClient(
+        [
+            httpx.Response(
+                403,
+                json={"error": "Device authorization is unknown. Please try again."},
+            ),
+            httpx.Response(
+                403,
+                json={"error": "Device authorization is unknown. Please try again."},
+            ),
+            httpx.Response(
+                403,
+                json={"error": "Device authorization is unknown. Please try again."},
+            ),
+            httpx.Response(
+                200,
+                json={
+                    "authorization_code": "auth-code-1",
+                    "code_verifier": "verifier-1",
+                },
+            ),
+        ]
+    )
+    sleeps = []
+    code = OpenAICodexDeviceCode(
+        device_auth_id="device-1",
+        user_code="ABCD-EFGH",
+        verification_uri="https://auth.openai.com/codex/device",
         expires_in=900,
         interval=1,
     )
 
-    with pytest.raises(RuntimeError, match="Device Code Authorization for Codex"):
-        poll_device_code(
-            code,
-            http_client=fake,
-            sleep_fn=lambda seconds: sleeps.append(seconds),
-        )
+    authorization_code, code_verifier = poll_device_code(
+        code,
+        http_client=fake,
+        sleep_fn=lambda seconds: sleeps.append(seconds),
+    )
 
+    assert authorization_code == "auth-code-1"
+    assert code_verifier == "verifier-1"
     assert sleeps == [1, 1, 1]
 
 

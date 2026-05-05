@@ -15,6 +15,15 @@ class FakeClient:
     def probe_health(self):
         return True, "ok"
 
+    def get_style_policy(self, session_key):
+        return True, {
+            "tone": "professional_precise",
+            "length": "concise",
+            "source": "session_override",
+            "scope": "session",
+            "session_key": session_key,
+        }
+
     def send_turn(self, message, *, options, history):
         self.messages.append((message, options.resolved_session_type(), list(history)))
         return type("Reply", (), {"reply": f"reply:{message}", "model": "fake"})()
@@ -135,6 +144,7 @@ def test_cli_loop_help_status_and_model_commands(tmp_path, monkeypatch, capsys):
     assert "/status" in out
     assert "/model" in out
     assert "Safe-chat model: gemini/gemini-2.0-flash" in out
+    assert "Style: professional_precise, concise, source=session_override, scope=session" in out
     assert "Target: the_creator" in out
     assert f"Config: {tmp_path / 'synapse.json'}" in out
     assert "Gateway: reachable at http://127.0.0.1:8123 (ok)" in out
@@ -160,6 +170,29 @@ def test_cli_loop_error_hint_for_unknown_model(capsys):
     assert "Diagnostic hint" in out
     assert "/status" in out
     assert "synapse verify" in out
+
+
+def test_cli_loop_error_hint_for_gateway_auth_mismatch(capsys):
+    class AuthMismatchClient(FakeClient):
+        def send_turn(self, message, *, options, history):
+            raise RuntimeError(
+                'Gateway authentication failed: HTTP 401: {"detail":"Invalid API key"}'
+            )
+
+    inputs = iter(["hello", "/quit"])
+    code = run_cli_chat(
+        ChatLaunchOptions(),
+        client=AuthMismatchClient(),
+        gateway_manager=None,
+        input_fn=lambda prompt: next(inputs),
+        output_fn=print,
+    )
+
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "gateway token mismatch" in out.lower()
+    assert "not the Gemini/provider key" in out
+    assert "SYNAPSE_GATEWAY_TOKEN" in out
 
 
 def test_cli_loop_error_hint_for_zero_token_reply(capsys):

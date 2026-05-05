@@ -49,6 +49,41 @@ def test_send_turn_defaults_user_to_creator(monkeypatch):
     assert calls[0][1]["json"]["user_id"] == "the_creator"
 
 
+def test_get_style_policy_fetches_encoded_session_key(monkeypatch):
+    response = Mock(status_code=200)
+    response.json.return_value = {"tone": "professional_precise", "length": "concise"}
+    calls = []
+    monkeypatch.setattr(
+        "cli.chat_client.httpx.get",
+        lambda url, **kwargs: calls.append((url, kwargs)) or response,
+    )
+    monkeypatch.setattr("cli.chat_client.gateway_headers", lambda: {"x-api-key": "token"})
+
+    ok, payload = ChatClient(base_url="http://127.0.0.1:8000").get_style_policy(
+        "cli:the_creator:local"
+    )
+
+    assert ok is True
+    assert payload == {"tone": "professional_precise", "length": "concise"}
+    assert (
+        calls[0][0]
+        == "http://127.0.0.1:8000/api/sessions/cli%3Athe_creator%3Alocal/style"
+    )
+    assert calls[0][1]["headers"] == {"x-api-key": "token"}
+
+
+def test_get_style_policy_degrades_on_gateway_error(monkeypatch):
+    response = Mock(status_code=404, text="not found")
+    monkeypatch.setattr("cli.chat_client.httpx.get", lambda *a, **k: response)
+
+    ok, detail = ChatClient(base_url="http://127.0.0.1:8000").get_style_policy(
+        "cli:the_creator:local"
+    )
+
+    assert ok is False
+    assert detail == "HTTP 404"
+
+
 def test_send_turn_raises_for_gateway_error(monkeypatch):
     response = Mock(status_code=500, text="bad")
     response.json.side_effect = ValueError("not json")
@@ -62,6 +97,57 @@ def test_send_turn_raises_for_gateway_error(monkeypatch):
         assert "500" in str(exc)
     else:
         raise AssertionError("expected RuntimeError")
+
+
+def test_send_turn_retries_gateway_auth_with_config_token(monkeypatch):
+    config = object()
+    config_module = ModuleType("synapse_config")
+    config_module.SynapseConfig = Mock()
+    config_module.SynapseConfig.load.return_value = config
+    config_module.gateway_token = Mock(return_value=" config-token ")
+    monkeypatch.setitem(sys.modules, "synapse_config", config_module)
+    monkeypatch.setenv("SYNAPSE_GATEWAY_TOKEN", " stale-env-token ")
+
+    rejected = Mock(status_code=401, text='{"detail":"Invalid API key"}')
+    accepted = Mock(status_code=200, text="ok")
+    accepted.json.return_value = {"reply": "hello", "model": "x"}
+    responses = iter([rejected, accepted])
+    calls = []
+
+    def fake_post(url, **kwargs):
+        calls.append(kwargs)
+        return next(responses)
+
+    monkeypatch.setattr("cli.chat_client.httpx.post", fake_post)
+
+    client = ChatClient(base_url="http://127.0.0.1:8000")
+    reply = client.send_turn("hi", options=ChatLaunchOptions(), history=[])
+
+    assert reply.reply == "hello"
+    assert [call["headers"] for call in calls] == [
+        {"x-api-key": "stale-env-token"},
+        {"x-api-key": "config-token"},
+    ]
+
+
+def test_send_turn_gateway_auth_error_names_gateway_token(monkeypatch):
+    config_module = ModuleType("synapse_config")
+    config_module.SynapseConfig = Mock()
+    config_module.SynapseConfig.load.side_effect = RuntimeError("missing config")
+    config_module.gateway_token = Mock(return_value="")
+    monkeypatch.setitem(sys.modules, "synapse_config", config_module)
+    monkeypatch.setenv("SYNAPSE_GATEWAY_TOKEN", "wrong-token")
+
+    response = Mock(status_code=401, text='{"detail":"Invalid API key"}')
+    monkeypatch.setattr("cli.chat_client.httpx.post", lambda *a, **k: response)
+
+    client = ChatClient(base_url="http://127.0.0.1:8000")
+    with pytest.raises(RuntimeError) as exc_info:
+        client.send_turn("hi", options=ChatLaunchOptions(), history=[])
+
+    message = str(exc_info.value)
+    assert "Gateway authentication failed" in message
+    assert "not the LLM provider key" in message
 
 
 def test_gateway_headers_uses_env_token_first(monkeypatch):

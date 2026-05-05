@@ -28,8 +28,13 @@ from sci_fi_dashboard.prompt_tiers import (
     get_prompt_tier_policy,
     prompt_tier_for_role,
 )
-from sci_fi_dashboard.stance import decide_turn_stance
 from sci_fi_dashboard.schemas import ChatRequest
+from sci_fi_dashboard.stance import decide_turn_stance
+from sci_fi_dashboard.style_policy import (
+    StylePolicy,
+    detect_style_intent,
+    resolve_style_policy,
+)
 
 logger = logging.getLogger(__name__)
 _log = get_child_logger("pipeline.chat")  # OBS-01 structured logger carrying runId
@@ -528,7 +533,12 @@ def _is_reflective_casual_message(message: str) -> bool:
     return any(marker in msg for marker in reflective_markers)
 
 
-def _is_relationship_voice_turn(user_msg: str, role: str, session_mode: str) -> bool:
+def _is_relationship_voice_turn(
+    user_msg: str,
+    role: str,
+    session_mode: str,
+    style_policy: StylePolicy | None = None,
+) -> bool:
     """Return True when the reply should lean into close-friend voice.
 
     This is deliberately broader than "emotional support": the Jarvis-style target
@@ -537,7 +547,11 @@ def _is_relationship_voice_turn(user_msg: str, role: str, session_mode: str) -> 
     """
     if session_mode == "spicy" or str(role).lower() != "casual":
         return False
+    if getattr(style_policy, "tone", "") == "professional_precise":
+        return False
     msg = " ".join(str(user_msg or "").lower().split())
+    if style_policy is None and _turn_style_override(user_msg):
+        return False
     memory_turn = any(
         marker in msg for marker in ("remember ", "remember:", "save my", "save this")
     )
@@ -610,14 +624,32 @@ def _is_relationship_voice_turn(user_msg: str, role: str, session_mode: str) -> 
     return any(marker in msg for marker in markers)
 
 
+def _turn_style_override(user_msg: str) -> str:
+    """Return a high-priority style contract for explicit tone-switch requests."""
+    intent = detect_style_intent(user_msg)
+    if intent is None or intent.tone is None:
+        return ""
+    policy = StylePolicy(
+        tone=intent.tone,
+        length=intent.length or "normal",
+        scope=intent.scope,
+        source="explicit_turn" if intent.scope == "turn" else "session_override",
+        session_key="turn",
+        reason=intent.reason,
+        updated_at=time.time(),
+    )
+    return policy.to_prompt()
+
+
 def _build_relationship_voice_contract(
     user_msg: str,
     role: str,
     session_mode: str,
     prompt_depth: str,
+    style_policy: StylePolicy | None = None,
 ) -> str:
     """Build a high-recency voice contract for Jarvis-like friend responses."""
-    if not _is_relationship_voice_turn(user_msg, role, session_mode):
+    if not _is_relationship_voice_turn(user_msg, role, session_mode, style_policy):
         return ""
 
     msg = " ".join(str(user_msg or "").lower().split())
@@ -775,27 +807,48 @@ def _build_compact_casual_system_prompt(
     base_instructions: str,
     proactive_block: str,
     session_key: str | None = None,
+    style_policy: StylePolicy | None = None,
 ) -> str:
-    if prompt_depth == "casual_light":
-        compact_rules = (
-            "You are Synapse, the user's close-friend AI. Reply like a real friend: "
-            "short, warm, casual, and Banglish when it fits. No generic assistant tone. "
-            "For tiny greetings, keep it tiny."
-        )
-        sbs_limit = 700
-    else:
-        compact_rules = (
-            "You are Synapse, the user's close-friend AI. Keep casual language, but do not "
-            "flatten emotional substance. If the user sounds worried, insecure, conflicted, "
-            "or reflective, respond with grounded reassurance and memory-aware nuance. "
-            "Do not sound like therapy-script AI; sound like someone who knows them."
-        )
-        sbs_limit = 1_400
-
     try:
         sbs_prompt = sbs_orchestrator.get_system_prompt(base_instructions, proactive_block)
     except Exception:
         sbs_prompt = ""
+    professional_profile = "Keep your tone professional and precise" in sbs_prompt
+    professional_policy = getattr(style_policy, "tone", "") == "professional_precise"
+    professional_style = professional_policy or professional_profile
+
+    if prompt_depth == "casual_light":
+        if professional_style:
+            compact_rules = (
+                "You are Synapse. Reply briefly in the user's preferred style. "
+                "Their current style preference is professional and precise: avoid slang, "
+                "quirky banter, teasing, emojis, and excessive informality. "
+                "For tiny greetings, keep it tiny."
+            )
+        else:
+            compact_rules = (
+                "You are Synapse, the user's close-friend AI. Reply like a real friend: "
+                "short, warm, casual, and in the user's preferred language style. "
+                "Default to neutral English until a preference is known. No generic assistant tone. "
+                "For tiny greetings, keep it tiny."
+            )
+        sbs_limit = 700
+    else:
+        if professional_style:
+            compact_rules = (
+                "You are Synapse. Keep replies professional, precise, and grounded. "
+                "Use the user's context and memory naturally, but avoid close-friend banter, "
+                "teasing, slang, emojis, or therapy-script language."
+            )
+        else:
+            compact_rules = (
+                "You are Synapse, the user's close-friend AI. Keep casual language, but do not "
+                "flatten emotional substance. If the user sounds worried, insecure, conflicted, "
+                "or reflective, respond with grounded reassurance and memory-aware nuance. "
+                "Do not sound like therapy-script AI; sound like someone who knows them."
+            )
+        sbs_limit = 1_400
+
     try:
         workspace_prefix = _load_agent_workspace_prefix_for_session(session_key, "small")
     except Exception:
@@ -839,6 +892,23 @@ def _build_compact_workspace_excerpt(workspace_prefix: str) -> str:
             body = _extract_dynamic_profile_block(body) or body
         selected.append(f"[{name}]\n{_truncate_text(body, section_limits[name])}")
     return "\n\n".join(selected).strip()
+
+
+def _load_sbs_profile_for_style(sbs_orchestrator) -> dict:
+    """Read only the SBS layers needed for runtime style resolution."""
+    profile_mgr = getattr(sbs_orchestrator, "profile_mgr", None)
+    load_layer = getattr(profile_mgr, "load_layer", None)
+    if not callable(load_layer):
+        return {}
+    profile: dict = {}
+    for layer in ("linguistic", "interaction"):
+        try:
+            loaded = load_layer(layer)
+        except Exception:
+            loaded = {}
+        if isinstance(loaded, dict):
+            profile[layer] = loaded
+    return profile
 
 
 def _split_agent_workspace_sections(workspace_prefix: str) -> dict[str, str]:
@@ -1825,6 +1895,32 @@ async def persona_chat(
     # Log user message here via orchestrator
     user_log = sbs_orchestrator.on_message("user", user_msg, request.user_id or "default")
     user_msg_id = user_log.get("msg_id")
+    _style_policy = resolve_style_policy(
+        user_msg,
+        _session_key,
+        _load_sbs_profile_for_style(sbs_orchestrator),
+        request.history,
+    )
+    with contextlib.suppress(Exception):
+        _get_emitter().emit(
+            "style.policy_resolved",
+            {
+                "tone": _style_policy.tone,
+                "length": _style_policy.length,
+                "scope": _style_policy.scope,
+                "source": _style_policy.source,
+                "reason": _style_policy.reason,
+            },
+        )
+        _log.info(
+            "style_policy_resolved",
+            extra={
+                "tone": _style_policy.tone,
+                "length": _style_policy.length,
+                "scope": _style_policy.scope,
+                "source": _style_policy.source,
+            },
+        )
 
     # Skill routing happens before role routing and prompt compilation.
     # A matched skill owns the request, so there is no reason to build a 6k-19k
@@ -2059,6 +2155,7 @@ async def persona_chat(
             base_instructions,
             proactive_block,
             session_key=_session_key,
+            style_policy=_style_policy,
         )
 
     messages = [
@@ -2113,6 +2210,7 @@ async def persona_chat(
         role,
         session_mode,
         prompt_depth,
+        style_policy=_style_policy,
     )
     if _relationship_voice_contract:
         messages.append({"role": "system", "content": _relationship_voice_contract})
@@ -2122,6 +2220,7 @@ async def persona_chat(
         role=role,
         session_mode=session_mode,
         cognitive_merge=cognitive_merge,
+        style_policy=_style_policy,
     )
     messages.append({"role": "system", "content": _stance_decision.to_prompt()})
     with contextlib.suppress(Exception):
@@ -2135,6 +2234,7 @@ async def persona_chat(
             },
         )
 
+    messages.append({"role": "system", "content": _style_policy.to_prompt()})
     messages.append({"role": "user", "content": user_msg})
 
     _log.info(
