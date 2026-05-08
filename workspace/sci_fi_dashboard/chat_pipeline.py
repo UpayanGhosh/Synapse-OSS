@@ -447,15 +447,31 @@ def _format_profile_reminder(permanent_facts: list[str], policy: PromptTierPolic
 
 
 def _format_tool_inventory(session_tools: list, policy: PromptTierPolicy) -> str:
-    """Render current tools as either names-only or compact one-line entries."""
+    """Render the tool inventory as a system-message block.
+
+    Synapse philosophy: the LLM has full agency to call any registered
+    tool in any chat mode, and must never claim missing capability when
+    the tool exists. The inventory always includes:
+      * one line per tool with its concise description
+      * a "TOOL SURFACING" guidance block forbidding false-unavailability
+        replies and listing per-tool auto-fire phrases
+    Token cost is real (~200-400 tokens) but the alternative — a chat
+    that cannot use connected integrations — defeats Synapse's purpose.
+    """
 
     if not session_tools:
         return ""
-    if policy.native_tool_schemas:
-        names = ", ".join(t.name for t in session_tools)
-        return f"Available tools this turn: {names}."
 
-    lines = ["Available tools this turn (compact inventory):"]
+    tool_names = {getattr(t, "name", "") for t in session_tools}
+    lines = [
+        "SYNAPSE CAPABILITY PROFILE — you are the LLM brain wired into",
+        "Synapse (the body). Synapse extends you with persistent memory,",
+        "live tools, and connected user integrations. The following",
+        "capabilities are YOURS this turn — not external services you",
+        "must apologize for missing.",
+        "",
+        "Connected tools this turn:",
+    ]
     for tool in session_tools:
         name = getattr(tool, "name", "unknown_tool")
         description = (
@@ -464,7 +480,57 @@ def _format_tool_inventory(session_tools: list, policy: PromptTierPolicy) -> str
             or "No description provided."
         )
         lines.append(f"- {name}: {_truncate_text(str(description), 160)}")
-    return "\n".join(lines)
+
+    surfacing_lines = [
+        "",
+        "HOW TOOLS REACH YOU:",
+        (
+            "Each tool above is callable this turn. For obvious matches a "
+            "verified prefetched result has already been prepended as an "
+            "earlier system message — use it directly. For everything "
+            "else you may invoke the tool yourself via its function "
+            "schema. Synapse's job is to give you full agency; your job "
+            "is to use it. NEVER tell the user you do not have access "
+            "to a tool listed above, do not have memory, or cannot check "
+            "their calendar — the user has explicitly connected these "
+            "and Synapse has wired them into your context. If you cannot "
+            "tell which tool matches, ask the user to rephrase with a "
+            "clearer hook instead of refusing the task."
+        ),
+    ]
+    if "calendar" in tool_names:
+        surfacing_lines.append(
+            "- calendar: connected. Auto-fires on phrases like 'am I "
+            "free', 'what's on my calendar', 'what are my events', 'my "
+            "schedule', 'next meeting', 'cancel/move/reschedule X', "
+            "'quick add: ...'. Destructive actions (delete/update/move/"
+            "invite) require a two-turn confirmation: first turn returns "
+            "confirmation_required, next user 'yes' executes it."
+        )
+    if "query_memory" in tool_names:
+        surfacing_lines.append(
+            "- query_memory: long-term knowledge base. Use whenever the "
+            "user references prior conversation, stored facts, or 'what "
+            "did I tell you about X'."
+        )
+    if "web_query" in tool_names or "web_search" in tool_names:
+        surfacing_lines.append(
+            "- web_query / web_search: live internet lookup. Use for "
+            "anything time-sensitive or outside the knowledge base."
+        )
+    if "connect_integration" in tool_names:
+        surfacing_lines.append(
+            "- connect_integration: owner-only. Use when the user asks "
+            "to connect a new service (Calendar, Gmail, Notion, Slack). "
+            "Browser opens for OAuth in the gateway process."
+        )
+    if "read_file" in tool_names or "write_file" in tool_names:
+        surfacing_lines.append(
+            "- read_file / write_file: workspace files (Sentinel-gated). "
+            "Use for anything the user references by file path."
+        )
+
+    return "\n".join(lines + surfacing_lines)
 
 
 def _truncate_text(text: str, max_chars: int) -> str:
@@ -770,6 +836,11 @@ def _prompt_depth_for_turn(
 
 
 def _compact_prompt_policy(base_policy: PromptTierPolicy, prompt_depth: str) -> PromptTierPolicy:
+    # Casual modes still include native tool schemas so the LLM has full
+    # agency to call calendar / web / memory / connect_integration tools
+    # in any chat. The token cost is real (~600-800 tokens for the full
+    # schema set) but the alternative — a pretty reply that says "I don't
+    # have access" while connected tools sit unused — is worse.
     if prompt_depth == "casual_light":
         return PromptTierPolicy(
             tier="small",
@@ -780,7 +851,7 @@ def _compact_prompt_policy(base_policy: PromptTierPolicy, prompt_depth: str) -> 
             include_mcp_context=False,
             history_turns=1,
             cognitive_detail="strategy",
-            native_tool_schemas=False,
+            native_tool_schemas=True,
             profile_fact_limit=2,
             profile_fact_chars=180,
         )
@@ -794,7 +865,7 @@ def _compact_prompt_policy(base_policy: PromptTierPolicy, prompt_depth: str) -> 
             include_mcp_context=False,
             history_turns=3,
             cognitive_detail="strategy",
-            native_tool_schemas=False,
+            native_tool_schemas=True,
             profile_fact_limit=4,
             profile_fact_chars=260,
         )
@@ -1114,6 +1185,9 @@ def _should_prefetch_calendar_read(user_msg: str) -> bool:
     msg = " ".join(str(user_msg or "").lower().split())
     if not msg:
         return False
+
+    # Destructive/create verbs are handled by the write prefetch; bail here
+    # so we don't double-fire.
     write_markers = (
         "add ",
         "create ",
@@ -1123,26 +1197,163 @@ def _should_prefetch_calendar_read(user_msg: str) -> bool:
         "put ",
         "move ",
         "reschedule ",
+        "shift ",
         "cancel ",
         "delete ",
+        "remove ",
+        "edit ",
+        "update ",
+        "change ",
+        "rename ",
+        "rsvp ",
+        "decline ",
+        "quick add",
     )
     if any(marker in msg for marker in write_markers):
         return False
-    read_markers = (
+
+    # Tier 1 — explicit availability questions (always fire).
+    availability_markers = (
         "am i free",
         "am i available",
+        "are you free",
         "availability",
+        "available tomorrow",
+        "available today",
+        "available tonight",
         "free tomorrow",
+        "free today",
+        "free tonight",
+        "free this",
+        "free next",
+        "free on ",
         "busy tomorrow",
-        "free on",
-        "busy on",
+        "busy today",
+        "busy this",
+        "busy next",
+        "busy on ",
+        "find me a free",
+        "find a free",
+        "any free time",
+        "any free slot",
+        "open slot",
+        "open time",
+        "open block",
+    )
+    if any(marker in msg for marker in availability_markers):
+        return True
+
+    # Tier 2 — explicit calendar/schedule questions phrased many natural
+    # ways. The user pointed out 'what are my events for tomorrow' was
+    # missed by the V1 list, so this expansion covers the common variants.
+    question_markers = (
         "what's on my calendar",
         "what is on my calendar",
+        "what's my schedule",
+        "what is my schedule",
+        "what's on my agenda",
+        "what is on my agenda",
+        "what does my day look",
+        "what does today look",
+        "what does tomorrow look",
         "do i have",
+        "have i got",
+        "is there anything",
         "any meetings",
+        "any meeting",
         "any events",
+        "any event",
+        "any appointments",
+        "any appointment",
+        "any calls",
+        "any call ",
+        "what are my events",
+        "what events do i have",
+        "what events",
+        "what meetings",
+        "what meeting",
+        "what appointments",
+        "what calls",
+        "show me my events",
+        "show my events",
+        "show me my meetings",
+        "show my meetings",
+        "show my schedule",
+        "show me my schedule",
+        "show my calendar",
+        "show me my calendar",
+        "show my agenda",
+        "show me my agenda",
+        "list my events",
+        "list my meetings",
+        "list events",
+        "list meetings",
+        "tell me my schedule",
+        "tell me my events",
+        "next event",
+        "next meeting",
+        "next appointment",
+        "upcoming events",
+        "upcoming meetings",
+        "upcoming appointments",
+        "my schedule",
+        "my agenda",
+        "when is my next",
+        "when's my next",
+        "when is the next",
+        "when's the next",
+        "what's coming up",
+        "what is coming up",
     )
-    return any(marker in msg for marker in read_markers)
+    if any(marker in msg for marker in question_markers):
+        return True
+
+    # Tier 3 — combinatorial: any calendar noun + a date/time reference.
+    calendar_nouns = (
+        "calendar",
+        "events",
+        "event ",
+        "meetings",
+        "meeting ",
+        "appointments",
+        "appointment ",
+        "agenda",
+        "schedule ",
+        "standup",
+        "calls ",
+        " call ",
+    )
+    date_refs = (
+        "today",
+        "tomorrow",
+        "tonight",
+        "this morning",
+        "this afternoon",
+        "this evening",
+        "this week",
+        "this weekend",
+        "next week",
+        "next monday",
+        "next tuesday",
+        "next wednesday",
+        "next thursday",
+        "next friday",
+        "next saturday",
+        "next sunday",
+        " on monday",
+        " on tuesday",
+        " on wednesday",
+        " on thursday",
+        " on friday",
+        " on saturday",
+        " on sunday",
+        "upcoming",
+        "later today",
+        "later tonight",
+    )
+    has_noun = any(noun in msg for noun in calendar_nouns)
+    has_date = any(ref in msg for ref in date_refs)
+    return has_noun and has_date
 
 
 def _should_prefetch_calendar_write(user_msg: str) -> bool:

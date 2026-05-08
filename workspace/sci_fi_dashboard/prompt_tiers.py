@@ -94,7 +94,10 @@ PROMPT_TIER_POLICIES: dict[PromptTier, PromptTierPolicy] = {
         include_mcp_context=False,
         history_turns=2,
         cognitive_detail="strategy",
-        native_tool_schemas=False,
+        # Tools available even on small-tier models so the LLM never falsely
+        # claims missing capability. The router falls back gracefully when
+        # the underlying model does not support function calling.
+        native_tool_schemas=True,
         profile_fact_limit=3,
         profile_fact_chars=280,
     ),

@@ -91,7 +91,9 @@ def test_small_policy_is_minimal_and_skips_expensive_blocks():
     assert policy.include_mcp_context is False
     assert policy.history_turns == 2
     assert policy.cognitive_detail == "strategy"
-    assert policy.native_tool_schemas is False
+    # Tools available even on small-tier — Synapse philosophy: never gate
+    # capability behind tier (commit ea2bc6d follow-up).
+    assert policy.native_tool_schemas is True
 
 
 # ---------------------------------------------------------------------------

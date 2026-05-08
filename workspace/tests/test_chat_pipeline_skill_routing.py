@@ -153,6 +153,93 @@ def test_calendar_destructive_prefetch_now_routes_through_calendar_tool():
     assert _should_prefetch_calendar_write("Quick add: lunch with Aman")
 
 
+def test_calendar_read_prefetch_handles_natural_phrasings():
+    """V2 fix: 'what are my events for tomorrow' must trigger prefetch.
+
+    Regression for the user-reported bug where the LLM said 'I don't have
+    a calendar tool' because the prefetch detector missed common natural
+    phrasings.
+    """
+    from sci_fi_dashboard.chat_pipeline import _should_prefetch_calendar_read
+
+    # The exact phrasing that broke it
+    assert _should_prefetch_calendar_read("What are my events for tomorrow?")
+    # Other natural calendar questions
+    assert _should_prefetch_calendar_read("What's my schedule for today?")
+    assert _should_prefetch_calendar_read("Show me my agenda this week")
+    assert _should_prefetch_calendar_read("Show my calendar tomorrow")
+    assert _should_prefetch_calendar_read("List my upcoming meetings")
+    assert _should_prefetch_calendar_read("When is my next meeting?")
+    assert _should_prefetch_calendar_read("What's coming up today?")
+    assert _should_prefetch_calendar_read("Any appointments next Friday?")
+    assert _should_prefetch_calendar_read("Tell me my schedule for tonight")
+    assert _should_prefetch_calendar_read("My events tomorrow?")
+    assert _should_prefetch_calendar_read("Find me a free hour next week")
+    # Existing V1 phrasings still work
+    assert _should_prefetch_calendar_read("Am I free Friday afternoon?")
+    assert _should_prefetch_calendar_read("Do I have any meetings tomorrow?")
+
+
+def test_calendar_read_prefetch_does_not_trigger_on_unrelated():
+    """The expanded marker set must not fire on non-calendar messages."""
+    from sci_fi_dashboard.chat_pipeline import _should_prefetch_calendar_read
+
+    # Calendar word but no date — ambiguous, do not fire
+    assert not _should_prefetch_calendar_read("explain calendar math to me")
+    # Date word but no calendar noun — ambiguous
+    assert not _should_prefetch_calendar_read("how's the weather tomorrow?")
+    # Empty / whitespace
+    assert not _should_prefetch_calendar_read("")
+    assert not _should_prefetch_calendar_read("   ")
+    # Pure write requests should still go through write detector, not read
+    assert not _should_prefetch_calendar_read("Schedule a dentist visit tomorrow")
+    assert not _should_prefetch_calendar_read("Cancel my 4 PM meeting")
+
+
+def test_tool_inventory_compact_mode_warns_against_false_unavailability_claims():
+    """Regression for: LLM said 'I don't have a calendar tool' even though
+    calendar was in the inventory. The compact inventory now must include
+    explicit guidance to never claim missing capability."""
+    from sci_fi_dashboard.chat_pipeline import _format_tool_inventory
+    from sci_fi_dashboard.prompt_tiers import PromptTierPolicy
+    from sci_fi_dashboard.tool_registry import SynapseTool
+
+    casual_policy = PromptTierPolicy(
+        tier="small",
+        token_target=2_000,
+        memory_limit=0,
+        memory_min_score=None,
+        include_graph_context=False,
+        include_mcp_context=False,
+        history_turns=1,
+        cognitive_detail="strategy",
+        native_tool_schemas=False,
+        profile_fact_limit=2,
+        profile_fact_chars=180,
+    )
+
+    async def _exec(args):
+        return None  # never invoked
+
+    calendar_tool = SynapseTool(
+        name="calendar",
+        description="Answer calendar questions and create events.",
+        parameters={"type": "object", "properties": {}},
+        execute=_exec,
+    )
+
+    inventory = _format_tool_inventory([calendar_tool], casual_policy)
+    assert "calendar" in inventory
+    # Self-discovery framing — LLM is the brain, Synapse is the body.
+    assert "SYNAPSE CAPABILITY PROFILE" in inventory
+    assert "you are the LLM brain wired into" in inventory.lower()
+    # Explicit no-false-unavailability instruction
+    assert "NEVER tell the user you do not have access" in inventory
+    # And the calendar-specific hint
+    assert "auto-fire" in inventory.lower()
+    assert "rephrase" in inventory.lower() or "clearer" in inventory.lower()
+
+
 def test_calendar_affirmation_detector_recognizes_yes_no():
     from sci_fi_dashboard.chat_pipeline import _is_calendar_affirmation
 
