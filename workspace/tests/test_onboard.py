@@ -697,9 +697,10 @@ def test_collect_provider_keys_openai_codex_device_flow():
     }
 
 
-def test_openai_codex_device_flow_does_not_auto_refresh_on_unknown_device_auth():
-    """openai_codex device flow should not request a fresh code automatically."""
+def test_openai_codex_device_flow_retries_once_on_unknown_device_auth():
+    """openai_codex device flow retries once when OpenAI returns unknown device auth."""
     import asyncio
+    from types import SimpleNamespace
 
     from cli.provider_steps import openai_codex_device_flow
 
@@ -710,25 +711,36 @@ def test_openai_codex_device_flow_does_not_auto_refresh_on_unknown_device_auth()
         def print(self, msg):
             self.messages.append(str(msg))
 
+    fake_creds = SimpleNamespace(
+        email="me@example.com",
+        profile_name="me@example.com",
+        account_id="acct-123",
+    )
+
     console = _CaptureConsole()
     with patch(
         "sci_fi_dashboard.openai_codex_oauth.get_active_credentials",
         return_value=None,
     ), patch(
         "sci_fi_dashboard.openai_codex_oauth.login_device_code",
-        side_effect=RuntimeError(
-            "OpenAI OAuth device authorization remained unknown until the code expired."
-        ),
+        side_effect=[
+            RuntimeError("OpenAI OAuth HTTP 403: Device authorization is unknown. Please try again."),
+            fake_creds,
+        ],
     ) as mock_login, patch(
         "sci_fi_dashboard.openai_codex_oauth.import_codex_cli_credentials",
         return_value=None,
     ):
         metadata = asyncio.run(openai_codex_device_flow(console))
 
-    mock_login.assert_called_once()
-    assert metadata is None
-    assert any("device code authorization for codex" in m.lower() for m in console.messages)
-    assert not any("fresh code" in m.lower() and "retrying" in m.lower() for m in console.messages)
+    assert mock_login.call_count == 2
+    assert all(call.kwargs["open_browser"] is False for call in mock_login.call_args_list)
+    assert metadata == {
+        "email": "me@example.com",
+        "profile_name": "me@example.com",
+        "account_id": "acct-123",
+    }
+    assert any("retrying once" in m.lower() for m in console.messages)
 
 
 def test_openai_codex_device_flow_shows_security_guidance_on_repeated_unknown_device_auth():
@@ -750,14 +762,18 @@ def test_openai_codex_device_flow_shows_security_guidance_on_repeated_unknown_de
         return_value=None,
     ), patch(
         "sci_fi_dashboard.openai_codex_oauth.login_device_code",
-        side_effect=RuntimeError("OpenAI OAuth HTTP 403: Device authorization is unknown. Please try again."),
+        side_effect=[
+            RuntimeError("OpenAI OAuth HTTP 403: Device authorization is unknown. Please try again."),
+            RuntimeError("OpenAI OAuth HTTP 403: Device authorization is unknown. Please try again."),
+        ],
     ) as mock_login, patch(
         "sci_fi_dashboard.openai_codex_oauth.import_codex_cli_credentials",
         return_value=None,
     ):
         metadata = asyncio.run(openai_codex_device_flow(console))
 
-    mock_login.assert_called_once()
+    assert mock_login.call_count == 2
+    assert all(call.kwargs["open_browser"] is False for call in mock_login.call_args_list)
     assert metadata is None
     assert any("device code authorization for codex" in m.lower() for m in console.messages)
 
@@ -845,6 +861,7 @@ def test_openai_codex_device_flow_imports_codex_cli_credentials_on_cloudflare_wh
     mock_get_active.assert_called_once_with(refresh_if_needed=False)
     mock_import.assert_called_once()
     mock_login.assert_called_once()
+    assert mock_login.call_args.kwargs["open_browser"] is False
     assert metadata == {
         "email": "me@example.com",
         "profile_name": "me@example.com",
@@ -926,6 +943,7 @@ def test_openai_codex_device_flow_force_reauth_ignores_existing_credentials(monk
         metadata = asyncio.run(openai_codex_device_flow(console))
 
     mock_login.assert_called_once()
+    assert mock_login.call_args.kwargs["open_browser"] is False
     assert metadata == {
         "email": "new@example.com",
         "profile_name": "new@example.com",

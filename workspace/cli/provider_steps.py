@@ -470,65 +470,79 @@ async def openai_codex_device_flow(console) -> dict | None:
         )
         user_code = getattr(code, "user_code", None) or ""
         console.print("\nOpenAI Codex uses ChatGPT subscription OAuth (no API key).")
-        console.print(f"Visit [bold]{verification_uri}[/bold]")
+        console.print(f"Open [bold]{verification_uri}[/bold] in your browser.")
         if user_code:
             console.print(f"Enter code: [bold yellow]{user_code}[/bold yellow]\n")
         printed_code["done"] = True
 
-    try:
-        creds = await asyncio.to_thread(
-            openai_codex_oauth.login_device_code,
-            open_browser=True,
-            code_sink=_code_sink,
-        )
-    except Exception as exc:  # noqa: BLE001
-        detail = str(exc)
-        lowered = detail.lower()
-        unknown_device_auth = (
-            "device authorization is unknown" in lowered
-            or "device authorization unknown" in lowered
-            or "device authorization remained unknown" in lowered
-        )
-        if unknown_device_auth:
-            console.print(
-                "[yellow]Enable Device Code Authorization for Codex in "
-                "ChatGPT Security Settings, then retry this flow with a "
-                "fresh device code.[/yellow]"
+    creds = None
+    for attempt in range(2):
+        try:
+            creds = await asyncio.to_thread(
+                openai_codex_oauth.login_device_code,
+                open_browser=False,
+                code_sink=_code_sink,
             )
-        if "cloudflare challenge" in lowered:
-            console.print(
-                "[yellow]OpenAI auth endpoint returned a Cloudflare challenge "
-                "page to this terminal session.[/yellow]"
+            break
+        except Exception as exc:  # noqa: BLE001
+            detail = str(exc)
+            lowered = detail.lower()
+            unknown_device_auth = (
+                "device authorization is unknown" in lowered
+                or "device authorization unknown" in lowered
+                or "device authorization remained unknown" in lowered
             )
-            allow_codex_import = _env_truthy("SYNAPSE_OPENAI_CODEX_IMPORT_FROM_CODEX")
-            if allow_codex_import:
-                try:
-                    imported = await asyncio.to_thread(
-                        openai_codex_oauth.import_codex_cli_credentials
-                    )
-                except Exception:
-                    imported = None
-                if imported and imported.access_token and imported.refresh_token:
-                    console.print(
-                        "[green]Imported OpenAI Codex credentials from local Codex CLI auth state.[/green] "
-                        f"{imported.email or '(email unavailable)'}"
-                    )
-                    return {
-                        "email": imported.email,
-                        "profile_name": imported.profile_name,
-                        "account_id": imported.account_id,
-                    }
-            console.print(
-                "[yellow]Retry from a normal browser-authenticated network "
-                "(disable strict bot-blocking/VPN/proxy), then rerun "
-                "this Synapse setup flow for a fresh device code.[/yellow]"
-            )
-            if not allow_codex_import:
+            if unknown_device_auth and attempt == 0:
                 console.print(
-                    "[dim]Tip: set SYNAPSE_OPENAI_CODEX_IMPORT_FROM_CODEX=1 "
-                    "only if you want to reuse your local Codex CLI account.[/dim]"
+                    "[yellow]OpenAI device authorization was not recognized. "
+                    "Requesting a fresh code and retrying once...[/yellow]"
                 )
-        console.print(f"[red]OpenAI Codex authorization failed: {exc}[/red]")
+                printed_code["done"] = False
+                continue
+            if unknown_device_auth:
+                console.print(
+                    "[yellow]Enable Device Code Authorization for Codex in "
+                    "ChatGPT Security Settings, then retry this flow with a "
+                    "fresh device code.[/yellow]"
+                )
+            if "cloudflare challenge" in lowered:
+                console.print(
+                    "[yellow]OpenAI auth endpoint returned a Cloudflare challenge "
+                    "page to this terminal session.[/yellow]"
+                )
+                allow_codex_import = _env_truthy("SYNAPSE_OPENAI_CODEX_IMPORT_FROM_CODEX")
+                if allow_codex_import:
+                    try:
+                        imported = await asyncio.to_thread(
+                            openai_codex_oauth.import_codex_cli_credentials
+                        )
+                    except Exception:
+                        imported = None
+                    if imported and imported.access_token and imported.refresh_token:
+                        console.print(
+                            "[green]Imported OpenAI Codex credentials from local Codex CLI auth state.[/green] "
+                            f"{imported.email or '(email unavailable)'}"
+                        )
+                        return {
+                            "email": imported.email,
+                            "profile_name": imported.profile_name,
+                            "account_id": imported.account_id,
+                        }
+                console.print(
+                    "[yellow]Retry from a normal browser-authenticated network "
+                    "(disable strict bot-blocking/VPN/proxy), then rerun "
+                    "this Synapse setup flow for a fresh device code.[/yellow]"
+                )
+                if not allow_codex_import:
+                    console.print(
+                        "[dim]Tip: set SYNAPSE_OPENAI_CODEX_IMPORT_FROM_CODEX=1 "
+                        "only if you want to reuse your local Codex CLI account.[/dim]"
+                    )
+            console.print(f"[red]OpenAI Codex authorization failed: {exc}[/red]")
+            return None
+
+    if creds is None:
+        console.print("[red]OpenAI Codex authorization failed: unknown OAuth error[/red]")
         return None
 
     if not printed_code["done"]:
