@@ -3,8 +3,8 @@
 const fs = require("fs");
 const path = require("path");
 const { spawn, spawnSync } = require("child_process");
+const readline = require("readline/promises");
 
-const COMMANDS = new Set(["install", "onboard", "reset", "start", "stop", "doctor", "chat"]);
 const PYTHON_VERSION = process.env.SYNAPSE_PYTHON_VERSION || "3.12";
 const UV_INSTALL_SH = "https://astral.sh/uv/install.sh";
 const UV_INSTALL_PS1 = "https://astral.sh/uv/install.ps1";
@@ -34,6 +34,10 @@ function pythonPath(home) {
 
 function synapsePath(home) {
   return path.join(venvBin(home), process.platform === "win32" ? "synapse.exe" : "synapse");
+}
+
+function synapseInstalled(home) {
+  return fs.existsSync(synapsePath(home));
 }
 
 function uvPath(home) {
@@ -312,6 +316,245 @@ function runStop(home) {
   return 0;
 }
 
+function parseUninstallArgs(args) {
+  const opts = {
+    yes: false,
+    keepNpm: false,
+    dryRun: false,
+    help: false,
+  };
+  for (const arg of args) {
+    if (arg === "--yes" || arg === "-y") {
+      opts.yes = true;
+    } else if (arg === "--keep-npm") {
+      opts.keepNpm = true;
+    } else if (arg === "--dry-run") {
+      opts.dryRun = true;
+    } else if (arg === "-h" || arg === "--help") {
+      opts.help = true;
+    } else {
+      throw new Error(`Unknown uninstall option: ${arg}`);
+    }
+  }
+  return opts;
+}
+
+function printUninstallHelp() {
+  console.log("Usage: synapse uninstall [--yes] [--keep-npm] [--dry-run]");
+  console.log("");
+  console.log("Opens an interactive uninstaller. Use --yes for full unattended uninstall.");
+  console.log("Can remove runtime dependencies, logs/state, credentials/tokens, workspace files, and the npm wrapper.");
+}
+
+function assertSafeProductHome(home) {
+  const resolved = path.resolve(home);
+  const parsed = path.parse(resolved);
+  const dangerous = new Set([
+    parsed.root,
+    path.dirname(resolved),
+    process.env.USERPROFILE ? path.resolve(process.env.USERPROFILE) : "",
+    process.env.HOME ? path.resolve(process.env.HOME) : "",
+  ]);
+  if (!resolved || dangerous.has(resolved) || path.basename(resolved).toLowerCase() !== ".synapse") {
+    throw new Error(`Refusing to delete unsafe Synapse home: ${resolved}`);
+  }
+  return resolved;
+}
+
+const UNINSTALL_CATEGORIES = [
+  {
+    key: "runtime",
+    label: "Runtime and dependencies",
+    paths: [".venv", "runtime", "bridges"],
+  },
+  {
+    key: "credentials",
+    label: "Credentials, tokens, and sessions",
+    paths: ["credentials", "sessions", "google"],
+  },
+  {
+    key: "config",
+    label: "Synapse config",
+    paths: ["synapse.json"],
+  },
+  {
+    key: "workspace",
+    label: "Workspace and user data",
+    paths: ["workspace"],
+  },
+  {
+    key: "logs_state",
+    label: "Logs, process state, and backups",
+    paths: ["logs", "state", "backups"],
+  },
+];
+
+function _canPrompt() {
+  return Boolean(process.stdin.isTTY && process.stdout.isTTY);
+}
+
+async function _ask(question) {
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    return (await rl.question(question)).trim();
+  } finally {
+    rl.close();
+  }
+}
+
+async function _askYesNo(question, defaultValue) {
+  const suffix = defaultValue ? " [Y/n] " : " [y/N] ";
+  const answer = (await _ask(question + suffix)).toLowerCase();
+  if (!answer) {
+    return defaultValue;
+  }
+  return answer === "y" || answer === "yes";
+}
+
+async function buildUninstallPlan(home, opts) {
+  const safeHome = assertSafeProductHome(home);
+  if (opts.yes || opts.dryRun) {
+    return {
+      safeHome,
+      completeHome: true,
+      removeNpm: !opts.keepNpm,
+      categories: UNINSTALL_CATEGORIES.map((category) => category.key),
+    };
+  }
+
+  if (!_canPrompt()) {
+    throw new Error("Interactive uninstall needs a terminal. Re-run with --yes for full uninstall or --dry-run to preview.");
+  }
+
+  console.log("Synapse Uninstaller");
+  console.log("");
+  console.log(`Product home: ${safeHome}`);
+  console.log("");
+  console.log("1. Complete uninstall (everything, including global synapse command)");
+  console.log("2. Delete Synapse data/runtime, keep global synapse command");
+  console.log("3. Remove runtime/dependencies only");
+  console.log("4. Custom category selection");
+  console.log("5. Cancel");
+  const choice = await _ask("Choose an option [1-5]: ");
+
+  if (choice === "5") {
+    return null;
+  }
+  if (choice === "1" || choice === "") {
+    return {
+      safeHome,
+      completeHome: true,
+      removeNpm: true,
+      categories: UNINSTALL_CATEGORIES.map((category) => category.key),
+    };
+  }
+  if (choice === "2") {
+    return {
+      safeHome,
+      completeHome: true,
+      removeNpm: false,
+      categories: UNINSTALL_CATEGORIES.map((category) => category.key),
+    };
+  }
+  if (choice === "3") {
+    return {
+      safeHome,
+      completeHome: false,
+      removeNpm: false,
+      categories: ["runtime"],
+    };
+  }
+  if (choice !== "4") {
+    throw new Error(`Unknown uninstall choice: ${choice}`);
+  }
+
+  const categories = [];
+  for (const category of UNINSTALL_CATEGORIES) {
+    if (await _askYesNo(`Remove ${category.label}?`, category.key === "runtime")) {
+      categories.push(category.key);
+    }
+  }
+  const removeNpm = await _askYesNo("Remove global synapse command?", true);
+  return {
+    safeHome,
+    completeHome: categories.length === UNINSTALL_CATEGORIES.length,
+    removeNpm,
+    categories,
+  };
+}
+
+function printUninstallPlan(plan) {
+  console.log("Synapse uninstall plan:");
+  console.log(`  Product home: ${plan.safeHome}`);
+  if (plan.completeHome) {
+    console.log("  Delete complete product home: yes");
+  } else {
+    for (const category of UNINSTALL_CATEGORIES) {
+      console.log(`  Remove ${category.label}: ${plan.categories.includes(category.key) ? "yes" : "no"}`);
+    }
+  }
+  console.log(`  Remove global npm wrapper: ${plan.removeNpm ? "yes" : "no"}`);
+}
+
+function removeSelectedCategories(plan) {
+  const selected = new Set(plan.categories);
+  for (const category of UNINSTALL_CATEGORIES) {
+    if (!selected.has(category.key)) {
+      continue;
+    }
+    for (const relPath of category.paths) {
+      const target = path.join(plan.safeHome, relPath);
+      fs.rmSync(target, { recursive: true, force: true });
+      console.log(`Deleted ${target}`);
+    }
+  }
+}
+
+async function runUninstall(home, args) {
+  const opts = parseUninstallArgs(args);
+  if (opts.help) {
+    printUninstallHelp();
+    return 0;
+  }
+  const plan = await buildUninstallPlan(home, opts);
+  if (!plan) {
+    console.log("Uninstall cancelled.");
+    return 0;
+  }
+  const npmPackage = "synapse-oss";
+
+  printUninstallPlan(plan);
+
+  if (!opts.yes && !opts.dryRun && _canPrompt()) {
+    const confirmed = await _askYesNo("Proceed with uninstall?", false);
+    if (!confirmed) {
+      console.log("Uninstall cancelled.");
+      return 0;
+    }
+  } else if (!opts.yes && !opts.dryRun) {
+    console.log("");
+    console.log("Nothing deleted. Re-run with --yes to confirm.");
+    return 1;
+  }
+  if (opts.dryRun) {
+    return 0;
+  }
+
+  runStop(plan.safeHome);
+  if (plan.completeHome) {
+    fs.rmSync(plan.safeHome, { recursive: true, force: true });
+    console.log(`Deleted ${plan.safeHome}`);
+  } else {
+    removeSelectedCategories(plan);
+  }
+
+  if (plan.removeNpm) {
+    runNpm(["uninstall", "-g", npmPackage], { env: process.env, cwd: process.cwd() });
+  }
+  console.log("Synapse uninstalled.");
+  return 0;
+}
+
 function utcTimestamp() {
   return new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
 }
@@ -411,21 +654,23 @@ function runReset(home, args) {
 }
 
 function printHelp() {
-  console.log("Usage: synapse <install|onboard|reset|start|stop|doctor|chat> [args...]");
+  console.log("Usage: synapse <install|start|stop|reset|uninstall|...> [args...]");
+  console.log("");
+  console.log("Wrapper-owned commands: install, start, stop, reset, uninstall");
+  console.log("All other commands are delegated to the installed Synapse CLI.");
+  console.log("Run after install for full command help: synapse --help");
 }
 
-function main(argv) {
+async function main(argv) {
   const [command, ...args] = argv;
+  const home = productHome();
   if (!command || command === "-h" || command === "--help") {
+    if (synapseInstalled(home)) {
+      return runSynapse(home, command ? [command, ...args] : ["--help"]);
+    }
     printHelp();
     return 0;
   }
-  if (!COMMANDS.has(command)) {
-    console.error(`Unknown command: ${command}`);
-    printHelp();
-    return 2;
-  }
-  const home = productHome();
   try {
     if (command === "install") {
       return runInstall(home);
@@ -439,6 +684,9 @@ function main(argv) {
     if (command === "reset") {
       return runReset(home, args);
     }
+    if (command === "uninstall") {
+      return await runUninstall(home, args);
+    }
     return runSynapse(home, [command, ...args]);
   } catch (error) {
     console.error(error.message);
@@ -446,4 +694,6 @@ function main(argv) {
   }
 }
 
-process.exitCode = main(process.argv.slice(2));
+main(process.argv.slice(2)).then((code) => {
+  process.exitCode = code;
+});

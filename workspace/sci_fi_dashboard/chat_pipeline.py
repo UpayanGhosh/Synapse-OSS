@@ -2502,9 +2502,12 @@ async def persona_chat(
     insert_at = (
         len(messages) - 1 if messages and messages[-1].get("role") == "user" else len(messages)
     )
-    if (
-        insert_at > 0
-        and str(messages[insert_at - 1].get("content", "")).startswith("TURN STANCE DECISION")
+    while insert_at > 0 and str(messages[insert_at - 1].get("content", "")).startswith(
+        (
+            "TURN STANCE DECISION",
+            "STYLE POLICY",
+            "TURN STYLE OVERRIDE",
+        )
     ):
         insert_at -= 1
     messages.insert(insert_at, {"role": "system", "content": receipt_contract})

@@ -99,22 +99,31 @@ Paste the raw error output into the chat. For each issue, we will record:
 
 ### 9. MCP integrations are present but not production-complete for proactive companion workflows
 
-- **Status:** investigating
+- **Status:** partially fixed, calendar core + Google connector CLI verified; proactive workflows still open
 - **Where it happened:** MCP + proactive awareness expectations for Calendar, Gmail, GitHub, and preferred chat-platform nudges
 - **Exact issue:** Synapse should proactively use connected MCP services, for example:
   - Google Calendar: periodically check upcoming meetings and nudge the user on WhatsApp/Telegram/Slack/Discord with a short meeting summary.
   - GitHub: detect new PRs in watched repositories and nudge the user with repo name and basic PR details.
   - Gmail: summarize important new emails, watch a specific thread, notify when a new email arrives, and let the user draft/send replies from their preferred chat platform.
 - **Expected behavior:** MCP integrations should work as companion workflows, not only as raw tools. They need polling, deduplication, importance filtering, per-user/channel delivery preferences, thread/repo watch state, and safe action confirmation for sending messages or email.
-- **Current implementation status:** Calendar MCP has `get_upcoming`, `list_events`, and `create_event`; Gmail MCP has `search_emails`, `read_email`, `get_unread`, and `send_email`; Slack MCP has mention/message tools; proactive polling can gather Calendar/Gmail/Slack context and inject it into prompts. However, proactive delivery is not complete end-to-end, GitHub MCP/watch support is not implemented in Synapse's builtin MCP list, Gmail thread-watch/draft workflows are not implemented as durable user workflows, and full MCP tests could not run in the current Homebrew Python environment because dependencies such as `mcp`, `pydantic`, and `pytest-asyncio` are missing.
+- **Current implementation status:** Calendar Core V1 is implemented and unit verified. Calendar now has date phrase resolution, recurring events, trusted quick-add policy, conflict/availability helpers, holiday lookup, Google Calendar service normalization, expanded MCP tools, calendar preferences config, and a serial chat-facing `calendar` tool that routes natural-language calendar requests through the same core. Google Calendar now has an end-user connector CLI with `synapse calendar connect`, `synapse calendar verify`, `synapse calendar status`, and `synapse calendar disconnect`; the connect flow opens browser OAuth, stores the token, updates `synapse.json`, and verifies calendar/event counters without manual token/config editing. Gmail MCP has `search_emails`, `read_email`, `get_unread`, and `send_email`; Slack MCP has mention/message tools; proactive polling can gather Calendar/Gmail/Slack context and inject it into prompts. However, proactive delivery is not complete end-to-end, GitHub MCP/watch support is not implemented in Synapse's builtin MCP list, Gmail thread-watch/draft workflows are not implemented as durable user workflows, live Google Calendar smoke testing remains opt-in because it needs real user OAuth credentials, and packaged Synapse builds still need a bundled/provisioned Google OAuth desktop client.
 - **Likely cause:** MCP servers were built as low-level tool endpoints first. The higher-level companion behavior still needs a workflow layer that stores watches/subscriptions, decides what is important, deduplicates previously announced items, and delivers through the user's preferred channel.
-- **Fix needed:** Add an MCP workflow layer for proactive notifications:
+- **Fix needed:** Calendar Core V1 no longer needs to be built from scratch. Remaining MCP work is the companion workflow layer:
   - Auto-inject MCP auth tokens for internal MCP calls when gateway auth is enabled.
   - Add Calendar event nudge workflow with lookahead window, dedupe, summary formatting, and delivery through the configured preferred channel.
   - Add GitHub MCP/server support and watched-repo PR polling with PR dedupe and basic metadata notification.
   - Add Gmail importance summary, watched-thread state, new-message detection, draft generation, and explicit confirmation before sending.
   - Add `/status` or `synapse verify` diagnostics showing connected MCP servers, enabled workflows, last poll time, last error, and last delivered notification.
-- **Verification:** Install/use the complete project environment, then run `pytest tests/test_mcp_*.py tests/test_proactive_engine.py -q`. Add integration tests for Calendar nudge, GitHub PR nudge, Gmail watched-thread nudge, channel delivery, auth-token injection, and notification dedupe.
+- **Verification:** Calendar Core/MCP/tool-registry focused tests passed on Windows in the project venv:
+  - `pytest -q -o addopts='' --tb=short workspace\tests\test_calendar_commands.py` -> `6 passed`.
+  - `python workspace\synapse_cli.py calendar connect --help` and `python workspace\synapse_cli.py calendar verify --help` -> both rendered successfully.
+  - `pytest -q -o addopts='' --tb=short workspace\tests\test_mcp_calendar_server.py workspace\tests\calendar_core` -> `75 passed`.
+  - `pytest -q -o addopts='' --tb=short workspace\tests\test_mcp_config.py workspace\tests\calendar_core\test_tool_registry_calendar.py` -> `23 passed`.
+  - `pytest -q -o addopts='' --tb=short workspace\tests\calendar_core workspace\tests\test_mcp_calendar_server.py workspace\tests\test_mcp_config.py workspace\tests\test_tool_registry.py workspace\tests\pipeline\test_call_budget.py` -> `134 passed`.
+  - `pytest -q -o addopts='' --tb=short workspace\tests\test_calendar_commands.py workspace\tests\calendar_core workspace\tests\test_mcp_calendar_server.py workspace\tests\test_mcp_config.py workspace\tests\test_tool_registry.py workspace\tests\pipeline\test_call_budget.py` -> `140 passed`.
+  - `pytest -q -o addopts='' --tb=short workspace\tests\test_mcp_calendar_server.py workspace\tests\test_mcp_client.py workspace\tests\test_mcp_config.py workspace\tests\test_proactive_engine.py workspace\tests\test_proactive_policy.py` -> `94 passed`.
+  - `uv tool run --offline code-review-graph detect-changes --base HEAD --brief` -> risk score `0.00`.
+  - Remaining verification: add integration tests for Calendar nudge, GitHub PR nudge, Gmail watched-thread nudge, channel delivery, auth-token injection, notification dedupe, and opt-in live Google Calendar smoke.
 
 ## Proactive Companion Feature Requests
 
@@ -131,11 +140,11 @@ be tracked, implemented, and verified as product features.
 
 ### FR-2. Calendar meeting nudges
 
-- **Status:** requested
+- **Status:** partially implemented; proactive delivery still requested
 - **User value:** User should not have to manually track every meeting.
 - **Expected behavior:** Synapse checks Google Calendar periodically and nudges the user before upcoming meetings with time, title, attendees, meeting link, and a short summary.
-- **Implementation notes:** Use Calendar MCP `get_upcoming`, add event dedupe, configurable lookahead window, summary formatting, and channel delivery.
-- **Verification:** Tests prove one notification per event window, no duplicate nudges, and correct channel delivery.
+- **Implementation notes:** Calendar Core V1, expanded Calendar MCP, and Google Calendar connector CLI are in place. Remaining work: use Calendar MCP `get_upcoming`, add event dedupe, configurable lookahead window, summary formatting, and channel delivery.
+- **Verification:** Calendar Core/MCP unit tests are green. Still needed: tests proving one notification per event window, no duplicate nudges, and correct channel delivery.
 
 ### FR-3. Daily brief
 

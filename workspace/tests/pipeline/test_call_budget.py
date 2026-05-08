@@ -731,10 +731,10 @@ async def test_turn_stance_contract_is_injected_next_to_user_turn(fresh_pipeline
 
     assert isinstance(result, dict)
     messages = deps.synapse_llm_router.call_with_metadata.call_args.args[1]
-    assert messages[-2]["role"] == "system"
-    assert "TURN STANCE DECISION" in messages[-2]["content"]
-    assert "steady close friend" in messages[-2]["content"]
-    assert "No therapy-template phrasing" in messages[-2]["content"]
+    trailing_system = [m for m in messages[-4:-1] if m["role"] == "system"]
+    stance = next(m for m in trailing_system if "TURN STANCE DECISION" in m["content"])
+    assert "steady close friend" in stance["content"]
+    assert "No therapy-template phrasing" in stance["content"]
     assert messages[-1]["role"] == "user"
 
 
@@ -752,9 +752,9 @@ async def test_explicit_professional_tone_override_is_last_system_contract(fresh
     assert isinstance(result, dict)
     messages = deps.synapse_llm_router.call_with_metadata.call_args.args[1]
     assert messages[-2]["role"] == "system"
-    assert "TURN STYLE OVERRIDE" in messages[-2]["content"]
+    assert "STYLE POLICY" in messages[-2]["content"]
     assert "professional, precise, restrained" in messages[-2]["content"]
-    assert "Do not use teasing" in messages[-2]["content"]
+    assert "Avoid teasing" in messages[-2]["content"]
     assert messages[-1]["role"] == "user"
 
 

@@ -23,6 +23,11 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+try:
+    from sci_fi_dashboard.calendar_core.assistant import handle_calendar_request
+except Exception:  # pragma: no cover - calendar is optional until deps are installed
+    handle_calendar_request = None  # type: ignore[assignment]
+
 
 # ---------------------------------------------------------------------------
 # Binary file guard for write_file
@@ -403,6 +408,69 @@ def _query_memory_factory(memory_engine: Any) -> ToolFactory:
     return _factory
 
 
+def _get_calendar_runtime() -> tuple[Any | None, Any]:
+    """Return a Calendar Core service + preferences, or ``None`` when disconnected."""
+    from mcp_config import load_mcp_config
+    from synapse_config import SynapseConfig
+
+    cfg = SynapseConfig.load()
+    mcp_cfg = load_mcp_config(cfg.mcp)
+    preferences = mcp_cfg.calendar_preferences.to_calendar_preferences()
+    cal_cfg = mcp_cfg.builtin_servers.get("calendar")
+    if not mcp_cfg.enabled or cal_cfg is None or not cal_cfg.enabled:
+        return None, preferences
+
+    from sci_fi_dashboard.calendar_core.service import GoogleCalendarService
+    from sci_fi_dashboard.mcp_servers.calendar_server import _get_calendar_service
+
+    return GoogleCalendarService(_get_calendar_service()), preferences
+
+
+def _calendar_factory(_ctx: ToolContext) -> SynapseTool:
+    """Factory for chat-facing natural-language calendar access."""
+
+    async def _execute(arguments: dict) -> ToolResult:
+        request = str(arguments.get("request", "")).strip()
+        if not request:
+            return error_result("calendar failed: missing request")
+        if handle_calendar_request is None:
+            return error_result("Calendar not connected: calendar core is unavailable")
+        try:
+            calendar, preferences = _get_calendar_runtime()
+            if calendar is None:
+                return error_result(
+                    "Calendar not connected. Configure mcp.builtin_servers.calendar "
+                    "with a Google Calendar token_path in synapse.json."
+                )
+            result = handle_calendar_request(request, calendar, preferences)
+            return ToolResult(
+                content=json.dumps(result.to_dict(), indent=2, default=str),
+                is_error=result.status == "failed",
+            )
+        except Exception as e:
+            return error_result(f"calendar failed: {e}")
+
+    return SynapseTool(
+        name="calendar",
+        description=(
+            "Answer calendar questions, resolve date phrases, check availability, "
+            "find holidays, and create safe calendar events from natural language."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "request": {
+                    "type": "string",
+                    "description": "The user's calendar request in natural language.",
+                }
+            },
+            "required": ["request"],
+        },
+        execute=_execute,
+        serial=True,
+    )
+
+
 def _read_file_factory(_ctx: ToolContext) -> SynapseTool:
     """Factory for the read_file tool (Sentinel-gated)."""
 
@@ -509,5 +577,6 @@ def register_builtin_tools(
     registry.register_factory("web_search", _web_search_factory)
     registry.register_factory("web_query", _web_query_factory)
     registry.register_factory("query_memory", _query_memory_factory(memory_engine))
+    registry.register_factory("calendar", _calendar_factory)
     registry.register_factory("read_file", _read_file_factory)
     registry.register_factory("write_file", _write_file_factory)

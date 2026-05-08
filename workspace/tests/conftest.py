@@ -15,8 +15,8 @@ import unittest.mock
 
 import pytest
 
-# Add workspace to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
+# Add workspace package root to path so tests work without requiring PYTHONPATH.
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 
 @pytest.fixture(scope="session")

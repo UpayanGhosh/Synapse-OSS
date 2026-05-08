@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field, field_validator
 
+from sci_fi_dashboard.calendar_core.models import CalendarPreferences
+
 
 class ProactiveSourceConfig(BaseModel):
     proactive: bool = True
@@ -26,6 +28,34 @@ class BuiltinServerConfig(BaseModel):
     user_token: str = ""
 
 
+class CalendarPreferencesConfig(BaseModel):
+    default_calendar_id: str = "primary"
+    timezone: str = "Asia/Calcutta"
+    locale_country: str = "IN"
+    trusted_quick_add: bool = True
+    default_event_duration_minutes: int = Field(default=60, ge=1)
+    allow_open_ended_recurring_personal_events: bool = True
+
+    @field_validator("default_calendar_id", "timezone", "locale_country")
+    @classmethod
+    def required_text_not_empty(cls, v: str, info) -> str:
+        if not v.strip():
+            raise ValueError(f"{info.field_name} must be a non-empty string")
+        return v
+
+    def to_calendar_preferences(self) -> CalendarPreferences:
+        return CalendarPreferences(
+            default_calendar_id=self.default_calendar_id,
+            timezone=self.timezone,
+            locale_country=self.locale_country,
+            trusted_quick_add=self.trusted_quick_add,
+            default_event_duration_minutes=self.default_event_duration_minutes,
+            allow_open_ended_recurring_personal_events=(
+                self.allow_open_ended_recurring_personal_events
+            ),
+        )
+
+
 class CustomServerConfig(BaseModel):
     command: str
     args: list[str] = Field(default_factory=list)
@@ -42,6 +72,9 @@ class CustomServerConfig(BaseModel):
 class MCPConfig(BaseModel):
     enabled: bool = True
     proactive: ProactiveConfig = Field(default_factory=ProactiveConfig)
+    calendar_preferences: CalendarPreferencesConfig = Field(
+        default_factory=CalendarPreferencesConfig
+    )
     builtin_servers: dict[str, BuiltinServerConfig] = Field(default_factory=dict)
     custom_servers: dict[str, CustomServerConfig] = Field(default_factory=dict)
 

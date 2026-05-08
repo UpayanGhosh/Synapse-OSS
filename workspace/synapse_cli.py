@@ -1,6 +1,6 @@
 """Synapse-OSS root CLI entry point.
 
-Exposes onboard, chat, ingest, vacuum, verify, daemon-install, daemon-uninstall
+Exposes onboard, chat, ingest, vacuum, verify, start, stop, daemon-install, daemon-uninstall
 as Typer subcommands.
 
 Run from the workspace/ directory:
@@ -12,6 +12,7 @@ Run from the workspace/ directory:
 """
 
 import os
+import subprocess
 from datetime import UTC
 from pathlib import Path
 
@@ -259,6 +260,121 @@ def antigravity_logout() -> None:
         typer.echo("Google Antigravity credentials wiped.")
     else:
         typer.echo("No saved credentials to remove.")
+
+
+# ---------------------------------------------------------------------------
+# Calendar connector subcommand group
+# ---------------------------------------------------------------------------
+calendar_app = typer.Typer(
+    name="calendar",
+    help="Google Calendar connector — connect / verify / status / disconnect",
+    no_args_is_help=True,
+)
+app.add_typer(calendar_app)
+
+
+@calendar_app.command("connect")
+def calendar_connect(
+    client_secret: Path | None = typer.Option(
+        None,
+        "--client-secret",
+        help=(
+            "Path to a Google OAuth desktop client JSON. Packaged Synapse builds should "
+            "provide this automatically; local OSS/dev installs can pass it once."
+        ),
+    ),
+    default_calendar_id: str = typer.Option(
+        "primary",
+        "--default-calendar-id",
+        help="Google Calendar ID to use for reads/writes.",
+    ),
+    timezone: str = typer.Option(
+        "Asia/Calcutta",
+        "--timezone",
+        help="Default timezone for natural-language calendar requests.",
+    ),
+    locale_country: str = typer.Option(
+        "IN",
+        "--locale-country",
+        help="Locale country code for holiday fallback answers.",
+    ),
+    trusted_quick_add: bool = typer.Option(
+        True,
+        "--trusted-quick-add/--confirm-all-adds",
+        help="Allow safe personal calendar events to be created without extra confirmation.",
+    ),
+    no_browser: bool = typer.Option(
+        False,
+        "--no-browser",
+        help="Do not automatically open the browser.",
+    ),
+) -> None:
+    """Connect Google Calendar with browser OAuth and update Synapse config."""
+    from cli.calendar_commands import CalendarConnectError, connect_calendar  # noqa: PLC0415
+
+    try:
+        result = connect_calendar(
+            client_secret_path=client_secret,
+            default_calendar_id=default_calendar_id,
+            timezone=timezone,
+            locale_country=locale_country,
+            trusted_quick_add=trusted_quick_add,
+            open_browser=not no_browser,
+        )
+    except CalendarConnectError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from None
+
+    typer.echo("Calendar connected.")
+    if result.account:
+        typer.echo(f"account: {result.account}")
+    if result.token_path:
+        typer.echo(f"token: {result.token_path}")
+    typer.echo(f"calendars: {result.calendar_count}")
+    typer.echo(f"upcoming_events: {result.upcoming_count}")
+
+
+@calendar_app.command("verify")
+def calendar_verify() -> None:
+    """Verify Calendar config, refresh token if needed, and list live counters."""
+    from cli.calendar_commands import verify_calendar_connection  # noqa: PLC0415
+
+    result = verify_calendar_connection()
+    if not result.connected:
+        typer.echo(result.error or "Calendar not connected.", err=True)
+        raise typer.Exit(1)
+    typer.echo("Calendar verified.")
+    if result.account:
+        typer.echo(f"account: {result.account}")
+    if result.token_path:
+        typer.echo(f"token: {result.token_path}")
+    typer.echo(f"calendars: {result.calendar_count}")
+    typer.echo(f"upcoming_events: {result.upcoming_count}")
+
+
+@calendar_app.command("status")
+def calendar_status_cmd() -> None:
+    """Show local Calendar connector status without network calls."""
+    from cli.calendar_commands import calendar_status  # noqa: PLC0415
+
+    result = calendar_status()
+    if not result.connected:
+        typer.echo(result.error or "Calendar not connected.")
+        raise typer.Exit(1)
+    typer.echo("Calendar configured.")
+    if result.token_path:
+        typer.echo(f"token: {result.token_path}")
+
+
+@calendar_app.command("disconnect")
+def calendar_disconnect() -> None:
+    """Disable Calendar connector and remove the saved token when present."""
+    from cli.calendar_commands import disconnect_calendar  # noqa: PLC0415
+
+    removed = disconnect_calendar()
+    typer.echo("Calendar disconnected.")
+    if removed:
+        typer.echo("Removed saved Calendar token.")
 
 
 @app.command()
@@ -607,6 +723,65 @@ def daemon_uninstall() -> None:
     except NotImplementedError as exc:
         typer.echo(f"ERROR: {exc}", err=True)
         raise typer.Exit(1) from None
+
+
+@app.command()
+def start() -> None:
+    """Start the Synapse gateway in the background."""
+    from cli.gateway_lifecycle import start_gateway  # noqa: PLC0415
+    from synapse_config import SynapseConfig  # noqa: PLC0415
+
+    try:
+        _started, message = start_gateway(SynapseConfig.load())
+        typer.echo(message)
+    except Exception as exc:  # pragma: no cover - defensive CLI boundary
+        typer.echo(f"ERROR: {exc}", err=True)
+        raise typer.Exit(1) from None
+
+
+@app.command()
+def stop() -> None:
+    """Stop the background Synapse gateway."""
+    from cli.gateway_lifecycle import stop_gateway  # noqa: PLC0415
+    from synapse_config import SynapseConfig  # noqa: PLC0415
+
+    try:
+        _stopped, message = stop_gateway(SynapseConfig.load())
+        typer.echo(message)
+    except Exception as exc:  # pragma: no cover - defensive CLI boundary
+        typer.echo(f"ERROR: {exc}", err=True)
+        raise typer.Exit(1) from None
+
+
+@app.command()
+def uninstall(
+    yes: bool = typer.Option(False, "--yes", "-y", help="Confirm permanent deletion."),
+    keep_npm: bool = typer.Option(False, "--keep-npm", help="Keep the global npm wrapper."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be deleted."),
+) -> None:
+    """Completely uninstall Synapse data/runtime via the product wrapper."""
+
+    npm_synapse = (
+        Path(os.environ.get("APPDATA", str(Path.home() / "AppData" / "Roaming")))
+        / "npm"
+        / "synapse.cmd"
+    )
+    if not npm_synapse.exists():
+        typer.echo(
+            "ERROR: global Synapse wrapper not found. Run uninstall from the npm-installed synapse command.",
+            err=True,
+        )
+        raise typer.Exit(1)
+
+    args = [str(npm_synapse), "uninstall"]
+    if yes:
+        args.append("--yes")
+    if keep_npm:
+        args.append("--keep-npm")
+    if dry_run:
+        args.append("--dry-run")
+    result = subprocess.run(args, check=False)
+    raise typer.Exit(result.returncode)
 
 
 @app.command()

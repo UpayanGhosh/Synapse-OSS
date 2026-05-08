@@ -13,6 +13,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from sci_fi_dashboard.mcp_config import (
     BuiltinServerConfig,
+    CalendarPreferencesConfig,
     CustomServerConfig,
     MCPConfig,
     ProactiveConfig,
@@ -83,6 +84,30 @@ class TestBuiltinServerConfig:
 
 
 # ---------------------------------------------------------------------------
+# CalendarPreferencesConfig
+# ---------------------------------------------------------------------------
+
+
+class TestCalendarPreferencesConfig:
+    def test_defaults_match_calendar_core_preferences(self):
+        cfg = CalendarPreferencesConfig()
+        prefs = cfg.to_calendar_preferences()
+
+        assert cfg.default_calendar_id == "primary"
+        assert cfg.timezone == "Asia/Calcutta"
+        assert cfg.locale_country == "IN"
+        assert cfg.trusted_quick_add is True
+        assert cfg.default_event_duration_minutes == 60
+        assert cfg.allow_open_ended_recurring_personal_events is True
+        assert prefs.default_calendar_id == "primary"
+        assert prefs.trusted_quick_add is True
+
+    def test_rejects_blank_default_calendar_id(self):
+        with pytest.raises(ValueError, match="default_calendar_id"):
+            CalendarPreferencesConfig(default_calendar_id=" ")
+
+
+# ---------------------------------------------------------------------------
 # CustomServerConfig
 # ---------------------------------------------------------------------------
 
@@ -118,6 +143,7 @@ class TestMCPConfig:
         assert cfg.enabled is True
         assert cfg.builtin_servers == {}
         assert cfg.custom_servers == {}
+        assert cfg.calendar_preferences.default_calendar_id == "primary"
 
     def test_is_server_enabled_builtin(self):
         cfg = MCPConfig(
@@ -168,6 +194,15 @@ class TestLoadMcpConfig:
             },
             "builtin_servers": {
                 "gmail": {"enabled": True, "token_path": "~/.tokens/gmail.json"},
+                "calendar": {"enabled": True, "token_path": "~/.tokens/calendar.json"},
+            },
+            "calendar_preferences": {
+                "default_calendar_id": "work",
+                "timezone": "Asia/Kolkata",
+                "locale_country": "IN",
+                "trusted_quick_add": False,
+                "default_event_duration_minutes": 45,
+                "allow_open_ended_recurring_personal_events": False,
             },
             "custom_servers": {
                 "my_server": {"command": "python", "args": ["-m", "my_srv"]},
@@ -179,7 +214,12 @@ class TestLoadMcpConfig:
         assert "calendar" in cfg.proactive.sources
         assert cfg.proactive.sources["calendar"].lookahead_minutes == 45
         assert "gmail" in cfg.builtin_servers
+        assert "calendar" in cfg.builtin_servers
         assert "my_server" in cfg.custom_servers
+        assert cfg.calendar_preferences.default_calendar_id == "work"
+        assert cfg.calendar_preferences.timezone == "Asia/Kolkata"
+        assert cfg.calendar_preferences.trusted_quick_add is False
+        assert cfg.calendar_preferences.default_event_duration_minutes == 45
 
     def test_invalid_poll_interval_raises(self):
         with pytest.raises(Exception):  # noqa: B017

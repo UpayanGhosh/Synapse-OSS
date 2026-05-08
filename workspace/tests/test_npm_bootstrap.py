@@ -28,8 +28,30 @@ def test_synapse_bin_exists_and_lists_supported_commands():
     content = SYNAPSE_BIN.read_text(encoding="utf-8")
 
     assert content.startswith("#!/usr/bin/env node")
-    for command in ("install", "onboard", "start", "stop", "doctor", "chat"):
+    for command in ("install", "start", "stop", "reset", "uninstall"):
         assert command in content
+
+
+def test_synapse_bin_delegates_commands_dynamically_to_python_cli():
+    content = SYNAPSE_BIN.read_text(encoding="utf-8")
+
+    assert "COMMANDS = new Set" not in content
+    assert "return runSynapse(home, [command, ...args]);" in content
+    assert "All other commands are delegated to the installed Synapse CLI." in content
+    assert "Wrapper-owned commands: install, start, stop, reset, uninstall" in content
+
+
+def test_synapse_bin_uninstall_is_confirmed_and_safe():
+    content = SYNAPSE_BIN.read_text(encoding="utf-8")
+
+    assert "function runUninstall" in content
+    assert "Synapse Uninstaller" in content
+    assert "Choose an option [1-5]" in content
+    assert "Custom category selection" in content
+    assert "Proceed with uninstall?" in content
+    assert "assertSafeProductHome" in content
+    assert "fs.rmSync(plan.safeHome, { recursive: true, force: true })" in content
+    assert 'runNpm(["uninstall", "-g", npmPackage]' in content
 
 
 def test_synapse_bin_resolves_product_home_not_repo_workspace():
@@ -39,7 +61,8 @@ def test_synapse_bin_resolves_product_home_not_repo_workspace():
     assert ".synapse" in content
     assert "USERPROFILE" in content
     assert "process.env.HOME" in content
-    assert "workspace" not in content
+    assert "workspace/synapse_cli.py" not in content
+    assert '"workspace/*.py"' not in content
 
 
 def test_synapse_install_bootstraps_uv_python_and_product_home():
