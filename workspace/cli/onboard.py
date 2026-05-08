@@ -137,6 +137,7 @@ def _format_ready_summary(config: dict, config_path: Path) -> str:
     port = int(gateway.get("port") or 8000)
     safe_model = _selected_safe_model(config)
     next_command = _chat_next_command(port)
+    integrations = config.get("integrations_connected") or []
     return "\n".join(
         [
             "[bold green]Setup complete![/]",
@@ -146,6 +147,7 @@ def _format_ready_summary(config: dict, config_path: Path) -> str:
             f"Safe-chat model: {safe_model or 'not configured'}",
             f"Providers: {', '.join(config.get('providers', {}).keys()) or '(none)'}",
             f"Channels: {', '.join(config.get('channels', {}).keys()) or '(none)'}",
+            f"Integrations: {', '.join(integrations) or '(none — run `synapse integrations connect <name>` to add)'}",
             f"Next: {next_command}",
         ]
     )
@@ -2370,6 +2372,19 @@ def _run_interactive_impl(
     # SBS questions run after synapse.json is written so SynapseConfig.load()
     # inside initialize_sbs_from_wizard() resolves the correct profile path.
     _run_sbs_questions(prompter=prompter, data_root=data_root)
+
+    # --- Step 10c: Optional integrations (Google Calendar, Gmail, ...) ---
+    integration_results: dict[str, str] = {}
+    try:
+        from cli.integration_steps import setup_integrations_wizard  # noqa: PLC0415
+
+        integration_results = setup_integrations_wizard(
+            prompter,
+            data_root=data_root,
+            config=config,
+        )
+    except Exception as exc:  # noqa: BLE001
+        _print(f"[yellow]Integrations step skipped ({exc}); continuing.[/]")
 
     # --- Step 11: Daemon install ---
     _wizard_daemon_install(prompter=prompter, config=config, data_root=data_root, flow=flow)
