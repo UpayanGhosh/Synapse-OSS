@@ -426,8 +426,10 @@ def _get_calendar_runtime() -> tuple[Any | None, Any]:
     return GoogleCalendarService(_get_calendar_service()), preferences
 
 
-def _calendar_factory(_ctx: ToolContext) -> SynapseTool:
+def _calendar_factory(ctx: ToolContext) -> SynapseTool:
     """Factory for chat-facing natural-language calendar access."""
+
+    default_chat_id = f"{ctx.channel_id or 'api'}:{ctx.chat_id or ctx.sender_id or 'unknown'}"
 
     async def _execute(arguments: dict) -> ToolResult:
         request = str(arguments.get("request", "")).strip()
@@ -435,6 +437,7 @@ def _calendar_factory(_ctx: ToolContext) -> SynapseTool:
             return error_result("calendar failed: missing request")
         if handle_calendar_request is None:
             return error_result("Calendar not connected: calendar core is unavailable")
+        chat_id = str(arguments.get("chat_id", "")).strip() or default_chat_id
         try:
             calendar, preferences = _get_calendar_runtime()
             if calendar is None:
@@ -442,7 +445,12 @@ def _calendar_factory(_ctx: ToolContext) -> SynapseTool:
                     "Calendar not connected. Configure mcp.builtin_servers.calendar "
                     "with a Google Calendar token_path in synapse.json."
                 )
-            result = handle_calendar_request(request, calendar, preferences)
+            result = handle_calendar_request(
+                request,
+                calendar,
+                preferences,
+                chat_id=chat_id,
+            )
             return ToolResult(
                 content=json.dumps(result.to_dict(), indent=2, default=str),
                 is_error=result.status == "failed",
@@ -454,7 +462,9 @@ def _calendar_factory(_ctx: ToolContext) -> SynapseTool:
         name="calendar",
         description=(
             "Answer calendar questions, resolve date phrases, check availability, "
-            "find holidays, and create safe calendar events from natural language."
+            "find holidays, and create/update/delete/move calendar events from natural "
+            "language. Destructive actions (delete/update/move/invite) require an "
+            "explicit 'yes' on the next turn — pass the same chat_id both turns."
         ),
         parameters={
             "type": "object",
@@ -462,7 +472,14 @@ def _calendar_factory(_ctx: ToolContext) -> SynapseTool:
                 "request": {
                     "type": "string",
                     "description": "The user's calendar request in natural language.",
-                }
+                },
+                "chat_id": {
+                    "type": "string",
+                    "description": (
+                        "Stable chat identifier so a follow-up 'yes' turn confirms the same "
+                        "parked action. Defaults to the resolution context."
+                    ),
+                },
             },
             "required": ["request"],
         },
@@ -558,6 +575,136 @@ def _write_file_factory(ctx: ToolContext) -> SynapseTool | None:
     )
 
 
+def _connect_integration_factory(ctx: ToolContext) -> SynapseTool | None:
+    """Factory for chat-driven integration onboarding.
+
+    User in chat: "connect my Google Calendar" → tool resolves the
+    integration name, runs OAuth in the gateway process (which opens the
+    browser on the user's host), saves the token, returns a verified
+    receipt. Owner-only because connecting an integration grants Synapse
+    long-lived access to the user's data.
+    """
+    if not ctx.sender_is_owner:
+        return None
+
+    async def _execute(arguments: dict) -> ToolResult:
+        import asyncio  # noqa: PLC0415
+
+        try:
+            from sci_fi_dashboard.integrations import (  # noqa: PLC0415
+                IntegrationError,
+                connect,
+                list_definitions,
+                status,
+            )
+        except Exception as exc:
+            return error_result(f"connect_integration unavailable: {exc}")
+
+        action = str(arguments.get("action", "connect")).strip().lower()
+        raw_name = str(arguments.get("integration", "")).strip().lower()
+
+        if action == "list" or not raw_name:
+            try:
+                summaries = [
+                    {
+                        "name": d.name,
+                        "display_name": d.display_name,
+                        "auth_type": d.auth_type,
+                        "available": d.available,
+                        "description": d.description,
+                    }
+                    for d in list_definitions()
+                ]
+                return json_result({"action": "list", "integrations": summaries})
+            except Exception as exc:
+                return error_result(f"list integrations failed: {exc}")
+
+        normalized = _normalize_integration_name(raw_name)
+
+        try:
+            if action == "status":
+                result = status(normalized)
+                return json_result(_connection_payload(result))
+
+            if action != "connect":
+                return error_result(
+                    f"Unsupported action '{action}'. Use 'connect', 'status', or 'list'."
+                )
+
+            # OAuth flow blocks waiting for browser; run in worker thread.
+            result = await asyncio.to_thread(connect, normalized)
+            return json_result(_connection_payload(result))
+        except IntegrationError as exc:
+            return error_result(f"connect_integration failed: {exc}")
+        except KeyError as exc:
+            return error_result(str(exc))
+        except Exception as exc:
+            return error_result(f"connect_integration crashed: {exc}")
+
+    return SynapseTool(
+        name="connect_integration",
+        description=(
+            "Connect a third-party integration (google_calendar, gmail, notion, "
+            "slack, …) by running the OAuth/auth flow in the user's browser. "
+            "Use action='list' to enumerate, action='status' to inspect, "
+            "action='connect' (default) to launch the browser flow. Owner only."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "integration": {
+                    "type": "string",
+                    "description": (
+                        "Integration name. Accepts common aliases like "
+                        "'calendar' (→ google_calendar), 'gmail', 'notion', 'slack'."
+                    ),
+                },
+                "action": {
+                    "type": "string",
+                    "enum": ["connect", "status", "list"],
+                    "description": "Operation to perform.",
+                    "default": "connect",
+                },
+            },
+            "required": [],
+        },
+        execute=_execute,
+        owner_only=True,
+        serial=True,
+    )
+
+
+_INTEGRATION_ALIASES: dict[str, str] = {
+    "calendar": "google_calendar",
+    "google calendar": "google_calendar",
+    "gcal": "google_calendar",
+    "google_calendar": "google_calendar",
+    "gmail": "gmail",
+    "google mail": "gmail",
+    "google_mail": "gmail",
+    "notion": "notion",
+    "slack": "slack",
+}
+
+
+def _normalize_integration_name(raw: str) -> str:
+    key = raw.strip().lower().replace("-", "_").replace("  ", " ")
+    return _INTEGRATION_ALIASES.get(key, key)
+
+
+def _connection_payload(result: Any) -> dict[str, Any]:
+    return {
+        "integration": getattr(result, "integration", ""),
+        "connected": bool(getattr(result, "connected", False)),
+        "enabled": bool(getattr(result, "enabled", False)),
+        "auth_type": getattr(result, "auth_type", ""),
+        "account_email": getattr(result, "account_email", ""),
+        "token_path": str(getattr(result, "token_path", "") or ""),
+        "details": dict(getattr(result, "details", {}) or {}),
+        "error": getattr(result, "error", "") or "",
+    }
+
+
 def register_builtin_tools(
     registry: ToolRegistry,
     memory_engine: Any,
@@ -578,5 +725,6 @@ def register_builtin_tools(
     registry.register_factory("web_query", _web_query_factory)
     registry.register_factory("query_memory", _query_memory_factory(memory_engine))
     registry.register_factory("calendar", _calendar_factory)
+    registry.register_factory("connect_integration", _connect_integration_factory)
     registry.register_factory("read_file", _read_file_factory)
     registry.register_factory("write_file", _write_file_factory)

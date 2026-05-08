@@ -1150,21 +1150,6 @@ def _should_prefetch_calendar_write(user_msg: str) -> bool:
     if not msg:
         return False
 
-    blocked_markers = (
-        "cancel",
-        "delete",
-        "remove",
-        "reschedule",
-        "move",
-        "update",
-        "change",
-    )
-    if any(marker in msg for marker in blocked_markers):
-        return False
-
-    if not re.search(r"\b(add|schedule|put|create|remember)\b", msg):
-        return False
-
     calendar_terms = (
         "calendar",
         "event",
@@ -1172,6 +1157,8 @@ def _should_prefetch_calendar_write(user_msg: str) -> bool:
         "appointment",
         "birthday",
         "anniversary",
+        "standup",
+        "call",
     )
     date_time_terms = (
         "today",
@@ -1187,7 +1174,35 @@ def _should_prefetch_calendar_write(user_msg: str) -> bool:
         "yearly",
         "annually",
     )
+
+    if re.match(r"^\s*(quick\s*add|gcal quick add|qadd)\s*[:\-]", msg):
+        return True
+
+    create_verbs = re.search(r"\b(add|schedule|put|create|remember)\b", msg)
+    destructive_verbs = re.search(
+        r"\b(delete|cancel|remove|drop|kill|move|reschedule|shift|update|edit|change|rename"
+        r"|rsvp|accept|decline)\b",
+        msg,
+    )
+    if not (create_verbs or destructive_verbs):
+        return False
+
     return any(term in msg for term in calendar_terms) or any(term in msg for term in date_time_terms)
+
+
+def _is_calendar_affirmation(user_msg: str) -> bool:
+    """Affirmation/negation phrases that may resolve a parked calendar action."""
+    stripped = str(user_msg or "").strip()
+    if not stripped:
+        return False
+    return bool(
+        re.match(
+            r"^(yes|yep|yeah|yup|sure|confirm|go ahead|do it|send it|please|ok|okay|alright"
+            r"|no|nope|cancel|stop|don'?t|never mind|nevermind|abort)\b",
+            stripped,
+            flags=re.IGNORECASE,
+        )
+    )
 
 
 def _extract_web_query(text: str) -> str:
@@ -2392,12 +2407,30 @@ async def persona_chat(
             else None
         )
 
-        if _should_prefetch_calendar_read(user_msg) or _should_prefetch_calendar_write(user_msg):
+        calendar_chat_id = (
+            f"{request_channel_id or 'api'}:{request.user_id or 'unknown'}"
+        )
+        affirmation_resolves_pending = False
+        if _is_calendar_affirmation(user_msg):
+            try:
+                from sci_fi_dashboard.calendar_core.confirmations import default_store
+
+                affirmation_resolves_pending = default_store().peek(calendar_chat_id) is not None
+            except Exception:
+                affirmation_resolves_pending = False
+
+        if (
+            _should_prefetch_calendar_read(user_msg)
+            or _should_prefetch_calendar_write(user_msg)
+            or affirmation_resolves_pending
+        ):
             calendar_tool = next((t for t in session_tools if t.name == "calendar"), None)
             if calendar_tool is not None:
                 try:
                     tool_result = await asyncio.wait_for(
-                        calendar_tool.execute({"request": user_msg}),
+                        calendar_tool.execute(
+                            {"request": user_msg, "chat_id": calendar_chat_id}
+                        ),
                         timeout=12.0,
                     )
                     pre_tools_used.append("calendar")

@@ -5,7 +5,29 @@ from datetime import date, datetime, time, timedelta
 import re
 
 from .date_math import resolve_date_phrase
-from .models import AvailabilityRequest, CreateEventRequest, RecurrenceRule
+from .models import (
+    AvailabilityRequest,
+    CreateEventRequest,
+    FreeBusyRequest,
+    QuickAddRequest,
+    RecurrenceRule,
+    RsvpResponse,
+)
+
+
+_AFFIRM_RE = re.compile(
+    r"^(yes|yep|yeah|yup|sure|confirm|go ahead|do it|send it|please|ok|okay|alright)\b",
+    re.IGNORECASE,
+)
+_NEGATE_RE = re.compile(
+    r"^(no|nope|cancel|stop|don'?t|never mind|nevermind|abort)\b",
+    re.IGNORECASE,
+)
+_RSVP_VERBS = {
+    "accepted": ("rsvp yes", "accept", "rsvp accepted", "i'll be there", "im in", "i'm in"),
+    "declined": ("rsvp no", "decline", "rsvp declined", "can't make it", "cant make it", "skip"),
+    "tentative": ("rsvp maybe", "tentative", "maybe", "rsvp tentative"),
+}
 
 
 @dataclass(slots=True)
@@ -13,6 +35,14 @@ class CalendarIntent:
     kind: str
     create: CreateEventRequest | None = None
     availability: AvailabilityRequest | None = None
+    freebusy: FreeBusyRequest | None = None
+    quick_add: QuickAddRequest | None = None
+    target_query: str = ""
+    new_start: str = ""
+    new_end: str = ""
+    new_title: str = ""
+    rsvp_response: RsvpResponse | None = None
+    destination_calendar_id: str = ""
     query: str = ""
     confidence: float = 0.0
 
@@ -31,8 +61,75 @@ def parse_calendar_intent(
     if not normalized:
         return CalendarIntent(kind="unknown", query=original, confidence=0.0)
 
+    affirm = _classify_affirmation(original)
+    if affirm is not None:
+        return CalendarIntent(kind=affirm, query=original, confidence=0.95)
+
+    if _is_quick_add(normalized):
+        text_after = _strip_quick_add_prefix(original)
+        if text_after:
+            return CalendarIntent(
+                kind="quick_add",
+                quick_add=QuickAddRequest(text=text_after),
+                query=original,
+                confidence=0.9,
+            )
+
     if _is_holiday(normalized):
         return CalendarIntent(kind="holiday", query=_clean_query(original), confidence=0.9)
+
+    rsvp = _classify_rsvp(normalized)
+    if rsvp is not None:
+        return CalendarIntent(
+            kind="rsvp",
+            rsvp_response=rsvp,
+            target_query=_target_query(original),
+            query=original,
+            confidence=0.85,
+        )
+
+    if _is_delete(normalized):
+        return CalendarIntent(
+            kind="delete_event",
+            target_query=_target_query(original),
+            query=original,
+            confidence=0.85,
+        )
+
+    if _is_move(normalized):
+        new_start, new_end = _parse_new_time(original, normalized, base, offset, default_duration_minutes)
+        return CalendarIntent(
+            kind="move_event",
+            target_query=_target_query(original),
+            new_start=new_start,
+            new_end=new_end,
+            query=original,
+            confidence=0.8 if new_start else 0.5,
+        )
+
+    if _is_update(normalized):
+        new_title = _parse_new_title(original)
+        new_start, new_end = _parse_new_time(original, normalized, base, offset, default_duration_minutes)
+        return CalendarIntent(
+            kind="update_event",
+            target_query=_target_query(original),
+            new_title=new_title,
+            new_start=new_start,
+            new_end=new_end,
+            query=original,
+            confidence=0.75,
+        )
+
+    if _is_freebusy_multi(normalized):
+        request = _availability_request(normalized, base, offset, default_duration_minutes)
+        fb = FreeBusyRequest(start=request.start, end=request.end, calendar_ids=["primary"])
+        return CalendarIntent(
+            kind="freebusy",
+            freebusy=fb,
+            availability=request,
+            query=original,
+            confidence=0.8,
+        )
 
     birthday = _parse_annual_all_day(original, normalized, base)
     if birthday is not None:
@@ -54,6 +151,138 @@ def parse_calendar_intent(
         return CalendarIntent(kind="create_event", create=request, query=original, confidence=request.parse_confidence)
 
     return CalendarIntent(kind="unknown", query=original, confidence=0.0)
+
+
+def _classify_affirmation(text: str) -> str | None:
+    stripped = text.strip()
+    if not stripped:
+        return None
+    if _AFFIRM_RE.match(stripped):
+        return "affirm_yes"
+    if _NEGATE_RE.match(stripped):
+        return "affirm_no"
+    return None
+
+
+def _is_quick_add(text: str) -> bool:
+    return bool(re.match(r"^\s*(quick\s*add|gcal quick add|qadd)\s*[:\-]", text))
+
+
+def _strip_quick_add_prefix(original: str) -> str:
+    return re.sub(
+        r"^\s*(quick\s*add|gcal quick add|qadd)\s*[:\-]\s*",
+        "",
+        original.strip(),
+        flags=re.IGNORECASE,
+    ).strip()
+
+
+def _is_delete(text: str) -> bool:
+    return bool(
+        re.search(
+            r"\b(delete|cancel|remove|drop|kill)\b.*\b(event|meeting|appointment|call|standup)\b",
+            text,
+        )
+        or re.search(r"\b(delete|cancel|remove)\b\s+(my|the)\s+", text)
+    )
+
+
+def _is_move(text: str) -> bool:
+    return bool(
+        re.search(r"\b(move|reschedule|shift)\b\s+", text)
+        and re.search(r"\bto\b", text)
+    )
+
+
+def _is_update(text: str) -> bool:
+    if _is_create(text) or _is_delete(text) or _is_move(text):
+        return False
+    return bool(
+        re.search(r"\b(update|edit|change|rename)\b\s+", text)
+    )
+
+
+def _is_freebusy_multi(text: str) -> bool:
+    if not _is_availability(text):
+        return False
+    return bool(
+        re.search(
+            r"\b(both|all|across|between)\b.*\b(calendars|calendar)\b",
+            text,
+        )
+    )
+
+
+def _classify_rsvp(text: str) -> RsvpResponse | None:
+    for response, phrases in _RSVP_VERBS.items():
+        for phrase in phrases:
+            if re.search(rf"\b{re.escape(phrase)}\b", text):
+                return response  # type: ignore[return-value]
+    return None
+
+
+def _target_query(original: str) -> str:
+    cleaned = re.sub(
+        r"\b(delete|cancel|remove|drop|kill|move|reschedule|shift|update|edit|change|rename|"
+        r"rsvp|accept|decline|tentative|maybe|skip)\b",
+        " ",
+        original,
+        flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(
+        r"\b(my|the|to|on|at|tomorrow|today|tonight|next|this|please|event|meeting|"
+        r"appointment|call|standup)\b",
+        " ",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(
+        r"\b(\d{1,2}(?::\d{2})?\s*(?:am|pm)?|\d{1,2}/\d{1,2}/\d{2,4}|\d{4}-\d{2}-\d{2})\b",
+        " ",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(r"[^\w\s'@.&-]", " ", cleaned)
+    return re.sub(r"\s+", " ", cleaned).strip(" ?.,!").strip()
+
+
+def _parse_new_title(original: str) -> str:
+    match = re.search(
+        r"\b(?:title|name)\s+to\s+([\"\']?)(.+?)\1\s*$",
+        original,
+        flags=re.IGNORECASE,
+    )
+    if match:
+        return match.group(2).strip()
+    match = re.search(
+        r"\brename\s+(?:.+?\s+)?to\s+([\"\']?)(.+?)\1\s*$",
+        original,
+        flags=re.IGNORECASE,
+    )
+    return match.group(2).strip() if match else ""
+
+
+def _parse_new_time(
+    original: str,
+    normalized: str,
+    base: date,
+    offset: str,
+    default_duration_minutes: int,
+) -> tuple[str, str]:
+    match = re.search(r"\bto\s+(.+)$", normalized)
+    if not match:
+        return "", ""
+    tail = match.group(1).strip()
+    resolved = resolve_date_phrase(tail, base_date=base)
+    parsed_time = _parse_time(tail)
+    if parsed_time is None and resolved.date is None:
+        return "", ""
+    target_date = resolved.date or base
+    if parsed_time is None:
+        return "", ""
+    start_dt = datetime.combine(target_date, parsed_time)
+    end_dt = start_dt + timedelta(minutes=default_duration_minutes)
+    return _with_offset(start_dt, offset), _with_offset(end_dt, offset)
 
 
 def _normalize(text: str) -> str:

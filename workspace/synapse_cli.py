@@ -377,6 +377,158 @@ def calendar_disconnect() -> None:
         typer.echo("Removed saved Calendar token.")
 
 
+# ---------------------------------------------------------------------------
+# Integrations Hub subcommand group
+# ---------------------------------------------------------------------------
+integrations_app = typer.Typer(
+    name="integrations",
+    help=(
+        "Connect, verify, list, or disconnect third-party integrations "
+        "(Google Calendar, Gmail, Notion, Slack, ...)."
+    ),
+    no_args_is_help=True,
+)
+app.add_typer(integrations_app)
+
+
+@integrations_app.command("list")
+def integrations_list_cmd() -> None:
+    """Show every known integration with its current connection status."""
+    from cli.integrations_commands import list_all  # noqa: PLC0415
+
+    results = list_all()
+    if not results:
+        typer.echo("No integrations registered.")
+        raise typer.Exit(0)
+    for result in results:
+        marker = "✓" if result.connected and result.enabled else "·"
+        line = f"  {marker}  {result.integration:24}  auth={result.auth_type:18}"
+        if result.connected:
+            line = f"{line}  token={result.token_path}"
+        elif result.error:
+            line = f"{line}  ({result.error})"
+        typer.echo(line)
+
+
+@integrations_app.command("connect")
+def integrations_connect_cmd(
+    name: str = typer.Argument(..., help="Integration name (e.g. google_calendar, gmail)."),
+    client_secret: Path | None = typer.Option(
+        None,
+        "--client-secret",
+        help=(
+            "Override the bundled OAuth client by passing a Google client_secret JSON. "
+            "Useful for power users running their own Google Cloud project."
+        ),
+    ),
+    no_browser: bool = typer.Option(
+        False,
+        "--no-browser",
+        help="Do not automatically open the browser.",
+    ),
+) -> None:
+    """Connect an integration (runs OAuth flow when applicable)."""
+    from sci_fi_dashboard.integrations import IntegrationError  # noqa: PLC0415
+    from cli.integrations_commands import connect_integration  # noqa: PLC0415
+
+    try:
+        result = connect_integration(
+            name,
+            override_client_path=client_secret,
+            open_browser=not no_browser,
+        )
+    except IntegrationError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from None
+    except KeyError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(2) from None
+
+    typer.echo(f"{result.integration} connected.")
+    if result.account_email:
+        typer.echo(f"account: {result.account_email}")
+    if result.token_path:
+        typer.echo(f"token: {result.token_path}")
+    if result.used_override:
+        typer.echo("auth: user-provided OAuth client")
+    for key, value in (result.details or {}).items():
+        typer.echo(f"{key}: {value}")
+
+
+@integrations_app.command("verify")
+def integrations_verify_cmd(
+    name: str = typer.Argument(..., help="Integration name."),
+) -> None:
+    """Refresh token if needed and run a smoke check against the integration."""
+    from cli.integrations_commands import verify_integration  # noqa: PLC0415
+
+    result = verify_integration(name)
+    if not result.connected:
+        typer.echo(result.error or f"{name} not connected.", err=True)
+        raise typer.Exit(1)
+    typer.echo(f"{result.integration} verified.")
+    if result.token_path:
+        typer.echo(f"token: {result.token_path}")
+    for key, value in (result.details or {}).items():
+        typer.echo(f"{key}: {value}")
+
+
+@integrations_app.command("status")
+def integrations_status_cmd(
+    name: str = typer.Argument(..., help="Integration name."),
+) -> None:
+    """Show local connection state for an integration without network calls."""
+    from cli.integrations_commands import integration_status  # noqa: PLC0415
+
+    result = integration_status(name)
+    enabled = "enabled" if result.enabled else "disabled"
+    has_token = "token-present" if result.connected else "no-token"
+    typer.echo(f"{result.integration}: {enabled}, {has_token}")
+    if result.token_path:
+        typer.echo(f"token: {result.token_path}")
+    if result.account_email:
+        typer.echo(f"account: {result.account_email}")
+
+
+@integrations_app.command("disconnect")
+def integrations_disconnect_cmd(
+    name: str = typer.Argument(..., help="Integration name."),
+) -> None:
+    """Disable an integration and remove its saved token."""
+    from cli.integrations_commands import disconnect_integration  # noqa: PLC0415
+
+    removed = disconnect_integration(name)
+    typer.echo(f"{name} disconnected.")
+    if removed:
+        typer.echo("Removed saved token.")
+
+
+@integrations_app.command("info")
+def integrations_info_cmd(
+    name: str = typer.Argument(..., help="Integration name."),
+) -> None:
+    """Show registry metadata (description, scopes, setup notes) for an integration."""
+    from cli.integrations_commands import integration_summary  # noqa: PLC0415
+    from sci_fi_dashboard.integrations import IntegrationError  # noqa: PLC0415
+
+    try:
+        info = integration_summary(name)
+    except IntegrationError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from None
+
+    typer.echo(f"{info['display_name']} ({info['name']})")
+    typer.echo(f"  auth_type: {info['auth_type']}")
+    typer.echo(f"  available: {info['available']}")
+    typer.echo(f"  scopes:")
+    for scope in info["scopes"]:
+        typer.echo(f"    - {scope}")
+    if info["description"]:
+        typer.echo(f"  description: {info['description']}")
+    if info["setup_notes"]:
+        typer.echo(f"  setup_notes: {info['setup_notes']}")
+
+
 @app.command()
 def install_home() -> None:
     """Create or repair the standalone ~/.synapse product home."""

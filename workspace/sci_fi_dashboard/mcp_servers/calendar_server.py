@@ -21,7 +21,13 @@ from sci_fi_dashboard.calendar_core.models import (
     CalendarActionResult,
     CalendarPreferences,
     CreateEventRequest,
+    DeleteEventRequest,
+    FreeBusyRequest,
+    MoveEventRequest,
+    QuickAddRequest,
     RecurrenceRule,
+    RsvpRequest,
+    UpdateEventRequest,
 )
 from sci_fi_dashboard.calendar_core.service import GoogleCalendarService
 
@@ -183,6 +189,155 @@ async def list_tools() -> list[Tool]:
                     {"required": ["text"]},
                 ],
             },
+        ),
+        Tool(
+            name="list_calendars",
+            description="List the user's Google calendars.",
+            inputSchema={"type": "object", "properties": {}},
+        ),
+        Tool(
+            name="get_event",
+            description="Fetch a single event by id.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "event_id": {"type": "string"},
+                    "calendar_id": {"type": "string", "default": "primary"},
+                },
+                "required": ["event_id"],
+            },
+        ),
+        Tool(
+            name="update_event",
+            description="Patch an event with optional modification_scope for recurring series.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "event_id": {"type": "string"},
+                    "calendar_id": {"type": "string", "default": "primary"},
+                    "title": {"type": "string"},
+                    "start": {"type": "string"},
+                    "end": {"type": "string"},
+                    "description": {"type": "string"},
+                    "attendees": {"type": "array", "items": {"type": "string"}},
+                    "all_day": {"type": "boolean"},
+                    "recurrence": {"oneOf": [{"type": "object"}, {"type": "string"}]},
+                    "modification_scope": {
+                        "type": "string",
+                        "enum": ["thisEventOnly", "thisAndFollowing", "all"],
+                        "default": "thisEventOnly",
+                    },
+                    "instance_id": {"type": "string"},
+                    "send_updates": {
+                        "type": "string",
+                        "enum": ["all", "externalOnly", "none"],
+                        "default": "none",
+                    },
+                },
+                "required": ["event_id"],
+            },
+        ),
+        Tool(
+            name="delete_event",
+            description="Delete an event.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "event_id": {"type": "string"},
+                    "calendar_id": {"type": "string", "default": "primary"},
+                    "modification_scope": {
+                        "type": "string",
+                        "enum": ["thisEventOnly", "thisAndFollowing", "all"],
+                        "default": "thisEventOnly",
+                    },
+                    "instance_id": {"type": "string"},
+                    "send_updates": {
+                        "type": "string",
+                        "enum": ["all", "externalOnly", "none"],
+                        "default": "none",
+                    },
+                },
+                "required": ["event_id"],
+            },
+        ),
+        Tool(
+            name="move_event",
+            description="Move an event between calendars.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "event_id": {"type": "string"},
+                    "source_calendar_id": {"type": "string"},
+                    "destination_calendar_id": {"type": "string"},
+                    "send_updates": {
+                        "type": "string",
+                        "enum": ["all", "externalOnly", "none"],
+                        "default": "none",
+                    },
+                },
+                "required": ["event_id", "source_calendar_id", "destination_calendar_id"],
+            },
+        ),
+        Tool(
+            name="respond_to_event",
+            description="RSVP to an event you're invited to.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "event_id": {"type": "string"},
+                    "response": {
+                        "type": "string",
+                        "enum": ["accepted", "declined", "tentative", "needsAction"],
+                    },
+                    "calendar_id": {"type": "string", "default": "primary"},
+                    "attendee_email": {"type": "string"},
+                    "send_updates": {
+                        "type": "string",
+                        "enum": ["all", "externalOnly", "none"],
+                        "default": "none",
+                    },
+                },
+                "required": ["event_id", "response"],
+            },
+        ),
+        Tool(
+            name="get_freebusy",
+            description="Free/busy across multiple calendars.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "start": {"type": "string"},
+                    "end": {"type": "string"},
+                    "calendar_ids": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "default": ["primary"],
+                    },
+                },
+                "required": ["start", "end"],
+            },
+        ),
+        Tool(
+            name="quick_add",
+            description="Google Calendar's natural-language quickAdd endpoint.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "text": {"type": "string"},
+                    "calendar_id": {"type": "string", "default": "primary"},
+                    "send_updates": {
+                        "type": "string",
+                        "enum": ["all", "externalOnly", "none"],
+                        "default": "none",
+                    },
+                },
+                "required": ["text"],
+            },
+        ),
+        Tool(
+            name="list_colors",
+            description="Color palette (event + calendar).",
+            inputSchema={"type": "object", "properties": {}},
         ),
     ]
 
@@ -449,6 +604,132 @@ def _calendar_request(svc, arguments: dict) -> list[TextContent]:
     return _action_result(result)
 
 
+def _list_calendars(svc, arguments: dict) -> list[TextContent]:
+    calendar = GoogleCalendarService(svc)
+    entries = calendar.list_calendars()
+    return _structured(
+        status="answered",
+        message=f"Found {len(entries)} calendar(s).",
+        receipt_evidence="Listed Google Calendar calendarList.",
+        data={"calendars": [_as_jsonable(entry) for entry in entries]},
+    )
+
+
+def _get_event(svc, arguments: dict) -> list[TextContent]:
+    calendar = GoogleCalendarService(svc)
+    event = calendar.get_event(
+        arguments["event_id"], calendar_id=arguments.get("calendar_id", "primary")
+    )
+    return _structured(
+        status="answered",
+        message=f"Fetched event '{event.title}'.",
+        receipt_evidence=f"Fetched Google Calendar event id={event.id}",
+        data={"event": _as_jsonable(event)},
+    )
+
+
+def _update_event(svc, arguments: dict) -> list[TextContent]:
+    calendar = GoogleCalendarService(svc)
+    request = UpdateEventRequest(
+        event_id=arguments["event_id"],
+        calendar_id=arguments.get("calendar_id", "primary"),
+        title=arguments.get("title"),
+        start=arguments.get("start"),
+        end=arguments.get("end"),
+        description=arguments.get("description"),
+        attendees=list(arguments.get("attendees")) if arguments.get("attendees") is not None else None,
+        all_day=arguments.get("all_day"),
+        recurrence=_parse_recurrence(arguments.get("recurrence")),
+        modification_scope=arguments.get("modification_scope", "thisEventOnly"),
+        instance_id=arguments.get("instance_id"),
+        send_updates=arguments.get("send_updates", "none"),
+    )
+    return _action_result(calendar.update_event(request))
+
+
+def _delete_event(svc, arguments: dict) -> list[TextContent]:
+    calendar = GoogleCalendarService(svc)
+    request = DeleteEventRequest(
+        event_id=arguments["event_id"],
+        calendar_id=arguments.get("calendar_id", "primary"),
+        modification_scope=arguments.get("modification_scope", "thisEventOnly"),
+        instance_id=arguments.get("instance_id"),
+        send_updates=arguments.get("send_updates", "none"),
+    )
+    return _action_result(calendar.delete_event(request))
+
+
+def _move_event(svc, arguments: dict) -> list[TextContent]:
+    calendar = GoogleCalendarService(svc)
+    request = MoveEventRequest(
+        event_id=arguments["event_id"],
+        source_calendar_id=arguments["source_calendar_id"],
+        destination_calendar_id=arguments["destination_calendar_id"],
+        send_updates=arguments.get("send_updates", "none"),
+    )
+    return _action_result(calendar.move_event(request))
+
+
+def _respond_to_event(svc, arguments: dict) -> list[TextContent]:
+    calendar = GoogleCalendarService(svc)
+    request = RsvpRequest(
+        event_id=arguments["event_id"],
+        response=arguments["response"],
+        calendar_id=arguments.get("calendar_id", "primary"),
+        attendee_email=arguments.get("attendee_email"),
+        send_updates=arguments.get("send_updates", "none"),
+    )
+    return _action_result(calendar.respond_to_event(request))
+
+
+def _get_freebusy(svc, arguments: dict) -> list[TextContent]:
+    calendar = GoogleCalendarService(svc)
+    request = FreeBusyRequest(
+        start=arguments["start"],
+        end=arguments["end"],
+        calendar_ids=list(arguments.get("calendar_ids") or ["primary"]),
+    )
+    result = calendar.freebusy(request)
+    return _structured(
+        status="answered",
+        message=f"Free/busy across {len(result.calendars)} calendar(s).",
+        receipt_evidence=(
+            f"Queried freebusy for calendars={list(result.calendars.keys())}"
+        ),
+        data={
+            "calendars": _as_jsonable(result.calendars),
+            "errors": dict(result.errors),
+            "time_min": result.time_min,
+            "time_max": result.time_max,
+        },
+    )
+
+
+def _quick_add(svc, arguments: dict) -> list[TextContent]:
+    calendar = GoogleCalendarService(svc)
+    request = QuickAddRequest(
+        text=arguments["text"],
+        calendar_id=arguments.get("calendar_id", "primary"),
+        send_updates=arguments.get("send_updates", "none"),
+    )
+    return _action_result(calendar.quick_add(request))
+
+
+def _list_colors(svc, arguments: dict) -> list[TextContent]:
+    calendar = GoogleCalendarService(svc)
+    palette = calendar.list_colors()
+    return _structured(
+        status="answered",
+        message="Fetched Google Calendar color palette.",
+        receipt_evidence="Read Google Calendar colors.get.",
+        data={
+            "event_colors": dict(palette.event_colors),
+            "calendar_colors": dict(palette.calendar_colors),
+            "updated": palette.updated,
+        },
+    )
+
+
 @server.call_tool()
 async def call_tool(name: str, arguments: dict) -> list[TextContent]:
     arguments = arguments or {}
@@ -466,6 +747,15 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             "create_event": _create_event,
             "get_holidays": _get_holidays,
             "calendar_request": _calendar_request,
+            "list_calendars": _list_calendars,
+            "get_event": _get_event,
+            "update_event": _update_event,
+            "delete_event": _delete_event,
+            "move_event": _move_event,
+            "respond_to_event": _respond_to_event,
+            "get_freebusy": _get_freebusy,
+            "quick_add": _quick_add,
+            "list_colors": _list_colors,
         }
         if name == "resolve_date":
             return await asyncio.to_thread(_resolve_date, arguments)

@@ -99,7 +99,7 @@ Paste the raw error output into the chat. For each issue, we will record:
 
 ### 9. MCP integrations are present but not production-complete for proactive companion workflows
 
-- **Status:** partially fixed, calendar core + Google connector CLI verified; proactive workflows still open
+- **Status:** Calendar Core V2 implemented (full Google Calendar MCP parity); proactive companion workflows still open
 - **Where it happened:** MCP + proactive awareness expectations for Calendar, Gmail, GitHub, and preferred chat-platform nudges
 - **Exact issue:** Synapse should proactively use connected MCP services, for example:
   - Google Calendar: periodically check upcoming meetings and nudge the user on WhatsApp/Telegram/Slack/Discord with a short meeting summary.
@@ -124,6 +124,76 @@ Paste the raw error output into the chat. For each issue, we will record:
   - `pytest -q -o addopts='' --tb=short workspace\tests\test_mcp_calendar_server.py workspace\tests\test_mcp_client.py workspace\tests\test_mcp_config.py workspace\tests\test_proactive_engine.py workspace\tests\test_proactive_policy.py` -> `94 passed`.
   - `uv tool run --offline code-review-graph detect-changes --base HEAD --brief` -> risk score `0.00`.
   - Remaining verification: add integration tests for Calendar nudge, GitHub PR nudge, Gmail watched-thread nudge, channel delivery, auth-token injection, notification dedupe, and opt-in live Google Calendar smoke.
+- **Calendar Core V2 (2026-05-08):** Full Google Calendar MCP parity. New surface
+  closes the V1 destructive-ops gap with 9 additional MCP tools (`list_calendars`,
+  `get_event`, `update_event`, `delete_event`, `move_event`, `respond_to_event`,
+  `get_freebusy`, `quick_add`, `list_colors`). Total tool count: 18 (V1's 9 stay
+  backwards-compatible). Destructive writes are gated by a process-local
+  `PendingActionStore` (TTL=600s, per-`chat_id`) — assistant returns
+  `confirmation_required` first, executes only after the user's next-turn
+  affirmation. Attendee invites stay always-confirm; assistant never sets
+  `send_updates="all"` without explicit user "yes". Recurring events use a
+  `modification_scope ∈ {thisEventOnly, thisAndFollowing, all}` enum. No new
+  OAuth scopes or third-party deps. Design doc:
+  `docs/superpowers/specs/2026-05-08-calendar-core-v2-design.md`.
+- **V2 verification commands** (run on a developer machine — not run during
+  this implementation pass per the user's "do not run Synapse" directive):
+  ```powershell
+  $env:PYTHONPATH='workspace'; $env:PYTHONUTF8='1'
+  pytest -q -o addopts='' workspace\tests\calendar_core `
+      workspace\tests\test_mcp_calendar_server.py `
+      workspace\tests\test_calendar_v2_e2e.py `
+      workspace\tests\test_chat_pipeline_skill_routing.py
+  ruff check workspace/sci_fi_dashboard/calendar_core workspace/sci_fi_dashboard/mcp_servers/calendar_server.py
+  ```
+- **V3 backlog (still open):** `events.watch` push notifications, ACL CRUD,
+  attachments, multi-Google-account session, automatic event→memory.db sync.
+
+### 9b. Integrations Hub — bundled Synapse OAuth client (2026-05-08)
+
+- **Status:** Phase 1 implemented; verified Synapse OAuth client_id pending
+  maintainer action (see Maintainer responsibilities below).
+- **What it does:** Unified connect/verify/status/disconnect/list plumbing
+  for third-party integrations (Google Calendar, Gmail, Notion stub, Slack
+  stub). End-user UX: `synapse integrations connect google_calendar` →
+  browser opens to Google → user signs in → done. Zero Cloud Console
+  visits required by the end user. Same flow available via chat tool
+  `connect_integration` (owner-only).
+- **New files:**
+  - `workspace/sci_fi_dashboard/integrations/{__init__,errors,registry,oauth_flow,token_store,config,verify_handlers,manager}.py`
+  - `workspace/cli/integrations_commands.py`
+  - `workspace/tests/integrations/test_*.py`
+  - `docs/superpowers/specs/2026-05-08-integrations-hub-design.md`
+- **Wiring:**
+  - `synapse_cli.py` adds `integrations` Typer subcommand group.
+  - `tool_registry.py` registers `connect_integration` chat tool.
+  - Existing `synapse calendar connect --client-secret <path>` keeps
+    working; the hub mirrors `mcp.builtin_servers.calendar.token_path`
+    so the existing Calendar MCP server reads the new unified location
+    transparently.
+- **Maintainer responsibilities (one-time, blocking the polished UX):**
+  1. Create a Google Cloud project + OAuth client (Desktop app) under
+     the Synapse brand.
+  2. Replace the `PLACEHOLDER` strings in
+     `registry.py::SYNAPSE_GOOGLE_OAUTH_CLIENT` with real `client_id`
+     and `client_secret` (the latter ships in the package — see Google's
+     installed-app docs, this is intended and safe).
+  3. Submit Google OAuth verification (~30 min effort + 4–6 weeks wait,
+     $0 cost). Until verification ships, end users see "Google hasn't
+     verified this app" once and click Advanced → Continue. After
+     verification, the warning never appears again.
+  4. Privacy policy URL, homepage URL, demo video, scope justifications
+     are required for the verification submission.
+- **Why we chose bundled-client over alternatives:** Google's hosted
+  Calendar MCP at `calendarmcp.googleapis.com` is read-only Developer
+  Preview (cannot delete/update/move events) AND still requires the
+  operator to provide their own OAuth client. Anthropic's Workspace
+  Connectors are locked inside Anthropic products. Composio/Pipedream
+  relays add an external dependency. Bundled-client matches what
+  Claude Desktop / n8n / Cal.com / Notion / ChatGPT do.
+- **V3 backlog (still open):** Notion workspace OAuth, Slack bot-token
+  entry flow, device-code OAuth fallback for remote gateways,
+  multi-Google-account support.
 
 ## Proactive Companion Feature Requests
 

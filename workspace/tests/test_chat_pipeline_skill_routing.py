@@ -139,7 +139,30 @@ def test_calendar_create_prefetch_detects_clear_write_requests():
     assert _should_prefetch_calendar_write("Schedule dentist tomorrow at 5 PM")
     assert _should_prefetch_calendar_write("Add Mom's birthday on July 12 every year")
     assert not _should_prefetch_calendar_write("Create a file called notes.txt")
-    assert not _should_prefetch_calendar_write("Cancel tomorrow's meeting")
+
+
+def test_calendar_destructive_prefetch_now_routes_through_calendar_tool():
+    """Calendar V2: destructive verbs route to the calendar tool (was blocked in V1)."""
+    from sci_fi_dashboard.chat_pipeline import _should_prefetch_calendar_write
+
+    assert _should_prefetch_calendar_write("Cancel tomorrow's meeting")
+    assert _should_prefetch_calendar_write("Delete the 4 PM standup")
+    assert _should_prefetch_calendar_write("Move the call to Friday at 5 pm")
+    assert _should_prefetch_calendar_write("Reschedule the standup to 9 am")
+    assert _should_prefetch_calendar_write("RSVP yes to the budget review")
+    assert _should_prefetch_calendar_write("Quick add: lunch with Aman")
+
+
+def test_calendar_affirmation_detector_recognizes_yes_no():
+    from sci_fi_dashboard.chat_pipeline import _is_calendar_affirmation
+
+    assert _is_calendar_affirmation("yes")
+    assert _is_calendar_affirmation("Yep please")
+    assert _is_calendar_affirmation("go ahead")
+    assert _is_calendar_affirmation("no")
+    assert _is_calendar_affirmation("cancel")
+    assert not _is_calendar_affirmation("schedule a meeting")
+    assert not _is_calendar_affirmation("")
 
 
 def test_relationship_voice_contract_for_personal_turns():
