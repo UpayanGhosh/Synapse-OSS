@@ -133,6 +133,15 @@ def test_skill_routing_requires_explicit_trigger():
     )
 
 
+def test_calendar_create_prefetch_detects_clear_write_requests():
+    from sci_fi_dashboard.chat_pipeline import _should_prefetch_calendar_write
+
+    assert _should_prefetch_calendar_write("Schedule dentist tomorrow at 5 PM")
+    assert _should_prefetch_calendar_write("Add Mom's birthday on July 12 every year")
+    assert not _should_prefetch_calendar_write("Create a file called notes.txt")
+    assert not _should_prefetch_calendar_write("Cancel tomorrow's meeting")
+
+
 def test_relationship_voice_contract_for_personal_turns():
     from sci_fi_dashboard.chat_pipeline import (
         _build_relationship_voice_contract,

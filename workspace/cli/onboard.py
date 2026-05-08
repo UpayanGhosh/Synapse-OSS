@@ -12,6 +12,7 @@ Exports:
 
 import asyncio
 import contextlib
+import json
 import os
 import shutil
 import sys
@@ -190,6 +191,25 @@ def _normalize_overview_model(model: str) -> str:
         return model
 
 
+def _load_existing_config(data_root: Path) -> dict:
+    config_path = data_root / "synapse.json"
+    if not config_path.exists():
+        return {}
+    try:
+        raw = json.loads(config_path.read_text(encoding="utf-8-sig"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+    return raw if isinstance(raw, dict) else {}
+
+
+def _preserve_runtime_config(config: dict, existing_config: dict) -> None:
+    """Keep durable runtime settings that onboarding does not actively edit."""
+    for key in ("mcp",):
+        value = existing_config.get(key)
+        if isinstance(value, dict) and value:
+            config[key] = value
+
+
 # ---------------------------------------------------------------------------
 # Non-interactive mode
 # ---------------------------------------------------------------------------
@@ -245,6 +265,7 @@ def _run_non_interactive(
     # --- Handle reset ---
     if reset is not None:
         _handle_reset(reset, data_root)
+    existing_config = {} if reset is not None else _load_existing_config(data_root)
 
     # --- Primary provider ---
     provider = os.environ.get("SYNAPSE_PRIMARY_PROVIDER", "").strip()
@@ -265,6 +286,7 @@ def _run_non_interactive(
 
     # --- Build config ---
     config: dict = {"providers": {}, "model_mappings": {}, "channels": {}}
+    _preserve_runtime_config(config, existing_config)
 
     if provider == "ollama":
         api_base = os.environ.get("OLLAMA_API_BASE", "http://localhost:11434").strip()
@@ -329,7 +351,12 @@ def _run_non_interactive(
     # --- Gateway config (replaces bare gw_token block) ---
     from cli.gateway_steps import configure_gateway  # noqa: PLC0415
 
-    gw_cfg = configure_gateway(flow="advanced", existing_gateway={}, non_interactive=True)
+    existing_gateway = existing_config.get("gateway", {})
+    if not isinstance(existing_gateway, dict):
+        existing_gateway = {}
+    gw_cfg = configure_gateway(
+        flow="advanced", existing_gateway=existing_gateway, non_interactive=True
+    )
     config["gateway"] = gw_cfg
 
     # --- Session defaults ---
@@ -2203,6 +2230,7 @@ def _run_interactive_impl(
     # --- Handle reset ---
     if reset is not None:
         _handle_reset(reset, data_root)
+    existing_config = {} if reset is not None else _load_existing_config(data_root)
 
     # --- Step 2: Check for existing config ---
     config_path = data_root / "synapse.json"
@@ -2241,6 +2269,7 @@ def _run_interactive_impl(
             "dual_cognition_foreground_max_llm_calls": 1,
         },
     }
+    _preserve_runtime_config(config, existing_config)
     selected_channels: list = []
 
     if flow == "quickstart":
@@ -2311,7 +2340,9 @@ def _run_interactive_impl(
     # --- Step 8: Gateway configuration ---
     from cli.gateway_steps import configure_gateway  # noqa: PLC0415
 
-    existing_gw = {}  # Fresh install — no existing gateway config
+    existing_gw = existing_config.get("gateway", {})
+    if not isinstance(existing_gw, dict):
+        existing_gw = {}
     gw_cfg = configure_gateway(
         flow=flow,
         existing_gateway=existing_gw,

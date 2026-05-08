@@ -410,7 +410,7 @@ def _query_memory_factory(memory_engine: Any) -> ToolFactory:
 
 def _get_calendar_runtime() -> tuple[Any | None, Any]:
     """Return a Calendar Core service + preferences, or ``None`` when disconnected."""
-    from mcp_config import load_mcp_config
+    from sci_fi_dashboard.mcp_config import load_mcp_config
     from synapse_config import SynapseConfig
 
     cfg = SynapseConfig.load()

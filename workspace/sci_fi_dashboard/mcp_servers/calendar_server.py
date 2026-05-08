@@ -35,7 +35,7 @@ def _get_calendar_service():
     if _cal_service is None:
         from google.oauth2.credentials import Credentials
         from googleapiclient.discovery import build
-        from mcp_config import load_mcp_config
+        from sci_fi_dashboard.mcp_config import load_mcp_config
         from synapse_config import SynapseConfig
 
         cfg = SynapseConfig.load()

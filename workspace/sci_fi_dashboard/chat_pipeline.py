@@ -958,6 +958,22 @@ def _message_requests_external_action(message: str) -> bool:
     if not msg:
         return False
 
+    calendar_markers = (
+        "am i free",
+        "am i available",
+        "available tomorrow",
+        "availability",
+        "free tomorrow",
+        "busy tomorrow",
+        "free on",
+        "busy on",
+        "meeting",
+        "appointment",
+        "event",
+    )
+    if any(marker in msg for marker in calendar_markers):
+        return True
+
     trigger_phrases = (
         "look up",
         "search",
@@ -1092,6 +1108,86 @@ def _should_prefetch_web_query(user_msg: str) -> bool:
             "find online",
         )
     )
+
+
+def _should_prefetch_calendar_read(user_msg: str) -> bool:
+    msg = " ".join(str(user_msg or "").lower().split())
+    if not msg:
+        return False
+    write_markers = (
+        "add ",
+        "create ",
+        "schedule ",
+        "book ",
+        "set up ",
+        "put ",
+        "move ",
+        "reschedule ",
+        "cancel ",
+        "delete ",
+    )
+    if any(marker in msg for marker in write_markers):
+        return False
+    read_markers = (
+        "am i free",
+        "am i available",
+        "availability",
+        "free tomorrow",
+        "busy tomorrow",
+        "free on",
+        "busy on",
+        "what's on my calendar",
+        "what is on my calendar",
+        "do i have",
+        "any meetings",
+        "any events",
+    )
+    return any(marker in msg for marker in read_markers)
+
+
+def _should_prefetch_calendar_write(user_msg: str) -> bool:
+    msg = " ".join(str(user_msg or "").lower().split())
+    if not msg:
+        return False
+
+    blocked_markers = (
+        "cancel",
+        "delete",
+        "remove",
+        "reschedule",
+        "move",
+        "update",
+        "change",
+    )
+    if any(marker in msg for marker in blocked_markers):
+        return False
+
+    if not re.search(r"\b(add|schedule|put|create|remember)\b", msg):
+        return False
+
+    calendar_terms = (
+        "calendar",
+        "event",
+        "meeting",
+        "appointment",
+        "birthday",
+        "anniversary",
+    )
+    date_time_terms = (
+        "today",
+        "tomorrow",
+        "tonight",
+        "next ",
+        " at ",
+        " on ",
+        "every ",
+        "daily",
+        "weekly",
+        "monthly",
+        "yearly",
+        "annually",
+    )
+    return any(term in msg for term in calendar_terms) or any(term in msg for term in date_time_terms)
 
 
 def _extract_web_query(text: str) -> str:
@@ -2296,7 +2392,107 @@ async def persona_chat(
             else None
         )
 
-        if _should_prefetch_url(user_msg):
+        if _should_prefetch_calendar_read(user_msg) or _should_prefetch_calendar_write(user_msg):
+            calendar_tool = next((t for t in session_tools if t.name == "calendar"), None)
+            if calendar_tool is not None:
+                try:
+                    tool_result = await asyncio.wait_for(
+                        calendar_tool.execute({"request": user_msg}),
+                        timeout=12.0,
+                    )
+                    pre_tools_used.append("calendar")
+                    if not bool(getattr(tool_result, "is_error", False)):
+                        pre_tool_fallback = (
+                            "I checked your calendar. Here is the verified result:\n"
+                            f"{_truncate_tool_result(tool_result.content, 1200)}"
+                        )
+                        action_receipts.append(
+                            ActionReceipt(
+                                action="calendar",
+                                status="verified",
+                                evidence=_truncate_tool_result(tool_result.content, 240),
+                                confidence=0.9,
+                                next_best_action="Use this calendar result directly.",
+                            )
+                        )
+                    else:
+                        pre_tool_fallback = (
+                            "I tried to check your calendar, but the calendar tool failed. "
+                            "I should say that plainly rather than guess."
+                        )
+                        action_receipts.append(
+                            ActionReceipt(
+                                action="calendar",
+                                status="failed",
+                                evidence=_truncate_tool_result(tool_result.content, 240),
+                                confidence=0.0,
+                                next_best_action="Say the calendar check failed; do not guess.",
+                            )
+                        )
+                    messages.append(
+                        {
+                            "role": "system",
+                            "content": (
+                                "Tool result from calendar for the user's request:\n"
+                                f"{_truncate_tool_result(tool_result.content, 3000)}\n\n"
+                                "Use this verified calendar result directly in the next reply. "
+                                "Do not say you cannot see or verify the calendar unless this "
+                                "tool result is an error."
+                            ),
+                        }
+                    )
+                    _log.info(
+                        "prefetch_tool_done",
+                        extra={
+                            "tool": "calendar",
+                            "is_error": bool(getattr(tool_result, "is_error", False)),
+                        },
+                    )
+                except Exception as exc:
+                    action_receipts.append(
+                        ActionReceipt(
+                            action="calendar",
+                            status="failed",
+                            evidence=str(exc)[:240],
+                            confidence=0.0,
+                            next_best_action="Say the calendar check failed; do not guess.",
+                        )
+                    )
+                    messages.append(
+                        {
+                            "role": "system",
+                            "content": (
+                                "The calendar prefetch failed before returning results. "
+                                "Do not claim calendar access succeeded. "
+                                f"Failure summary: {str(exc)[:300]}"
+                            ),
+                        }
+                    )
+                    _log.warning(
+                        "prefetch_tool_failed",
+                        extra={"tool": "calendar", "error": str(exc)},
+                    )
+            else:
+                action_receipts.append(
+                    ActionReceipt(
+                        action="calendar",
+                        status="unavailable",
+                        evidence="No calendar tool available in this session.",
+                        confidence=0.0,
+                        next_best_action="Do not claim calendar access; explain it is unavailable.",
+                    )
+                )
+                messages.append(
+                    {
+                        "role": "system",
+                        "content": (
+                            "The user asked a calendar availability/read question, but no "
+                            "calendar tool is available in this session. Do not claim calendar "
+                            "access; explain it is unavailable."
+                        ),
+                    }
+                )
+        elif _should_prefetch_url(user_msg):
             url = _extract_first_url(user_msg)
             web_tool = next((t for t in session_tools if t.name == "web_search"), None)
             if url and web_tool is not None:
