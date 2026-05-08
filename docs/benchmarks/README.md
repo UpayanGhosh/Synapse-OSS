@@ -19,7 +19,22 @@ Combined log lands at `docs/benchmarks/run-{timestamp}.log`. Per-benchmark JSON 
 | `scripts/bench_storage.py` | On-disk size of `~/.synapse/` (per-store breakdown) | `storage-{date}.json` | None beyond Python stdlib |
 | `scripts/bench_kg_memory.py` | NetworkX in-memory KG vs SQLite SPO peak memory (`tracemalloc`) | `kg-memory-{date}.json` | `pip install networkx` + populated `knowledge_graph.db` |
 | `scripts/bench_retrieval_latency.py` | `MemoryEngine.query()` P50/P95/P99 over N queries | `retrieval-latency-{date}.json` | Synapse deps installed + `~/.synapse/` ingested |
+| `scripts/bench_retrieval_quality.py` | Labeled sentinel memory retrieval quality: Hit@K, Recall@K, MRR | `retrieval-quality-{date}.json` | Synapse deps installed + writable live memory store |
+| `scripts/bench_memory_write_persistence.py` | Memory write latency plus durable documents/timestamps/affect verification and embedded write receipts | `memory-write-persistence-{date}.json` | Synapse deps installed + writable live memory store |
+| `scripts/bench_kg_query_integrity.py` | KG lookup P50/P95/P99 plus missing/duplicate edge hygiene | `kg-query-integrity-{date}.json` | Populated `knowledge_graph.db` |
+| `scripts/bench_embedding_throughput.py` | Embedding provider docs/sec, batch latency, vector dimension/zero-vector health | `embedding-throughput-{date}.json` | Configured embedding provider |
 | `pytest -m load --run-slow` (in `workspace/`) | Async pipeline burst delivery rate (500 concurrent senders) | Captured in `run-{date}.log` | Test deps installed |
+
+## Credibility coverage
+
+The suite intentionally covers both speed and correctness:
+
+- **Retrieval quality:** Hit@K, Recall@K, and MRR on labeled memory probes.
+- **Retrieval performance:** P50/P95/P99 latency over repeated live queries.
+- **Write durability:** memory rows, timestamps, and affect tags survive DB reopen; embedding success is checked from write receipts.
+- **KG health:** lookup latency plus missing/duplicate edge counters.
+- **Embedding health:** throughput, dimension correctness, and zero-vector detection.
+- **Load safety:** burst, dedup, and floodgate tests from the pytest load suite.
 
 ## Resume citation pattern
 
