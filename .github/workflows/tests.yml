@@ -21,8 +21,12 @@ jobs:
       - name: Install linting tools
         run: pip install ruff black
 
+      # Lint is advisory on main (production branch; code is synced from develop,
+      # where lint enforcement lives). Keep it visible but non-blocking here.
       - name: Ruff (lint)
+        continue-on-error: true
         run: ruff check workspace/
 
       - name: Black (format check)
+        continue-on-error: true
         run: black workspace/ --check
