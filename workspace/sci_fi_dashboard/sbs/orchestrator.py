@@ -11,6 +11,7 @@ from .ingestion.logger import ConversationLogger
 from .ingestion.schema import RawMessage
 from .injection.compiler import PromptCompiler
 from .profile.manager import ProfileManager
+from .profile.sync import sync_user_memory_profile
 
 
 class SBSOrchestrator:
@@ -18,8 +19,13 @@ class SBSOrchestrator:
     Soul-Brain Sync Orchestrator (Phase 1 Skeleton).
     """
 
-    def __init__(self, data_dir: str = "./data", sbs_config=None):
+    def __init__(
+        self, data_dir: str = "./data", sbs_config=None, workspace_dir: str | Path | None = None
+    ):
         self.data_dir = Path(data_dir)
+        self.workspace_dir = (
+            Path(workspace_dir) if workspace_dir is not None else self._default_workspace_dir()
+        )
 
         # Resolve SBS configuration (use defaults if none provided)
         if sbs_config is None:
@@ -142,6 +148,14 @@ class SBSOrchestrator:
         message.rt_mood_signal = rt_results.get("rt_mood_signal")
 
         self.logger.log(message)
+        if role == "user" and rt_results.get("rt_mood_signal"):
+            try:
+                self.realtime.flush()
+            except Exception:
+                logging.getLogger("sbs").warning(
+                    "Realtime flush failed; continuing message flow.",
+                    exc_info=True,
+                )
 
         rt_results["msg_id"] = message.msg_id
 
@@ -200,12 +214,49 @@ class SBSOrchestrator:
     def rollback(self, version: int):
         self.profile_mgr.rollback_to(version)
 
+    def _default_workspace_dir(self) -> Path | None:
+        try:
+            from synapse_config import SynapseConfig
+
+            return SynapseConfig.load().data_root / "workspace"
+        except Exception:
+            return None
+
+    def sync_user_memory(
+        self,
+        user_id: str,
+        db_path: str,
+        workspace_dir: str | Path | None = None,
+    ) -> dict:
+        """Sync structured user-memory facts into SBS profile layers."""
+        target_workspace = Path(workspace_dir) if workspace_dir is not None else self.workspace_dir
+        result = sync_user_memory_profile(
+            self.profile_mgr,
+            user_id=user_id,
+            db_path=db_path,
+            workspace_dir=target_workspace,
+        )
+        if result.get("workspace_files_updated", 0) > 0:
+            with contextlib.suppress(Exception):
+                from sci_fi_dashboard.chat_pipeline import clear_agent_workspace_session_prefix
+
+                clear_agent_workspace_session_prefix(user_id)
+        return result
+
     def get_profile_summary(self) -> dict:
         profile = self.profile_mgr.load_full_profile()
         return {
             "current_mood": profile["emotional_state"]["current_dominant_mood"],
             "sentiment": profile["emotional_state"]["current_sentiment_avg"],
-            "banglish_ratio": profile["linguistic"].get("current_style", {}).get("banglish_ratio"),
+            "primary_language_ratio": profile["linguistic"]
+            .get("current_style", {})
+            .get(
+                "primary_language_ratio",
+                profile["linguistic"].get("current_style", {}).get(
+                    "language_mix_ratio",
+                    profile["linguistic"].get("current_style", {}).get("banglish_ratio"),
+                ),
+            ),
             "vocab_size": profile["vocabulary"].get("total_unique_words", 0),
             "profile_version": profile["meta"].get("current_version", 0),
             "total_messages": profile["meta"].get("total_messages_processed", 0),

@@ -15,6 +15,16 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+try:
+    from synapse_config import SynapseConfig
+except ImportError:  # pragma: no cover - onboarding can run before workspace path setup
+    SynapseConfig = None  # type: ignore[assignment]
+
+try:
+    from sci_fi_dashboard.sbs.profile.manager import ProfileManager
+except ImportError:  # pragma: no cover - profile package may be unavailable in partial installs
+    ProfileManager = None  # type: ignore[assignment]
+
 # ---------------------------------------------------------------------------
 # Canonical internal value lists
 # ---------------------------------------------------------------------------
@@ -90,6 +100,11 @@ def initialize_sbs_from_wizard(answers: dict, data_root: Path) -> None:  # noqa:
                      energy_level:        str (one of ENERGY_CHOICES)
                      interests:           list[str] (subset of INTEREST_CHOICES)
                      privacy_level:       str (one of PRIVACY_CHOICES)
+                     preferred_language:  str
+                     region:              str
+                     locality:            str
+                     local_language_examples: list[str]
+                     ask_user_to_teach_language: bool
         data_root: Path to the Synapse data root (e.g. ~/.synapse).
                    Currently unused — profile path is resolved via SynapseConfig
                    so it always matches the live config, not a hardcoded path.
@@ -99,9 +114,7 @@ def initialize_sbs_from_wizard(answers: dict, data_root: Path) -> None:  # noqa:
         because the wizard collects data about the primary user, not the partner.
         NEVER writes to core_identity — that layer raises PermissionError.
     """
-    try:
-        from synapse_config import SynapseConfig  # noqa: PLC0415
-    except ImportError:
+    if SynapseConfig is None:
         logger.warning("SynapseConfig not importable — skipping SBS profile init")
         return
 
@@ -113,9 +126,7 @@ def initialize_sbs_from_wizard(answers: dict, data_root: Path) -> None:  # noqa:
 
     profile_path = config.sbs_dir / "sbs_the_creator" / "profiles"
 
-    try:
-        from sci_fi_dashboard.sbs.profile.manager import ProfileManager  # noqa: PLC0415
-    except ImportError:
+    if ProfileManager is None:
         logger.warning("ProfileManager not importable — skipping SBS profile init")
         return
 
@@ -131,6 +142,24 @@ def initialize_sbs_from_wizard(answers: dict, data_root: Path) -> None:  # noqa:
         linguistic["current_style"]["preferred_style"] = answers.get(
             "communication_style", "casual_and_witty"
         )
+        preferred_language = (answers.get("preferred_language") or "English").strip()
+        region = (answers.get("region") or "").strip()
+        locality = (answers.get("locality") or "").strip()
+        examples = [
+            str(item).strip()
+            for item in answers.get("local_language_examples", [])
+            if str(item).strip()
+        ][:10]
+        linguistic["current_style"]["preferred_language"] = preferred_language
+        linguistic["current_style"]["region"] = region
+        linguistic["current_style"]["locality"] = locality
+        linguistic["current_style"]["local_language_examples"] = examples
+        linguistic["current_style"]["local_language_confidence"] = 0.2 if examples else 0.0
+        linguistic["current_style"]["ask_user_to_teach"] = bool(
+            answers.get("ask_user_to_teach_language", True)
+        )
+        linguistic["current_style"].setdefault("language_mix_ratio", 0.0)
+        linguistic["current_style"].setdefault("primary_language_ratio", 0.0)
         mgr.save_layer("linguistic", linguistic)
         logger.debug(
             "SBS linguistic layer seeded: preferred_style=%s", answers.get("communication_style")

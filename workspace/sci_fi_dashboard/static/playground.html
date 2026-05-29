@@ -1,0 +1,557 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Synapse Playground</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f7f7f8;
+    --panel: #ffffff;
+    --panel-2: #fafafa;
+    --border: #e5e5ea;
+    --text: #1c1c1e;
+    --muted: #6b6b70;
+    --accent: #5b6cff;
+    --accent-fg: #ffffff;
+    --bubble-user: #5b6cff;
+    --bubble-user-fg: #ffffff;
+    --bubble-bot: #eef0f4;
+    --bubble-bot-fg: #1c1c1e;
+    --ok: #1ea672;
+    --warn: #c47b00;
+    --err: #c43d3d;
+    --shadow: 0 1px 2px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.04);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0e0e10;
+      --panel: #161618;
+      --panel-2: #1c1c1f;
+      --border: #2a2a2e;
+      --text: #ececf1;
+      --muted: #9a9aa3;
+      --accent: #7c8cff;
+      --accent-fg: #0e0e10;
+      --bubble-user: #5b6cff;
+      --bubble-user-fg: #ffffff;
+      --bubble-bot: #232328;
+      --bubble-bot-fg: #ececf1;
+      --shadow: 0 1px 2px rgba(0,0,0,0.4), 0 8px 24px rgba(0,0,0,0.3);
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    display: flex; flex-direction: column;
+  }
+  header {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--panel);
+  }
+  header h1 { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: 0.2px; }
+  header .spacer { flex: 1; }
+  header input, header button {
+    font: inherit; padding: 6px 10px; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--panel-2); color: var(--text);
+  }
+  header input { width: 200px; }
+  header button { cursor: pointer; }
+  header button:hover { background: var(--bg); }
+  header button.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12px; padding: 4px 10px; border-radius: 999px;
+    background: var(--panel-2); border: 1px solid var(--border);
+  }
+  .pill .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+  .pill.ok    .dot { background: var(--ok); }
+  .pill.warn  .dot { background: var(--warn); }
+  .pill.err   .dot { background: var(--err); }
+  main {
+    flex: 1; display: grid; grid-template-columns: 1fr 320px;
+    min-height: 0;
+  }
+  main.no-side { grid-template-columns: 1fr; }
+  #chat {
+    display: flex; flex-direction: column; min-height: 0;
+    border-right: 1px solid var(--border); background: var(--bg);
+  }
+  #log {
+    flex: 1; overflow-y: auto; padding: 18px;
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .empty {
+    color: var(--muted); text-align: center; margin: auto; max-width: 380px;
+    font-size: 13px;
+  }
+  .empty strong { color: var(--text); display: block; margin-bottom: 4px; font-weight: 600; }
+  .row { display: flex; }
+  .row.user { justify-content: flex-end; }
+  .row.bot  { justify-content: flex-start; }
+  .row.system { justify-content: center; }
+  .bubble {
+    max-width: min(640px, 80%);
+    padding: 9px 13px; border-radius: 14px;
+    white-space: pre-wrap; word-wrap: break-word;
+    box-shadow: var(--shadow);
+  }
+  .row.user .bubble { background: var(--bubble-user); color: var(--bubble-user-fg); border-bottom-right-radius: 4px; }
+  .row.bot  .bubble { background: var(--bubble-bot);  color: var(--bubble-bot-fg);  border-bottom-left-radius: 4px; }
+  .row.system .bubble {
+    background: transparent; border: 1px dashed var(--border);
+    color: var(--muted); font-size: 12px; box-shadow: none;
+  }
+  .typing .bubble { color: var(--muted); }
+  .typing .dots span {
+    display: inline-block; width: 4px; height: 4px; margin: 0 1px;
+    border-radius: 50%; background: var(--muted);
+    animation: blink 1.2s infinite both;
+  }
+  .typing .dots span:nth-child(2) { animation-delay: 0.2s; }
+  .typing .dots span:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes blink {
+    0%, 80%, 100% { opacity: 0.2; }
+    40% { opacity: 1; }
+  }
+  #composer {
+    display: flex; gap: 8px; padding: 12px;
+    border-top: 1px solid var(--border); background: var(--panel);
+  }
+  #input {
+    flex: 1; resize: none; min-height: 38px; max-height: 160px;
+    padding: 9px 12px; border-radius: 10px;
+    border: 1px solid var(--border); background: var(--panel-2); color: var(--text);
+    font: inherit;
+  }
+  #send {
+    padding: 0 16px; border-radius: 10px; border: none;
+    background: var(--accent); color: var(--accent-fg); cursor: pointer; font-weight: 600;
+  }
+  #send:disabled { opacity: 0.5; cursor: not-allowed; }
+  #side {
+    background: var(--panel); display: flex; flex-direction: column; min-height: 0;
+  }
+  #side header.mini {
+    padding: 12px 14px; border-bottom: 1px solid var(--border); background: var(--panel);
+    font-size: 13px; font-weight: 600;
+  }
+  #side .body {
+    flex: 1; overflow-y: auto; padding: 14px; font-size: 13px;
+  }
+  #side .loading, #side .err, #side .muted { color: var(--muted); font-style: italic; }
+  #side .err { color: var(--err); }
+  #side .layer { margin-bottom: 14px; }
+  #side .layer h3 {
+    margin: 0 0 4px; font-size: 11px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.6px; color: var(--muted);
+  }
+  #side .layer pre {
+    margin: 0; padding: 8px 10px;
+    background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px;
+    font-size: 12px; white-space: pre-wrap; word-wrap: break-word;
+  }
+  #side .toggle {
+    background: transparent; border: none; color: var(--muted);
+    cursor: pointer; font: inherit; font-size: 12px;
+  }
+  #side .toggle:hover { color: var(--text); }
+  @media (max-width: 760px) {
+    main { grid-template-columns: 1fr; }
+    #side { display: none; }
+    #side.open { display: flex; position: fixed; inset: 50px 0 0 0; z-index: 10; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Synapse Playground</h1>
+  <span id="status" class="pill"><span class="dot"></span><span id="status-text">Connecting...</span></span>
+  <div class="spacer"></div>
+  <input id="auth" type="password" placeholder="Auth token (optional)" autocomplete="off" />
+  <button id="connect">Connect</button>
+  <button id="reset">New session</button>
+  <button id="toggle-side">Profile</button>
+</header>
+<main>
+  <section id="chat">
+    <div id="log">
+      <div class="empty">
+        <strong>Welcome to Synapse.</strong>
+        Send a message below to start a conversation. The agent connects via WebSocket — no WhatsApp pairing required.
+      </div>
+    </div>
+    <form id="composer">
+      <textarea id="input" placeholder="Type a message... (Enter to send, Shift+Enter for newline)" autocomplete="off"></textarea>
+      <button id="send" type="submit" disabled>Send</button>
+    </form>
+  </section>
+  <aside id="side">
+    <header class="mini">What Synapse thinks of you</header>
+    <div class="body" id="profile-body">
+      <div class="loading">Loading profile...</div>
+    </div>
+  </aside>
+</main>
+
+<script>
+(function () {
+  "use strict";
+
+  // ---- Constants matching gateway/ws_server.py protocol -------------------
+  // Connect frame:  {type:"connect", id, params:{auth:{token}}}
+  // Request frame:  {type:"req", id, method:"chat.send", params:{chat_id, text}}
+  // Response frame: {type:"res", id, ok, payload, error}
+  // Event frame:    {type:"event", event, payload, seq}
+  const USER_ID = "the_creator";
+  const CHANNEL_ID = "playground";
+
+  // ---- DOM refs ----------------------------------------------------------
+  const $log         = document.getElementById("log");
+  const $input       = document.getElementById("input");
+  const $send        = document.getElementById("send");
+  const $composer    = document.getElementById("composer");
+  const $authInput   = document.getElementById("auth");
+  const $connectBtn  = document.getElementById("connect");
+  const $resetBtn    = document.getElementById("reset");
+  const $toggleSide  = document.getElementById("toggle-side");
+  const $side        = document.getElementById("side");
+  const $profileBody = document.getElementById("profile-body");
+  const $statusPill  = document.getElementById("status");
+  const $statusText  = document.getElementById("status-text");
+
+  // ---- State -------------------------------------------------------------
+  let ws = null;
+  let connected = false;
+  let connId = null;
+  let pending = new Map();       // id -> {resolve, reject}
+  let typingRow = null;
+  let storedToken = "";
+
+  try { storedToken = localStorage.getItem("synapse_token") || ""; } catch (_) {}
+  $authInput.value = storedToken;
+
+  // ---- Status pill -------------------------------------------------------
+  function setStatus(state, text) {
+    $statusPill.classList.remove("ok", "warn", "err");
+    if (state) $statusPill.classList.add(state);
+    $statusText.textContent = text;
+  }
+
+  // ---- ID generator ------------------------------------------------------
+  function newId() {
+    return "p-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
+  }
+
+  // ---- Render bubbles ----------------------------------------------------
+  function clearEmpty() {
+    const empty = $log.querySelector(".empty");
+    if (empty) empty.remove();
+  }
+
+  function appendRow(role, text) {
+    clearEmpty();
+    const row = document.createElement("div");
+    row.className = "row " + role;
+    const bubble = document.createElement("div");
+    bubble.className = "bubble";
+    bubble.textContent = text;
+    row.appendChild(bubble);
+    $log.appendChild(row);
+    $log.scrollTop = $log.scrollHeight;
+    return row;
+  }
+
+  function appendSystem(text) {
+    return appendRow("system", text);
+  }
+
+  function showTyping() {
+    hideTyping();
+    clearEmpty();
+    const row = document.createElement("div");
+    row.className = "row bot typing";
+    const bubble = document.createElement("div");
+    bubble.className = "bubble";
+    const dots = document.createElement("span");
+    dots.className = "dots";
+    dots.innerHTML = "<span></span><span></span><span></span>";
+    bubble.appendChild(document.createTextNode("Thinking "));
+    bubble.appendChild(dots);
+    row.appendChild(bubble);
+    $log.appendChild(row);
+    $log.scrollTop = $log.scrollHeight;
+    typingRow = row;
+  }
+
+  function hideTyping() {
+    if (typingRow && typingRow.parentNode) typingRow.parentNode.removeChild(typingRow);
+    typingRow = null;
+  }
+
+  // ---- Profile panel -----------------------------------------------------
+  async function loadProfile() {
+    $profileBody.innerHTML = '<div class="loading">Loading profile...</div>';
+    try {
+      const headers = {};
+      const tok = $authInput.value.trim();
+      if (tok) headers["Authorization"] = "Bearer " + tok;
+      const r = await fetch("/persona/profile/" + encodeURIComponent(USER_ID), { headers });
+      if (r.status === 404) {
+        $profileBody.innerHTML = '<div class="muted">Profile endpoint not available yet. Talk a bit and the persona engine will start building one.</div>';
+        return;
+      }
+      if (r.status === 401 || r.status === 403) {
+        $profileBody.innerHTML = '<div class="err">Auth required. Set the token in the header bar and reconnect.</div>';
+        return;
+      }
+      if (!r.ok) {
+        $profileBody.innerHTML = '<div class="err">Profile fetch failed: HTTP ' + r.status + '.</div>';
+        return;
+      }
+      const data = await r.json();
+      renderProfile(data);
+    } catch (e) {
+      $profileBody.innerHTML = '<div class="muted">Profile unavailable (offline or not implemented).</div>';
+    }
+  }
+
+  function renderProfile(data) {
+    if (!data || typeof data !== "object") {
+      $profileBody.innerHTML = '<div class="muted">No profile data yet.</div>';
+      return;
+    }
+    const layers = data.layers || data.profile || data;
+    if (!layers || typeof layers !== "object" || Array.isArray(layers)) {
+      const pre = document.createElement("pre");
+      pre.textContent = JSON.stringify(data, null, 2);
+      $profileBody.innerHTML = "";
+      $profileBody.appendChild(pre);
+      return;
+    }
+    const frag = document.createDocumentFragment();
+    let any = false;
+    for (const [name, value] of Object.entries(layers)) {
+      if (value == null) continue;
+      any = true;
+      const wrap = document.createElement("div");
+      wrap.className = "layer";
+      const h = document.createElement("h3");
+      h.textContent = name.replace(/_/g, " ");
+      const pre = document.createElement("pre");
+      pre.textContent = typeof value === "string" ? value : JSON.stringify(value, null, 2);
+      wrap.appendChild(h);
+      wrap.appendChild(pre);
+      frag.appendChild(wrap);
+    }
+    $profileBody.innerHTML = "";
+    if (any) {
+      $profileBody.appendChild(frag);
+    } else {
+      $profileBody.innerHTML = '<div class="muted">Profile is empty so far. Keep chatting.</div>';
+    }
+  }
+
+  // ---- WebSocket lifecycle -----------------------------------------------
+  function connect() {
+    teardown();
+    setStatus("warn", "Connecting...");
+    const proto = location.protocol === "https:" ? "wss:" : "ws:";
+    const url = proto + "//" + location.host + "/ws";
+    let socket;
+    try { socket = new WebSocket(url); }
+    catch (e) {
+      setStatus("err", "Cannot open WS");
+      return;
+    }
+    ws = socket;
+    socket.onopen = () => {
+      const token = $authInput.value.trim();
+      try { localStorage.setItem("synapse_token", token); } catch (_) {}
+      const id = newId();
+      const frame = {
+        type: "connect",
+        id,
+        params: {
+          min_protocol: 1,
+          max_protocol: 1,
+          client: { name: "playground", version: "1.0.0" },
+          auth: token ? { token } : {}
+        }
+      };
+      pending.set(id, {
+        resolve: (payload) => {
+          connected = true;
+          connId = (payload && payload.server && payload.server.connId) || null;
+          setStatus("ok", "Connected");
+          $send.disabled = false;
+        },
+        reject: (err) => {
+          setStatus("err", "Auth failed");
+          appendSystem("Connection rejected: " + (err && err.message || "auth failed"));
+        }
+      });
+      socket.send(JSON.stringify(frame));
+    };
+    socket.onmessage = (ev) => {
+      let frame;
+      try { frame = JSON.parse(ev.data); }
+      catch (_) { return; }
+      if (!frame || typeof frame !== "object") return;
+      if (frame.type === "res") {
+        const p = pending.get(frame.id);
+        if (p) {
+          pending.delete(frame.id);
+          if (frame.ok) p.resolve(frame.payload);
+          else p.reject(frame.error || { message: "request failed" });
+        }
+        return;
+      }
+      if (frame.type === "event") {
+        handleEvent(frame.event, frame.payload || {});
+      }
+    };
+    socket.onclose = (ev) => {
+      const wasConnected = connected;
+      connected = false;
+      $send.disabled = true;
+      hideTyping();
+      // Reject any in-flight requests
+      for (const p of pending.values()) p.reject({ message: "socket closed" });
+      pending.clear();
+      if (ev.code === 4001) setStatus("err", "Auth rejected");
+      else if (ev.code >= 4000) setStatus("err", "Closed (" + ev.code + ")");
+      else setStatus(wasConnected ? "warn" : "err", "Disconnected");
+    };
+    socket.onerror = () => {
+      setStatus("err", "WS error");
+    };
+  }
+
+  function teardown() {
+    if (ws) {
+      try { ws.close(); } catch (_) {}
+      ws = null;
+    }
+    connected = false;
+    connId = null;
+    pending.clear();
+    hideTyping();
+    $send.disabled = true;
+  }
+
+  function handleEvent(name, payload) {
+    if (name === "tick") return;  // heartbeat
+    if (name === "agent") {
+      // Server-pushed reply event: payload may carry {text|reply|message, chat_id}
+      const text = payload.text || payload.reply || payload.message || "";
+      if (!text) return;
+      hideTyping();
+      appendRow("bot", text);
+    }
+  }
+
+  // ---- Send a message ----------------------------------------------------
+  function sendRequest(method, params) {
+    return new Promise((resolve, reject) => {
+      if (!connected || !ws || ws.readyState !== WebSocket.OPEN) {
+        reject({ message: "not connected" });
+        return;
+      }
+      const id = newId();
+      pending.set(id, { resolve, reject });
+      const frame = { type: "req", id, method, params: params || {} };
+      try { ws.send(JSON.stringify(frame)); }
+      catch (e) {
+        pending.delete(id);
+        reject({ message: "send failed" });
+      }
+    });
+  }
+
+  async function sendChat(text) {
+    appendRow("user", text);
+    showTyping();
+    try {
+      await sendRequest("chat.send", {
+        chat_id: USER_ID,
+        text,
+        sender_name: "Playground User",
+        channel_id: CHANNEL_ID
+      });
+      // Reply will arrive via "agent" event. Auto-hide typing after 60s safeguard.
+      setTimeout(() => { if (typingRow) hideTyping(); }, 60000);
+    } catch (err) {
+      hideTyping();
+      appendSystem("Send failed: " + (err && err.message || "unknown"));
+    }
+  }
+
+  async function resetSession() {
+    appendSystem("Starting a fresh session...");
+    try {
+      const headers = { "Content-Type": "application/json" };
+      const tok = $authInput.value.trim();
+      if (tok) headers["Authorization"] = "Bearer " + tok;
+      // Try the Phase-2 multiuser endpoint first.
+      let r = await fetch("/api/sessions/" + encodeURIComponent(USER_ID) + "/reset", {
+        method: "POST", headers
+      });
+      if (r.status === 404) {
+        // Fall back to WS sessions.reset method (always present).
+        await sendRequest("sessions.reset", { user: USER_ID });
+        appendSystem("Session reset (via WS).");
+        return;
+      }
+      if (!r.ok) {
+        appendSystem("Reset failed: HTTP " + r.status + ".");
+        return;
+      }
+      appendSystem("Session reset.");
+    } catch (e) {
+      appendSystem("Reset unavailable.");
+    }
+  }
+
+  // ---- Wire up UI --------------------------------------------------------
+  $composer.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const text = $input.value.trim();
+    if (!text || !connected) return;
+    $input.value = "";
+    $input.style.height = "auto";
+    sendChat(text);
+  });
+
+  $input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      $composer.requestSubmit();
+    }
+  });
+
+  $input.addEventListener("input", () => {
+    $input.style.height = "auto";
+    $input.style.height = Math.min($input.scrollHeight, 160) + "px";
+  });
+
+  $connectBtn.addEventListener("click", () => connect());
+  $resetBtn.addEventListener("click", () => resetSession());
+  $toggleSide.addEventListener("click", () => {
+    $side.classList.toggle("open");
+    if (!$profileBody.dataset.loaded) {
+      $profileBody.dataset.loaded = "1";
+      loadProfile();
+    }
+  });
+
+  // Auto-connect on load and lazy-load profile.
+  connect();
+  loadProfile().then(() => { $profileBody.dataset.loaded = "1"; });
+})();
+</script>
+</body>
+</html>

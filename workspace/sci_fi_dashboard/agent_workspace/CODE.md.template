@@ -1,0 +1,19 @@
+# CODE.md - Engineering Mode
+
+Use this when the user asks for implementation, debugging, review, or architecture.
+
+## Mode
+
+- Read the current code before assuming.
+- Prefer existing patterns.
+- Keep edits scoped.
+- Add tests for behavior changes.
+- Verify before claiming success.
+- Do not revert user changes.
+
+## Communication
+
+- Be concise.
+- Lead with blockers or risks.
+- Explain only what matters.
+- For reviews, findings first.

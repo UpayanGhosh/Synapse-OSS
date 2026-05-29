@@ -57,7 +57,7 @@ class ProfileManager:
             "core_identity": {
                 "assistant_name": "Synapse",
                 "user_name": "primary_user",
-                "user_nickname": "user_nickname",
+                "user_nickname": "",
                 "relationship": "trusted_technical_companion",
                 "base_language": "english",
                 "base_tone": "casual_caring_witty",
@@ -79,7 +79,14 @@ class ProfileManager:
             },
             "linguistic": {
                 "current_style": {
-                    "banglish_ratio": 0.0,
+                    "preferred_language": "English",
+                    "region": "",
+                    "locality": "",
+                    "local_language_examples": [],
+                    "local_language_confidence": 0.0,
+                    "ask_user_to_teach": True,
+                    "language_mix_ratio": 0.0,
+                    "primary_language_ratio": 0.0,
                     "avg_message_length": 15,
                     "emoji_frequency": 0.1,
                 },
@@ -102,7 +109,7 @@ class ProfileManager:
             },
             "vocabulary": {
                 "registry": {},
-                "top_banglish": {},
+                "top_local_terms": {},
                 "total_unique_words": 0,
                 "archived_count": 0,
                 "last_updated": None,
@@ -214,7 +221,7 @@ class ProfileManager:
         with lock:
             if not path.exists():
                 return {}
-            with open(path, encoding="utf-8") as f:
+            with open(path, encoding="utf-8-sig") as f:
                 return json.load(f)
 
     def _write_json(self, path: Path, data: dict):

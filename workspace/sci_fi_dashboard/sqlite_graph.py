@@ -1,6 +1,8 @@
 """
 SQLite-backed Knowledge Graph -- replaces NetworkX.
 Memory: ~150MB -> ~1MB (only query results in RAM).
+
+See docs/kg-limits.md for performance characteristics and migration guidance.
 """
 
 import contextlib

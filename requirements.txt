@@ -22,7 +22,7 @@ psutil>=5.9.0
 
 # --- Terminal UI ---
 rich>=13.0.0
-typer[all]>=0.24.0              # CLI framework (onboarding wizard + synapse entry point)
+typer>=0.24.0                   # CLI framework (onboarding wizard + synapse entry point)
 questionary>=2.1.0              # Interactive prompts: text, password, select, checkbox, confirm (fallback)
 InquirerPy>=0.3.4               # Preferred terminal UI: better Windows compat + fuzzy search
 
@@ -33,6 +33,10 @@ lancedb>=0.6.0                   # Embedded vector DB - zero Docker overhead
 # --- Embeddings ---
 fastembed>=0.4.0                 # ONNX-based local embeddings (default provider)
 # sentence-transformers kept for Toxic-BERT (toxic_scorer_lazy.py) — NOT used for embeddings
+
+# --- Retrieval pipeline (eagerly imported by memory_engine + smart_entity) ---
+flashrank>=0.2.0                 # Cross-encoder reranker (ms-marco-TinyBERT) — chat-path critical
+flashtext>=2.7                   # EntityGate keyword extraction — chat-path critical
 
 # --- LLM Routing ---
 litellm>=1.40.0                  # Unified LLM API (Gemini, Claude, Ollama, OpenRouter dispatch)

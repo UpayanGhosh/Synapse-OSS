@@ -8,7 +8,10 @@ ChannelRegistry, a webhook URL, or nowhere (``none``).
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
+
+from sci_fi_dashboard.action_receipts import ActionReceipt
 
 try:
     import httpx
@@ -18,6 +21,33 @@ except ImportError:  # pragma: no cover
 from .types import CronDelivery, DeliveryMode
 
 logger = logging.getLogger(__name__)
+
+
+def _sanitize_announce_output(output: str) -> str:
+    """Keep proactive channel messages free of diagnostics and chat markdown."""
+    text = str(output or "")
+    for marker in ("\u200b", "\u200c", "\u200d", "\ufeff", "\x00"):
+        text = text.replace(marker, "")
+
+    text = re.sub(r"<think\b[^>]*>[\s\S]*?</think>", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"</?final\b[^>]*>", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"</?think\b[^>]*>", "", text, flags=re.IGNORECASE)
+    text = re.sub(
+        r"(?im)^\s*thought\s+for\s+\d+(?:\.\d+)?\s*(?:s|sec|secs|seconds?)\s*$\n?",
+        "",
+        text,
+    )
+    text = re.split(r"\n\s*---\s*\n\*\*Context Usage:\*\*", text, maxsplit=1)[0]
+    text = re.sub(r"```(?:\w+)?\n([\s\S]*?)```", r"\1", text)
+    text = re.sub(r"`([^`]+)`", r"\1", text)
+    text = re.sub(r"\*\*([^*]+)\*\*", r"\1", text)
+    text = re.sub(r"__([^_]+)__", r"\1", text)
+    text = re.sub(r"(?<!\*)\*([^*\n]+)\*(?!\*)", r"\1", text)
+    text = re.sub(r"(?<!_)_([^_\n]+)_(?!_)", r"\1", text)
+    text = re.sub(r"^\s{0,3}#{1,6}\s+", "", text, flags=re.MULTILINE)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    cleaned = text.strip()
+    return cleaned or "Done."
 
 
 async def deliver_output(
@@ -61,12 +91,51 @@ async def _deliver_announce(
     try:
         channel = channel_registry.get(channel_id)
         if channel is None:
-            return {"status": "error", "reason": f"channel {channel_id!r} not found"}
-        await channel.send(delivery.to or channel_id, output)
-        return {"status": "ok", "mode": "announce", "channel": channel_id}
+            receipt = ActionReceipt(
+                action="channel_send",
+                status="unavailable",
+                evidence=f"channel {channel_id!r} not found",
+                confidence=0.0,
+            )
+            return {
+                "status": "error",
+                "reason": f"channel {channel_id!r} not found",
+                "action_receipts": [receipt],
+            }
+        sent = await channel.send(delivery.to or channel_id, _sanitize_announce_output(output))
+        receipt = ActionReceipt(
+            action="channel_send",
+            status="verified" if sent is not False else "failed",
+            evidence=(
+                f"announce delivered to {delivery.to or channel_id} via {channel_id}"
+                if sent is not False
+                else f"channel.send returned false for {delivery.to or channel_id}"
+            ),
+            confidence=0.97 if sent is not False else 0.0,
+        )
+        if sent is False:
+            return {
+                "status": "error",
+                "reason": "channel.send returned false",
+                "mode": "announce",
+                "channel": channel_id,
+                "action_receipts": [receipt],
+            }
+        return {
+            "status": "ok",
+            "mode": "announce",
+            "channel": channel_id,
+            "action_receipts": [receipt],
+        }
     except Exception as exc:
         logger.exception("Announce delivery failed for channel %s", channel_id)
-        return {"status": "error", "reason": str(exc)}
+        receipt = ActionReceipt(
+            action="channel_send",
+            status="failed",
+            evidence=str(exc)[:240],
+            confidence=0.0,
+        )
+        return {"status": "error", "reason": str(exc), "action_receipts": [receipt]}
 
 
 async def _deliver_webhook(

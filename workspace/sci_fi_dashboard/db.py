@@ -114,6 +114,101 @@ def _ensure_jarvis_tables(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+def _ensure_entity_links_table(conn: sqlite3.Connection) -> None:
+    """Create/upgrade entity_links schema used by KG extraction (idempotent)."""
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS entity_links (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            subject         TEXT NOT NULL,
+            relation        TEXT NOT NULL,
+            object          TEXT NOT NULL,
+            archived        INTEGER DEFAULT 0,
+            source_fact_id  INTEGER,
+            source_doc_id   INTEGER,
+            confidence      REAL DEFAULT 1.0,
+            created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+
+    cursor = conn.execute("PRAGMA table_info(entity_links)")
+    cols = {row[1] for row in cursor.fetchall()}
+
+    # Old schemas may use "predicate" instead of "relation".
+    if "relation" not in cols:
+        conn.execute("ALTER TABLE entity_links ADD COLUMN relation TEXT")
+        if "predicate" in cols:
+            conn.execute(
+                "UPDATE entity_links SET relation = predicate "
+                "WHERE relation IS NULL AND predicate IS NOT NULL"
+            )
+        cols.add("relation")
+
+    if "archived" not in cols:
+        conn.execute("ALTER TABLE entity_links ADD COLUMN archived INTEGER DEFAULT 0")
+        cols.add("archived")
+    if "confidence" not in cols:
+        conn.execute("ALTER TABLE entity_links ADD COLUMN confidence REAL DEFAULT 1.0")
+        cols.add("confidence")
+    if "source_doc_id" not in cols:
+        conn.execute("ALTER TABLE entity_links ADD COLUMN source_doc_id INTEGER")
+        cols.add("source_doc_id")
+    if "source_fact_id" not in cols:
+        conn.execute("ALTER TABLE entity_links ADD COLUMN source_fact_id INTEGER")
+        cols.add("source_fact_id")
+
+    if {"subject", "relation", "archived"}.issubset(cols):
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_entity_links_subject_relation_active
+                ON entity_links(subject, relation, archived)
+        """)
+    if "source_doc_id" in cols:
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_entity_links_source_doc_id
+                ON entity_links(source_doc_id)
+        """)
+    if "created_at" in cols:
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_entity_links_created_at
+                ON entity_links(created_at)
+        """)
+
+    conn.commit()
+
+
+def _ensure_ingest_failures_table(conn: sqlite3.Connection) -> None:
+    """Create ingest_failures table and indexes (idempotent).
+
+    Records every failure (and completion) from _ingest_session_background so
+    that silent vector/KG ingest errors become user-queryable.
+    Called on both first boot and existing-DB migration so the table is always
+    present regardless of install order.
+    """
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS ingest_failures (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            session_key     TEXT,
+            agent_id        TEXT,
+            archived_path   TEXT,
+            batch_index     INTEGER,
+            total_batches   INTEGER,
+            phase           TEXT NOT NULL,
+            exception_type  TEXT,
+            exception_msg   TEXT,
+            traceback       TEXT,
+            ingested_vec    INTEGER,
+            ingested_kg     INTEGER
+        );
+        CREATE INDEX IF NOT EXISTS idx_ingest_failures_created_at
+            ON ingest_failures(created_at);
+        CREATE INDEX IF NOT EXISTS idx_ingest_failures_phase
+            ON ingest_failures(phase);
+    """)
+    conn.commit()
+
+
 def _ensure_kg_processed_column(conn: sqlite3.Connection) -> None:
     """Add kg_processed column to documents table if missing (idempotent).
 
@@ -125,6 +220,46 @@ def _ensure_kg_processed_column(conn: sqlite3.Connection) -> None:
     if "kg_processed" not in columns:
         conn.execute("ALTER TABLE documents ADD COLUMN kg_processed INTEGER DEFAULT 0")
     conn.commit()
+
+
+def _ensure_memory_affect_schema(conn: sqlite3.Connection) -> None:
+    """Create memory_affect overlay schema if missing (idempotent)."""
+    try:
+        from .memory_affect import ensure_memory_affect_table
+    except ImportError:
+        from memory_affect import ensure_memory_affect_table
+
+    ensure_memory_affect_table(conn)
+
+
+def _ensure_user_memory_schema(conn: sqlite3.Connection) -> None:
+    """Create structured user memory schema if missing (idempotent)."""
+    try:
+        from .user_memory import ensure_user_memory_facts_table
+    except ImportError:
+        from user_memory import ensure_user_memory_facts_table
+
+    ensure_user_memory_facts_table(conn)
+
+
+def _ensure_user_memory_distiller_v2_schema(conn: sqlite3.Connection) -> None:
+    """Create async user memory distiller V2 schema if missing."""
+    try:
+        from .user_memory_distiller_v2 import ensure_user_memory_distiller_v2_tables
+    except ImportError:
+        from user_memory_distiller_v2 import ensure_user_memory_distiller_v2_tables
+
+    ensure_user_memory_distiller_v2_tables(conn)
+
+
+def _ensure_self_evolution_schema(conn: sqlite3.Connection) -> None:
+    """Create approval-gated self-evolution schema if missing."""
+    try:
+        from .self_evolution import ensure_self_evolution_tables
+    except ImportError:
+        from self_evolution import ensure_self_evolution_tables
+
+    ensure_self_evolution_tables(conn)
 
 
 def _ensure_embedding_metadata(conn: sqlite3.Connection) -> None:
@@ -253,17 +388,34 @@ class DatabaseManager:
                 _ensure_sessions_table(conn)
                 _ensure_embedding_metadata(conn)
                 _ensure_jarvis_tables(conn)
+                _ensure_entity_links_table(conn)
                 _ensure_kg_processed_column(conn)
+                _ensure_memory_affect_schema(conn)
+                _ensure_user_memory_schema(conn)
+                _ensure_user_memory_distiller_v2_schema(conn)
+                _ensure_self_evolution_schema(conn)
+                _ensure_ingest_failures_table(conn)
                 conn.commit()
                 conn.close()
                 print("[OK] Memory database initialized successfully.")
             else:
-                # Existing DB: apply idempotent migrations
-                with sqlite3.connect(DB_PATH) as _mig:
+                # Existing DB: apply idempotent migrations.
+                # sqlite3 connection context manager does not close the handle;
+                # close explicitly to avoid lingering Windows file locks.
+                _mig = sqlite3.connect(DB_PATH)
+                try:
                     _ensure_sessions_table(_mig)
                     _ensure_embedding_metadata(_mig)
                     _ensure_jarvis_tables(_mig)
+                    _ensure_entity_links_table(_mig)
                     _ensure_kg_processed_column(_mig)
+                    _ensure_memory_affect_schema(_mig)
+                    _ensure_user_memory_schema(_mig)
+                    _ensure_user_memory_distiller_v2_schema(_mig)
+                    _ensure_self_evolution_schema(_mig)
+                    _ensure_ingest_failures_table(_mig)
+                finally:
+                    _mig.close()
 
             DatabaseManager._initialized = True
 

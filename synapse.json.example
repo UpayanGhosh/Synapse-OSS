@@ -1,5 +1,5 @@
 {
-  "_comment": "Copy this file to ~/.synapse/synapse.json and fill in your keys.",
+  "_comment": "Copy this file to ~/.synapse/synapse.json and fill in the providers you actually plan to use. The onboarding wizard (python workspace/synapse_cli.py onboard) will populate this for you.",
 
   "providers": {
     "anthropic": {"api_key": "YOUR_ANTHROPIC_API_KEY"},
@@ -15,7 +15,54 @@
     "togetherai": {"api_key": "YOUR_TOGETHER_AI_API_KEY"},
     "xai": {"api_key": "YOUR_XAI_API_KEY"},
     "cohere": {"api_key": "YOUR_COHERE_API_KEY"},
-    "deepseek": {"api_key": "YOUR_DEEPSEEK_API_KEY"}
+    "deepseek": {"api_key": "YOUR_DEEPSEEK_API_KEY"},
+
+    "minimax": {"api_key": "YOUR_MINIMAX_API_KEY"},
+    "moonshot": {"api_key": "YOUR_MOONSHOT_API_KEY"},
+    "zai": {"api_key": "YOUR_ZAI_API_KEY"},
+    "volcengine": {"api_key": "YOUR_VOLCENGINE_API_KEY"},
+    "qianfan": {"api_key": "YOUR_QIANFAN_AK"},
+
+    "huggingface": {"api_key": "YOUR_HF_API_KEY"},
+    "nvidia_nim": {"api_key": "YOUR_NVIDIA_NIM_API_KEY"},
+
+    "bedrock": {
+      "aws_access_key_id": "YOUR_AWS_ACCESS_KEY_ID",
+      "aws_secret_access_key": "YOUR_AWS_SECRET_ACCESS_KEY",
+      "aws_region_name": "us-east-1"
+    },
+
+    "vertex_ai": {
+      "project_id": "your-gcp-project-id",
+      "location": "us-central1",
+      "credentials_path": "/absolute/path/to/service-account.json"
+    },
+
+    "ollama": {
+      "api_base": "http://localhost:11434"
+    },
+    "vllm": {
+      "api_base": "http://localhost:8001/v1"
+    },
+
+    "_google_antigravity_comment": "Google Antigravity / Gemini CLI OAuth provider — gives free Gemini 3 Pro/Flash access via the cloudcode-pa.googleapis.com endpoint. Run `python workspace/synapse_cli.py onboard` and pick 'Google Antigravity' to populate this section. The actual access/refresh tokens are stored in ~/.synapse/state/google-oauth.json (chmod 600); this block only records the email/project metadata so the runtime can detect the provider is configured. Unofficial integration: not endorsed by Google, account suspensions have been reported. Requires a local @google/gemini-cli install OR SYNAPSE_GEMINI_OAUTH_CLIENT_ID/_SECRET env vars to source the OAuth client.",
+    "google_antigravity": {
+      "oauth_email": "",
+      "project_id": "",
+      "tier": ""
+    },
+
+    "_openai_codex_comment": "OpenAI Codex subscription provider — uses ChatGPT OAuth device flow (no API key in synapse.json). Run `python workspace/synapse_cli.py onboard` and pick 'OpenAI Codex' to populate this metadata. Access/refresh tokens are stored in ~/.synapse/state/openai-codex-oauth.json (chmod 600); this block only stores profile/account metadata so runtime can detect configuration.",
+    "openai_codex": {
+      "oauth_email": "",
+      "profile_name": "",
+      "account_id": ""
+    },
+
+    "_claude_cli_comment": "Claude Code CLI subscription provider — spawns the local `claude` binary headlessly so your Pro/Max subscription auth stays inside Claude Code (no API key in synapse.json, no OAuth dance from Synapse). Install Claude Code from https://docs.anthropic.com/en/docs/claude-code, run `claude /login` once to authorize, then run the onboarding wizard and pick 'Claude Code CLI'. Use model strings like `claude_cli/sonnet`, `claude_cli/opus`, or `claude_cli/haiku` in model_mappings. Heads-up: each call carries Claude Code's own ~50k-token system prompt overhead, so context usage is high — but unlimited tokens under subscription, only the message-count limit applies.",
+    "claude_cli": {
+      "binary_path": "claude"
+    }
   },
 
   "channels": {
@@ -32,39 +79,75 @@
   },
 
   "model_mappings": {
+    "_openai_codex_model_refs_comment": "For OpenAI Codex, use model refs like `openai_codex/gpt-5-codex` or `openai_codex/gpt-5-codex-mini` for code/analysis/review roles.",
     "casual": {
       "model": "gemini/gemini-2.0-flash",
+      "prompt_tier": "frontier",
       "fallback": "groq/llama-3.3-70b-versatile"
     },
     "code": {
       "model": "anthropic/claude-sonnet-4-6",
+      "prompt_tier": "frontier",
       "fallback": "openai/gpt-4o"
     },
     "analysis": {
       "model": "gemini/gemini-2.0-pro",
+      "prompt_tier": "frontier",
       "fallback": "anthropic/claude-sonnet-4-6"
     },
     "review": {
       "model": "anthropic/claude-opus-4-6",
+      "prompt_tier": "frontier",
       "fallback": "anthropic/claude-sonnet-4-6"
     },
     "vault": {
-      "model": "ollama_chat/llama3.3",
-      "fallback": null
+      "_model_comment": "qwen2.5:7b is the validated local baseline on 8 GB VRAM (RTX 3060 Ti class). Pull with: ollama pull qwen2.5:7b. Other tested options: mistral:7b (~4.4 GB), gemma2:9b (~5.4 GB, tighter VRAM). Avoid models <7B for Synapse — see .planning/MODEL-AGNOSTIC-ROADMAP.md.",
+      "model": "ollama_chat/qwen2.5:7b",
+      "prompt_tier": "small",
+      "fallback": null,
+      "_ollama_options_comment": "Override Ollama runtime params per-role. Defaults: num_ctx=8192, temperature=0.7, repeat_penalty=1.15. Bump num_ctx to 16384 if you have VRAM headroom and want to send mid_open-tier prompts; on 8 GB VRAM with a 7B model that still fits comfortably.",
+      "ollama_options": {
+        "num_ctx": 8192,
+        "temperature": 0.7,
+        "repeat_penalty": 1.15
+      }
     },
     "translate": {
       "model": "openrouter/meta-llama/llama-3.3-70b-instruct",
+      "prompt_tier": "frontier",
       "fallback": "groq/llama-3.3-70b-versatile"
     },
     "kg": {
       "model": "gemini/gemini-2.5-flash-lite",
+      "prompt_tier": "mid_open",
       "fallback": "gemini/gemini-2.5-flash"
+    },
+    "traffic_cop": {
+      "_model_comment": "Cheap classifier — runs on every chat turn to pick CASUAL/CODING/ANALYSIS/REVIEW/IMAGE. Should be small and fast. Default routes to a Gemini Flash Lite or local Ollama. Avoid OpenAI here unless you want per-turn billing.",
+      "model": "google_antigravity/gemini-3-flash-lite-preview",
+      "prompt_tier": "small",
+      "fallback": "google_antigravity/gemini-3-flash"
+    },
+    "_traffic_cop_privacy_alternative": "For zero-cloud classification, set: \"traffic_cop\": {\"model\": \"ollama_chat/qwen2.5:7b\", \"prompt_tier\": \"small\"}. The classifier sees every user message including spicy ones — keeping it local prevents metadata leakage to cloud providers.",
+    "oracle": {
+      "_model_comment": "Inner-monologue + tension-merge for dual cognition. Cheap+fast > deep — flash-lite already implies thinkingLevel:LOW via antigravity_provider.resolve_model_with_thinking. Avoid pinning to pro-high (1 RPM kills dual cog). Local Ollama is also fine but bump session.dual_cognition_timeout to 10s.",
+      "model": "google_antigravity/gemini-3-flash-lite-preview",
+      "prompt_tier": "small",
+      "fallback": "google_antigravity/gemini-3-flash"
     }
   },
 
   "session": {
     "dual_cognition_enabled": true,
-    "dual_cognition_timeout": 5.0
+    "dual_cognition_timeout": 5.0,
+    "_tier_strict_mode_comment": "When true, refuse to boot if any role's prompt_tier is two or more tiers above the model's inferred tier (e.g. frontier prompt on a 4B model). Default false (warn-only).",
+    "tier_strict_mode": false,
+    "_auto_flush_comment": "Auto-flush long sessions into memory.db without requiring manual /new. Trigger is OR-combined: save when a session reaches auto_flush_message_count new messages OR auto_flush_idle_seconds since the last flush/session window. Default rule: 50 messages or 6 hours. Sessions below auto_flush_min_messages are never flushed. Disable with auto_flush_enabled=false.",
+    "auto_flush_enabled": true,
+    "auto_flush_idle_seconds": 21600,
+    "auto_flush_message_count": 50,
+    "auto_flush_check_interval_seconds": 60,
+    "auto_flush_min_messages": 5
   },
 
   "embedding": {
@@ -84,5 +167,46 @@
     "min_messages": 15,
     "extract_interval_seconds": 1200,
     "kg_role": "kg"
+  },
+
+  "logging": {
+    "level": "INFO",
+    "format": "json",
+    "modules": {
+      "pipeline.chat": "INFO",
+      "llm.router": "INFO",
+      "channel.whatsapp": "INFO",
+      "route.whatsapp": "INFO",
+      "gateway.worker": "INFO",
+      "dual_cognition": "INFO"
+    }
+  },
+  "reconnect": {
+    "_comment": "SUPV-02: WhatsApp bridge reconnect backoff. All timing in milliseconds.",
+    "initialMs": 1000,
+    "maxMs": 60000,
+    "factor": 2.0,
+    "jitter": 0.2,
+    "maxAttempts": 5
+  },
+  "heartbeat": {
+    "_comment": "Phase 16 HEART-01..05: scheduled health pings to configured recipients. Set enabled: true and populate recipients with real JIDs to activate.",
+    "enabled": false,
+    "interval_s": 1800,
+    "recipients": ["919000000000@s.whatsapp.net"],
+    "prompt": "Health check — any updates?",
+    "ack_max_chars": 300,
+    "visibility": {
+      "showOk": false,
+      "showAlerts": true,
+      "useIndicator": true
+    }
+  },
+  "bridge": {
+    "_comment": "Phase 16 BRIDGE-02/03: Node bridge /health polling contract. Defaults: 30s interval, 3 consecutive failures → subprocess restart, 5s timeout.",
+    "healthPollIntervalSeconds": 30,
+    "healthFailuresBeforeRestart": 3,
+    "healthPollTimeoutSeconds": 5,
+    "healthGraceWindowSeconds": 60
   }
 }

@@ -8,6 +8,27 @@ __pycache__/
 .ruff_cache/
 .pytest_cache/
 .mypy_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+junit*.xml
+test-results/
+workspace/tests/.codex-pytest-run/
+codex_pytest_tmp/
+workspace/tests/codex_pytest_tmp/
+tmp_pytest*/
+tmp_pytest_local/
+workspace/.tmp_pytest*/
+workspace/tmp_pytest*/
+workspace/tmp_codex_verify/
+workspace/tmp_task*/
+workspace/_pytest*/
+workspace/tests/pytest-cache-files-*/
+workspace/tests/tmp_run_codex_review/
+workspace/tests/state/pytest-affect-run/
+workspace/tests/workspace/.tmp_pytest*/
+workspace/tests/workspace/.tmp_pytest_run/
 *.egg-info/
 dist/
 build/
@@ -25,6 +46,7 @@ env/
 .env
 .env.*
 !.env.example
+!.env.example.advanced
 
 # OAuth / credential files
 workspace/skills/gog/client_secret.json
@@ -48,6 +70,14 @@ workspace/*.log
 
 # Archive / backup
 *.bak
+*.temp
+*.tmp
+.temp/
+tmp/
+workspace/*.temp
+workspace/*.tmp
+workspace/.temp/
+workspace/tmp/
 *.gz
 *.dat
 *.mmap
@@ -59,8 +89,14 @@ REDUNDANCY_ARCHIVE_*/
 # JSON / text data files  (config templates are whitelisted below)
 # ──────────────────────────────────────────────────────────────
 *.json
+!package.json
 !workspace/sci_fi_dashboard/entities.json
+!workspace/sci_fi_dashboard/runtime_assets/baileys-bridge/package.json
+!workspace/sci_fi_dashboard/runtime_assets/baileys-bridge/package-lock.json
 !synapse.json.example
+!synapse.demo.json
+!synapse.local-only.json
+!docs/_generated/metrics.json
 !baileys-bridge/package.json
 !baileys-bridge/package-lock.json
 !.planning/config.json
@@ -156,3 +192,18 @@ GEMINI.md
 .gstack/
 .code-review-graph/
 landing/
+.worktrees/
+
+# ──────────────────────────────────────────────────────────────
+# Codex agent scratch — not for GitHub
+# ──────────────────────────────────────────────────────────────
+.codex/
+.codex-*/
+
+# MemPalace per-project files (issue #185)
+mempalace.yaml
+entities.json
+
+# /interview-prep skill output (regenerated on demand)
+interview-prep.html
+content/generated/

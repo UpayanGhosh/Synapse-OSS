@@ -34,12 +34,17 @@ import sys
 import tempfile
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 import httpx
+
+from sci_fi_dashboard.gateway.echo_tracker import OutboundTracker
+from sci_fi_dashboard.observability import get_child_logger
 
 from .base import BaseChannel, ChannelMessage
 from .network_errors import is_safe_to_retry_send
 from .security import ChannelSecurityConfig, PairingStore, resolve_dm_access
+from .supervisor import ReconnectPolicy, WhatsAppSupervisor
 
 # ---------------------------------------------------------------------------
 # Windows event-loop policy — must be set before any asyncio usage
@@ -48,10 +53,19 @@ if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 logger = logging.getLogger(__name__)
+_log = get_child_logger("channel.whatsapp")
 
-# Path: workspace/sci_fi_dashboard/channels/whatsapp.py → repo_root/baileys-bridge
-_BRIDGE_DIR = Path(__file__).resolve().parent.parent.parent.parent / "baileys-bridge"
-_AUTH_STATE_DIR = _BRIDGE_DIR / "auth_state"
+# Installed bridge lives under the product home, never the developer repo.
+def resolve_bridge_dir() -> Path:
+    from synapse_config import resolve_data_root  # noqa: PLC0415
+
+    return resolve_data_root().expanduser().resolve() / "bridges" / "baileys"
+
+
+def resolve_auth_state_dir() -> Path:
+    from synapse_config import resolve_data_root  # noqa: PLC0415
+
+    return resolve_data_root().expanduser().resolve() / "state" / "whatsapp" / "auth_state"
 
 
 class WhatsAppChannel(BaseChannel):
@@ -64,15 +78,13 @@ class WhatsAppChannel(BaseChannel):
     bridge's HTTP API.
     """
 
-    MAX_RESTARTS: int = 5
-    INITIAL_BACKOFF: float = 0.0
-
     def __init__(
         self,
         bridge_port: int = 5010,
         python_webhook_url: str = "",
         security_config: ChannelSecurityConfig | None = None,
         pairing_store: PairingStore | None = None,
+        reconnect_policy: ReconnectPolicy | None = None,
     ) -> None:
         self._port = bridge_port
         self._webhook_url = python_webhook_url or "http://127.0.0.1:8000/channels/whatsapp/webhook"
@@ -92,6 +104,22 @@ class WhatsAppChannel(BaseChannel):
         # Retry queue reference (injected by api_gateway after construction)
         self._retry_queue = None
 
+        # SUPV-01..04: supervisor with configurable reconnect policy
+        self._reconnect_policy = reconnect_policy or ReconnectPolicy()
+        self._supervisor = WhatsAppSupervisor(
+            restart_callback=self._restart_bridge,
+            policy=self._reconnect_policy,
+        )
+
+        # ACL-01: self-echo tracker — ring buffer of last 20 outbound fingerprints
+        self._echo_tracker = OutboundTracker(window_size=20, ttl_s=60.0)
+
+        # Phase 16 BRIDGE-02/03: bridge health polling + restart race guard
+        self._restart_in_progress: asyncio.Event = asyncio.Event()
+        self._bridge_health_poller: Any = (
+            None
+        )  # type: "BridgeHealthPoller | None" — set by lifespan wiring (Plan 04)
+
     # ------------------------------------------------------------------
     # Identity
     # ------------------------------------------------------------------
@@ -110,7 +138,7 @@ class WhatsAppChannel(BaseChannel):
         if not node_path:
             raise RuntimeError(
                 "Node.js is not installed or not on PATH.\n"
-                "The Baileys WhatsApp bridge requires Node.js 18+.\n"
+                "The Baileys WhatsApp bridge requires Node.js 20+.\n"
                 "Install from: https://nodejs.org/en/download/\n"
                 "Then restart Synapse."
             )
@@ -126,9 +154,9 @@ class WhatsAppChannel(BaseChannel):
             major = int(version_str.split(".")[0])
         except (ValueError, IndexError) as exc:
             raise RuntimeError(f"Could not parse Node.js version: {version_str!r}") from exc
-        if major < 18:
+        if major < 20:
             raise RuntimeError(
-                f"Node.js {version_str} found but Node.js 18+ is required.\n"
+                f"Node.js {version_str} found but Node.js 20+ is required.\n"
                 f"Upgrade from: https://nodejs.org/en/download/"
             )
 
@@ -138,18 +166,23 @@ class WhatsAppChannel(BaseChannel):
 
     async def start(self) -> None:
         await self._validate_nodejs()
+        await self._supervisor.start()  # SUPV-01: start inbound-silence watchdog
 
         attempts = 0
-        backoff = self.INITIAL_BACKOFF
+        policy = self._reconnect_policy
 
-        while attempts < self.MAX_RESTARTS:
+        while attempts < policy.max_attempts:
             try:
                 self._proc = await asyncio.create_subprocess_exec(
                     "node",
-                    str(_BRIDGE_DIR / "index.js"),
+                    str(resolve_bridge_dir() / "index.js"),
                     env={
                         **os.environ,
                         "BRIDGE_PORT": str(self._port),
+                        "SYNAPSE_AUTH_DIR": str(resolve_auth_state_dir()),
+                        "MEDIA_CACHE_DIR": str(
+                            resolve_auth_state_dir().parent / "media_cache"
+                        ),
                         "PYTHON_WEBHOOK_URL": self._webhook_url,
                         "PYTHON_STATE_WEBHOOK_URL": self._webhook_url.replace(
                             "/webhook", "/connection-state"
@@ -157,7 +190,7 @@ class WhatsAppChannel(BaseChannel):
                     },
                     stdout=asyncio.subprocess.DEVNULL,
                     stderr=asyncio.subprocess.PIPE,
-                    cwd=str(_BRIDGE_DIR),
+                    cwd=str(resolve_bridge_dir()),
                 )
                 self._bridge_pid = self._proc.pid
                 self._status = "running"
@@ -168,26 +201,47 @@ class WhatsAppChannel(BaseChannel):
                 await self._proc.wait()
                 rc = self._proc.returncode
                 self._status = "crashed"
+
+                # SUPV-04: halt reconnect if non-retryable state reached
+                if self._supervisor.stop_reconnect:
+                    logger.warning(
+                        "[WA] Reconnect halted (health_state=%s)",
+                        self._supervisor.health_state,
+                    )
+                    self._status = "stopped"
+                    await self._supervisor.stop()
+                    return
+
+                # SUPV-02: configurable backoff via policy
+                backoff_s = policy.compute_backoff_s(attempts)
                 logger.warning(
-                    "[WA] Bridge exited (code %d), restarting in %.1fs (attempt %d/%d)",
+                    "[WA] Bridge exited (code %d), restarting in %.2fs (attempt %d/%d)",
                     rc,
-                    backoff,
+                    backoff_s,
                     attempts + 1,
-                    self.MAX_RESTARTS,
+                    policy.max_attempts,
                 )
 
                 attempts += 1
-                await asyncio.sleep(backoff)
-                backoff = min(max(backoff * 2, 1.0), 60.0)
+                await asyncio.sleep(backoff_s)
+
+                # Re-check stop_reconnect after sleep
+                if self._supervisor.stop_reconnect:
+                    logger.warning("[WA] Reconnect halted during backoff — stopping loop")
+                    self._status = "stopped"
+                    await self._supervisor.stop()
+                    return
 
             except asyncio.CancelledError:
                 await self.stop()
                 raise
 
         self._status = "failed"
-        logger.error("[WA] Bridge failed %d times — giving up", self.MAX_RESTARTS)
+        logger.error("[WA] Bridge failed %d times — giving up", policy.max_attempts)
+        await self._supervisor.stop()
 
     async def stop(self) -> None:
+        await self._supervisor.stop()  # SUPV-01: stop watchdog before bridge kill
         if self._proc and self._proc.returncode is None:
             self._proc.terminate()
             try:
@@ -200,13 +254,29 @@ class WhatsAppChannel(BaseChannel):
     async def _restart_bridge(self) -> None:
         """Stop and restart the bridge subprocess.
 
-        Used after code 515 (restart-after-pairing) when Baileys needs a fresh
-        connection with the newly saved auth state.
+        Triggered by:
+          - code 515 (restart-after-pairing) when Baileys needs a fresh connection
+            with the newly saved auth state (Phase 14 flow)
+          - Phase 16 BridgeHealthPoller after N consecutive /health failures
+
+        Phase 16 BRIDGE-03/G2: `_restart_in_progress` Event prevents concurrent
+        restarts. If watchdog + poller both fire simultaneously, the second call
+        no-ops and the first completes.
         """
-        logger.info("[WA] Restarting bridge (code-515 restart-after-pairing)")
-        await self.stop()
-        # start() is normally run as a task — spawn it as a background task
-        asyncio.create_task(self.start())
+        if self._restart_in_progress.is_set():
+            logger.warning("[WA] Bridge restart already in progress — skipping duplicate")
+            return
+        self._restart_in_progress.set()
+        try:
+            logger.info("[WA] Restarting bridge (Phase 16 gated restart)")
+            await self.stop()
+            # start() is normally run as a task — spawn it as a background task
+            asyncio.create_task(self.start())
+        finally:
+            # Clear the flag AFTER scheduling start(). The poller's grace window
+            # (Phase 16 G4) handles the "wait for bridge to come up" period —
+            # we don't block _restart_bridge on readiness.
+            self._restart_in_progress.clear()
 
     # ------------------------------------------------------------------
     # Connection state tracking (called by connection-state webhook)
@@ -224,6 +294,12 @@ class WhatsAppChannel(BaseChannel):
         self._auth_timestamp = payload.get("authTimestamp")
         self._restart_count = payload.get("restartCount", 0)
         self._last_disconnect_reason = payload.get("lastDisconnectReason")
+
+        # SUPV-03/04: drive state machine from bridge signals
+        if self._connection_state == "connected":
+            self._supervisor.note_connected()
+        elif self._connection_state in ("logged_out", "reconnecting"):
+            self._supervisor.note_disconnect(self._last_disconnect_reason)
 
         # Code 515: restart-after-pairing
         disconnect_reason = payload.get("lastDisconnectReason")
@@ -271,14 +347,22 @@ class WhatsAppChannel(BaseChannel):
 
     def _clear_auth_cache(self) -> None:
         """Remove stale auth_state directory so the next restart triggers a fresh QR."""
-        if _AUTH_STATE_DIR.exists():
+        auth_state_dir = resolve_auth_state_dir()
+        if auth_state_dir.exists():
             try:
                 import shutil as _shutil
 
-                _shutil.rmtree(_AUTH_STATE_DIR, ignore_errors=True)
-                logger.info("[WA] Cleared auth_state at %s", _AUTH_STATE_DIR)
+                _shutil.rmtree(auth_state_dir, ignore_errors=True)
+                logger.info("[WA] Cleared auth_state at %s", auth_state_dir)
             except OSError as exc:
                 logger.warning("[WA] Failed to clear auth_state: %s", exc)
+
+    _HEALTH_STATE_MAP: dict[str, str] = {
+        "connected": "connected",
+        "logged_out": "logged-out",
+        "reconnecting": "reconnecting",
+        "conflict": "conflict",
+    }
 
     async def get_status(self) -> dict:
         """Enhanced health check with auth age, uptime, and connection metrics."""
@@ -288,6 +372,33 @@ class WhatsAppChannel(BaseChannel):
         base["restart_count"] = self._restart_count
         base["last_disconnect_reason"] = self._last_disconnect_reason
         base["connection_state"] = self._connection_state
+        base["isLoggedOut"] = self._connection_state == "logged_out"
+        # SUPV-03: authoritative healthState from supervisor
+        if self._status in ("stopped", "failed"):
+            base["healthState"] = "stopped"
+        else:
+            base["healthState"] = self._supervisor.health_state
+        base["stop_reconnect"] = self._supervisor.stop_reconnect
+        # Phase 16 BRIDGE-02: expose most recent /health poll result
+        if self._bridge_health_poller is not None:
+            base["bridge_health"] = self._bridge_health_poller.last_health
+        else:
+            base["bridge_health"] = {}
+        # Phase 16 BRIDGE-04: expose dedup telemetry (hit/miss counts + hit rate)
+        try:
+            from sci_fi_dashboard import _deps as _deps_mod
+
+            _dedup = getattr(_deps_mod, "dedup", None)
+            if _dedup is not None:
+                base["dedup"] = {
+                    "hits": int(getattr(_dedup, "hits", 0)),
+                    "misses": int(getattr(_dedup, "misses", 0)),
+                    "hit_rate": float(_dedup.hit_rate()) if hasattr(_dedup, "hit_rate") else 0.0,
+                }
+            else:
+                base["dedup"] = {"hits": 0, "misses": 0, "hit_rate": 0.0}
+        except Exception:
+            base["dedup"] = {"hits": 0, "misses": 0, "hit_rate": 0.0}
         return base
 
     async def get_qr(self) -> str | None:
@@ -367,6 +478,7 @@ class WhatsAppChannel(BaseChannel):
 
     async def relink(self) -> bool:
         """POST /relink — force fresh QR cycle without full logout."""
+        self._supervisor.reset_stop_reconnect()  # SUPV-04: clear halt flag
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 r = await client.post(f"http://127.0.0.1:{self._port}/relink")
@@ -387,7 +499,11 @@ class WhatsAppChannel(BaseChannel):
                     f"http://127.0.0.1:{self._port}/send",
                     json={"jid": chat_id, "text": text},
                 )
-                return r.status_code == 200
+                success = r.status_code == 200
+                if success:
+                    # ACL-01: record only on confirmed success (failed sends must not pollute tracker)
+                    self._echo_tracker.record(chat_id, text)
+                return success
         except httpx.RequestError as exc:
             if is_safe_to_retry_send(exc):
                 logger.warning("[WA] send() pre-connect failure (retryable): %s", exc)
@@ -567,7 +683,10 @@ class WhatsAppChannel(BaseChannel):
         if self.security_config and self._pairing_store and not cm.is_group:
             access = resolve_dm_access(cm.user_id, self.security_config, self._pairing_store)
             if access != "allow":
-                logger.info("[WA] DM from %s blocked (%s)", cm.user_id, access)
+                _log.info(
+                    "dm_blocked",
+                    extra={"user_id": cm.user_id, "access": access},
+                )
                 return None
 
         # --- Audio / voice message transcription ---
@@ -671,6 +790,9 @@ class WhatsAppChannel(BaseChannel):
             return
         try:
             async for line in stderr:
-                logger.debug("[WA-BRIDGE] %s", line.decode(errors="replace").rstrip())
+                _log.warning(
+                    "bridge_stderr",
+                    extra={"text": line.decode(errors="replace").rstrip()},
+                )
         except asyncio.CancelledError:
             pass

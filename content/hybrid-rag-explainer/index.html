@@ -1,0 +1,1366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Synapse Memory — Hybrid RAG + Knowledge Graph</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+  :root {
+    --bg: #0a0a0f;
+    --surface: #12121a;
+    --border: #1e1e2e;
+    --text: #e2e2ef;
+    --text-dim: #8888a0;
+    --accent: #6366f1;
+    --accent2: #22d3ee;
+    --accent3: #f472b6;
+    --accent4: #34d399;
+    --accent5: #fbbf24;
+    --glow-accent: rgba(99,102,241,0.3);
+    --glow-cyan: rgba(34,211,238,0.3);
+    --glow-pink: rgba(244,114,182,0.3);
+    --glow-green: rgba(52,211,153,0.3);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', system-ui, sans-serif;
+    overflow: hidden;
+    height: 100vh;
+    width: 100vw;
+  }
+
+  /* ─── TIMER ─── */
+  #timer-bar {
+    position: fixed; top: 0; left: 0;
+    width: 100%; height: 4px;
+    background: var(--border);
+    z-index: 1000;
+  }
+  #timer-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, var(--accent), var(--accent2), var(--accent3));
+    transition: width 0.3s linear;
+    border-radius: 0 2px 2px 0;
+    box-shadow: 0 0 12px var(--glow-accent);
+  }
+  #timer-display {
+    position: fixed; top: 12px; right: 24px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 14px; color: var(--text-dim);
+    z-index: 1000;
+    background: rgba(10,10,15,0.8);
+    padding: 4px 12px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    backdrop-filter: blur(8px);
+  }
+  #timer-display .elapsed { color: var(--accent2); font-weight: 600; }
+
+  /* ─── CONTROLS ─── */
+  #controls {
+    position: fixed; top: 12px; left: 24px;
+    display: flex; gap: 8px;
+    z-index: 1000;
+  }
+  .ctrl-btn {
+    background: rgba(10,10,15,0.85);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 6px 16px;
+    border-radius: 6px;
+    font-family: 'Inter', sans-serif;
+    font-size: 13px; font-weight: 500;
+    cursor: pointer;
+    backdrop-filter: blur(8px);
+    transition: all 0.2s;
+  }
+  .ctrl-btn:hover { border-color: var(--accent); color: var(--accent2); }
+  .ctrl-btn.active { border-color: var(--accent2); color: var(--accent2); }
+
+  /* ─── SLIDE CONTAINER ─── */
+  #stage {
+    width: 100vw; height: 100vh;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .slide {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.6s ease;
+    padding: 60px 48px 40px;
+  }
+  .slide.active {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  /* ─── TYPOGRAPHY ─── */
+  .slide-title {
+    font-size: clamp(28px, 4vw, 48px);
+    font-weight: 800;
+    text-align: center;
+    margin-bottom: 8px;
+    letter-spacing: -1px;
+    line-height: 1.15;
+  }
+  .slide-subtitle {
+    font-size: clamp(14px, 1.8vw, 18px);
+    color: var(--text-dim);
+    text-align: center;
+    margin-bottom: 32px;
+    max-width: 700px;
+    line-height: 1.5;
+    font-weight: 400;
+  }
+  .gradient-text {
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .gradient-pink {
+    background: linear-gradient(135deg, var(--accent3), var(--accent5));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .gradient-green {
+    background: linear-gradient(135deg, var(--accent4), var(--accent2));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* ─── SVG DIAGRAM AREA ─── */
+  .diagram-area {
+    flex: 1;
+    width: 100%;
+    max-width: 1100px;
+    max-height: 520px;
+    position: relative;
+  }
+  .diagram-area svg {
+    width: 100%; height: 100%;
+    overflow: visible;
+  }
+
+  /* ─── SVG NODE STYLES ─── */
+  .node-box {
+    rx: 12; ry: 12;
+    stroke-width: 1.5;
+    transition: all 0.4s ease;
+  }
+  .node-text {
+    font-family: 'Inter', sans-serif;
+    font-weight: 600;
+    fill: var(--text);
+    text-anchor: middle;
+    dominant-baseline: central;
+    font-size: 13px;
+    pointer-events: none;
+  }
+  .node-subtext {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 400;
+    fill: var(--text-dim);
+    text-anchor: middle;
+    dominant-baseline: central;
+    font-size: 10px;
+    pointer-events: none;
+  }
+  .node-icon {
+    font-size: 22px;
+    text-anchor: middle;
+    dominant-baseline: central;
+    pointer-events: none;
+  }
+
+  /* ─── ANIMATED ARROWS ─── */
+  .arrow-path {
+    fill: none;
+    stroke-width: 2;
+    stroke-linecap: round;
+    opacity: 0;
+    transition: opacity 0.5s ease;
+  }
+  .arrow-path.visible {
+    opacity: 1;
+  }
+
+  @keyframes dash-flow {
+    to { stroke-dashoffset: -20; }
+  }
+  .arrow-path.flowing {
+    stroke-dasharray: 8 12;
+    animation: dash-flow 0.8s linear infinite;
+  }
+
+  .arrow-head {
+    opacity: 0;
+    transition: opacity 0.5s ease;
+  }
+  .arrow-head.visible { opacity: 1; }
+
+  /* ─── PULSE ANIMATIONS ─── */
+  @keyframes node-pulse {
+    0%, 100% { filter: drop-shadow(0 0 0px transparent); }
+    50% { filter: drop-shadow(0 0 16px var(--glow-accent)); }
+  }
+  @keyframes node-pulse-cyan {
+    0%, 100% { filter: drop-shadow(0 0 0px transparent); }
+    50% { filter: drop-shadow(0 0 16px var(--glow-cyan)); }
+  }
+  @keyframes node-pulse-pink {
+    0%, 100% { filter: drop-shadow(0 0 0px transparent); }
+    50% { filter: drop-shadow(0 0 16px var(--glow-pink)); }
+  }
+  @keyframes node-pulse-green {
+    0%, 100% { filter: drop-shadow(0 0 0px transparent); }
+    50% { filter: drop-shadow(0 0 16px var(--glow-green)); }
+  }
+  .pulse-accent  { animation: node-pulse 2s ease-in-out infinite; }
+  .pulse-cyan    { animation: node-pulse-cyan 2s ease-in-out infinite; }
+  .pulse-pink    { animation: node-pulse-pink 2s ease-in-out infinite; }
+  .pulse-green   { animation: node-pulse-green 2s ease-in-out infinite; }
+
+  /* ─── FLOATING PARTICLE / DATA DOT ─── */
+  @keyframes float-dot {
+    0% { offset-distance: 0%; opacity: 0; }
+    10% { opacity: 1; }
+    90% { opacity: 1; }
+    100% { offset-distance: 100%; opacity: 0; }
+  }
+  .data-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    position: absolute;
+    animation: float-dot 1.5s ease-in-out forwards;
+  }
+
+  /* ─── SCORE BAR ─── */
+  .score-bar-bg {
+    fill: var(--border);
+    rx: 4; ry: 4;
+  }
+  .score-bar-fill {
+    rx: 4; ry: 4;
+    transition: width 0.8s ease;
+  }
+  .score-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    fill: var(--text-dim);
+    text-anchor: start;
+    dominant-baseline: central;
+  }
+  .score-value {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 600;
+    text-anchor: end;
+    dominant-baseline: central;
+  }
+
+  /* ─── STEP INDICATORS ─── */
+  #step-dots {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex; gap: 8px;
+    z-index: 1000;
+  }
+  .step-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--border);
+    transition: all 0.3s ease;
+    cursor: pointer;
+  }
+  .step-dot.active {
+    background: var(--accent2);
+    box-shadow: 0 0 8px var(--glow-cyan);
+    width: 24px;
+    border-radius: 4px;
+  }
+
+  /* ─── READOUT SCRIPT ─── */
+  #script-bar {
+    position: fixed;
+    bottom: 48px;
+    left: 50%;
+    transform: translateX(-50%);
+    max-width: 800px;
+    width: calc(100% - 48px);
+    text-align: center;
+    z-index: 1000;
+  }
+  #script-text {
+    font-size: clamp(13px, 1.6vw, 16px);
+    color: var(--text-dim);
+    line-height: 1.6;
+    background: rgba(10,10,15,0.85);
+    padding: 12px 24px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    backdrop-filter: blur(12px);
+    font-style: italic;
+  }
+
+  /* ─── FADE IN UTILITY ─── */
+  .fade-in {
+    opacity: 0;
+    transform: translateY(12px);
+    transition: opacity 0.5s ease, transform 0.5s ease;
+  }
+  .fade-in.show {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  /* ─── GRID BG ─── */
+  .grid-bg {
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(99,102,241,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(99,102,241,0.03) 1px, transparent 1px);
+    background-size: 48px 48px;
+    pointer-events: none;
+  }
+
+  /* ─── KNOWLEDGE GRAPH VIS ─── */
+  .kg-node {
+    cursor: default;
+    transition: all 0.3s ease;
+  }
+  .kg-edge {
+    stroke: var(--border);
+    stroke-width: 1.5;
+    fill: none;
+    opacity: 0;
+    transition: opacity 0.5s ease;
+  }
+  .kg-edge.visible {
+    opacity: 0.6;
+  }
+  .kg-edge-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    fill: var(--text-dim);
+    text-anchor: middle;
+    opacity: 0;
+    transition: opacity 0.5s ease;
+  }
+  .kg-edge-label.visible { opacity: 1; }
+
+  /* ─── HEMISPHERE ─── */
+  .hemisphere {
+    rx: 16; ry: 16;
+    stroke-dasharray: 6 4;
+    fill-opacity: 0.04;
+    stroke-width: 1.5;
+    opacity: 0;
+    transition: opacity 0.6s ease;
+  }
+  .hemisphere.visible { opacity: 1; }
+
+  /* ─── ENDING SLIDE ─── */
+  .big-stat {
+    font-size: clamp(48px, 8vw, 80px);
+    font-weight: 900;
+    letter-spacing: -3px;
+    line-height: 1;
+  }
+  .stat-label {
+    font-size: clamp(14px, 2vw, 18px);
+    color: var(--text-dim);
+    font-weight: 400;
+    margin-top: 4px;
+  }
+  .stats-row {
+    display: flex;
+    gap: clamp(32px, 6vw, 80px);
+    text-align: center;
+    margin: 32px 0;
+  }
+
+  /* ─── MOBILE ─── */
+  @media (max-width: 768px) {
+    .slide { padding: 56px 20px 80px; }
+    .diagram-area { max-height: 360px; }
+    #script-text { font-size: 12px; padding: 8px 16px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Timer -->
+<div id="timer-bar"><div id="timer-fill"></div></div>
+<div id="timer-display"><span class="elapsed">0:00</span> / 3:00</div>
+
+<!-- Controls -->
+<div id="controls">
+  <button class="ctrl-btn" id="btn-play" onclick="togglePlay()">&#9654; Start</button>
+  <button class="ctrl-btn" id="btn-prev" onclick="prevSlide()">&#8592;</button>
+  <button class="ctrl-btn" id="btn-next" onclick="nextSlide()">&#8594;</button>
+  <button class="ctrl-btn" id="btn-restart" onclick="restartPresentation()">&#8634;</button>
+</div>
+
+<!-- Step dots -->
+<div id="step-dots"></div>
+
+<!-- Script bar -->
+<div id="script-bar">
+  <div id="script-text"></div>
+</div>
+
+<!-- ═══════════════════════════════════════════════ -->
+<!-- SLIDE 0: TITLE / HOOK -->
+<!-- ═══════════════════════════════════════════════ -->
+<div id="stage">
+<div class="grid-bg"></div>
+
+<div class="slide active" data-slide="0" data-duration="12">
+  <div class="fade-in" data-delay="0">
+    <div class="slide-title">
+      How Does an AI<br><span class="gradient-text">Actually Remember</span> You?
+    </div>
+  </div>
+  <div class="fade-in" data-delay="0.4">
+    <div class="slide-subtitle">
+      Most chatbots forget everything after each conversation.<br>
+      Here's how we built a memory system that doesn't.
+    </div>
+  </div>
+  <div class="diagram-area fade-in" data-delay="0.8">
+    <svg viewBox="0 0 900 400" preserveAspectRatio="xMidYMid meet">
+      <defs>
+        <linearGradient id="grad-accent" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#6366f1"/>
+          <stop offset="100%" stop-color="#22d3ee"/>
+        </linearGradient>
+        <linearGradient id="grad-pink" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#f472b6"/>
+          <stop offset="100%" stop-color="#fbbf24"/>
+        </linearGradient>
+        <linearGradient id="grad-green" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#34d399"/>
+          <stop offset="100%" stop-color="#22d3ee"/>
+        </linearGradient>
+        <filter id="glow">
+          <feGaussianBlur stdDeviation="4" result="coloredBlur"/>
+          <feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+        <marker id="arrowhead-accent" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+          <polygon points="0 0, 8 3, 0 6" fill="#6366f1"/>
+        </marker>
+        <marker id="arrowhead-cyan" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+          <polygon points="0 0, 8 3, 0 6" fill="#22d3ee"/>
+        </marker>
+        <marker id="arrowhead-pink" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+          <polygon points="0 0, 8 3, 0 6" fill="#f472b6"/>
+        </marker>
+        <marker id="arrowhead-green" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+          <polygon points="0 0, 8 3, 0 6" fill="#34d399"/>
+        </marker>
+      </defs>
+
+      <!-- User bubble -->
+      <g class="fade-in" data-delay="1.2">
+        <rect class="node-box" x="80" y="140" width="160" height="80" fill="#12121a" stroke="#6366f1"/>
+        <text class="node-icon" x="160" y="165">&#128100;</text>
+        <text class="node-text" x="160" y="195">"Hey, remember when..."</text>
+      </g>
+
+      <!-- Question mark -->
+      <g class="fade-in" data-delay="1.8">
+        <circle cx="370" cy="180" r="40" fill="none" stroke="#f472b6" stroke-width="2" stroke-dasharray="4 4">
+          <animate attributeName="stroke-dashoffset" from="0" to="-16" dur="1.5s" repeatCount="indefinite"/>
+        </circle>
+        <text class="node-icon" x="370" y="183" fill="#f472b6" font-size="32">?</text>
+      </g>
+
+      <!-- Arrow user to question -->
+      <path class="arrow-path visible flowing" d="M240,180 L322,180" stroke="#6366f1" marker-end="url(#arrowhead-accent)"/>
+
+      <!-- Broken brain (traditional) -->
+      <g class="fade-in" data-delay="2.4">
+        <rect class="node-box" x="500" y="100" width="180" height="60" fill="#12121a" stroke="#f472b6" stroke-dasharray="6 4"/>
+        <text class="node-text" x="590" y="125" fill="#f472b6" font-size="12">Traditional Chatbot</text>
+        <text class="node-subtext" x="590" y="145" fill="#f472b6">Memory: NONE</text>
+      </g>
+
+      <!-- Synapse brain -->
+      <g class="fade-in" data-delay="3.0">
+        <rect class="node-box pulse-green" x="500" y="210" width="180" height="60" fill="#12121a" stroke="#34d399"/>
+        <text class="node-text" x="590" y="235" fill="#34d399" font-size="12">Synapse Memory</text>
+        <text class="node-subtext" x="590" y="255" fill="#34d399">Hybrid RAG + KG</text>
+      </g>
+
+      <!-- arrows from ? to both -->
+      <path class="arrow-path visible flowing" d="M410,165 L495,130" stroke="#f472b6" marker-end="url(#arrowhead-pink)" style="animation-delay:0.3s"/>
+      <path class="arrow-path visible flowing" d="M410,195 L495,240" stroke="#34d399" marker-end="url(#arrowhead-green)" style="animation-delay:0.6s"/>
+
+      <!-- X on traditional -->
+      <g class="fade-in" data-delay="3.6">
+        <line x1="700" y1="110" x2="730" y2="150" stroke="#f472b6" stroke-width="3" stroke-linecap="round"/>
+        <line x1="730" y1="110" x2="700" y2="150" stroke="#f472b6" stroke-width="3" stroke-linecap="round"/>
+      </g>
+
+      <!-- Check on Synapse -->
+      <g class="fade-in" data-delay="3.6">
+        <polyline points="700,230 712,248 740,215" fill="none" stroke="#34d399" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+      </g>
+    </svg>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════ -->
+<!-- SLIDE 1: THE PROBLEM -->
+<!-- ═══════════════════════════════════════════════ -->
+<div class="slide" data-slide="1" data-duration="18">
+  <div class="fade-in" data-delay="0">
+    <div class="slide-title">
+      The <span class="gradient-pink">Memory Problem</span>
+    </div>
+  </div>
+  <div class="fade-in" data-delay="0.3">
+    <div class="slide-subtitle">
+      Every AI conversation starts from zero. No context. No relationships. No history.
+    </div>
+  </div>
+  <div class="diagram-area fade-in" data-delay="0.6">
+    <svg viewBox="0 0 900 420" preserveAspectRatio="xMidYMid meet">
+      <!-- Timeline -->
+      <line x1="80" y1="200" x2="820" y2="200" stroke="var(--border)" stroke-width="2"/>
+
+      <!-- Conversation 1 -->
+      <g class="fade-in" data-delay="1.0">
+        <rect class="node-box" x="80" y="90" width="200" height="90" fill="#12121a" stroke="#6366f1"/>
+        <text class="node-icon" x="180" y="115">&#128172;</text>
+        <text class="node-text" x="180" y="140" font-size="11">Conversation 1</text>
+        <text class="node-subtext" x="180" y="158">"I'm a backend dev"</text>
+        <text class="node-subtext" x="180" y="172">"I love Rust and Go"</text>
+        <line x1="180" y1="180" x2="180" y2="196" stroke="#6366f1" stroke-width="2"/>
+        <circle cx="180" cy="200" r="5" fill="#6366f1"/>
+      </g>
+
+      <!-- Forgotten wall -->
+      <g class="fade-in" data-delay="2.0">
+        <rect x="310" y="80" width="4" height="140" fill="#f472b6" rx="2" opacity="0.6"/>
+        <rect x="320" y="80" width="4" height="140" fill="#f472b6" rx="2" opacity="0.4"/>
+        <rect x="330" y="80" width="4" height="140" fill="#f472b6" rx="2" opacity="0.2"/>
+        <text x="350" y="155" fill="#f472b6" font-family="Inter" font-size="11" font-weight="600">FORGOTTEN</text>
+      </g>
+
+      <!-- Conversation 2 -->
+      <g class="fade-in" data-delay="2.5">
+        <rect class="node-box" x="430" y="90" width="200" height="90" fill="#12121a" stroke="#6366f1"/>
+        <text class="node-icon" x="530" y="115">&#128172;</text>
+        <text class="node-text" x="530" y="140" font-size="11">Conversation 2</text>
+        <text class="node-subtext" x="530" y="158">"Help me with code"</text>
+        <text class="node-subtext" x="530" y="172">AI: "What language?"</text>
+        <line x1="530" y1="180" x2="530" y2="196" stroke="#6366f1" stroke-width="2"/>
+        <circle cx="530" cy="200" r="5" fill="#6366f1"/>
+      </g>
+
+      <!-- Frustrated annotation -->
+      <g class="fade-in" data-delay="3.5">
+        <rect class="node-box" x="460" y="250" width="200" height="50" fill="rgba(244,114,182,0.08)" stroke="#f472b6" stroke-dasharray="4 4"/>
+        <text x="560" y="280" fill="#f472b6" font-family="Inter" font-size="12" font-weight="500" text-anchor="middle">
+          "I already told you this!"
+        </text>
+      </g>
+
+      <!-- Forgotten wall 2 -->
+      <g class="fade-in" data-delay="4.0">
+        <rect x="660" y="80" width="4" height="140" fill="#f472b6" rx="2" opacity="0.6"/>
+        <rect x="670" y="80" width="4" height="140" fill="#f472b6" rx="2" opacity="0.4"/>
+        <rect x="680" y="80" width="4" height="140" fill="#f472b6" rx="2" opacity="0.2"/>
+      </g>
+
+      <!-- Conversation 3 -->
+      <g class="fade-in" data-delay="4.0">
+        <rect class="node-box" x="710" y="90" width="120" height="90" fill="#12121a" stroke="var(--border)" stroke-dasharray="4 4"/>
+        <text class="node-icon" x="770" y="125">&#128172;</text>
+        <text class="node-text" x="770" y="155" font-size="11" fill="var(--text-dim)">Conv. 3...</text>
+        <line x1="770" y1="180" x2="770" y2="196" stroke="var(--border)" stroke-width="2"/>
+        <circle cx="770" cy="200" r="5" fill="var(--border)"/>
+      </g>
+
+      <!-- Repeating cycle arrow -->
+      <g class="fade-in" data-delay="5.0">
+        <path d="M180,220 C180,280 770,280 770,220" fill="none" stroke="#f472b6" stroke-width="1.5" stroke-dasharray="6 4" opacity="0.5">
+          <animate attributeName="stroke-dashoffset" from="0" to="-20" dur="2s" repeatCount="indefinite"/>
+        </path>
+        <text x="475" y="300" fill="#f472b6" font-family="Inter" font-size="13" font-weight="600" text-anchor="middle" opacity="0.7">
+          Repeat. Repeat. Repeat.
+        </text>
+      </g>
+    </svg>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════ -->
+<!-- SLIDE 2: THE SOLUTION — 3-LAYER ARCHITECTURE -->
+<!-- ═══════════════════════════════════════════════ -->
+<div class="slide" data-slide="2" data-duration="25">
+  <div class="fade-in" data-delay="0">
+    <div class="slide-title">
+      Our Solution: <span class="gradient-text">3-Layer Memory</span>
+    </div>
+  </div>
+  <div class="fade-in" data-delay="0.3">
+    <div class="slide-subtitle">
+      Vector Search + Knowledge Graph + Smart Ranking — working together.
+    </div>
+  </div>
+  <div class="diagram-area fade-in" data-delay="0.6">
+    <svg viewBox="0 0 900 440" preserveAspectRatio="xMidYMid meet">
+      <!-- Layer 3: top -->
+      <g class="fade-in" data-delay="1.0">
+        <rect class="node-box pulse-accent" x="200" y="15" width="500" height="75" fill="rgba(99,102,241,0.06)" stroke="#6366f1"/>
+        <text class="node-icon" x="240" y="45">&#129504;</text>
+        <text class="node-text" x="450" y="40" font-size="14">Smart Retrieval &amp; Ranking</text>
+        <text class="node-subtext" x="450" y="62">MemoryEngine — 3-factor scoring + FlashRank reranking</text>
+      </g>
+
+      <!-- Arrows down -->
+      <g class="fade-in" data-delay="2.0">
+        <path class="arrow-path visible flowing" d="M370,90 L370,140" stroke="#6366f1" marker-end="url(#arrowhead-accent)"/>
+        <path class="arrow-path visible flowing" d="M530,90 L530,140" stroke="#22d3ee" marker-end="url(#arrowhead-cyan)" style="animation-delay:0.2s"/>
+      </g>
+
+      <!-- Layer 2A: Vector Store -->
+      <g class="fade-in" data-delay="2.5">
+        <rect class="node-box pulse-cyan" x="120" y="145" width="300" height="100" fill="rgba(34,211,238,0.04)" stroke="#22d3ee"/>
+        <text class="node-icon" x="160" y="180">&#128270;</text>
+        <text class="node-text" x="290" y="175" fill="#22d3ee" font-size="13">Vector Store</text>
+        <text class="node-subtext" x="290" y="195">Qdrant ANN + SQLite-vec</text>
+        <text class="node-subtext" x="290" y="212">nomic-embed-text (768d)</text>
+        <text class="node-subtext" x="290" y="229">Semantic similarity search</text>
+      </g>
+
+      <!-- Layer 2B: Knowledge Graph -->
+      <g class="fade-in" data-delay="3.0">
+        <rect class="node-box pulse-pink" x="480" y="145" width="300" height="100" fill="rgba(244,114,182,0.04)" stroke="#f472b6"/>
+        <text class="node-icon" x="520" y="180">&#128752;</text>
+        <text class="node-text" x="650" y="175" fill="#f472b6" font-size="13">Knowledge Graph</text>
+        <text class="node-subtext" x="650" y="195">SQLite — entity relationships</text>
+        <text class="node-subtext" x="650" y="212">Subject → Predicate → Object</text>
+        <text class="node-subtext" x="650" y="229">4-hop path traversal</text>
+      </g>
+
+      <!-- Arrows down to Layer 1 -->
+      <g class="fade-in" data-delay="4.0">
+        <path class="arrow-path visible flowing" d="M270,245 L270,300" stroke="#22d3ee" marker-end="url(#arrowhead-cyan)"/>
+        <path class="arrow-path visible flowing" d="M630,245 L630,300" stroke="#f472b6" marker-end="url(#arrowhead-pink)" style="animation-delay:0.3s"/>
+      </g>
+
+      <!-- Layer 1: Persistence -->
+      <g class="fade-in" data-delay="4.5">
+        <rect class="node-box pulse-green" x="150" y="305" width="600" height="80" fill="rgba(52,211,153,0.04)" stroke="#34d399"/>
+        <text class="node-icon" x="195" y="340">&#128451;</text>
+        <text class="node-text" x="450" y="330" fill="#34d399" font-size="14">Persistence Layer</text>
+        <text class="node-subtext" x="450" y="352">SQLite WAL — documents, atomic_facts, FTS5 full-text</text>
+        <text class="node-subtext" x="450" y="369">Every conversation is permanently stored &amp; indexed</text>
+      </g>
+
+      <!-- Bidirectional arrow between 2A and 2B -->
+      <g class="fade-in" data-delay="5.5">
+        <path class="arrow-path visible flowing" d="M420,195 L478,195" stroke="var(--accent5)" stroke-dasharray="4 6">
+          <animate attributeName="stroke-dashoffset" from="0" to="-20" dur="1s" repeatCount="indefinite"/>
+        </path>
+        <text x="449" y="185" fill="var(--accent5)" font-family="JetBrains Mono" font-size="9" text-anchor="middle">merge</text>
+      </g>
+
+      <!-- Labels on side -->
+      <g class="fade-in" data-delay="6.0">
+        <text x="55" y="52" fill="var(--text-dim)" font-family="JetBrains Mono" font-size="10" text-anchor="middle" transform="rotate(-90,55,52)">QUERY</text>
+        <text x="55" y="195" fill="var(--text-dim)" font-family="JetBrains Mono" font-size="10" text-anchor="middle" transform="rotate(-90,55,195)">SEARCH</text>
+        <text x="55" y="345" fill="var(--text-dim)" font-family="JetBrains Mono" font-size="10" text-anchor="middle" transform="rotate(-90,55,345)">STORE</text>
+      </g>
+    </svg>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════ -->
+<!-- SLIDE 3: HYBRID RAG — QUERY FLOW -->
+<!-- ═══════════════════════════════════════════════ -->
+<div class="slide" data-slide="3" data-duration="30">
+  <div class="fade-in" data-delay="0">
+    <div class="slide-title">
+      <span class="gradient-text">Hybrid RAG</span> in Action
+    </div>
+  </div>
+  <div class="fade-in" data-delay="0.3">
+    <div class="slide-subtitle">
+      Your message triggers a multi-step search that finds the most relevant memories.
+    </div>
+  </div>
+  <div class="diagram-area fade-in" data-delay="0.6">
+    <svg viewBox="0 0 900 440" preserveAspectRatio="xMidYMid meet">
+      <!-- Step 1: User message -->
+      <g class="fade-in" data-delay="1.0">
+        <rect class="node-box" x="30" y="50" width="150" height="55" fill="#12121a" stroke="#6366f1"/>
+        <text class="node-icon" x="55" y="72">&#128172;</text>
+        <text class="node-text" x="120" y="70" font-size="11">Your Message</text>
+        <text class="node-subtext" x="105" y="88">"Fix the Go bug"</text>
+      </g>
+
+      <!-- Step 2: Embed -->
+      <g class="fade-in" data-delay="2.0">
+        <rect class="node-box" x="230" y="30" width="155" height="50" fill="rgba(99,102,241,0.06)" stroke="#6366f1"/>
+        <text class="node-text" x="307" y="50" fill="#6366f1" font-size="11">&#9312; Embed</text>
+        <text class="node-subtext" x="307" y="66">nomic-embed-text → 768d</text>
+      </g>
+      <path class="arrow-path visible flowing" d="M180,70 L225,58" stroke="#6366f1" marker-end="url(#arrowhead-accent)" style="animation-delay:0.5s"/>
+
+      <!-- Step 3: Entity Extract -->
+      <g class="fade-in" data-delay="2.5">
+        <rect class="node-box" x="230" y="100" width="155" height="50" fill="rgba(244,114,182,0.06)" stroke="#f472b6"/>
+        <text class="node-text" x="307" y="120" fill="#f472b6" font-size="11">&#9313; Extract Entities</text>
+        <text class="node-subtext" x="307" y="136">found: ["Go"]</text>
+      </g>
+      <path class="arrow-path visible flowing" d="M180,82 L225,118" stroke="#f472b6" marker-end="url(#arrowhead-pink)" style="animation-delay:0.8s"/>
+
+      <!-- Parallel search branches -->
+      <!-- Vector Search -->
+      <g class="fade-in" data-delay="3.5">
+        <rect class="node-box" x="440" y="10" width="170" height="70" fill="rgba(34,211,238,0.06)" stroke="#22d3ee"/>
+        <text class="node-text" x="525" y="32" fill="#22d3ee" font-size="11">&#9314; Vector Search</text>
+        <text class="node-subtext" x="525" y="48">Qdrant ANN + SQLite-vec</text>
+        <text class="node-subtext" x="525" y="62">Cosine similarity</text>
+      </g>
+      <path class="arrow-path visible flowing" d="M385,50 L435,40" stroke="#22d3ee" marker-end="url(#arrowhead-cyan)"/>
+
+      <!-- FTS Search -->
+      <g class="fade-in" data-delay="3.8">
+        <rect class="node-box" x="440" y="95" width="170" height="55" fill="rgba(52,211,153,0.06)" stroke="#34d399"/>
+        <text class="node-text" x="525" y="114" fill="#34d399" font-size="11">&#9315; Full-Text Search</text>
+        <text class="node-subtext" x="525" y="132">SQLite FTS5 keyword match</text>
+      </g>
+      <path class="arrow-path visible flowing" d="M385,125 L435,120" stroke="#34d399" marker-end="url(#arrowhead-green)" style="animation-delay:0.3s"/>
+
+      <!-- Graph Lookup -->
+      <g class="fade-in" data-delay="4.0">
+        <rect class="node-box" x="440" y="165" width="170" height="55" fill="rgba(244,114,182,0.06)" stroke="#f472b6"/>
+        <text class="node-text" x="525" y="184" fill="#f472b6" font-size="11">&#9316; Graph Context</text>
+        <text class="node-subtext" x="525" y="202">"Go" → neighbors &amp; edges</text>
+      </g>
+      <path class="arrow-path visible flowing" d="M385,130 L435,185" stroke="#f472b6" marker-end="url(#arrowhead-pink)" style="animation-delay:0.5s"/>
+
+      <!-- Merge box -->
+      <g class="fade-in" data-delay="5.5">
+        <rect class="node-box" x="665" y="50" width="195" height="100" fill="rgba(251,191,36,0.06)" stroke="var(--accent5)"/>
+        <text class="node-text" x="762" y="72" fill="var(--accent5)" font-size="12">&#9317; 3-Factor Scoring</text>
+        <!-- Mini score bars -->
+        <rect class="score-bar-bg" x="685" y="88" width="155" height="8"/>
+        <rect class="score-bar-fill" x="685" y="88" width="62" height="8" fill="#22d3ee"/>
+        <text class="score-label" x="685" y="106" font-size="9">Relevance ×0.4</text>
+
+        <rect class="score-bar-bg" x="685" y="112" width="155" height="8"/>
+        <rect class="score-bar-fill" x="685" y="112" width="46" height="8" fill="#34d399"/>
+        <text class="score-label" x="685" y="130" font-size="9">Recency ×0.3</text>
+
+        <rect class="score-bar-bg" x="685" y="136" width="155" height="8"/>
+        <rect class="score-bar-fill" x="685" y="136" width="46" height="8" fill="#f472b6"/>
+        <text class="score-label" x="685" y="153" font-size="9" fill="var(--text-dim)">Importance ×0.3</text>
+      </g>
+
+      <!-- Arrows to merge -->
+      <path class="arrow-path visible flowing" d="M610,45 L660,80" stroke="#22d3ee" marker-end="url(#arrowhead-cyan)" style="animation-delay:0.2s"/>
+      <path class="arrow-path visible flowing" d="M610,122 L660,100" stroke="#34d399" marker-end="url(#arrowhead-green)" style="animation-delay:0.4s"/>
+      <path class="arrow-path visible flowing" d="M610,192 L660,115" stroke="#f472b6" marker-end="url(#arrowhead-pink)" style="animation-delay:0.6s"/>
+
+      <!-- Fast Gate -->
+      <g class="fade-in" data-delay="7.0">
+        <rect class="node-box" x="340" y="270" width="240" height="65" fill="rgba(52,211,153,0.06)" stroke="#34d399"/>
+        <text class="node-text" x="460" y="292" fill="#34d399" font-size="12">&#9889; Fast Gate</text>
+        <text class="node-subtext" x="460" y="310">Score &gt; 0.80? Skip reranking!</text>
+        <text class="node-subtext" x="460" y="324">Saves ~100ms per query</text>
+      </g>
+
+      <!-- Rerank fallback -->
+      <g class="fade-in" data-delay="8.0">
+        <rect class="node-box" x="340" y="355" width="240" height="55" fill="rgba(99,102,241,0.06)" stroke="#6366f1"/>
+        <text class="node-text" x="460" y="375" fill="#6366f1" font-size="12">FlashRank Reranker</text>
+        <text class="node-subtext" x="460" y="393">TinyBERT — semantic re-scoring</text>
+      </g>
+
+      <!-- Arrows from scoring to gate/rerank -->
+      <path class="arrow-path visible flowing" d="M762,150 L762,240 L582,275" stroke="var(--accent5)" marker-end="url(#arrowhead-green)" style="animation-delay:0.5s"/>
+
+      <!-- Gate to rerank fallback -->
+      <path class="arrow-path visible" d="M460,335 L460,352" stroke="var(--text-dim)" marker-end="url(#arrowhead-accent)" stroke-dasharray="4 4"/>
+      <text x="490" y="348" fill="var(--text-dim)" font-family="JetBrains Mono" font-size="9">else</text>
+
+      <!-- Final output -->
+      <g class="fade-in" data-delay="9.0">
+        <rect class="node-box pulse-green" x="660" y="290" width="180" height="55" fill="rgba(52,211,153,0.06)" stroke="#34d399"/>
+        <text class="node-text" x="750" y="312" fill="#34d399" font-size="12">&#9989; Top-K Results</text>
+        <text class="node-subtext" x="750" y="330">Ranked, relevant memories</text>
+      </g>
+      <path class="arrow-path visible flowing" d="M580,300 L655,310" stroke="#34d399" marker-end="url(#arrowhead-green)"/>
+    </svg>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════ -->
+<!-- SLIDE 4: KNOWLEDGE GRAPH VISUAL -->
+<!-- ═══════════════════════════════════════════════ -->
+<div class="slide" data-slide="4" data-duration="25">
+  <div class="fade-in" data-delay="0">
+    <div class="slide-title">
+      The <span class="gradient-pink">Knowledge Graph</span>
+    </div>
+  </div>
+  <div class="fade-in" data-delay="0.3">
+    <div class="slide-subtitle">
+      Every fact becomes an entity-relationship. Your AI builds a web of connections — like a real brain.
+    </div>
+  </div>
+  <div class="diagram-area fade-in" data-delay="0.6">
+    <svg viewBox="0 0 900 420" preserveAspectRatio="xMidYMid meet">
+      <!-- Central entity: User -->
+      <g class="fade-in" data-delay="1.0">
+        <circle cx="450" cy="200" r="40" fill="rgba(99,102,241,0.12)" stroke="#6366f1" stroke-width="2" class="pulse-accent"/>
+        <text x="450" y="195" fill="#6366f1" font-family="Inter" font-weight="700" font-size="14" text-anchor="middle">You</text>
+        <text x="450" y="212" fill="var(--text-dim)" font-family="JetBrains Mono" font-size="9" text-anchor="middle">the_creator</text>
+      </g>
+
+      <!-- Entity: Rust -->
+      <g class="fade-in kg-node" data-delay="1.8">
+        <circle cx="220" cy="100" r="30" fill="rgba(244,114,182,0.1)" stroke="#f472b6" stroke-width="1.5"/>
+        <text x="220" y="98" fill="#f472b6" font-family="Inter" font-weight="600" font-size="12" text-anchor="middle">Rust</text>
+        <text x="220" y="112" fill="var(--text-dim)" font-family="JetBrains Mono" font-size="8" text-anchor="middle">language</text>
+      </g>
+      <line class="kg-edge visible" x1="415" y1="175" x2="252" y2="118" stroke="#f472b6"/>
+      <text class="kg-edge-label visible" x="330" y="138" fill="#f472b6">loves</text>
+
+      <!-- Entity: Go -->
+      <g class="fade-in kg-node" data-delay="2.2">
+        <circle cx="200" cy="260" r="30" fill="rgba(34,211,238,0.1)" stroke="#22d3ee" stroke-width="1.5"/>
+        <text x="200" y="258" fill="#22d3ee" font-family="Inter" font-weight="600" font-size="12" text-anchor="middle">Go</text>
+        <text x="200" y="272" fill="var(--text-dim)" font-family="JetBrains Mono" font-size="8" text-anchor="middle">language</text>
+      </g>
+      <line class="kg-edge visible" x1="415" y1="215" x2="232" y2="248" stroke="#22d3ee"/>
+      <text class="kg-edge-label visible" x="315" y="240" fill="#22d3ee">uses</text>
+
+      <!-- Entity: Backend -->
+      <g class="fade-in kg-node" data-delay="2.6">
+        <circle cx="680" cy="100" r="35" fill="rgba(52,211,153,0.1)" stroke="#34d399" stroke-width="1.5"/>
+        <text x="680" y="98" fill="#34d399" font-family="Inter" font-weight="600" font-size="12" text-anchor="middle">Backend</text>
+        <text x="680" y="112" fill="var(--text-dim)" font-family="JetBrains Mono" font-size="8" text-anchor="middle">domain</text>
+      </g>
+      <line class="kg-edge visible" x1="488" y1="182" x2="648" y2="118" stroke="#34d399"/>
+      <text class="kg-edge-label visible" x="575" y="142" fill="#34d399">works_in</text>
+
+      <!-- Entity: Project X -->
+      <g class="fade-in kg-node" data-delay="3.0">
+        <circle cx="700" cy="260" r="32" fill="rgba(251,191,36,0.1)" stroke="var(--accent5)" stroke-width="1.5"/>
+        <text x="700" y="258" fill="var(--accent5)" font-family="Inter" font-weight="600" font-size="11" text-anchor="middle">Synapse</text>
+        <text x="700" y="272" fill="var(--text-dim)" font-family="JetBrains Mono" font-size="8" text-anchor="middle">project</text>
+      </g>
+      <line class="kg-edge visible" x1="488" y1="215" x2="668" y2="248" stroke="var(--accent5)"/>
+      <text class="kg-edge-label visible" x="585" y="240" fill="var(--accent5)">builds</text>
+
+      <!-- Entity: Python -->
+      <g class="fade-in kg-node" data-delay="3.4">
+        <circle cx="330" cy="350" r="28" fill="rgba(99,102,241,0.1)" stroke="#6366f1" stroke-width="1.5"/>
+        <text x="330" y="348" fill="#6366f1" font-family="Inter" font-weight="600" font-size="12" text-anchor="middle">Python</text>
+        <text x="330" y="362" fill="var(--text-dim)" font-family="JetBrains Mono" font-size="8" text-anchor="middle">language</text>
+      </g>
+      <line class="kg-edge visible" x1="430" y1="233" x2="348" y2="325" stroke="#6366f1"/>
+      <text class="kg-edge-label visible" x="378" y="282" fill="#6366f1">codes_in</text>
+
+      <!-- Cross-entity edges -->
+      <g class="fade-in" data-delay="4.0">
+        <!-- Rust <-> Backend -->
+        <line class="kg-edge visible" x1="248" y1="88" x2="648" y2="88" stroke="var(--border)" stroke-dasharray="4 4"/>
+        <text class="kg-edge-label visible" x="450" y="82" fill="var(--text-dim)">related_to</text>
+
+        <!-- Python <-> Synapse -->
+        <line class="kg-edge visible" x1="355" y1="340" x2="672" y2="272" stroke="var(--border)" stroke-dasharray="4 4"/>
+        <text class="kg-edge-label visible" x="510" y="316" fill="var(--text-dim)">powers</text>
+
+        <!-- Go <-> Rust -->
+        <line class="kg-edge visible" x1="208" y1="230" x2="214" y2="130" stroke="var(--border)" stroke-dasharray="4 4"/>
+        <text class="kg-edge-label visible" x="195" y="180" fill="var(--text-dim)">similar</text>
+      </g>
+
+      <!-- Explanation panel -->
+      <g class="fade-in" data-delay="5.0">
+        <rect x="60" y="370" width="780" height="42" fill="rgba(99,102,241,0.04)" stroke="var(--border)" rx="8"/>
+        <text x="450" y="395" fill="var(--text-dim)" font-family="JetBrains Mono" font-size="11" text-anchor="middle">
+          When you say "Fix the Go bug" → graph finds: You → uses → Go, Go → related_to → Backend, You → builds → Synapse
+        </text>
+      </g>
+    </svg>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════ -->
+<!-- SLIDE 5: HEMISPHERE — PRIVACY AIR-GAP -->
+<!-- ═══════════════════════════════════════════════ -->
+<div class="slide" data-slide="5" data-duration="20">
+  <div class="fade-in" data-delay="0">
+    <div class="slide-title">
+      <span class="gradient-green">Privacy Air-Gap</span>: Hemispheres
+    </div>
+  </div>
+  <div class="fade-in" data-delay="0.3">
+    <div class="slide-subtitle">
+      Not everything should go to the cloud. Some memories stay local — always.
+    </div>
+  </div>
+  <div class="diagram-area fade-in" data-delay="0.6">
+    <svg viewBox="0 0 900 400" preserveAspectRatio="xMidYMid meet">
+      <!-- Safe hemisphere -->
+      <g class="fade-in" data-delay="1.0">
+        <rect class="hemisphere visible" x="50" y="30" width="370" height="330" stroke="#34d399" fill="#34d399"/>
+        <text x="235" y="60" fill="#34d399" font-family="Inter" font-weight="700" font-size="16" text-anchor="middle">SAFE Hemisphere</text>
+        <text x="235" y="80" fill="var(--text-dim)" font-family="JetBrains Mono" font-size="10" text-anchor="middle">Cloud models allowed</text>
+      </g>
+
+      <!-- Safe memories -->
+      <g class="fade-in" data-delay="1.8">
+        <rect class="node-box" x="80" y="100" width="140" height="45" fill="#12121a" stroke="#34d399"/>
+        <text class="node-text" x="150" y="118" fill="#34d399" font-size="10">Work Context</text>
+        <text class="node-subtext" x="150" y="134">"Backend developer"</text>
+      </g>
+      <g class="fade-in" data-delay="2.0">
+        <rect class="node-box" x="250" y="100" width="140" height="45" fill="#12121a" stroke="#34d399"/>
+        <text class="node-text" x="320" y="118" fill="#34d399" font-size="10">Preferences</text>
+        <text class="node-subtext" x="320" y="134">"Likes concise code"</text>
+      </g>
+      <g class="fade-in" data-delay="2.2">
+        <rect class="node-box" x="80" y="165" width="140" height="45" fill="#12121a" stroke="#34d399"/>
+        <text class="node-text" x="150" y="183" fill="#34d399" font-size="10">Project Notes</text>
+        <text class="node-subtext" x="150" y="199">"Synapse v2 launch"</text>
+      </g>
+      <g class="fade-in" data-delay="2.4">
+        <rect class="node-box" x="250" y="165" width="140" height="45" fill="#12121a" stroke="#34d399"/>
+        <text class="node-text" x="320" y="183" fill="#34d399" font-size="10">Tech Stack</text>
+        <text class="node-subtext" x="320" y="199">"Python, Go, Rust"</text>
+      </g>
+
+      <!-- Cloud icon -->
+      <g class="fade-in" data-delay="2.6">
+        <text x="235" y="290" font-size="36" text-anchor="middle">&#9729;</text>
+        <text x="235" y="320" fill="#34d399" font-family="Inter" font-size="11" font-weight="500" text-anchor="middle">Gemini / Claude / GPT</text>
+        <text x="235" y="340" fill="var(--text-dim)" font-family="JetBrains Mono" font-size="9" text-anchor="middle">Cloud routing OK</text>
+      </g>
+
+      <!-- Spicy hemisphere -->
+      <g class="fade-in" data-delay="3.0">
+        <rect class="hemisphere visible" x="480" y="30" width="370" height="330" stroke="#f472b6" fill="#f472b6"/>
+        <text x="665" y="60" fill="#f472b6" font-family="Inter" font-weight="700" font-size="16" text-anchor="middle">PRIVATE Hemisphere</text>
+        <text x="665" y="80" fill="var(--text-dim)" font-family="JetBrains Mono" font-size="10" text-anchor="middle">Local models ONLY</text>
+      </g>
+
+      <!-- Private memories -->
+      <g class="fade-in" data-delay="3.5">
+        <rect class="node-box" x="510" y="100" width="140" height="45" fill="#12121a" stroke="#f472b6"/>
+        <text class="node-text" x="580" y="118" fill="#f472b6" font-size="10">Personal Thoughts</text>
+        <text class="node-subtext" x="580" y="134">"Feeling stressed..."</text>
+      </g>
+      <g class="fade-in" data-delay="3.7">
+        <rect class="node-box" x="680" y="100" width="140" height="45" fill="#12121a" stroke="#f472b6"/>
+        <text class="node-text" x="750" y="118" fill="#f472b6" font-size="10">Private Notes</text>
+        <text class="node-subtext" x="750" y="134">"Salary discussion"</text>
+      </g>
+      <g class="fade-in" data-delay="3.9">
+        <rect class="node-box" x="570" y="165" width="190" height="45" fill="#12121a" stroke="#f472b6"/>
+        <text class="node-text" x="665" y="183" fill="#f472b6" font-size="10">Sensitive Data</text>
+        <text class="node-subtext" x="665" y="199">"Never leaves your machine"</text>
+      </g>
+
+      <!-- Local icon -->
+      <g class="fade-in" data-delay="4.2">
+        <text x="665" y="280" font-size="36" text-anchor="middle">&#128187;</text>
+        <text x="665" y="310" fill="#f472b6" font-family="Inter" font-size="11" font-weight="500" text-anchor="middle">Local Ollama Only</text>
+        <text x="665" y="330" fill="var(--text-dim)" font-family="JetBrains Mono" font-size="9" text-anchor="middle">Zero cloud leakage</text>
+      </g>
+
+      <!-- Wall between -->
+      <g class="fade-in" data-delay="4.8">
+        <rect x="440" y="30" width="4" height="330" fill="var(--accent5)" rx="2"/>
+        <text x="452" y="195" fill="var(--accent5)" font-family="Inter" font-size="10" font-weight="700" transform="rotate(90,452,195)">AIR-GAP</text>
+      </g>
+    </svg>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════ -->
+<!-- SLIDE 6: FULL PIPELINE — PUTTING IT ALL TOGETHER -->
+<!-- ═══════════════════════════════════════════════ -->
+<div class="slide" data-slide="6" data-duration="35">
+  <div class="fade-in" data-delay="0">
+    <div class="slide-title">
+      <span class="gradient-text">Full Pipeline</span>: Message to Response
+    </div>
+  </div>
+  <div class="fade-in" data-delay="0.3">
+    <div class="slide-subtitle">
+      Here's the complete journey of your message through the memory system.
+    </div>
+  </div>
+  <div class="diagram-area fade-in" data-delay="0.6">
+    <svg viewBox="0 0 900 430" preserveAspectRatio="xMidYMid meet">
+      <!-- Step 1: Message in -->
+      <g class="fade-in" data-delay="1.0">
+        <rect class="node-box pulse-accent" x="20" y="35" width="130" height="50" fill="rgba(99,102,241,0.08)" stroke="#6366f1"/>
+        <text class="node-text" x="85" y="55" fill="#6366f1" font-size="11">&#128172; Message</text>
+        <text class="node-subtext" x="85" y="72">"Fix the auth bug"</text>
+      </g>
+
+      <!-- Step 2: Memory Engine -->
+      <g class="fade-in" data-delay="2.0">
+        <rect class="node-box pulse-cyan" x="190" y="15" width="160" height="85" fill="rgba(34,211,238,0.06)" stroke="#22d3ee"/>
+        <text class="node-text" x="270" y="38" fill="#22d3ee" font-size="11">&#129504; Memory Engine</text>
+        <text class="node-subtext" x="270" y="55">Vector + FTS + Graph</text>
+        <text class="node-subtext" x="270" y="69">3-factor scoring</text>
+        <text class="node-subtext" x="270" y="83">Fast Gate / Rerank</text>
+      </g>
+      <path class="arrow-path visible flowing" d="M150,55 L185,55" stroke="#6366f1" marker-end="url(#arrowhead-cyan)"/>
+
+      <!-- Memory results -->
+      <g class="fade-in" data-delay="3.0">
+        <rect class="node-box" x="195" y="120" width="150" height="65" fill="rgba(34,211,238,0.04)" stroke="#22d3ee" stroke-dasharray="4 4"/>
+        <text class="node-subtext" x="270" y="138" fill="#22d3ee">Top memories:</text>
+        <text class="node-subtext" x="270" y="153">"auth uses JWT tokens"</text>
+        <text class="node-subtext" x="270" y="168">"had a similar bug Jan"</text>
+      </g>
+      <path class="arrow-path visible" d="M270,100 L270,117" stroke="#22d3ee" stroke-dasharray="3 3"/>
+
+      <!-- Step 3: Dual Cognition -->
+      <g class="fade-in" data-delay="4.0">
+        <rect class="node-box pulse-pink" x="400" y="20" width="160" height="75" fill="rgba(244,114,182,0.06)" stroke="#f472b6"/>
+        <text class="node-text" x="480" y="40" fill="#f472b6" font-size="11">&#128161; Dual Cognition</text>
+        <text class="node-subtext" x="480" y="57">Inner monologue</text>
+        <text class="node-subtext" x="480" y="71">Tension detection</text>
+        <text class="node-subtext" x="480" y="85">Response strategy</text>
+      </g>
+      <path class="arrow-path visible flowing" d="M350,50 L395,50" stroke="#22d3ee" marker-end="url(#arrowhead-pink)"/>
+      <!-- Memory goes to cognition too -->
+      <path class="arrow-path visible flowing" d="M345,145 L400,70" stroke="#22d3ee" marker-end="url(#arrowhead-pink)" stroke-dasharray="4 6" style="animation-delay:0.3s"/>
+
+      <!-- Step 4: Traffic Cop -->
+      <g class="fade-in" data-delay="5.5">
+        <rect class="node-box" x="610" y="15" width="140" height="70" fill="rgba(251,191,36,0.06)" stroke="var(--accent5)"/>
+        <text class="node-text" x="680" y="35" fill="var(--accent5)" font-size="11">&#128680; Traffic Cop</text>
+        <text class="node-subtext" x="680" y="52">Route classification</text>
+        <text class="node-subtext" x="680" y="66">→ code / casual / ...</text>
+      </g>
+      <path class="arrow-path visible flowing" d="M560,55 L605,50" stroke="#f472b6" marker-end="url(#arrowhead-pink)"/>
+
+      <!-- Step 5: LLM Router -->
+      <g class="fade-in" data-delay="6.5">
+        <rect class="node-box pulse-green" x="612" y="120" width="180" height="90" fill="rgba(52,211,153,0.06)" stroke="#34d399"/>
+        <text class="node-text" x="702" y="140" fill="#34d399" font-size="11">&#9889; LLM Router</text>
+
+        <!-- Model options -->
+        <rect x="625" y="152" width="65" height="20" fill="rgba(34,211,238,0.1)" stroke="#22d3ee" stroke-width="1" rx="4"/>
+        <text x="657" y="166" fill="#22d3ee" font-family="JetBrains Mono" font-size="8" text-anchor="middle">Gemini</text>
+
+        <rect x="700" y="152" width="65" height="20" fill="rgba(99,102,241,0.1)" stroke="#6366f1" stroke-width="1" rx="4"/>
+        <text x="732" y="166" fill="#6366f1" font-family="JetBrains Mono" font-size="8" text-anchor="middle">Claude</text>
+
+        <rect x="625" y="178" width="65" height="20" fill="rgba(244,114,182,0.1)" stroke="#f472b6" stroke-width="1" rx="4"/>
+        <text x="657" y="192" fill="#f472b6" font-family="JetBrains Mono" font-size="8" text-anchor="middle">Ollama</text>
+
+        <rect x="700" y="178" width="65" height="20" fill="rgba(251,191,36,0.1)" stroke="var(--accent5)" stroke-width="1" rx="4"/>
+        <text x="732" y="192" fill="var(--accent5)" font-family="JetBrains Mono" font-size="8" text-anchor="middle">GPT</text>
+      </g>
+      <path class="arrow-path visible flowing" d="M680,85 L695,117" stroke="var(--accent5)" marker-end="url(#arrowhead-green)"/>
+
+      <!-- System prompt assembly (bottom) -->
+      <g class="fade-in" data-delay="7.5">
+        <rect class="node-box" x="60" y="240" width="740" height="80" fill="rgba(99,102,241,0.03)" stroke="var(--border)" stroke-dasharray="6 4"/>
+        <text class="node-text" x="430" y="265" fill="var(--text)" font-size="12">System Prompt Assembly</text>
+
+        <rect x="80" y="280" width="110" height="26" fill="rgba(99,102,241,0.08)" stroke="#6366f1" stroke-width="1" rx="6"/>
+        <text x="135" y="297" fill="#6366f1" font-family="JetBrains Mono" font-size="9" text-anchor="middle">Persona (SBS)</text>
+
+        <rect x="205" y="280" width="130" height="26" fill="rgba(34,211,238,0.08)" stroke="#22d3ee" stroke-width="1" rx="6"/>
+        <text x="270" y="297" fill="#22d3ee" font-family="JetBrains Mono" font-size="9" text-anchor="middle">Memory Context</text>
+
+        <rect x="350" y="280" width="130" height="26" fill="rgba(244,114,182,0.08)" stroke="#f472b6" stroke-width="1" rx="6"/>
+        <text x="415" y="297" fill="#f472b6" font-family="JetBrains Mono" font-size="9" text-anchor="middle">Cognition Hints</text>
+
+        <rect x="495" y="280" width="120" height="26" fill="rgba(52,211,153,0.08)" stroke="#34d399" stroke-width="1" rx="6"/>
+        <text x="555" y="297" fill="#34d399" font-family="JetBrains Mono" font-size="9" text-anchor="middle">Chat History</text>
+
+        <rect x="630" y="280" width="150" height="26" fill="rgba(251,191,36,0.08)" stroke="var(--accent5)" stroke-width="1" rx="6"/>
+        <text x="705" y="297" fill="var(--accent5)" font-family="JetBrains Mono" font-size="9" text-anchor="middle">User Message</text>
+      </g>
+
+      <!-- Final response -->
+      <g class="fade-in" data-delay="9.0">
+        <rect class="node-box pulse-green" x="300" y="355" width="300" height="55" fill="rgba(52,211,153,0.08)" stroke="#34d399"/>
+        <text class="node-text" x="450" y="377" fill="#34d399" font-size="13">&#10024; Contextual Response</text>
+        <text class="node-subtext" x="450" y="397">Knows you, remembers everything, routes smartly</text>
+      </g>
+      <path class="arrow-path visible flowing" d="M430,320 L430,352" stroke="#34d399" marker-end="url(#arrowhead-green)"/>
+    </svg>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════ -->
+<!-- SLIDE 7: CLOSING / CTA -->
+<!-- ═══════════════════════════════════════════════ -->
+<div class="slide" data-slide="7" data-duration="15">
+  <div class="fade-in" data-delay="0">
+    <div class="slide-title">
+      <span class="gradient-text">Open Source</span>. Free Forever.
+    </div>
+  </div>
+  <div class="fade-in" data-delay="0.4">
+    <div class="slide-subtitle" style="max-width:600px">
+      Every piece of this memory system is open source.<br>
+      Build your own AI that actually knows you.
+    </div>
+  </div>
+
+  <div class="fade-in stats-row" data-delay="0.8">
+    <div>
+      <div class="big-stat gradient-text">3</div>
+      <div class="stat-label">Memory Layers</div>
+    </div>
+    <div>
+      <div class="big-stat gradient-pink">768d</div>
+      <div class="stat-label">Vector Dimensions</div>
+    </div>
+    <div>
+      <div class="big-stat gradient-green">&lt;100ms</div>
+      <div class="stat-label">Fast Gate Retrieval</div>
+    </div>
+  </div>
+
+  <div class="fade-in" data-delay="1.4" style="margin-top:16px">
+    <div class="slide-subtitle" style="font-size:20px;color:var(--accent2);font-weight:600;font-style:normal">
+      github.com/synapse-oss
+    </div>
+    <div class="slide-subtitle" style="margin-top:8px;font-size:14px">
+      Star the repo. Try it yourself. Comment what you'd build with this.
+    </div>
+  </div>
+</div>
+
+</div><!-- end stage -->
+
+<script>
+// ─── CONFIG ───
+const TOTAL_TIME = 180; // 3 minutes
+const slides = [
+  {
+    duration: 12,
+    script: `Every chatbot you've ever used... forgets you. The moment the conversation ends, you're a stranger again. What if your AI actually remembered? Let me show you how we built this.`
+  },
+  {
+    duration: 18,
+    script: `Here's the problem. You tell your AI "I'm a backend dev, I love Rust and Go." Next conversation? "What language do you use?" It's like talking to someone with amnesia. Every. Single. Time. The reason? Most AIs have ZERO persistent memory. Each chat is isolated.`
+  },
+  {
+    duration: 25,
+    script: `Our solution has three layers working together. At the top — a smart retrieval engine that scores and ranks memories. Below that, two parallel search systems: a Vector Store that understands meaning, and a Knowledge Graph that maps relationships between everything you've ever said. At the bottom — persistent storage. Every conversation is saved, indexed, and searchable forever.`
+  },
+  {
+    duration: 30,
+    script: `When you say "Fix the Go bug" — here's what happens behind the scenes. Your message gets embedded into a 768-dimension vector. Entities like "Go" are extracted. Then three searches happen in parallel: vector similarity search finds semantically related memories, full-text search catches exact keyword matches, and the knowledge graph pulls in relationship context. Results get scored on three factors — relevance, recency, and importance. If confidence is above 80%, our Fast Gate skips the expensive reranking step, saving 100 milliseconds. Otherwise, FlashRank does a final semantic re-scoring. Result? The five most relevant memories in under 200ms.`
+  },
+  {
+    duration: 25,
+    script: `The Knowledge Graph is where it gets powerful. Every fact you share becomes an entity-relationship: "You use Go", "You work in Backend", "You build Synapse." These form a web of connections — just like how a real brain associates ideas. When you mention Go, the graph instantly surfaces that you're a backend dev who builds Synapse in Python. Context the vector search alone would miss. This is why hybrid beats pure vector every time.`
+  },
+  {
+    duration: 20,
+    script: `Not all memories are equal — and not all should go to the cloud. Our hemisphere system creates a privacy air-gap. Safe memories like work context and tech preferences can use cloud models — Gemini, Claude, GPT. But private thoughts and sensitive data? Those ONLY touch local models running on your machine. Zero cloud leakage. It's like having a diary that physically can't be read by anyone else.`
+  },
+  {
+    duration: 35,
+    script: `Here's the full journey. Your message enters the Memory Engine, which runs the hybrid search we just saw. Those memories feed into the Dual Cognition Engine — an inner monologue that detects tensions, plans a response strategy. The Traffic Cop classifies your intent: code help, casual chat, deep analysis. Then the LLM Router picks the right model for the job. Everything assembles into a system prompt: your persona, memory context, cognition hints, chat history, and your message. The result — a response that actually knows you, remembers your preferences, and routes to the smartest model for the task.`
+  },
+  {
+    duration: 15,
+    script: `And the best part? Every single piece of this is open source. Three memory layers. 768-dimension vectors. Sub-100-millisecond retrieval. All free, all on GitHub. Star the repo, try it yourself, and drop a comment telling me what YOU would build with a memory system like this. I read every single comment. See you in the next one.`
+  }
+];
+
+// ─── STATE ───
+let currentSlide = 0;
+let isPlaying = false;
+let startTime = null;
+let elapsed = 0;
+let timerInterval = null;
+let slideTimeout = null;
+
+// ─── INIT ───
+function init() {
+  // Create step dots
+  const dotsContainer = document.getElementById('step-dots');
+  slides.forEach((_, i) => {
+    const dot = document.createElement('div');
+    dot.className = 'step-dot' + (i === 0 ? ' active' : '');
+    dot.onclick = () => goToSlide(i);
+    dotsContainer.appendChild(dot);
+  });
+
+  // Set initial script
+  document.getElementById('script-text').textContent = slides[0].script;
+
+  // Trigger initial fade-ins
+  triggerFadeIns(0);
+
+  // Keyboard navigation
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); nextSlide(); }
+    if (e.key === 'ArrowLeft') { e.preventDefault(); prevSlide(); }
+    if (e.key === 'Enter') { e.preventDefault(); togglePlay(); }
+    if (e.key === 'r' || e.key === 'R') { e.preventDefault(); restartPresentation(); }
+  });
+}
+
+function triggerFadeIns(slideIndex) {
+  const slide = document.querySelectorAll('.slide')[slideIndex];
+  const fadeEls = slide.querySelectorAll('.fade-in');
+  fadeEls.forEach(el => {
+    el.classList.remove('show');
+    const delay = parseFloat(el.dataset.delay || 0) * 1000;
+    setTimeout(() => el.classList.add('show'), delay);
+  });
+}
+
+function goToSlide(index) {
+  if (index < 0 || index >= slides.length) return;
+
+  // Deactivate current
+  document.querySelectorAll('.slide').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.step-dot').forEach(d => d.classList.remove('active'));
+
+  // Activate new
+  currentSlide = index;
+  const slideEl = document.querySelectorAll('.slide')[currentSlide];
+  slideEl.classList.add('active');
+  document.querySelectorAll('.step-dot')[currentSlide].classList.add('active');
+
+  // Update script text
+  document.getElementById('script-text').textContent = slides[currentSlide].script;
+
+  // Trigger animations
+  triggerFadeIns(currentSlide);
+
+  // Schedule next slide if playing
+  if (isPlaying) scheduleNextSlide();
+}
+
+function nextSlide() {
+  if (currentSlide < slides.length - 1) {
+    goToSlide(currentSlide + 1);
+  } else if (isPlaying) {
+    stopPlay();
+  }
+}
+
+function prevSlide() {
+  if (currentSlide > 0) goToSlide(currentSlide - 1);
+}
+
+function scheduleNextSlide() {
+  clearTimeout(slideTimeout);
+  slideTimeout = setTimeout(() => {
+    nextSlide();
+  }, slides[currentSlide].duration * 1000);
+}
+
+function togglePlay() {
+  if (isPlaying) {
+    stopPlay();
+  } else {
+    startPlay();
+  }
+}
+
+function startPlay() {
+  isPlaying = true;
+  document.getElementById('btn-play').textContent = '⏸ Pause';
+  document.getElementById('btn-play').classList.add('active');
+
+  if (!startTime) {
+    startTime = Date.now() - (elapsed * 1000);
+  }
+
+  timerInterval = setInterval(updateTimer, 100);
+  scheduleNextSlide();
+}
+
+function stopPlay() {
+  isPlaying = false;
+  document.getElementById('btn-play').textContent = '▶ Resume';
+  document.getElementById('btn-play').classList.remove('active');
+  clearInterval(timerInterval);
+  clearTimeout(slideTimeout);
+}
+
+function restartPresentation() {
+  stopPlay();
+  elapsed = 0;
+  startTime = null;
+  updateTimerDisplay(0);
+  document.getElementById('timer-fill').style.width = '0%';
+  goToSlide(0);
+  document.getElementById('btn-play').textContent = '▶ Start';
+}
+
+function updateTimer() {
+  elapsed = (Date.now() - startTime) / 1000;
+
+  if (elapsed >= TOTAL_TIME) {
+    elapsed = TOTAL_TIME;
+    stopPlay();
+    // Flash timer
+    document.getElementById('timer-display').style.color = '#f472b6';
+  }
+
+  const pct = Math.min((elapsed / TOTAL_TIME) * 100, 100);
+  document.getElementById('timer-fill').style.width = pct + '%';
+  updateTimerDisplay(elapsed);
+}
+
+function updateTimerDisplay(secs) {
+  const m = Math.floor(secs / 60);
+  const s = Math.floor(secs % 60);
+  const display = `${m}:${s.toString().padStart(2, '0')}`;
+  document.querySelector('#timer-display .elapsed').textContent = display;
+
+  // Color warning
+  if (secs > 150) {
+    document.querySelector('#timer-display .elapsed').style.color = '#f472b6';
+  } else if (secs > 120) {
+    document.querySelector('#timer-display .elapsed').style.color = '#fbbf24';
+  } else {
+    document.querySelector('#timer-display .elapsed').style.color = '#22d3ee';
+  }
+}
+
+// ─── BOOT ───
+document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>

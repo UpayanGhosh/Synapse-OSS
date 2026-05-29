@@ -7,9 +7,44 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException
 
 from sci_fi_dashboard.middleware import _require_gateway_auth
+from sci_fi_dashboard.style_policy import get_current_style_policy
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+def _target_from_session_key(session_key: str, fallback: str = "the_creator") -> str:
+    parts = str(session_key or "").split(":")
+    if len(parts) >= 2 and parts[0] in {"cli", "agent"} and parts[1]:
+        return parts[1]
+    return fallback
+
+
+def _load_style_profile_for_target(target: str) -> dict:
+    from sci_fi_dashboard import _deps as deps
+
+    sbs = deps.get_sbs_for_target(target)
+    profile_mgr = getattr(sbs, "profile_mgr", None)
+    load_layer = getattr(profile_mgr, "load_layer", None)
+    if not callable(load_layer):
+        return {}
+    profile: dict = {}
+    for layer in ("linguistic", "interaction"):
+        try:
+            loaded = load_layer(layer)
+        except Exception:
+            loaded = {}
+        if isinstance(loaded, dict):
+            profile[layer] = loaded
+    return profile
+
+
+@router.get("/api/sessions/{session_key}/style", dependencies=[Depends(_require_gateway_auth)])
+async def get_session_style(session_key: str):
+    """Return the current runtime style policy for a conversation session."""
+    target = _target_from_session_key(session_key)
+    policy = get_current_style_policy(session_key, _load_style_profile_for_target(target))
+    return policy.as_dict()
 
 
 @router.get("/api/sessions", dependencies=[Depends(_require_gateway_auth)])

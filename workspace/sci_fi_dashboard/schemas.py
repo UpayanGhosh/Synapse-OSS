@@ -7,6 +7,7 @@ class ChatRequest(BaseModel):
     message: str
     history: list = []
     user_id: str | None = None
+    channel_id: str | None = None
     session_type: str | None = None  # safe or spicy override
     session_key: str | None = None  # explicit session isolation key (e.g. cron jobs)
 

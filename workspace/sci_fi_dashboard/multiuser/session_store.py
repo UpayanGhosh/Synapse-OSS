@@ -372,6 +372,7 @@ class SessionEntry:
     compaction_count: int = 0
     memory_flush_at: float | None = None
     memory_flush_compaction_count: int | None = None
+    memory_flush_message_count: int = 0
 
 
 def _entry_from_dict(d: dict) -> SessionEntry:
@@ -382,6 +383,7 @@ def _entry_from_dict(d: dict) -> SessionEntry:
         compaction_count=d.get("compaction_count", 0),
         memory_flush_at=d.get("memory_flush_at"),
         memory_flush_compaction_count=d.get("memory_flush_compaction_count"),
+        memory_flush_message_count=int(d.get("memory_flush_message_count", 0) or 0),
     )
 
 

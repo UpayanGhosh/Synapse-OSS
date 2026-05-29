@@ -1,10 +1,10 @@
 #!/bin/bash
-echo "Stopping Synapse..."
+set -e
 
-pkill -f "uvicorn" 2>/dev/null
-pkill -f "ollama serve" 2>/dev/null
+if ! command -v synapse >/dev/null 2>&1; then
+    echo "Synapse CLI not found."
+    echo "Install first: npm install -g synapse-oss"
+    exit 1
+fi
 
-sleep 2
-
-echo "Remaining:"
-pgrep -fl "uvicorn|ollama" 2>/dev/null | grep -v "vscode\|isort" || echo "(clean)"
+synapse stop

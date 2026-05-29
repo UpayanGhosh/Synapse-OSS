@@ -1,0 +1,21 @@
+{
+  "embedding": { "provider": "fastembed" },
+  "model_mappings": {
+    "traffic_cop": { "model": "ollama_chat/llama3.2:3b" },
+    "casual":      { "model": "ollama_chat/llama3.2:3b" },
+    "code":        { "model": "ollama_chat/qwen2.5-coder:7b" },
+    "analysis":    { "model": "ollama_chat/llama3.1:8b" },
+    "vault":       { "model": "ollama_chat/mistral:7b" },
+    "oracle":      { "model": "ollama_chat/llama3.2:3b" },
+    "review":      { "model": "ollama_chat/llama3.1:8b" }
+  },
+  "providers": {
+    "ollama": { "api_base": "http://localhost:11434" }
+  },
+  "session": {
+    "dual_cognition_enabled": true,
+    "dual_cognition_timeout": 10.0,
+    "dual_cognition_role": "oracle",
+    "auto_flush_enabled": true
+  }
+}

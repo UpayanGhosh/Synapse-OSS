@@ -1,0 +1,43 @@
+name: Refresh README metrics
+
+on:
+  push:
+    branches:
+      - main
+  schedule:
+    # Mondays 08:00 UTC
+    - cron: "0 8 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  refresh-metrics:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Collect metrics
+        run: bash scripts/collect_metrics.sh
+
+      - name: Render README placeholders
+        run: python scripts/render_readme.py
+
+      - name: Commit refreshed metrics
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet -- README.md docs/_generated/metrics.json; then
+            echo "No metric changes to commit."
+            exit 0
+          fi
+          git add README.md docs/_generated/metrics.json
+          git commit -m "chore: refresh README metrics"
+          git push

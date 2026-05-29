@@ -2,5 +2,5 @@
 
 from synapse_cli import app
 
-if __name__ == "__main__":
+if __name__ == "__main__" and getattr(__spec__, "name", None) != "__main__":
     app()

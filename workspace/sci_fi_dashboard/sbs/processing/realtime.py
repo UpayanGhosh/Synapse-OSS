@@ -1,3 +1,4 @@
+import logging
 import re
 import time
 
@@ -19,12 +20,63 @@ BANGLISH_MARKERS = {
 }
 
 MOOD_KEYWORDS = {
-    "stressed": [r"pressure", r"deadline", r"pagol", r"er\s*upor", r"jhame+la"],
-    "playful": [r"lol", r"haha+", r"[LOL]", r"[ROFL]", r"moja", r"maza"],
-    "tired": [r"l[yi]a+dh", r"ghu+m", r"thak", r"uff+", r"[SLEEP]"],
-    "focused": [r"implement", r"build", r"code", r"debug", r"fix", r"deploy"],
-    "excited": [r"!!+", r"[FIRE]", r"daru+n", r"jhakkas", r"let'?s\s*go"],
-    "frustrated": [r"wtf", r"keno", r"kaaj\s*kor(che)?\s*na", r"broken", r"error"],
+    "stressed": [
+        r"\bpressure\b",
+        r"\bdeadline\b",
+        r"\bpagol\b",
+        r"\ber\s*upor\b",
+        r"\bjhame+la\b",
+    ],
+    "anxious": [
+        r"\banxious\b",
+        r"\bscared\b",
+        r"\bnervous\b",
+        r"\bpanic(?:king)?\b",
+        r"\boverwhelm(?:ed|ing)?\b",
+        r"\bawkward\b",
+        r"\bstomach\b.*\b(nonsense|drop|knot|twist)",
+        r"\bchest\b.*\b(drama|tight|heavy|drop)",
+        r"\blook\s+stupid\b",
+    ],
+    "sad": [
+        r"\bsad\b",
+        r"\blonely\b",
+        r"\bhurt\b",
+        r"\bbroke\s+me\b",
+        r"\bheartbroken\b",
+        r"\bmiss\s+(her|him|them|you)\b",
+        r"\bfeel\s+small\b",
+    ],
+    "angry": [
+        r"\bangry\b",
+        r"\bfurious\b",
+        r"\bpissed\b",
+        r"\bunfair\b",
+        r"\bdisrespect(?:ed|ful)?\b",
+        r"\bbetray(?:ed|al)?\b",
+    ],
+    "affectionate": [
+        r"\bcrush\b",
+        r"\bin\s+love\b",
+        r"\bi\s+love\b",
+        r"\bi\s+like\s+(her|him|them|you)\b",
+        r"\bdate\b",
+        r"\bbirthday\s+dinner\b",
+    ],
+    "problem_solving": [
+        r"\bcan\s+you\s+(check|find|look\s+up|search|help)\b",
+        r"\bofficial(?:-ish)?\b",
+        r"\bsafest\b",
+        r"\bservice\b",
+        r"\btowing\b",
+        r"\broute\b",
+        r"\bbooking\b",
+    ],
+    "playful": [r"\blol\b", r"\bhaha+\b", r"\brofl\b", r"\bmoja\b", r"\bmaza\b"],
+    "tired": [r"\bl[yi]a+dh\b", r"\bghu+m\b", r"\bthak\w*\b", r"\buff+\b", r"\[sleep\]"],
+    "focused": [r"\bimplement\b", r"\bbuild\b", r"\bcode\b", r"\bdebug\b", r"\bfix\b", r"\bdeploy\b"],
+    "excited": [r"!{2,}", r"\[fire\]", r"\bdaru+n\b", r"\bjhakkas\b", r"\blet'?s\s*go\b"],
+    "frustrated": [r"\bwtf\b", r"\bkeno\b", r"\bkaaj\s*kor(che)?\s*na\b", r"\bbroken\b", r"\berror\b"],
 }
 
 COMPILED_BANGLISH = {re.compile(k, re.IGNORECASE): v for k, v in BANGLISH_MARKERS.items()}
@@ -63,7 +115,7 @@ class RealtimeProcessor:
     def _load_sentiment_lexicon(self) -> dict:
         """
         Simple lexicon-based sentiment. Not using VADER because
-        it doesn't understand Banglish. Custom bilingual lexicon.
+        it does not understand many user-specific local-language terms.
         """
         return {
             # Positive
@@ -76,6 +128,9 @@ class RealtimeProcessor:
             "love": 0.7,
             "perfect": 0.8,
             "jhakkas": 0.9,
+            "sweet": 0.4,
+            "like": 0.3,
+            "crush": 0.4,
             "[FIRE]": 0.6,
             "[HEART]": 0.5,
             "[HAPPY]": 0.4,
@@ -88,6 +143,17 @@ class RealtimeProcessor:
             "hate": -0.7,
             "pagol": -0.3,
             "uff": -0.4,
+            "scared": -0.5,
+            "awkward": -0.3,
+            "anxious": -0.6,
+            "nervous": -0.5,
+            "stomach": -0.2,
+            "nonsense": -0.2,
+            "angry": -0.7,
+            "unfair": -0.6,
+            "sad": -0.6,
+            "lonely": -0.6,
+            "hurt": -0.5,
             "[TRIUMPH]": -0.5,
             "[SAD]": -0.6,
             "wtf": -0.6,
@@ -117,11 +183,17 @@ class RealtimeProcessor:
         # 4. Hot-update emotional state if mood changed
         if mood and message.role == "user":
             self._hot_update_emotional_state(mood, sentiment, message.timestamp)
+        else:
+            self._retry_pending_flush()
 
         return {"rt_sentiment": sentiment, "rt_language": language, "rt_mood_signal": mood}
 
     def _detect_language(self, text: str, words: list) -> str:
-        """Classify as en, bn, banglish, or mixed."""
+        """Classify as English, local-language, or mixed.
+
+        The current local-language detector uses a legacy South Asian seed lexicon
+        until user-taught regional vocabularies are generalized.
+        """
         banglish_count = 0
         english_count = 0
 
@@ -181,8 +253,16 @@ class RealtimeProcessor:
             len(self._mood_buffer) >= self._FLUSH_BATCH
             or (now - self._last_flush) >= self._FLUSH_INTERVAL
         )
-        if should_flush:
-            self._flush_emotional_state()
+        if should_flush or mood:
+            self._safe_flush("hot_update")
+
+    def _retry_pending_flush(self):
+        """Retry pending mood persistence during subsequent processing turns."""
+        if not self._mood_buffer:
+            return
+        now = time.monotonic()
+        if (now - self._last_flush) >= self._FLUSH_INTERVAL:
+            self._safe_flush("periodic_retry")
 
     def _flush_emotional_state(self):
         """Write buffered mood updates to the emotional_state profile layer."""
@@ -213,3 +293,17 @@ class RealtimeProcessor:
         self.profile_mgr.save_layer("emotional_state", emotional)
         self._mood_buffer.clear()
         self._last_flush = time.monotonic()
+
+    def _safe_flush(self, source: str):
+        """Flush wrapper that keeps realtime pipeline alive on persistence failures."""
+        try:
+            self._flush_emotional_state()
+        except Exception:
+            logging.getLogger("sbs").warning(
+                f"Realtime emotional flush failed from {source}; keeping buffer for retry.",
+                exc_info=True,
+            )
+
+    def flush(self):
+        """Public flush hook for orchestrator to persist pending realtime updates immediately."""
+        self._safe_flush("manual_flush")

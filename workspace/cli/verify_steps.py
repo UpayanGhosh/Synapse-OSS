@@ -14,6 +14,11 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+try:
+    from synapse_config import SynapseConfig
+except ImportError:  # pragma: no cover - import path is established by the CLI entrypoint
+    SynapseConfig = None  # type: ignore[assignment]
+
 # ---------------------------------------------------------------------------
 # Conditional Rich import — matches the pattern in cli/onboard.py
 # ---------------------------------------------------------------------------
@@ -33,12 +38,18 @@ except ImportError:  # pragma: no cover
 def _print(msg: str) -> None:
     """Print with Rich markup if available, else strip markup and plain-print."""
     if _RICH_AVAILABLE and console is not None:
-        console.print(msg)
-    else:
-        import re  # noqa: PLC0415
+        try:
+            console.print(msg)
+            return
+        except UnicodeEncodeError:
+            # Windows cp1252 terminals can fail on glyphs like "✗".
+            pass
 
-        plain = re.sub(r"\[/?[^\]]*\]", "", msg)
-        print(plain)
+    import re  # noqa: PLC0415
+
+    plain = re.sub(r"\[/?[^\]]*\]", "", msg)
+    safe = plain.encode("ascii", errors="replace").decode("ascii")
+    print(safe)
 
 
 # ---------------------------------------------------------------------------
@@ -97,22 +108,48 @@ async def _validate_all_providers(
 ) -> list[tuple[str, bool, str]]:
     """Run all provider validations in parallel via ``asyncio.gather``.
 
-    Skips ``github_copilot`` (token is auto-managed via OAuth device flow — no
-    static API key to validate).
+    Subscription-backed providers are handled specially:
+      - ``github_copilot``: skip API-key validation (token managed externally).
+      - ``openai_codex``: validate local OAuth credential presence.
 
     Args:
         providers: Dict of ``{provider_name: {api_key: ..., ...}}`` from
                    ``SynapseConfig.providers``.
 
     Returns:
-        List of ``(name, success, error_message)`` tuples — one per provider.
+        List of ``(name, success, error_message)`` tuples - one per provider.
     """
     coros = []
     names: list[str] = []
+    results: list[tuple[str, bool, str]] = []
+    subscription_msg = "Subscription provider (OAuth device flow) - API-key validation skipped"
+
+    def _validate_openai_codex_state() -> tuple[str, bool, str]:
+        """Check whether OpenAI Codex OAuth credentials are present locally."""
+        try:
+            from sci_fi_dashboard import openai_codex_oauth  # noqa: PLC0415
+        except Exception as exc:  # noqa: BLE001
+            return ("openai_codex", False, f"OpenAI Codex OAuth module unavailable: {exc}")
+
+        try:
+            creds = openai_codex_oauth.load_credentials()
+        except Exception as exc:  # noqa: BLE001
+            return ("openai_codex", False, f"OpenAI Codex OAuth state unreadable: {exc}")
+
+        if creds and getattr(creds, "access_token", "") and getattr(creds, "refresh_token", ""):
+            return ("openai_codex", True, "OpenAI Codex OAuth credentials present")
+        return (
+            "openai_codex",
+            False,
+            "OpenAI Codex OAuth credentials missing - rerun `synapse setup` and complete device flow.",
+        )
 
     for provider_name, cfg in providers.items():
         if provider_name == "github_copilot":
-            # Token is auto-managed via OAuth device flow — skip static validation
+            results.append((provider_name, True, subscription_msg))
+            continue
+        if provider_name == "openai_codex":
+            results.append(_validate_openai_codex_state())
             continue
         if provider_name == "ollama":
             api_base = cfg.get("api_base", "http://localhost:11434")
@@ -124,11 +161,10 @@ async def _validate_all_providers(
             names.append(provider_name)
 
     if not coros:
-        return []
+        return results
 
     raw_results = await asyncio.gather(*coros, return_exceptions=True)
 
-    results: list[tuple[str, bool, str]] = []
     for i, raw in enumerate(raw_results):
         if isinstance(raw, Exception):
             results.append((names[i], False, str(raw)))
@@ -279,11 +315,14 @@ def run_verify(non_interactive: bool = False) -> int:
         0 — all checks passed (or skipped, e.g. WhatsApp).
         1 — at least one check failed, or synapse.json is missing.
     """
-    from synapse_config import SynapseConfig  # noqa: PLC0415
-
     # ------------------------------------------------------------------
     # Guard: synapse.json must exist
     # ------------------------------------------------------------------
+    if SynapseConfig is None:
+        _print("[red]Error loading config: synapse_config is unavailable.[/red]")
+        _print("[yellow]Run 'synapse setup' first to create synapse.json.[/yellow]")
+        return 1
+
     try:
         config = SynapseConfig.load()
     except Exception as exc:  # noqa: BLE001

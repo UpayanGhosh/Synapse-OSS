@@ -1,0 +1,463 @@
+"""Heuristic response-quality scoring for human-like companion behavior.
+
+This is not a claim that a reply is human. It is a lightweight QA harness for
+catching the exact failure modes users notice first: generic support-bot tone,
+weak emotion recognition, no perspective, no playful warmth, and no spine.
+"""
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class HumanityScenario:
+    user_message: str
+    expected_primary_emotion: str
+    target_skill: str
+
+
+@dataclass(frozen=True)
+class HumanityScore:
+    total: float
+    dimensions: dict[str, float]
+    notes: list[str]
+
+
+STEALTH_HUMANITY_SCENARIOS: tuple[HumanityScenario, ...] = (
+    HumanityScenario(
+        user_message=(
+            "I sent a voice note to a friend and now I regret it. It was not even "
+            "dramatic, but my brain is replaying it like I submitted evidence in court."
+        ),
+        expected_primary_emotion="anxiety",
+        target_skill="reassure_with_perspective",
+    ),
+    HumanityScenario(
+        user_message=(
+            "My cousin borrowed money and now he is acting offended because I asked "
+            "when he can return it. I want to send something brutal."
+        ),
+        expected_primary_emotion="anger",
+        target_skill="validate_then_add_spine",
+    ),
+    HumanityScenario(
+        user_message=(
+            "A parent called for two minutes and somehow the room felt less empty after that."
+        ),
+        expected_primary_emotion="love",
+        target_skill="tender_memory_continuity",
+    ),
+    HumanityScenario(
+        user_message=(
+            "I skipped dinner again and now I am lying here pretending this is discipline."
+        ),
+        expected_primary_emotion="self_neglect",
+        target_skill="gentle_accountability",
+    ),
+    HumanityScenario(
+        user_message=(
+            "I saw someone I like laughing with someone else and I hate how fast my stomach dropped."
+        ),
+        expected_primary_emotion="jealousy",
+        target_skill="normalize_without_enabling",
+    ),
+    HumanityScenario(
+        user_message=(
+            "The client liked the prototype and I am trying not to act too happy, which is stupid."
+        ),
+        expected_primary_emotion="happiness",
+        target_skill="celebrate_with_light_teasing",
+    ),
+)
+
+_BOT_MARKERS = (
+    "i understand that you are",
+    "as an ai",
+    "i'm sorry to hear that",
+    "would you like me to",
+    "if you want, i can",
+    "i can help you",
+    "i can draft",
+    "here are some steps",
+    "let me know if you need anything else",
+    "it is important to",
+    "practice mindfulness",
+    "take a deep breath",
+)
+
+_CARTOONISH_CREATURE_MARKERS = (
+    "goblin",
+    "gremlin",
+    "raccoon",
+    "troll",
+    "ogre",
+    "pigeon",
+)
+
+_EMOTION_WORDS = (
+    "anxious",
+    "spiral",
+    "angry",
+    "mad",
+    "hurt",
+    "lonely",
+    "empty",
+    "jealous",
+    "guilty",
+    "happy",
+    "proud",
+    "sting",
+    "sucks",
+    "brutal",
+)
+
+_PERSPECTIVE_MARKERS = (
+    "brain",
+    "not a crime",
+    "not a crime scene",
+    "not stupid",
+    "not you being",
+    "you are not",
+    "that does not mean",
+    "what happened is",
+    "because",
+    "no,",
+)
+
+_SPINE_MARKERS = (
+    "but don't",
+    "do not",
+    "don't send",
+    "wait",
+    "hold",
+    "not tonight",
+    "bad idea",
+    "short",
+    "boring",
+    "composed",
+    "accountability",
+)
+
+_PLAYFUL_MARKERS = (
+    "idiot",
+    "dramatic",
+    "courtroom",
+    "professional behaviour",
+    "very prestigious",
+    "season finale",
+    "tiny",
+    "retire",
+    "messy",
+    "cinema",
+    "behaved like an adult",
+    "for once",
+    "small mercy",
+)
+
+_MEMORY_MARKERS = (
+    "parent",
+    "friend",
+    "cousin",
+    "blue-kulfi",
+    "prototype",
+    "client",
+)
+
+_ACK_CARE_MARKERS = (
+    "got it",
+    "okay",
+    "alright",
+    "done",
+    "yep",
+    "sure",
+    "on it",
+    "i got you",
+    "no stress",
+    "don't worry",
+    "with you",
+)
+
+_ACTION_MARKERS = (
+    "i checked",
+    "checked",
+    "i found",
+    "found",
+    "i created",
+    "created",
+    "i updated",
+    "updated",
+    "i fixed",
+    "fixed",
+    "i opened",
+    "opened",
+    "i sent",
+    "sent",
+    "i reviewed",
+    "reviewed",
+)
+
+_ASK_FIRST_MARKERS = (
+    "would you like me to",
+    "do you want me to",
+    "want me to",
+    "should i",
+    "shall i",
+    "i can help",
+    "i can check",
+)
+
+_RESULT_MARKERS = (
+    "finished",
+    "ready",
+    "cleanly",
+    "done",
+    "created",
+    "updated",
+    "found",
+    "checked",
+    "fixed",
+    "cannot",
+    "can't",
+    "couldn't",
+    "not connected",
+    "not configured",
+    "blocked",
+    "fallback",
+    "next move",
+    "next step",
+)
+
+_DIAGNOSTIC_MARKERS = (
+    "model:",
+    "route:",
+    "latency:",
+    "provider:",
+    "token",
+    "footer:",
+    "generated by assistant",
+    "session status",
+)
+
+_GENERIC_ENDINGS = (
+    "let me know if you need anything else",
+    "if you need anything else",
+    "happy to help",
+    "how else can i assist",
+    "is there anything else",
+)
+
+
+def score_humanity_response(*, user_message: str, assistant_reply: str) -> HumanityScore:
+    """Score a reply on research-inspired human-like companion dimensions.
+
+    The dimensions map to practical QA:
+    - natural_texting: avoids over-formatted assistant boilerplate.
+    - emotion_recognition: notices the user's felt state.
+    - perspective_taking: reframes what is happening in the user's mind/life.
+    - playful_warmth: tiny safe leg-pull or lively texture.
+    - spine: validates without blindly enabling a bad move.
+    - memory_continuity: can reference named personal context naturally.
+    """
+    user = _normalize(user_message)
+    reply = _normalize(assistant_reply)
+    dimensions = {
+        "natural_texting": _score_natural_texting(reply),
+        "emotion_recognition": _score_emotion_recognition(user, reply),
+        "perspective_taking": _score_marker(reply, _PERSPECTIVE_MARKERS),
+        "playful_warmth": _score_marker(reply, _PLAYFUL_MARKERS),
+        "spine": _score_spine(user, reply),
+        "memory_continuity": _score_memory_continuity(user, reply),
+        "ack_care_first": _score_ack_care_first(reply),
+        "action_before_ask": _score_action_before_ask(reply),
+        "result_fallback_next": _score_result_fallback_next(reply),
+        "humor_after_answer": _score_humor_after_answer(reply),
+        "no_diagnostics_footer": _score_no_diagnostics_footer(reply),
+        "no_fake_tool_claims": _score_no_fake_tool_claims(user, reply),
+        "generic_helper_ending": _score_no_generic_helper_ending(reply),
+    }
+    weights = {
+        "natural_texting": 0.10,
+        "emotion_recognition": 0.10,
+        "perspective_taking": 0.10,
+        "playful_warmth": 0.07,
+        "spine": 0.10,
+        "memory_continuity": 0.06,
+        "ack_care_first": 0.08,
+        "action_before_ask": 0.10,
+        "result_fallback_next": 0.10,
+        "humor_after_answer": 0.06,
+        "no_diagnostics_footer": 0.05,
+        "no_fake_tool_claims": 0.05,
+        "generic_helper_ending": 0.03,
+    }
+    total = round(sum(dimensions[name] * weights[name] for name in weights), 3)
+    notes = [name for name, score in dimensions.items() if score < 0.5]
+    return HumanityScore(total=total, dimensions=dimensions, notes=notes)
+
+
+def _normalize(text: str) -> str:
+    return " ".join(str(text or "").lower().split())
+
+
+def _score_natural_texting(reply: str) -> float:
+    if not reply:
+        return 0.0
+    score = 0.85
+    score -= min(0.45, 0.12 * sum(1 for marker in _BOT_MARKERS if marker in reply))
+    score -= min(0.35, 0.18 * sum(1 for marker in _CARTOONISH_CREATURE_MARKERS if marker in reply))
+    if re.search(r"(^|\n)\s*(#{1,6}|\d+\.|- |\*)", reply):
+        score -= 0.18
+    if re.search(r"(if you want|want me to|i can help|i can draft).{0,80}$", reply):
+        score -= 0.16
+    word_count = len(reply.split())
+    if 18 <= word_count <= 110:
+        score += 0.12
+    elif word_count > 180:
+        score -= 0.2
+    return _clamp(score)
+
+
+def _score_emotion_recognition(user: str, reply: str) -> float:
+    user_hits = [word for word in _EMOTION_WORDS if word in user]
+    reply_hits = [word for word in _EMOTION_WORDS if word in reply]
+    if not user_hits:
+        return 0.65 if reply_hits else 0.45
+    if set(user_hits) & set(reply_hits):
+        return 0.95
+    if any(marker in reply for marker in ("oof", "yeah", "that kind", "that is", "that feels")):
+        return 0.72
+    return 0.28
+
+
+def _score_marker(text: str, markers: tuple[str, ...]) -> float:
+    hits = sum(1 for marker in markers if marker in text)
+    return _clamp(0.2 + hits * 0.3)
+
+
+def _score_ack_care_first(reply: str) -> float:
+    if not reply:
+        return 0.0
+    first_words = " ".join(reply.split()[:10])
+    if any(marker in first_words for marker in _ACK_CARE_MARKERS):
+        return 0.9
+    if any(marker in reply for marker in _ACK_CARE_MARKERS):
+        return 0.62
+    return 0.55
+
+
+def _score_action_before_ask(reply: str) -> float:
+    if not reply:
+        return 0.0
+    first_action = _first_marker_index(reply, _ACTION_MARKERS)
+    first_ask = _first_marker_index(reply, _ASK_FIRST_MARKERS)
+    if first_action is None:
+        return 0.3 if first_ask is not None else 0.55
+    if first_ask is None or first_action < first_ask:
+        return 0.9
+    return 0.35
+
+
+def _score_result_fallback_next(reply: str) -> float:
+    hits = sum(1 for marker in _RESULT_MARKERS if marker in reply)
+    has_next = any(
+        marker in reply for marker in ("next move", "next step", "after that", "then i can")
+    )
+    has_fallback = any(
+        marker in reply for marker in ("fallback", "instead", "cannot", "can't", "couldn't")
+    )
+    score = 0.5 + hits * 0.14
+    if has_next:
+        score += 0.2
+    if has_fallback:
+        score += 0.18
+    return _clamp(score)
+
+
+def _score_humor_after_answer(reply: str) -> float:
+    if not reply:
+        return 0.0
+    first_result = _first_marker_index(reply, _RESULT_MARKERS)
+    first_humor = _first_marker_index(reply, _PLAYFUL_MARKERS)
+    if first_humor is None:
+        return 0.45
+    if first_result is not None and first_result < first_humor:
+        return 0.85
+    return 0.55
+
+
+def _score_no_diagnostics_footer(reply: str) -> float:
+    hits = sum(1 for marker in _DIAGNOSTIC_MARKERS if marker in reply)
+    return _clamp(1.0 - hits * 0.25)
+
+
+def _score_no_fake_tool_claims(user: str, reply: str) -> float:
+    claims_action = any(marker in reply for marker in _ACTION_MARKERS)
+    asks_external_access = any(
+        marker in user
+        for marker in ("calendar", "email", "file", "folder", "desktop", "browser", "account")
+    )
+    honest_limit = any(
+        marker in reply
+        for marker in (
+            "cannot",
+            "can't",
+            "couldn't",
+            "not connected",
+            "not configured",
+            "no access",
+            "fallback",
+        )
+    )
+    noisy_claim = any(marker in reply for marker in ("fixed it", "done, i checked")) and any(
+        marker in reply for marker in _DIAGNOSTIC_MARKERS
+    )
+    if noisy_claim:
+        return 0.25
+    if asks_external_access and not claims_action:
+        return 0.85 if honest_limit else 0.65
+    return 0.85
+
+
+def _score_no_generic_helper_ending(reply: str) -> float:
+    ending = reply[-120:]
+    if any(marker in ending for marker in _GENERIC_ENDINGS):
+        return 0.2
+    return 0.9
+
+
+def _first_marker_index(text: str, markers: tuple[str, ...]) -> int | None:
+    positions = [text.find(marker) for marker in markers if marker in text]
+    if not positions:
+        return None
+    return min(positions)
+
+
+def _score_spine(user: str, reply: str) -> float:
+    risky = any(
+        marker in user for marker in ("brutal", "savage", "nuclear", "quit", "block", "confront")
+    )
+    if not risky:
+        return 0.72 if any(marker in reply for marker in ("but", "also", "still", "wait")) else 0.55
+    if any(marker in reply for marker in _SPINE_MARKERS):
+        return 0.92
+    if any(
+        marker in reply
+        for marker in ("you are completely right", "send the savage", "make him feel bad")
+    ):
+        return 0.15
+    return 0.35
+
+
+def _score_memory_continuity(user: str, reply: str) -> float:
+    user_markers = [marker for marker in _MEMORY_MARKERS if marker in user]
+    if not user_markers:
+        return 0.55
+    if any(marker in reply for marker in user_markers):
+        return 0.9
+    return 0.3
+
+
+def _clamp(value: float) -> float:
+    return max(0.0, min(1.0, round(float(value), 3)))

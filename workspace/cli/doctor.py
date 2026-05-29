@@ -27,6 +27,8 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import sys
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -45,13 +47,30 @@ except ImportError:  # pragma: no cover
 
 
 def _print(msg: str) -> None:
-    if _RICH_AVAILABLE and _console is not None:
-        _console.print(msg)
-    else:
-        import re  # noqa: PLC0415
+    plain = re.sub(r"\[/?[^\]]*\]", "", msg)
+    encoding = (getattr(sys.stdout, "encoding", None) or "utf-8").lower()
+    safe_plain = plain
+    try:
+        plain.encode(encoding)
+    except UnicodeEncodeError:
+        safe_plain = plain.encode(encoding, errors="replace").decode(encoding, errors="replace")
 
-        plain = re.sub(r"\[/?[^\]]*\]", "", msg)
-        print(plain)
+    if _RICH_AVAILABLE and _console is not None:
+        try:
+            _console.print(msg)
+            return
+        except UnicodeEncodeError:
+            print(safe_plain)
+            return
+    else:
+        print(safe_plain)
+
+
+def _load_synapse_json(config_path: Path) -> dict:
+    """Load synapse.json while tolerating common editor-added UTF-8 BOMs."""
+    with open(config_path, encoding="utf-8-sig") as fh:
+        raw = json.load(fh)
+    return raw if isinstance(raw, dict) else {}
 
 
 # ---------------------------------------------------------------------------
@@ -88,8 +107,7 @@ def _check_config_valid(data_root: Path) -> CheckResult:
         return CheckResult(False, label, f"Not found: {config_path}")
 
     try:
-        with open(config_path, encoding="utf-8") as fh:
-            json.load(fh)
+        _load_synapse_json(config_path)
     except json.JSONDecodeError as exc:
         return CheckResult(False, label, f"JSON parse error: {exc}")
 
@@ -135,8 +153,7 @@ def _check_gateway_token(data_root: Path) -> CheckResult:
         return CheckResult(False, label, "synapse.json not found")
 
     try:
-        with open(config_path, encoding="utf-8") as fh:
-            raw = json.load(fh)
+        raw = _load_synapse_json(config_path)
     except (json.JSONDecodeError, OSError):
         return CheckResult(False, label, "Cannot read synapse.json")
 
@@ -155,8 +172,7 @@ def _check_provider_configured(data_root: Path) -> CheckResult:
         return CheckResult(False, label, "synapse.json not found")
 
     try:
-        with open(config_path, encoding="utf-8") as fh:
-            raw = json.load(fh)
+        raw = _load_synapse_json(config_path)
     except (json.JSONDecodeError, OSError):
         return CheckResult(False, label, "Cannot read synapse.json")
 
@@ -287,14 +303,18 @@ def _run_check(check_fn: Callable[[], CheckResult]) -> CheckResult:
 
 def _print_result(result: CheckResult) -> None:
     """Print a single check result with colour-coded pass/fail icon."""
+    encoding = (getattr(sys.stdout, "encoding", None) or "").lower()
+    unicode_ok = "utf" in encoding
+
     if result.passed:
-        icon = "[green]✓[/]"
+        icon = "[green]✓[/]" if unicode_ok else "[green]OK[/]"
         color = "green"
     else:
-        icon = "[red]✗[/]"
+        icon = "[red]✗[/]" if unicode_ok else "[red]X[/]"
         color = "red"
 
-    detail_str = f" — {result.detail}" if result.detail else ""
+    sep = " — " if unicode_ok else " - "
+    detail_str = f"{sep}{result.detail}" if result.detail else ""
     _print(f"{icon} [{color}]{result.label}[/]{detail_str}")
 
 

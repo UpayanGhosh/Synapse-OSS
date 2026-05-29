@@ -5,12 +5,31 @@ Run standalone: python -m sci_fi_dashboard.mcp_servers.calendar_server
 
 import asyncio
 import json
-from datetime import UTC, datetime, timedelta
+import re
+from dataclasses import asdict, is_dataclass
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import TextContent, Tool
+
+from sci_fi_dashboard.calendar_core.assistant import handle_calendar_request
+from sci_fi_dashboard.calendar_core.date_math import resolve_date_phrase
+from sci_fi_dashboard.calendar_core.models import (
+    CalendarActionResult,
+    CalendarPreferences,
+    CreateEventRequest,
+    DeleteEventRequest,
+    FreeBusyRequest,
+    MoveEventRequest,
+    QuickAddRequest,
+    RecurrenceRule,
+    RsvpRequest,
+    UpdateEventRequest,
+)
+from sci_fi_dashboard.calendar_core.service import GoogleCalendarService
 
 from .base import check_mcp_auth, logger, setup_logging
 
@@ -22,7 +41,7 @@ def _get_calendar_service():
     if _cal_service is None:
         from google.oauth2.credentials import Credentials
         from googleapiclient.discovery import build
-        from mcp_config import load_mcp_config
+        from sci_fi_dashboard.mcp_config import load_mcp_config
         from synapse_config import SynapseConfig
 
         cfg = SynapseConfig.load()
@@ -68,6 +87,48 @@ async def list_tools() -> list[Tool]:
             },
         ),
         Tool(
+            name="search_events",
+            description="Search events in a date range.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string"},
+                    "start": {"type": "string"},
+                    "end": {"type": "string"},
+                    "calendar_id": {"type": "string", "default": "primary"},
+                },
+                "required": ["query", "start", "end"],
+            },
+        ),
+        Tool(
+            name="check_availability",
+            description="Check conflicts and free slots for a time window.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "start": {"type": "string"},
+                    "end": {"type": "string"},
+                    "duration_minutes": {"type": "integer"},
+                    "calendar_id": {"type": "string", "default": "primary"},
+                },
+                "required": ["start", "end"],
+            },
+        ),
+        Tool(
+            name="suggest_free_slots",
+            description="Suggest free slots in a bounded window.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "day_start": {"type": "string"},
+                    "day_end": {"type": "string"},
+                    "duration_minutes": {"type": "integer"},
+                    "calendar_id": {"type": "string", "default": "primary"},
+                },
+                "required": ["day_start", "day_end", "duration_minutes"],
+            },
+        ),
+        Tool(
             name="create_event",
             description="Create a calendar event.",
             inputSchema={
@@ -78,9 +139,205 @@ async def list_tools() -> list[Tool]:
                     "end": {"type": "string"},
                     "description": {"type": "string", "default": ""},
                     "attendees": {"type": "array", "items": {"type": "string"}},
+                    "all_day": {"type": "boolean", "default": False},
+                    "recurrence": {
+                        "oneOf": [
+                            {"type": "object"},
+                            {"type": "string"},
+                        ]
+                    },
+                    "calendar_id": {"type": "string", "default": "primary"},
                 },
                 "required": ["summary", "start", "end"],
             },
+        ),
+        Tool(
+            name="resolve_date",
+            description="Resolve a natural-language date phrase.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "phrase": {"type": "string"},
+                    "base_date": {"type": "string", "description": "YYYY-MM-DD"},
+                },
+                "required": ["phrase"],
+            },
+        ),
+        Tool(
+            name="get_holidays",
+            description="Find holiday events or deterministic locale fallback.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string"},
+                    "locale_country": {"type": "string", "default": "IN"},
+                },
+                "required": ["query"],
+            },
+        ),
+        Tool(
+            name="calendar_request",
+            description="Handle a natural-language calendar request.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "request": {"type": "string"},
+                    "text": {"type": "string"},
+                },
+                "anyOf": [
+                    {"required": ["request"]},
+                    {"required": ["text"]},
+                ],
+            },
+        ),
+        Tool(
+            name="list_calendars",
+            description="List the user's Google calendars.",
+            inputSchema={"type": "object", "properties": {}},
+        ),
+        Tool(
+            name="get_event",
+            description="Fetch a single event by id.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "event_id": {"type": "string"},
+                    "calendar_id": {"type": "string", "default": "primary"},
+                },
+                "required": ["event_id"],
+            },
+        ),
+        Tool(
+            name="update_event",
+            description="Patch an event with optional modification_scope for recurring series.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "event_id": {"type": "string"},
+                    "calendar_id": {"type": "string", "default": "primary"},
+                    "title": {"type": "string"},
+                    "start": {"type": "string"},
+                    "end": {"type": "string"},
+                    "description": {"type": "string"},
+                    "attendees": {"type": "array", "items": {"type": "string"}},
+                    "all_day": {"type": "boolean"},
+                    "recurrence": {"oneOf": [{"type": "object"}, {"type": "string"}]},
+                    "modification_scope": {
+                        "type": "string",
+                        "enum": ["thisEventOnly", "thisAndFollowing", "all"],
+                        "default": "thisEventOnly",
+                    },
+                    "instance_id": {"type": "string"},
+                    "send_updates": {
+                        "type": "string",
+                        "enum": ["all", "externalOnly", "none"],
+                        "default": "none",
+                    },
+                },
+                "required": ["event_id"],
+            },
+        ),
+        Tool(
+            name="delete_event",
+            description="Delete an event.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "event_id": {"type": "string"},
+                    "calendar_id": {"type": "string", "default": "primary"},
+                    "modification_scope": {
+                        "type": "string",
+                        "enum": ["thisEventOnly", "thisAndFollowing", "all"],
+                        "default": "thisEventOnly",
+                    },
+                    "instance_id": {"type": "string"},
+                    "send_updates": {
+                        "type": "string",
+                        "enum": ["all", "externalOnly", "none"],
+                        "default": "none",
+                    },
+                },
+                "required": ["event_id"],
+            },
+        ),
+        Tool(
+            name="move_event",
+            description="Move an event between calendars.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "event_id": {"type": "string"},
+                    "source_calendar_id": {"type": "string"},
+                    "destination_calendar_id": {"type": "string"},
+                    "send_updates": {
+                        "type": "string",
+                        "enum": ["all", "externalOnly", "none"],
+                        "default": "none",
+                    },
+                },
+                "required": ["event_id", "source_calendar_id", "destination_calendar_id"],
+            },
+        ),
+        Tool(
+            name="respond_to_event",
+            description="RSVP to an event you're invited to.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "event_id": {"type": "string"},
+                    "response": {
+                        "type": "string",
+                        "enum": ["accepted", "declined", "tentative", "needsAction"],
+                    },
+                    "calendar_id": {"type": "string", "default": "primary"},
+                    "attendee_email": {"type": "string"},
+                    "send_updates": {
+                        "type": "string",
+                        "enum": ["all", "externalOnly", "none"],
+                        "default": "none",
+                    },
+                },
+                "required": ["event_id", "response"],
+            },
+        ),
+        Tool(
+            name="get_freebusy",
+            description="Free/busy across multiple calendars.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "start": {"type": "string"},
+                    "end": {"type": "string"},
+                    "calendar_ids": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "default": ["primary"],
+                    },
+                },
+                "required": ["start", "end"],
+            },
+        ),
+        Tool(
+            name="quick_add",
+            description="Google Calendar's natural-language quickAdd endpoint.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "text": {"type": "string"},
+                    "calendar_id": {"type": "string", "default": "primary"},
+                    "send_updates": {
+                        "type": "string",
+                        "enum": ["all", "externalOnly", "none"],
+                        "default": "none",
+                    },
+                },
+                "required": ["text"],
+            },
+        ),
+        Tool(
+            name="list_colors",
+            description="Color palette (event + calendar).",
+            inputSchema={"type": "object", "properties": {}},
         ),
     ]
 
@@ -114,7 +371,8 @@ def _get_upcoming(svc, arguments: dict) -> list[TextContent]:
 
 def _list_events(svc, arguments: dict) -> list[TextContent]:
     date_str = arguments.get("date", datetime.now().strftime("%Y-%m-%d"))
-    day_start = datetime.fromisoformat(f"{date_str}T00:00:00").replace(tzinfo=UTC)
+    offset = _timezone_offset(CalendarPreferences().timezone)
+    day_start = datetime.fromisoformat(f"{date_str}T00:00:00{offset}")
     events = (
         svc.events()
         .list(
@@ -138,44 +396,381 @@ def _list_events(svc, arguments: dict) -> list[TextContent]:
     return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
 
-def _create_event(svc, arguments: dict) -> list[TextContent]:
-    body = {
-        "summary": arguments["summary"],
-        "start": {"dateTime": arguments["start"]},
-        "end": {"dateTime": arguments["end"]},
-        "description": arguments.get("description", ""),
+def _as_jsonable(value: Any) -> Any:
+    if is_dataclass(value):
+        return _as_jsonable(asdict(value))
+    if isinstance(value, dict):
+        return {key: _as_jsonable(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_as_jsonable(item) for item in value]
+    return value
+
+
+def _text_json(value: Any, *, indent: int | None = None) -> list[TextContent]:
+    return [TextContent(type="text", text=json.dumps(_as_jsonable(value), indent=indent))]
+
+
+def _structured(
+    *,
+    status: str,
+    message: str,
+    receipt_evidence: str,
+    data: dict[str, Any],
+) -> list[TextContent]:
+    return _text_json(
+        {
+            "status": status,
+            "message": message,
+            "receipt_evidence": receipt_evidence,
+            "data": data,
+        }
+    )
+
+
+def _error(message: str, error: str | None = None) -> list[TextContent]:
+    return _structured(
+        status="failed",
+        message=message,
+        receipt_evidence="",
+        data={"error": error or message},
+    )
+
+
+def _action_result(
+    result: CalendarActionResult, extra: dict[str, Any] | None = None
+) -> list[TextContent]:
+    payload = {
+        "status": result.status,
+        "message": result.user_message,
+        "receipt_evidence": result.receipt_evidence,
+        "data": result.data,
     }
-    if arguments.get("attendees"):
-        body["attendees"] = [{"email": a} for a in arguments["attendees"]]
-    created = svc.events().insert(calendarId="primary", body=body).execute()
-    return [
-        TextContent(
-            type="text",
-            text=json.dumps({"id": created["id"], "link": created.get("htmlLink", "")}),
+    if result.confirmation is not None:
+        payload["confirmation"] = result.confirmation
+    if extra:
+        payload.update(extra)
+    return _text_json(payload)
+
+
+def _parse_recurrence(value: Any) -> RecurrenceRule | None:
+    if value is None:
+        return None
+    if isinstance(value, dict):
+        frequency = value.get("frequency") or value.get("freq")
+        if not frequency:
+            raise ValueError("recurrence must include a supported frequency")
+        return RecurrenceRule(
+            str(frequency).lower(),
+            until=value.get("until"),
+            count=value.get("count"),
         )
-    ]
+    if isinstance(value, str):
+        if not value.strip():
+            raise ValueError("recurrence must not be blank")
+        normalized = value.upper()
+        if "FREQ=" in normalized:
+            frequency = normalized.split("FREQ=", 1)[1].split(";", 1)[0]
+        else:
+            frequency = normalized
+        return RecurrenceRule(frequency.lower())
+    raise ValueError("recurrence must be an object or string")
+
+
+def _timezone_offset(timezone_name: str) -> str:
+    if timezone_name == "Asia/Calcutta":
+        return "+05:30"
+    match = re.fullmatch(r"([+-])(\d{2}):(\d{2})", timezone_name)
+    if match:
+        return timezone_name
+    return (
+        datetime.now().astimezone().strftime("%z")[:3]
+        + ":"
+        + datetime.now().astimezone().strftime("%z")[3:]
+    )
+
+
+def _event_data(events: list[Any]) -> list[dict[str, Any]]:
+    return [_as_jsonable(event) for event in events]
+
+
+def _create_event(svc, arguments: dict) -> list[TextContent]:
+    calendar = GoogleCalendarService(svc)
+    request = CreateEventRequest(
+        title=arguments["summary"],
+        start=arguments["start"],
+        end=arguments["end"],
+        calendar_id=arguments.get("calendar_id", "primary"),
+        description=arguments.get("description", ""),
+        attendees=list(arguments.get("attendees") or []),
+        all_day=bool(arguments.get("all_day", False)),
+        recurrence=_parse_recurrence(arguments.get("recurrence")),
+    )
+    result = calendar.create_event(request, calendar_id=request.calendar_id)
+    return _action_result(
+        result,
+        extra={
+            "id": result.data.get("event_id", ""),
+            "link": result.data.get("link", ""),
+        },
+    )
+
+
+def _search_events(svc, arguments: dict) -> list[TextContent]:
+    calendar = GoogleCalendarService(svc)
+    events = calendar.search_events(
+        arguments["query"],
+        arguments["start"],
+        arguments["end"],
+        calendar_id=arguments.get("calendar_id", "primary"),
+    )
+    return _structured(
+        status="answered",
+        message=f"Found {len(events)} matching calendar event(s).",
+        receipt_evidence="Searched Google Calendar through calendar service.",
+        data={"events": _event_data(events)},
+    )
+
+
+def _check_availability(svc, arguments: dict) -> list[TextContent]:
+    calendar = GoogleCalendarService(svc)
+    calendar_id = arguments.get("calendar_id", "primary")
+    conflicts = calendar.check_conflicts(
+        arguments["start"], arguments["end"], calendar_id=calendar_id
+    )
+    duration = arguments.get("duration_minutes") or 60
+    slots = calendar.suggest_free_slots(
+        arguments["start"],
+        arguments["end"],
+        int(duration),
+        calendar_id=calendar_id,
+    )
+    return _structured(
+        status="answered",
+        message="Availability checked.",
+        receipt_evidence="Checked Google Calendar conflicts and free slots through calendar service.",
+        data={
+            "available": not conflicts,
+            "conflicts": _event_data(conflicts),
+            "slots": slots,
+        },
+    )
+
+
+def _suggest_free_slots(svc, arguments: dict) -> list[TextContent]:
+    calendar = GoogleCalendarService(svc)
+    slots = calendar.suggest_free_slots(
+        arguments["day_start"],
+        arguments["day_end"],
+        int(arguments["duration_minutes"]),
+        calendar_id=arguments.get("calendar_id", "primary"),
+    )
+    return _structured(
+        status="answered",
+        message=f"Found {len(slots)} free slot(s).",
+        receipt_evidence="Computed free slots through calendar service.",
+        data={"slots": slots},
+    )
+
+
+def _resolve_date(arguments: dict) -> list[TextContent]:
+    base_date = date.fromisoformat(arguments["base_date"]) if arguments.get("base_date") else None
+    resolved = resolve_date_phrase(arguments["phrase"], base_date=base_date)
+    return _structured(
+        status="answered",
+        message="Date phrase resolved." if resolved.date else "Date phrase was not recognized.",
+        receipt_evidence="Resolved date phrase locally with Calendar Core date math.",
+        data={
+            "date": resolved.date.isoformat() if resolved.date else None,
+            "start": resolved.start.isoformat() if resolved.start else None,
+            "end": resolved.end.isoformat() if resolved.end else None,
+            "confidence": resolved.confidence,
+            "source": resolved.source,
+        },
+    )
+
+
+def _get_holidays(svc, arguments: dict) -> list[TextContent]:
+    calendar = GoogleCalendarService(svc)
+    preferences = CalendarPreferences(locale_country=arguments.get("locale_country", "IN"))
+    return _action_result(calendar.find_holidays(arguments["query"], preferences))
+
+
+def _calendar_request(svc, arguments: dict) -> list[TextContent]:
+    text = arguments.get("request") or arguments.get("text") or ""
+    if not str(text).strip():
+        return _error("calendar_request requires non-blank request text")
+    calendar = GoogleCalendarService(svc)
+    result = handle_calendar_request(text, calendar, CalendarPreferences())
+    return _action_result(result)
+
+
+def _list_calendars(svc, arguments: dict) -> list[TextContent]:
+    calendar = GoogleCalendarService(svc)
+    entries = calendar.list_calendars()
+    return _structured(
+        status="answered",
+        message=f"Found {len(entries)} calendar(s).",
+        receipt_evidence="Listed Google Calendar calendarList.",
+        data={"calendars": [_as_jsonable(entry) for entry in entries]},
+    )
+
+
+def _get_event(svc, arguments: dict) -> list[TextContent]:
+    calendar = GoogleCalendarService(svc)
+    event = calendar.get_event(
+        arguments["event_id"], calendar_id=arguments.get("calendar_id", "primary")
+    )
+    return _structured(
+        status="answered",
+        message=f"Fetched event '{event.title}'.",
+        receipt_evidence=f"Fetched Google Calendar event id={event.id}",
+        data={"event": _as_jsonable(event)},
+    )
+
+
+def _update_event(svc, arguments: dict) -> list[TextContent]:
+    calendar = GoogleCalendarService(svc)
+    request = UpdateEventRequest(
+        event_id=arguments["event_id"],
+        calendar_id=arguments.get("calendar_id", "primary"),
+        title=arguments.get("title"),
+        start=arguments.get("start"),
+        end=arguments.get("end"),
+        description=arguments.get("description"),
+        attendees=list(arguments.get("attendees")) if arguments.get("attendees") is not None else None,
+        all_day=arguments.get("all_day"),
+        recurrence=_parse_recurrence(arguments.get("recurrence")),
+        modification_scope=arguments.get("modification_scope", "thisEventOnly"),
+        instance_id=arguments.get("instance_id"),
+        send_updates=arguments.get("send_updates", "none"),
+    )
+    return _action_result(calendar.update_event(request))
+
+
+def _delete_event(svc, arguments: dict) -> list[TextContent]:
+    calendar = GoogleCalendarService(svc)
+    request = DeleteEventRequest(
+        event_id=arguments["event_id"],
+        calendar_id=arguments.get("calendar_id", "primary"),
+        modification_scope=arguments.get("modification_scope", "thisEventOnly"),
+        instance_id=arguments.get("instance_id"),
+        send_updates=arguments.get("send_updates", "none"),
+    )
+    return _action_result(calendar.delete_event(request))
+
+
+def _move_event(svc, arguments: dict) -> list[TextContent]:
+    calendar = GoogleCalendarService(svc)
+    request = MoveEventRequest(
+        event_id=arguments["event_id"],
+        source_calendar_id=arguments["source_calendar_id"],
+        destination_calendar_id=arguments["destination_calendar_id"],
+        send_updates=arguments.get("send_updates", "none"),
+    )
+    return _action_result(calendar.move_event(request))
+
+
+def _respond_to_event(svc, arguments: dict) -> list[TextContent]:
+    calendar = GoogleCalendarService(svc)
+    request = RsvpRequest(
+        event_id=arguments["event_id"],
+        response=arguments["response"],
+        calendar_id=arguments.get("calendar_id", "primary"),
+        attendee_email=arguments.get("attendee_email"),
+        send_updates=arguments.get("send_updates", "none"),
+    )
+    return _action_result(calendar.respond_to_event(request))
+
+
+def _get_freebusy(svc, arguments: dict) -> list[TextContent]:
+    calendar = GoogleCalendarService(svc)
+    request = FreeBusyRequest(
+        start=arguments["start"],
+        end=arguments["end"],
+        calendar_ids=list(arguments.get("calendar_ids") or ["primary"]),
+    )
+    result = calendar.freebusy(request)
+    return _structured(
+        status="answered",
+        message=f"Free/busy across {len(result.calendars)} calendar(s).",
+        receipt_evidence=(
+            f"Queried freebusy for calendars={list(result.calendars.keys())}"
+        ),
+        data={
+            "calendars": _as_jsonable(result.calendars),
+            "errors": dict(result.errors),
+            "time_min": result.time_min,
+            "time_max": result.time_max,
+        },
+    )
+
+
+def _quick_add(svc, arguments: dict) -> list[TextContent]:
+    calendar = GoogleCalendarService(svc)
+    request = QuickAddRequest(
+        text=arguments["text"],
+        calendar_id=arguments.get("calendar_id", "primary"),
+        send_updates=arguments.get("send_updates", "none"),
+    )
+    return _action_result(calendar.quick_add(request))
+
+
+def _list_colors(svc, arguments: dict) -> list[TextContent]:
+    calendar = GoogleCalendarService(svc)
+    palette = calendar.list_colors()
+    return _structured(
+        status="answered",
+        message="Fetched Google Calendar color palette.",
+        receipt_evidence="Read Google Calendar colors.get.",
+        data={
+            "event_colors": dict(palette.event_colors),
+            "calendar_colors": dict(palette.calendar_colors),
+            "updated": palette.updated,
+        },
+    )
 
 
 @server.call_tool()
 async def call_tool(name: str, arguments: dict) -> list[TextContent]:
+    arguments = arguments or {}
     auth_err = check_mcp_auth(arguments)
     if auth_err:
-        return [TextContent(type="text", text=json.dumps({"error": auth_err}))]
+        return _error("Calendar MCP auth failed", auth_err)
 
     try:
-        svc = _get_calendar_service()
         _HANDLERS = {  # noqa: N806
             "get_upcoming": _get_upcoming,
             "list_events": _list_events,
+            "search_events": _search_events,
+            "check_availability": _check_availability,
+            "suggest_free_slots": _suggest_free_slots,
             "create_event": _create_event,
+            "get_holidays": _get_holidays,
+            "calendar_request": _calendar_request,
+            "list_calendars": _list_calendars,
+            "get_event": _get_event,
+            "update_event": _update_event,
+            "delete_event": _delete_event,
+            "move_event": _move_event,
+            "respond_to_event": _respond_to_event,
+            "get_freebusy": _get_freebusy,
+            "quick_add": _quick_add,
+            "list_colors": _list_colors,
         }
+        if name == "resolve_date":
+            return await asyncio.to_thread(_resolve_date, arguments)
         handler = _HANDLERS.get(name)
         if not handler:
-            return [TextContent(type="text", text=f"Unknown tool: {name}")]
+            return _error(f"Unknown tool: {name}")
+        if name == "calendar_request":
+            text = arguments.get("request") or arguments.get("text") or ""
+            if not str(text).strip():
+                return _error("calendar_request requires non-blank request text")
+        svc = _get_calendar_service()
         return await asyncio.to_thread(handler, svc, arguments)
     except Exception as e:
         logger.exception("Calendar tool %s failed", name)
-        return [TextContent(type="text", text=json.dumps({"error": str(e)}))]
+        return _error(f"Calendar tool {name} failed", str(e))
 
 
 async def main():

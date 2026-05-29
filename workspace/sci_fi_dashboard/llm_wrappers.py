@@ -29,7 +29,7 @@ async def call_or_fallback(prompt: str) -> str:
 async def call_gemini_flash(
     input_messages: list, temperature: float = 0.7, max_tokens: int = 500
 ) -> str:
-    """AG_CASUAL / TRAFFIC COP: routes to 'casual' role in model_mappings."""
+    """AG_CASUAL: routes to 'casual' role in model_mappings."""
     return await deps.synapse_llm_router.call("casual", input_messages, temperature, max_tokens)
 
 
@@ -40,10 +40,14 @@ async def call_ag_code(messages: list) -> str:
 
 
 async def call_ag_oracle(messages: list, temperature: float = 0.7, max_tokens: int = 1500) -> str:
-    """AG_ORACLE (The Architect): routes to 'analysis' role in model_mappings."""
-    print("[BLDG] Calling The Architect (analysis role)...")
+    """ORACLE: routes to 'oracle' role in model_mappings (dual cognition).
+    Falls back to 'analysis' if 'oracle' role isn't configured (backwards compat)."""
+    cfg = deps._synapse_cfg
+    role = cfg.session.get("dual_cognition_role", "oracle") if cfg else "oracle"
+    if role not in (cfg.model_mappings if cfg else {}):
+        role = "analysis"
     return await deps.synapse_llm_router.call(
-        "analysis", messages, temperature=temperature, max_tokens=max_tokens
+        role, messages, temperature=temperature, max_tokens=max_tokens
     )
 
 
@@ -54,13 +58,13 @@ async def call_ag_review(messages: list) -> str:
 
 
 async def translate_banglish(text: str) -> str:
-    """Translate Banglish -> English via SynapseLLMRouter (translate role)."""
+    """Legacy helper: translate romanized local-language text to English."""
     messages = [
         {
             "role": "system",
             "content": (
-                "You are a translator. Translate Romanized Bengali (Banglish) "
-                "to English. OUTPUT ONLY ENGLISH."
+                "You are a translator. Translate romanized local-language or "
+                "code-switched text to English. OUTPUT ONLY ENGLISH."
             ),
         },
         {"role": "user", "content": text},
@@ -70,6 +74,13 @@ async def translate_banglish(text: str) -> str:
     except Exception as e:
         print(f"[WARN] Translation failed: {e}")
         return text
+
+
+async def call_traffic_cop_classifier(
+    messages: list, *, temperature: float = 0.0, max_tokens: int = 100
+) -> str:
+    """Calls 'traffic_cop' role in model_mappings. Falls back to 'casual'."""
+    return await deps.synapse_llm_router.call("traffic_cop", messages, temperature, max_tokens)
 
 
 # --- Routing Logic ---
@@ -105,8 +116,7 @@ async def route_traffic_cop(user_message: str) -> str:
         {"role": "user", "content": user_message},
     ]
     try:
-        # Use Flash for speed; Increase tokens for thinking
-        resp = await call_gemini_flash(messages, temperature=0.0, max_tokens=100)
+        resp = await call_traffic_cop_classifier(messages, temperature=0.0, max_tokens=100)
         decision = resp.strip().upper()
         # Clean up punctuation
         decision = re.sub(r"[^A-Z]", "", decision)

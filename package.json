@@ -1,0 +1,37 @@
+{
+  "name": "synapse-oss",
+  "version": "3.0.0",
+  "private": false,
+  "description": "Standalone installer and launcher for Synapse OSS",
+  "license": "MIT",
+  "bin": {
+    "synapse": "bin/synapse.js"
+  },
+  "files": [
+    "bin/synapse.js",
+    "pyproject.toml",
+    "setup.py",
+    "README.md",
+    "workspace/*.py",
+    "workspace/cli/**/*.py",
+    "workspace/config/**/*.py",
+    "workspace/db/**/*.py",
+    "workspace/sci_fi_dashboard/**/*.py",
+    "workspace/skills/**/*.py",
+    "workspace/utils/**/*.py",
+    "workspace/cli/templates/**/*",
+    "workspace/sci_fi_dashboard/agent_workspace/**/*",
+    "workspace/sci_fi_dashboard/entities.json",
+    "workspace/sci_fi_dashboard/model_parity/*.yaml",
+    "workspace/sci_fi_dashboard/model_parity/*.yaml.example",
+    "workspace/sci_fi_dashboard/runtime_assets/**/*",
+    "workspace/sci_fi_dashboard/sbs/feedback/*.yaml",
+    "workspace/sci_fi_dashboard/skills/bundled/**/*",
+    "workspace/sci_fi_dashboard/static/**/*",
+    "!workspace/**/test_*.py",
+    "!workspace/**/__pycache__/**"
+  ],
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -426,6 +426,10 @@ def _ensure_entity_links(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE entity_links ADD COLUMN archived INTEGER DEFAULT 0")
     if "confidence" not in cols:
         conn.execute("ALTER TABLE entity_links ADD COLUMN confidence REAL DEFAULT 1.0")
+    if "source_doc_id" not in cols:
+        conn.execute("ALTER TABLE entity_links ADD COLUMN source_doc_id INTEGER")
+    if "source_fact_id" not in cols:
+        conn.execute("ALTER TABLE entity_links ADD COLUMN source_fact_id INTEGER")
     conn.commit()
 
 
@@ -436,6 +440,7 @@ def _write_triple_to_entity_links(
     obj: str,
     fact_id: int,
     confidence: float = 1.0,
+    source_doc_id: int | None = None,
 ) -> None:
     """Archival-write: for single-valued relations, mark old (subj, rel) as
     archived before inserting the new row.  Multi-valued relations (likes,
@@ -446,11 +451,20 @@ def _write_triple_to_entity_links(
             " WHERE subject = ? AND relation = ? AND archived = 0",
             (subj, rel),
         )
-    conn.execute(
-        "INSERT INTO entity_links (subject, relation, object, archived, source_fact_id, confidence)"
-        " VALUES (?, ?, ?, 0, ?, ?)",
-        (subj, rel, obj, fact_id, confidence),
-    )
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(entity_links)").fetchall()}
+    if "source_doc_id" in cols:
+        conn.execute(
+            "INSERT INTO entity_links"
+            " (subject, relation, object, archived, source_fact_id, source_doc_id, confidence)"
+            " VALUES (?, ?, ?, 0, ?, ?, ?)",
+            (subj, rel, obj, fact_id, source_doc_id, confidence),
+        )
+    else:
+        conn.execute(
+            "INSERT INTO entity_links (subject, relation, object, archived, source_fact_id, confidence)"
+            " VALUES (?, ?, ?, 0, ?, ?)",
+            (subj, rel, obj, fact_id, confidence),
+        )
 
 
 def _update_entities_json(entities_json_path: str, new_entities: set[str]) -> None:

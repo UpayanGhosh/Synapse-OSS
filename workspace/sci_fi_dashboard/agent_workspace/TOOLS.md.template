@@ -1,0 +1,22 @@
+# TOOLS.md - Local Tool Notes
+
+This file stores environment-specific tool notes. Keep it free of secrets.
+
+## Runtime
+
+- Gateway: `http://127.0.0.1:8000`
+- Health: `GET /health`
+- Runtime config: `~/.synapse/synapse.json`
+- Runtime workspace: `~/.synapse/workspace`
+
+## Style
+
+- Use tools when they materially help.
+- Prefer local/private tools when available.
+- Do not leak raw diagnostics into messaging channels.
+- Ask before external side effects or sensitive data transmission.
+
+## Local Notes
+
+Add device names, voice IDs, browser details, SSH aliases, and other safe local
+setup notes here.

@@ -51,3 +51,13 @@ class VectorStore(ABC):
     @abstractmethod
     def close(self) -> None:
         """Release any resources held by the store."""
+
+    def delete_by_id(self, doc_id: int) -> bool:
+        """Delete a single fact by id. Default no-op; LanceDB overrides.
+
+        Concrete stores SHOULD override this so MemoryEngine.delete_document
+        can keep the vector index in sync with the documents table. Returning
+        False signals the row wasn't present (or the backend doesn't support
+        deletes). Implementations must not raise on a missing id.
+        """
+        return False

@@ -1,5 +1,5 @@
 """
-Antigravity Gateway v2 -- The Soul + Brain Assembly Line
+Synapse Gateway -- The Soul + Brain Assembly Line
 
 Thin orchestrator: app creation, lifespan, middleware, router includes.
 All business logic lives in dedicated modules:
@@ -17,6 +17,7 @@ All business logic lives in dedicated modules:
 import asyncio
 import logging
 import os
+import threading
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path as _Path
 
@@ -29,6 +30,7 @@ from fastapi.staticfiles import StaticFiles
 from sci_fi_dashboard import _deps as deps
 from sci_fi_dashboard.channel_setup import register_optional_channels
 from sci_fi_dashboard.middleware import BodySizeLimitMiddleware, LoopbackOnlyMiddleware
+from sci_fi_dashboard.observability import apply_logging_config
 from sci_fi_dashboard.pipeline_helpers import (
     gentle_worker_loop,
     process_message_pipeline,
@@ -43,6 +45,7 @@ from sci_fi_dashboard.routes import (
     health,
     knowledge,
     persona,
+    playground,
     sessions,
     websocket,
     whatsapp,
@@ -56,6 +59,11 @@ logger = logging.getLogger(__name__)
 
 # Register optional channels (Telegram/Discord/Slack) if tokens configured
 register_optional_channels()
+
+
+class _NoopProactiveMCPClient:
+    async def call_tool(self, *_args, **_kwargs) -> str:
+        return "[]"
 
 
 # ---------------------------------------------------------------------------
@@ -83,7 +91,8 @@ except Exception as _emb_exc:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print("[MEM] Booting Antigravity Gateway v2...")
+    apply_logging_config(deps._synapse_cfg)
+    print("[Synapse] Booting gateway...")
     ensure_bridge_db()
     worker_task = asyncio.create_task(gentle_worker_loop())
 
@@ -91,7 +100,7 @@ async def lifespan(app: FastAPI):
     await deps.channel_registry.start_all()
 
     # Wire retry queue into WhatsApp channel
-    from channels.whatsapp import WhatsAppChannel
+    from sci_fi_dashboard.channels.whatsapp import WhatsAppChannel
     from gateway.retry_queue import RetryQueue
 
     wa_ch = deps.channel_registry.get("whatsapp")
@@ -101,6 +110,39 @@ async def lifespan(app: FastAPI):
         await _retry_queue.start(wa_ch)
         app.state.retry_queue = _retry_queue
         print("[INFO] WhatsApp retry queue started.")
+
+    # Phase 16 BRIDGE-02/03: Bridge /health poller with gated restart
+    app.state.bridge_health_poller = None
+    try:
+        if (
+            isinstance(wa_ch, WhatsAppChannel)
+            and hasattr(wa_ch, "_supervisor")
+            and wa_ch._supervisor is not None
+        ):
+            from sci_fi_dashboard.channels.bridge_health_poller import BridgeHealthPoller
+            from sci_fi_dashboard.pipeline_emitter import get_emitter as _get_poller_emitter
+
+            bridge_cfg = getattr(deps._synapse_cfg, "bridge", None) or {}
+            poller = BridgeHealthPoller(
+                channel=wa_ch,
+                supervisor=wa_ch._supervisor,
+                interval_s=float(bridge_cfg.get("healthPollIntervalSeconds", 30.0)),
+                failures_before_restart=int(bridge_cfg.get("healthFailuresBeforeRestart", 3)),
+                timeout_s=float(bridge_cfg.get("healthPollTimeoutSeconds", 5.0)),
+                grace_window_s=float(bridge_cfg.get("healthGraceWindowSeconds", 60.0)),
+                emitter=_get_poller_emitter(),
+            )
+            wa_ch._bridge_health_poller = poller  # surfaces in get_status as bridge_health
+            await poller.start()
+            app.state.bridge_health_poller = poller
+            logger.info(
+                "[BRIDGE_HEALTH] Poller started (interval=%ss, threshold=%d)",
+                bridge_cfg.get("healthPollIntervalSeconds", 30),
+                bridge_cfg.get("healthFailuresBeforeRestart", 3),
+            )
+    except Exception as _poller_exc:
+        logger.warning("[BRIDGE_HEALTH] Poller init failed (non-fatal): %s", _poller_exc)
+        app.state.bridge_health_poller = None
 
     from gateway.worker import MessageWorker
 
@@ -123,6 +165,18 @@ async def lifespan(app: FastAPI):
 
             deps.tool_registry = ToolRegistry()
             register_builtin_tools(deps.tool_registry, deps.memory_engine, deps.WORKSPACE_ROOT)
+
+            # Claude-Code-like toolkit (bash_exec, edit_file, grep, glob, edit_synapse_config,
+            # list_directory). Owner-gated and Sentinel-gated by factory; safe to register
+            # unconditionally — non-owner sessions see only read-type tools.
+            try:
+                from sci_fi_dashboard.tool_sysops import register_sysops_tools
+
+                register_sysops_tools(deps.tool_registry, deps.memory_engine, deps.WORKSPACE_ROOT)
+                deps._tool_logger.info("sysops tools registered")
+            except Exception as exc:
+                deps._tool_logger.warning("sysops registration failed: %s", exc)
+
             deps._tool_logger.info("ToolRegistry initialized")
         except Exception as exc:
             deps._tool_logger.warning("ToolRegistry init failed (non-fatal): %s", exc)
@@ -213,13 +267,18 @@ async def lifespan(app: FastAPI):
     from proactive_engine import ProactiveAwarenessEngine
 
     app.state.proactive_engine = None
-    if _mcp_config.enabled and _mcp_config.proactive.enabled and app.state.mcp_client:
+    deps._proactive_engine = None
+    if _mcp_config.proactive.enabled:
+        proactive_client = app.state.mcp_client or _NoopProactiveMCPClient()
         app.state.proactive_engine = ProactiveAwarenessEngine(
-            app.state.mcp_client, _mcp_config.proactive
+            proactive_client, _mcp_config.proactive
         )
         await app.state.proactive_engine.start()
         deps._proactive_engine = app.state.proactive_engine
-        logger.info("[PROACTIVE] Engine started")
+        logger.info(
+            "[PROACTIVE] Engine started (%s)",
+            "mcp" if app.state.mcp_client else "memory-only",
+        )
 
     # CronService — proactive scheduled messages (wired to persona_chat via execute_fn)
     app.state.cron_service = None
@@ -231,10 +290,13 @@ async def lifespan(app: FastAPI):
         async def _cron_execute_fn(message: str, session_key: str, **kwargs) -> str:
             """Adapter: CronService execute_fn -> persona_chat()."""
             timeout_s = float(kwargs.pop("timeout_seconds", 300))
+            channel_id = str(kwargs.pop("channel_id", "") or "")
+            user_id = str(kwargs.pop("user_id", "") or "the_creator")
             req = ChatRequest(
                 message=message,
                 session_key=session_key,
-                user_id="the_creator",
+                user_id=user_id,
+                channel_id=channel_id or None,
             )
             try:
                 result = await asyncio.wait_for(
@@ -256,10 +318,93 @@ async def lifespan(app: FastAPI):
             execute_fn=_cron_execute_fn,
             channel_registry=deps.channel_registry,
         )
+        deps.cron_service = app.state.cron_service
         await app.state.cron_service.start()
         logger.info("[CRON] CronService (cron/) started")
     except Exception as _cron_exc:
+        deps.cron_service = None
         logger.warning("[CRON] CronService init failed (non-fatal): %s", _cron_exc)
+
+    # Phase 16 HEART-01..05: Heartbeat runner — scheduled outbound pings
+    app.state.heartbeat_runner = None
+    try:
+        heartbeat_cfg = getattr(deps._synapse_cfg, "heartbeat", None) or {}
+        if heartbeat_cfg.get("enabled", False):
+            from sci_fi_dashboard.chat_pipeline import persona_chat
+            from sci_fi_dashboard.gateway.heartbeat_runner import HeartbeatRunner
+            from sci_fi_dashboard.pipeline_emitter import get_emitter as _get_heartbeat_emitter
+            from sci_fi_dashboard.schemas import ChatRequest
+
+            async def _heartbeat_reply_adapter(prompt: str) -> str:
+                """Adapter: heartbeat prompt -> persona_chat -> LLM reply text.
+
+                Uses session_key="heartbeat" so heartbeat cycles never appear
+                in user-visible conversation history.
+                """
+                req = ChatRequest(
+                    message=prompt,
+                    session_key="heartbeat",
+                    user_id="the_creator",
+                )
+                try:
+                    result = await asyncio.wait_for(
+                        persona_chat(req, "the_creator"),
+                        timeout=60.0,
+                    )
+                except TimeoutError:
+                    logger.warning("[HEARTBEAT] persona_chat timed out after 60s")
+                    return ""
+                raw = str(result.get("reply", "") if isinstance(result, dict) else (result or ""))
+                # Strip pipeline metadata footer (--- **Context Usage:**...) before
+                # strip_heartbeat_token sees the reply, otherwise HEARTBEAT_OK residue
+                # causes the runner to forward the footer to WhatsApp.
+                sep = raw.find("\n\n---\n")
+                return raw[:sep] if sep != -1 else raw
+
+            app.state.heartbeat_runner = HeartbeatRunner(
+                channel_registry=deps.channel_registry,
+                cfg=deps._synapse_cfg,
+                get_reply_fn=_heartbeat_reply_adapter,
+                emitter=_get_heartbeat_emitter(),
+                interval_s=float(heartbeat_cfg.get("interval_s", 1800)),
+                channel_name="whatsapp",
+            )
+            await app.state.heartbeat_runner.start()
+            logger.info(
+                "[HEARTBEAT] Runner started (interval=%ss, recipients=%d)",
+                heartbeat_cfg.get("interval_s", 1800),
+                len(heartbeat_cfg.get("recipients", [])),
+            )
+        else:
+            logger.info("[HEARTBEAT] Disabled (heartbeat.enabled=false in synapse.json)")
+    except Exception as _heart_exc:
+        logger.warning("[HEARTBEAT] Runner init failed (non-fatal): %s", _heart_exc)
+        app.state.heartbeat_runner = None
+
+    # GentleWorker — thermal-guarded proactive check-ins (PROA-01/02/03/04)
+    app.state.gentle_worker = None
+    try:
+        from sci_fi_dashboard.gentle_worker import GentleWorker
+
+        app.state.gentle_worker = GentleWorker(
+            graph=deps.brain,
+            cron_service=app.state.cron_service,
+            proactive_engine=deps._proactive_engine,
+            channel_registry=deps.channel_registry,
+        )
+        # Capture the main event loop so heavy_task_proactive_checkin can
+        # hop into it via asyncio.run_coroutine_threadsafe (PROA-02 safety).
+        app.state.gentle_worker._event_loop = asyncio.get_running_loop()
+        app.state.gentle_worker_thread = threading.Thread(
+            target=app.state.gentle_worker.start,
+            daemon=True,
+            name="gentle-worker",
+        )
+        app.state.gentle_worker_thread.start()
+        logger.info("[GentleWorker] Started in background thread")
+    except Exception as _gw_exc:
+        logger.warning("[GentleWorker] init failed (non-fatal): %s", _gw_exc)
+        app.state.gentle_worker = None
 
     # DiaryEngine — generates diary entries on session archive
     try:
@@ -276,6 +421,9 @@ async def lifespan(app: FastAPI):
 
             _skills_dir = deps._synapse_cfg.data_root / "skills"
             _skills_dir.mkdir(parents=True, exist_ok=True)
+            seeded = SkillRegistry.seed_bundled_skills(_skills_dir)
+            if seeded:
+                logger.info("[Skills] Seeded %d bundled skill(s)", seeded)
 
             deps.skill_registry = SkillRegistry(_skills_dir)
             deps.skill_router = SkillRouter()
@@ -312,6 +460,28 @@ async def lifespan(app: FastAPI):
     else:
         logger.info("[Skills] skills module not available -- skill system disabled")
 
+    # Phase 3 (auto-flush): Background scanner for idle/oversized sessions.
+    # Runs as a FastAPI lifespan task so flush cadence follows gateway uptime,
+    # not battery/CPU state (intentionally NOT inside gentle_worker_loop).
+    from sci_fi_dashboard.auto_flush import SessionAutoFlusher  # noqa: PLC0415
+    from sci_fi_dashboard.pipeline_helpers import _handle_new_command  # noqa: PLC0415
+
+    _auto_flush_cfg = deps._synapse_cfg.session_auto_flush
+    _flusher = SessionAutoFlusher(
+        data_root=deps._synapse_cfg.data_root,
+        agent_ids=list(deps.sbs_registry.keys()),
+        handle_new_command=_handle_new_command,
+        idle_threshold=_auto_flush_cfg.idle_seconds,
+        count_threshold=_auto_flush_cfg.message_count,
+        min_messages=_auto_flush_cfg.min_messages,
+        check_interval=_auto_flush_cfg.check_interval_seconds,
+    )
+    if _auto_flush_cfg.enabled:
+        await _flusher.start()
+    else:
+        logger.info("[AutoFlush] Disabled via config (session.auto_flush_enabled=false)")
+    app.state.auto_flusher = _flusher
+
     yield
 
     # --- Shutdown ---
@@ -331,6 +501,10 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             print(f"[SBS] Shutdown snapshot failed for {persona_id}: {e}")
 
+    if hasattr(app.state, "gentle_worker") and app.state.gentle_worker is not None:
+        app.state.gentle_worker.is_running = False
+        # Thread is daemon — will exit with process; no join needed
+
     worker_task.cancel()
     if hasattr(app.state, "proactive_engine") and app.state.proactive_engine:
         await app.state.proactive_engine.stop()
@@ -340,6 +514,16 @@ async def lifespan(app: FastAPI):
         await app.state.mcp_client.disconnect_all()
     if hasattr(app.state, "retry_queue"):
         await app.state.retry_queue.stop()
+    # Phase 16: stop heartbeat runner + bridge health poller BEFORE channel_registry.stop_all
+    if hasattr(app.state, "auto_flusher") and app.state.auto_flusher is not None:
+        with suppress(Exception):
+            await app.state.auto_flusher.stop()
+    if hasattr(app.state, "heartbeat_runner") and app.state.heartbeat_runner is not None:
+        with suppress(Exception):
+            await app.state.heartbeat_runner.stop()
+    if hasattr(app.state, "bridge_health_poller") and app.state.bridge_health_poller is not None:
+        with suppress(Exception):
+            await app.state.bridge_health_poller.stop()
     await deps.channel_registry.stop_all()
     if hasattr(app.state, "worker"):
         await app.state.worker.stop()
@@ -377,6 +561,7 @@ app.include_router(websocket.router)
 app.include_router(pipeline_routes.router)
 app.include_router(agents_routes.router)
 app.include_router(cron_routes.router)
+app.include_router(playground.router)
 
 # Dashboard static files
 _static_dir = _Path(__file__).parent / "static"

@@ -10,9 +10,9 @@
 # --- Embeddings ---
 sentence-transformers>=2.2.0     # Fallback embedding model (all-MiniLM-L6-v2)
 
-# --- Keyword Extraction & Reranking ---
-flashtext>=2.7                   # Fast keyword extraction (EntityGate)
-flashrank>=0.2.0                 # Reranking retrieved memories
+# Note: flashrank + flashtext moved to core requirements.txt — they are eager-imported
+# by memory_engine.py + smart_entity.py on the chat path. This file only ships deps
+# that load lazily (Toxic-BERT via LazyToxicScorer) or opt-in features.
 
 # --- ML / Toxicity Scoring ---
 torch>=2.0.0                     # PyTorch (Toxic-BERT inference)

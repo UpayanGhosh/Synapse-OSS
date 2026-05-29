@@ -177,5 +177,14 @@ class LanceDBVectorStore(VectorStore):
             )
         return output
 
+    def delete_by_id(self, doc_id: int) -> bool:
+        """Delete the row with matching id. Returns True on success."""
+        try:
+            self.table.delete(f"id = {int(doc_id)}")
+            return True
+        except Exception as e:
+            logger.warning("[WARN] LanceDB delete_by_id failed for %s: %s", doc_id, e)
+            return False
+
     def close(self) -> None:
         """No-op — LanceDB is embedded and manages its own lifecycle."""

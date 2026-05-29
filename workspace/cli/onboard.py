@@ -11,6 +11,8 @@ Exports:
 """
 
 import asyncio
+import contextlib
+import json
 import os
 import shutil
 import sys
@@ -62,7 +64,10 @@ from cli.provider_steps import (  # noqa: E402
     _KEY_MAP,
     PROVIDER_GROUPS,
     PROVIDER_LIST,
+    claude_cli_setup,
     github_copilot_device_flow,
+    google_antigravity_oauth_flow,
+    openai_codex_device_flow,
     validate_ollama,
     validate_provider,
 )
@@ -88,6 +93,7 @@ def run_wizard(
     flow: str = "quickstart",
     accept_risk: bool = False,
     reset: str | None = None,
+    launch_chat: bool | None = None,
 ) -> None:
     """Entry point — dispatches to interactive or non-interactive wizard.
 
@@ -103,9 +109,14 @@ def run_wizard(
             or "full". Backed-up data before wizard starts.
     """
     if non_interactive or (not force_interactive and not _is_tty()):
-        _run_non_interactive(accept_risk=accept_risk, reset=reset, flow=flow)
+        _run_non_interactive(
+            accept_risk=accept_risk,
+            reset=reset,
+            flow=flow,
+            launch_chat=launch_chat,
+        )
     else:
-        _run_interactive(flow=flow, reset=reset)
+        _run_interactive(flow=flow, reset=reset, launch_chat=launch_chat)
 
 
 def _is_tty() -> bool:
@@ -114,6 +125,91 @@ def _is_tty() -> bool:
         return sys.stdin.isatty()
     except AttributeError:
         return False
+
+
+def _raise_for_chat_exit_code(code: int) -> None:
+    if code != 0:
+        raise typer.Exit(code)
+
+
+def _format_ready_summary(config: dict, config_path: Path) -> str:
+    gateway = config.get("gateway") or {}
+    port = int(gateway.get("port") or 8000)
+    safe_model = _selected_safe_model(config)
+    next_command = _chat_next_command(port)
+    integrations = config.get("integrations_connected") or []
+    return "\n".join(
+        [
+            "[bold green]Setup complete![/]",
+            "",
+            f"Config: {config_path}",
+            f"Gateway: http://127.0.0.1:{port}",
+            f"Safe-chat model: {safe_model or 'not configured'}",
+            f"Providers: {', '.join(config.get('providers', {}).keys()) or '(none)'}",
+            f"Channels: {', '.join(config.get('channels', {}).keys()) or '(none)'}",
+            f"Integrations: {', '.join(integrations) or '(none — run `synapse integrations connect <name>` to add)'}",
+            f"Next: {next_command}",
+        ]
+    )
+
+
+def _chat_next_command(port: int) -> str:
+    command = "python workspace\\synapse_cli.py chat"
+    if port != 8000:
+        command = f"{command} --port {port}"
+    return command
+
+
+def _selected_safe_model(config: dict) -> str | None:
+    mappings = config.get("model_mappings") or {}
+    if not isinstance(mappings, dict):
+        return None
+    for key in ("casual", "chat", "safe"):
+        model = _model_value(mappings.get(key))
+        if model:
+            return _normalize_overview_model(model)
+    for value in mappings.values():
+        model = _model_value(value)
+        if model:
+            return _normalize_overview_model(model)
+    return None
+
+
+def _model_value(value: object) -> str | None:
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        model = value.get("model")
+        return str(model) if model else None
+    return None
+
+
+def _normalize_overview_model(model: str) -> str:
+    try:
+        from cli.startup_overview import normalize_safe_chat_model  # noqa: PLC0415
+
+        return normalize_safe_chat_model(model) or model
+    except Exception:
+        return model
+
+
+def _load_existing_config(data_root: Path) -> dict:
+    config_path = data_root / "synapse.json"
+    if not config_path.exists():
+        return {}
+    try:
+        raw = json.loads(config_path.read_text(encoding="utf-8-sig"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+    return raw if isinstance(raw, dict) else {}
+
+
+def _preserve_runtime_config(config: dict, existing_config: dict) -> None:
+    """Keep durable runtime settings that onboarding does not actively edit."""
+    for key in ("mcp",):
+        value = existing_config.get(key)
+        if isinstance(value, dict) and value:
+            config[key] = value
 
 
 # ---------------------------------------------------------------------------
@@ -125,6 +221,7 @@ def _run_non_interactive(
     accept_risk: bool = False,
     reset: str | None = None,
     flow: str = "quickstart",
+    launch_chat: bool | None = None,
 ) -> None:
     """Non-interactive wizard: reads all inputs from environment variables.
 
@@ -170,6 +267,7 @@ def _run_non_interactive(
     # --- Handle reset ---
     if reset is not None:
         _handle_reset(reset, data_root)
+    existing_config = {} if reset is not None else _load_existing_config(data_root)
 
     # --- Primary provider ---
     provider = os.environ.get("SYNAPSE_PRIMARY_PROVIDER", "").strip()
@@ -190,6 +288,7 @@ def _run_non_interactive(
 
     # --- Build config ---
     config: dict = {"providers": {}, "model_mappings": {}, "channels": {}}
+    _preserve_runtime_config(config, existing_config)
 
     if provider == "ollama":
         api_base = os.environ.get("OLLAMA_API_BASE", "http://localhost:11434").strip()
@@ -203,6 +302,14 @@ def _run_non_interactive(
             )
             raise typer.Exit(1)
 
+    elif provider == "openai_codex":
+        typer.echo(
+            "ERROR: Non-interactive onboarding for 'openai_codex' is not supported. "
+            "Run interactive onboarding to complete ChatGPT OAuth device login first.",
+            err=True,
+        )
+        raise typer.Exit(1)
+
     else:
         env_var = _KEY_MAP.get(provider, f"{provider.upper()}_API_KEY")
         api_key = os.environ.get(env_var, "").strip()
@@ -214,7 +321,7 @@ def _run_non_interactive(
             raise typer.Exit(1)
 
         result = validate_provider(provider, api_key)
-        if not result.ok and result.error != "quota_exceeded":
+        if not result.ok:
             typer.echo(
                 f"ERROR: Provider validation failed: {result.error} — {result.detail}",
                 err=True,
@@ -246,14 +353,30 @@ def _run_non_interactive(
     # --- Gateway config (replaces bare gw_token block) ---
     from cli.gateway_steps import configure_gateway  # noqa: PLC0415
 
-    gw_cfg = configure_gateway(flow="advanced", existing_gateway={}, non_interactive=True)
+    existing_gateway = existing_config.get("gateway", {})
+    if not isinstance(existing_gateway, dict):
+        existing_gateway = {}
+    gw_cfg = configure_gateway(
+        flow="advanced", existing_gateway=existing_gateway, non_interactive=True
+    )
     config["gateway"] = gw_cfg
 
     # --- Session defaults ---
-    config["session"] = {"dmScope": _ONBOARDING_DEFAULT_DM_SCOPE, "identityLinks": {}}
+    config["session"] = {
+        "dmScope": _ONBOARDING_DEFAULT_DM_SCOPE,
+        "identityLinks": {},
+        "dual_cognition_enabled": True,
+        "dual_cognition_timeout": 10.0,
+        "dual_cognition_cloud_mode": "deep_only",
+        "dual_cognition_foreground_max_llm_calls": 1,
+    }
 
     # --- Model mappings ---
     config["model_mappings"] = _build_model_mappings(list(config["providers"].keys()))
+
+    # --- Prefetch embedding model (quiet in non-interactive mode — best-effort) ---
+    with contextlib.suppress(Exception):
+        _prefetch_embedding_models(list(config["providers"].keys()))
 
     # --- Write ---
     write_config(data_root, config)
@@ -264,8 +387,23 @@ def _run_non_interactive(
     energy_level = os.environ.get("SYNAPSE_ENERGY_LEVEL", "").strip()
     interests_raw = os.environ.get("SYNAPSE_INTERESTS", "").strip()
     privacy_level = os.environ.get("SYNAPSE_PRIVACY_LEVEL", "").strip()
+    preferred_language = os.environ.get("SYNAPSE_PREFERRED_LANGUAGE", "").strip()
+    region = os.environ.get("SYNAPSE_REGION", "").strip()
+    locality = os.environ.get("SYNAPSE_LOCALITY", "").strip()
+    local_examples_raw = os.environ.get("SYNAPSE_LOCAL_LANGUAGE_EXAMPLES", "").strip()
 
-    if any([communication_style, energy_level, interests_raw, privacy_level]):
+    if any(
+        [
+            communication_style,
+            energy_level,
+            interests_raw,
+            privacy_level,
+            preferred_language,
+            region,
+            locality,
+            local_examples_raw,
+        ]
+    ):
         try:
             from cli.sbs_profile_init import (  # noqa: PLC0415
                 ENERGY_CHOICES,
@@ -312,6 +450,11 @@ def _run_non_interactive(
                     err=True,
                 )
                 parsed_interests = [i for i in parsed_interests if i in INTEREST_CHOICES]
+            local_examples = [
+                item.strip()
+                for item in local_examples_raw.split("|")
+                if item.strip()
+            ]
 
             initialize_sbs_from_wizard(
                 {
@@ -319,6 +462,11 @@ def _run_non_interactive(
                     "energy_level": energy_level or "calm_and_steady",
                     "interests": parsed_interests,
                     "privacy_level": privacy_level or "selective",
+                    "preferred_language": preferred_language or "English",
+                    "region": region,
+                    "locality": locality,
+                    "local_language_examples": local_examples,
+                    "ask_user_to_teach_language": True,
                 },
                 data_root=data_root,
             )
@@ -328,6 +476,22 @@ def _run_non_interactive(
 
     # --- Environment validation ---
     _validate_environment(config)
+
+    if launch_chat is True:
+        from cli.chat_loop import run_cli_chat  # noqa: PLC0415
+        from cli.post_onboard_launch import (  # noqa: PLC0415
+            build_post_onboard_chat_options,
+            should_offer_cli_chat,
+        )
+
+        if should_offer_cli_chat(non_interactive=True, launch_chat=launch_chat):
+            port = int((config.get("gateway") or {}).get("port") or 8000)
+            options = build_post_onboard_chat_options(
+                workspace_dir=data_root / "workspace",
+                port=port,
+            )
+            code = run_cli_chat(options)
+            _raise_for_chat_exit_code(code)
 
 
 # ---------------------------------------------------------------------------
@@ -392,7 +556,500 @@ def _handle_reset(reset_scope: str, data_root: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Known models per provider (curated list — update when providers add models)
+# Live model discovery — hit each provider's /models endpoint with the user's key.
+# No curated defaults; the wizard only falls back to _KNOWN_MODELS when the API
+# is unreachable (offline, rate-limited, bad key).
+#
+# Each entry returned by _fetch_provider_models carries:
+#   value:           litellm-compatible "<prefix>/<model_id>" (used at runtime)
+#   label:           display name (usually the bare model_id, sometimes display_name)
+#   context_window:  int tokens — None when provider doesn't expose it
+#   capabilities:    list of tags like ["reasoning", "vision", "code"]
+#   hint:            pre-built display hint string (openclaw-style "ctx 128k · reasoning")
+# ---------------------------------------------------------------------------
+
+_OPENAI_COMPAT_MODELS_ENDPOINTS: dict[str, str] = {
+    "openai": "https://api.openai.com/v1/models",
+    "groq": "https://api.groq.com/openai/v1/models",
+    "openrouter": "https://openrouter.ai/api/v1/models",
+    "mistral": "https://api.mistral.ai/v1/models",
+    "xai": "https://api.x.ai/v1/models",
+    "deepseek": "https://api.deepseek.com/v1/models",
+    "togetherai": "https://api.together.xyz/v1/models",
+    "nvidia_nim": "https://integrate.api.nvidia.com/v1/models",
+    "moonshot": "https://api.moonshot.ai/v1/models",
+    "zai": "https://open.bigmodel.cn/api/paas/v4/models",
+}
+
+# litellm prefixes differ from our internal provider keys for a few providers.
+_LITELLM_PREFIX: dict[str, str] = {"togetherai": "together_ai"}
+
+
+def _humanize_ctx(n: int | None) -> str | None:
+    """Format context-window token counts as 'ctx 128k' / 'ctx 2M'."""
+    if not n or n < 1:
+        return None
+    if n >= 1_000_000:
+        return f"ctx {n // 1_000_000}M"
+    if n >= 1000:
+        return f"ctx {n // 1000}k"
+    return f"ctx {n}"
+
+
+def _infer_capabilities(model_id: str) -> list[str]:
+    """Heuristic capability tags derived from a model ID string."""
+    lid = model_id.lower()
+    caps: list[str] = []
+    reasoning_patterns = (
+        "o1-", "o1_", "/o1", "o3-", "o3_", "/o3", "o4-", "o4_", "/o4", "o5-",
+        "reasoning", "thinking", "-qwq", "qwq-", "r1", "deepseek-r", "nemotron-nano",
+        "gpt-oss", "nemotron-super",
+    )
+    if any(p in lid for p in reasoning_patterns):
+        caps.append("reasoning")
+    if any(p in lid for p in ("vision", "-vl-", "-vl2", "vis-", "-multimodal")):
+        caps.append("vision")
+    if any(p in lid for p in ("code", "coder", "codex", "-cd-")):
+        caps.append("code")
+    return caps
+
+
+def _build_hint(context_window: int | None, capabilities: list[str]) -> str | None:
+    """Render the openclaw-style hint string: 'ctx 128k · reasoning · code'."""
+    parts: list[str] = []
+    ctx_str = _humanize_ctx(context_window)
+    if ctx_str:
+        parts.append(ctx_str)
+    parts.extend(capabilities)
+    return " · ".join(parts) if parts else None
+
+
+def _make_entry(
+    value: str,
+    label: str,
+    context_window: int | None = None,
+    extra_caps: list[str] | None = None,
+) -> dict[str, object]:
+    """Build a fully-hydrated catalog entry with hints + capabilities."""
+    caps = _infer_capabilities(label)
+    if extra_caps:
+        for c in extra_caps:
+            if c not in caps:
+                caps.append(c)
+    return {
+        "value": value,
+        "label": label,
+        "context_window": context_window,
+        "capabilities": caps,
+        "hint": _build_hint(context_window, caps),
+    }
+
+
+def _fetch_provider_models(
+    provider: str,
+    api_key: str | None = None,
+    api_base: str | None = None,
+    timeout: float = 10.0,
+) -> list[dict[str, object]]:
+    """Query the provider's /models endpoint live and return hydrated entries.
+
+    Returns:
+      List of {value, label, context_window, capabilities, hint} on success.
+      Empty list on any failure — caller falls back to curated catalog.
+    """
+    try:
+        import httpx  # noqa: PLC0415
+    except ImportError:
+        return []
+
+    try:
+        # --- Gemini: key as query param, custom shape ---
+        if provider == "gemini":
+            if not api_key:
+                return []
+            r = httpx.get(
+                f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}",
+                timeout=timeout,
+            )
+            r.raise_for_status()
+            out: list[dict[str, object]] = []
+            for m in r.json().get("models", []):
+                name = m.get("name", "").replace("models/", "")
+                if "generateContent" not in m.get("supportedGenerationMethods", []):
+                    continue
+                ctx = m.get("inputTokenLimit")
+                out.append(_make_entry(f"gemini/{name}", name, context_window=ctx))
+            return sorted(out, key=_gemini_catalog_sort_key)
+
+        # --- Anthropic: custom auth headers ---
+        if provider == "anthropic":
+            if not api_key:
+                return []
+            r = httpx.get(
+                "https://api.anthropic.com/v1/models",
+                headers={"x-api-key": api_key, "anthropic-version": "2023-06-01"},
+                timeout=timeout,
+            )
+            r.raise_for_status()
+            data = r.json().get("data", [])
+            # Anthropic doesn't expose context_window in /models; heuristic by family.
+            def _anthropic_ctx(mid: str) -> int | None:
+                lm = mid.lower()
+                if "claude-3-5" in lm or "claude-3-7" in lm or "claude-sonnet-4" in lm:
+                    return 200000
+                if "claude-3" in lm:
+                    return 200000
+                return None
+            return [
+                _make_entry(
+                    f"anthropic/{m['id']}",
+                    m.get("display_name", m["id"]),
+                    context_window=_anthropic_ctx(m["id"]),
+                )
+                for m in data
+            ]
+
+        # --- Ollama: local /api/tags (no context metadata) ---
+        if provider == "ollama":
+            base = (api_base or "http://localhost:11434").rstrip("/")
+            r = httpx.get(f"{base}/api/tags", timeout=5.0)
+            r.raise_for_status()
+            return [
+                _make_entry(f"ollama_chat/{m['name']}", m["name"])
+                for m in r.json().get("models", [])
+            ]
+
+        # --- vLLM: user-provided api_base + /v1/models ---
+        if provider == "vllm":
+            if not api_base:
+                return []
+            r = httpx.get(f"{api_base.rstrip('/')}/v1/models", timeout=5.0)
+            r.raise_for_status()
+            return [
+                _make_entry(f"openai/{m['id']}", m["id"])
+                for m in r.json().get("data", [])
+            ]
+
+        # --- GitHub Copilot: OAuth token + Copilot /models endpoint ---
+        if provider == "github_copilot":
+            token = api_key
+            if not token or token == "missing":
+                return []
+            from litellm.llms.github_copilot.common_utils import (  # noqa: PLC0415
+                GITHUB_COPILOT_API_BASE,
+                get_copilot_default_headers,
+            )
+
+            r = httpx.get(
+                f"{GITHUB_COPILOT_API_BASE.rstrip('/')}/models",
+                headers=get_copilot_default_headers(token),
+                timeout=timeout,
+            )
+            r.raise_for_status()
+            data = r.json()
+            entries = data.get("data", data if isinstance(data, list) else [])
+            out = []
+            for m in entries:
+                if isinstance(m, dict):
+                    mid = m.get("id")
+                    label = m.get("name") or m.get("display_name") or mid
+                else:
+                    mid = str(m)
+                    label = mid
+                if mid:
+                    out.append(_make_entry(f"github_copilot/{mid}", str(label)))
+            return sorted(out, key=lambda x: str(x["label"]).lower())
+
+        # --- OpenAI-compat providers ---
+        url = _OPENAI_COMPAT_MODELS_ENDPOINTS.get(provider)
+        if not url:
+            return []
+        headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+        r = httpx.get(url, headers=headers, timeout=timeout)
+        r.raise_for_status()
+        prefix = _LITELLM_PREFIX.get(provider, provider)
+        out = []
+        for m in r.json().get("data", []):
+            mid = m.get("id", "")
+            if not mid:
+                continue
+            # Provider-specific context_window extraction where available.
+            ctx = None
+            if provider == "openrouter":
+                ctx = m.get("context_length")
+            elif provider == "groq":
+                ctx = m.get("context_window")
+            elif provider == "togetherai":
+                ctx = m.get("context_length")
+            out.append(_make_entry(f"{prefix}/{mid}", mid, context_window=ctx))
+        return out
+    except Exception:  # noqa: BLE001 — any network/parse error → empty list
+        return []
+
+
+def _gemini_catalog_sort_key(entry: dict[str, object]) -> tuple[int, str]:
+    """Put broadly usable Gemini Flash models ahead of Gemma/Pro entries.
+
+    Google's live /models endpoint can include Gemma open models and Pro models
+    whose quota differs from Flash. Alphabetical sorting can surface Gemma first,
+    which makes onboarding feel like "Gemini validated" but chat used a very
+    different quota bucket. Keep all models available, but nudge safe defaults up.
+    """
+    label = str(entry.get("label") or entry.get("value") or "").lower()
+    if "gemini-2.5-flash-lite" in label:
+        rank = 0
+    elif "gemini-2.5-flash" in label:
+        rank = 1
+    elif "gemini" in label and "flash" in label:
+        rank = 2
+    elif "gemini" in label and "pro" in label:
+        rank = 4
+    elif "gemma" in label:
+        rank = 6
+    else:
+        rank = 8
+    return (rank, label)
+
+
+def _extract_provider_credentials(
+    config: dict, provider: str
+) -> tuple[str | None, str | None]:
+    """Read api_key + api_base for a provider from the in-progress config dict."""
+    prov_cfg = (config.get("providers") or {}).get(provider) or {}
+    # Copilot uses 'token' not 'api_key'; Ollama/vLLM use only api_base; others use api_key
+    api_key = prov_cfg.get("api_key") or prov_cfg.get("token")
+    api_base = prov_cfg.get("api_base")
+    return api_key, api_base
+
+
+def _fetch_live_catalog(
+    providers: list[str], config: dict
+) -> dict[str, list[dict[str, object]]]:
+    """Per-provider live model list, falling back to _KNOWN_MODELS on API failure.
+
+    Entries returned are fully hydrated (value, label, context_window, capabilities, hint).
+    """
+    result: dict[str, list[dict[str, object]]] = {}
+    for prov in providers:
+        api_key, api_base = _extract_provider_credentials(config, prov)
+        live = _fetch_provider_models(prov, api_key, api_base)
+        if live:
+            result[prov] = live
+            _print(f"  [green]✓[/] {prov}: {len(live)} models (live from API)")
+        elif prov in _KNOWN_MODELS:
+            # Hydrate curated fallback so it has the same shape as live entries.
+            result[prov] = [
+                _make_entry(str(m["value"]), str(m["label"]))
+                for m in _KNOWN_MODELS[prov]
+            ]
+            _print(
+                f"  [yellow]![/] {prov}: /models API unavailable — "
+                f"falling back to curated list ({len(_KNOWN_MODELS[prov])} models)"
+            )
+        else:
+            _print(
+                f"  [yellow]![/] {prov}: no model list available — "
+                "enter model ID manually in the picker"
+            )
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Openclaw-style unified flat picker helpers
+# ---------------------------------------------------------------------------
+
+_PROVIDER_FILTER_THRESHOLD = 30
+_MANUAL_ENTRY_VALUE = "__manual__"
+
+
+def _flatten_catalog(
+    catalog: dict[str, list[dict[str, object]]],
+) -> list[dict[str, object]]:
+    """Flatten the per-provider catalog into a single list.
+
+    Each entry gains a `provider` field. Sorted by (provider, label) for
+    deterministic scan order when the user doesn't search.
+    """
+    flat: list[dict[str, object]] = []
+    for prov, models in catalog.items():
+        for m in models:
+            entry = dict(m)
+            entry["provider"] = prov
+            flat.append(entry)
+    return sorted(
+        flat,
+        key=lambda x: (str(x.get("provider", "")), str(x.get("label", "")).lower()),
+    )
+
+
+def _format_choice_display(entry: dict[str, object]) -> str:
+    """Render an entry as 'provider/model · ctx 128k · reasoning'."""
+    value = str(entry.get("value", ""))
+    hint = entry.get("hint")
+    return f"{value}  ·  {hint}" if hint else value
+
+
+def _prompt_provider_filter(
+    flat: list[dict[str, object]], prompter: object
+) -> str:
+    """Openclaw-style filter step — pick one provider or * for all.
+
+    Triggered when total models > _PROVIDER_FILTER_THRESHOLD AND >1 provider configured.
+    Returns the selected provider id, or '*' for no filter.
+    """
+    from collections import Counter  # noqa: PLC0415
+
+    provider_counts = Counter(str(m.get("provider", "")) for m in flat)
+    if len(provider_counts) <= 1 or len(flat) <= _PROVIDER_FILTER_THRESHOLD:
+        return "*"
+
+    try:
+        import questionary  # noqa: PLC0415
+
+        choices: list = [questionary.Choice("All providers", value="*")]
+        for prov, n in sorted(provider_counts.items()):
+            choices.append(
+                questionary.Choice(f"{prov}  ({n} model{'s' if n != 1 else ''})", value=prov)
+            )
+    except ImportError:
+        choices = ["*"] + sorted(provider_counts.keys())
+
+    return prompter.select(  # type: ignore[attr-defined]
+        f"Filter models by provider ({len(flat)} total):",
+        choices=choices,
+    )
+
+
+def _pick_model_fuzzy(
+    role: str,
+    desc: str,
+    flat: list[dict[str, object]],
+    prompter: object,
+) -> str:
+    """Openclaw-style searchable picker for one role.
+
+    Uses InquirerPy fuzzy (type-to-filter + arrow-select) when available. Falls
+    back to questionary.autocomplete, then to a plain prompter.select call for
+    test stubs / headless envs. Adds a [Enter manually] escape hatch always.
+    """
+    manual_label = "[Enter model manually]"
+
+    def _is_terminal_capability_error(exc: Exception) -> bool:
+        """Return True for headless/non-TTY UI errors that should trigger fallback."""
+        if isinstance(exc, EOFError):
+            return True
+
+        name = type(exc).__name__
+        module = type(exc).__module__
+        text = str(exc).lower()
+
+        if name == "NoConsoleScreenBufferError":
+            return True
+        if module.startswith("prompt_toolkit") and "screen buffer" in text:
+            return True
+        if isinstance(exc, OSError):
+            if getattr(exc, "errno", None) == 25:  # ENOTTY
+                return True
+            if "not a tty" in text or "inappropriate ioctl" in text:
+                return True
+        return False
+
+    # --- Preferred: InquirerPy fuzzy (best UX, matches openclaw) ---
+    try:
+        from InquirerPy import inquirer  # noqa: PLC0415
+
+        choices = [{"name": manual_label, "value": _MANUAL_ENTRY_VALUE}]
+        for m in flat:
+            choices.append(
+                {"name": _format_choice_display(m), "value": str(m["value"])}
+            )
+        try:
+            result = inquirer.fuzzy(  # type: ignore[attr-defined]
+                message=f"{role} ({desc}):",
+                choices=choices,
+                max_height="70%",
+                border=True,
+                info=True,
+                match_exact=False,
+            ).execute()
+        except KeyboardInterrupt:
+            from cli.wizard_prompter import WizardCancelledError  # noqa: PLC0415
+
+            raise WizardCancelledError() from None
+        if result is None:
+            from cli.wizard_prompter import WizardCancelledError  # noqa: PLC0415
+
+            raise WizardCancelledError()
+        if result == _MANUAL_ENTRY_VALUE:
+            return _prompt_manual_model(role, prompter)
+        return str(result)
+    except ImportError:
+        pass
+    except Exception as exc:
+        from cli.wizard_prompter import WizardCancelledError  # noqa: PLC0415
+
+        if isinstance(exc, WizardCancelledError):
+            raise
+        if _is_terminal_capability_error(exc):
+            pass
+        else:
+            _print("[yellow]![/] Fuzzy model picker unavailable; using fallback picker.")
+
+    # --- Fallback: questionary.autocomplete (type-to-match, no visual list) ---
+    try:
+        import questionary  # noqa: PLC0415
+
+        display_to_value: dict[str, str] = {}
+        choices_disp = [manual_label]
+        for m in flat:
+            disp = _format_choice_display(m)
+            choices_disp.append(disp)
+            display_to_value[disp] = str(m["value"])
+        result = questionary.autocomplete(
+            f"{role} ({desc}) — start typing to search:",
+            choices=choices_disp,
+            ignore_case=True,
+            match_middle=True,
+        ).ask()
+        if result is None:
+            from cli.wizard_prompter import WizardCancelledError  # noqa: PLC0415
+
+            raise WizardCancelledError()
+        if result == manual_label:
+            return _prompt_manual_model(role, prompter)
+        return display_to_value.get(result, result)
+    except ImportError:
+        pass
+    except Exception as exc:
+        from cli.wizard_prompter import WizardCancelledError  # noqa: PLC0415
+
+        if isinstance(exc, WizardCancelledError):
+            raise
+        if _is_terminal_capability_error(exc):
+            pass
+        else:
+            _print("[yellow]![/] Autocomplete model picker unavailable; using simple picker.")
+
+    # --- Last resort: plain select via prompter (test stubs / no TTY) ---
+    plain_choices = [manual_label] + [str(m["value"]) for m in flat]
+    sel = prompter.select(  # type: ignore[attr-defined]
+        f"{role} ({desc}):", choices=plain_choices
+    )
+    if sel == manual_label:
+        return _prompt_manual_model(role, prompter)
+    return str(sel)
+
+
+def _prompt_manual_model(role: str, prompter: object) -> str:
+    """Free-text manual entry — user types provider/model directly."""
+    val = prompter.text(  # type: ignore[attr-defined]
+        f"{role} model (enter litellm-style provider/model_id):"
+    ).strip()
+    return val
+
+
+# ---------------------------------------------------------------------------
+# Known models per provider (FALLBACK only — used when live /models API fails).
 # ---------------------------------------------------------------------------
 
 _KNOWN_MODELS: dict[str, list[dict[str, str]]] = {
@@ -412,20 +1069,54 @@ _KNOWN_MODELS: dict[str, list[dict[str, str]]] = {
         {"value": "openai/o4-mini", "label": "o4-mini (reasoning)"},
     ],
     "github_copilot": [
-        {"value": "github_copilot/gpt-4.1", "label": "GPT-4.1 (flagship)"},
-        {"value": "github_copilot/gpt-4.1-mini", "label": "GPT-4.1 Mini (fast)"},
-        {"value": "github_copilot/gpt-4.1-nano", "label": "GPT-4.1 Nano (fastest)"},
-        {"value": "github_copilot/gpt-4o", "label": "GPT-4o"},
-        {"value": "github_copilot/gpt-4o-mini", "label": "GPT-4o Mini"},
-        {"value": "github_copilot/o3-mini", "label": "o3-mini (reasoning)"},
-        {"value": "github_copilot/o4-mini", "label": "o4-mini (reasoning)"},
-        {"value": "github_copilot/claude-sonnet-4", "label": "Claude Sonnet 4"},
-        {"value": "github_copilot/gemini-2.0-flash", "label": "Gemini 2.0 Flash"},
+        {"value": "github_copilot/gpt-5.4", "label": "GPT-5.4 (flagship)"},
+        {"value": "github_copilot/gpt-5.4-mini", "label": "GPT-5.4 Mini (fast)"},
+        {"value": "github_copilot/gpt-5.4-nano", "label": "GPT-5.4 Nano (fastest)"},
+        {"value": "github_copilot/gpt-5.3-codex", "label": "GPT-5.3-Codex (coding)"},
+        {"value": "github_copilot/gpt-5.2-codex", "label": "GPT-5.2-Codex (coding)"},
+        {"value": "github_copilot/claude-sonnet-4.6", "label": "Claude Sonnet 4.6"},
+        {"value": "github_copilot/claude-opus-4.7", "label": "Claude Opus 4.7"},
+        {"value": "github_copilot/gemini-3-flash", "label": "Gemini 3 Flash"},
+        {"value": "github_copilot/gemini-3.1-pro", "label": "Gemini 3.1 Pro"},
+    ],
+    "openai_codex": [
+        {
+            "value": "openai_codex/gpt-5.4",
+            "label": "GPT-5.4 (ChatGPT subscription Codex backend)",
+        },
+    ],
+    "google_antigravity": [
+        {
+            "value": "google_antigravity/gemini-3-flash",
+            "label": "Gemini 3 Flash (fast, balanced)",
+        },
+        {
+            "value": "google_antigravity/gemini-3.1-pro-low",
+            "label": "Gemini 3.1 Pro (low reasoning, balanced quality)",
+        },
+        {
+            "value": "google_antigravity/gemini-3.1-pro-high",
+            "label": "Gemini 3.1 Pro (high reasoning, best quality)",
+        },
+    ],
+    "claude_cli": [
+        {
+            "value": "claude_cli/sonnet",
+            "label": "Claude Sonnet (Claude Code subscription alias, balanced)",
+        },
+        {
+            "value": "claude_cli/opus",
+            "label": "Claude Opus (Claude Code subscription alias, best quality)",
+        },
+        {
+            "value": "claude_cli/haiku",
+            "label": "Claude Haiku (Claude Code subscription alias, fast)",
+        },
     ],
     "anthropic": [
-        {"value": "anthropic/claude-sonnet-4-6", "label": "Claude Sonnet 4.6 (balanced)"},
-        {"value": "anthropic/claude-haiku-4-5", "label": "Claude Haiku 4.5 (fast, cheap)"},
-        {"value": "anthropic/claude-opus-4-6", "label": "Claude Opus 4.6 (best quality)"},
+        {"value": "anthropic/claude-sonnet-4-0", "label": "Claude Sonnet 4 (balanced)"},
+        {"value": "anthropic/claude-3-5-haiku-latest", "label": "Claude Haiku 3.5 (fast)"},
+        {"value": "anthropic/claude-opus-4-1", "label": "Claude Opus 4.1 (best quality)"},
     ],
     "groq": [
         {"value": "groq/llama-3.3-70b-versatile", "label": "Llama 3.3 70B Versatile"},
@@ -444,6 +1135,93 @@ _KNOWN_MODELS: dict[str, list[dict[str, str]]] = {
         {"value": "xai/grok-3", "label": "Grok 3"},
         {"value": "xai/grok-3-mini", "label": "Grok 3 Mini (fast)"},
     ],
+    "nvidia_nim": [
+        # Meta Llama
+        {
+            "value": "nvidia_nim/meta/llama-3.3-70b-instruct",
+            "label": "Llama 3.3 70B Instruct (newest Meta, balanced)",
+        },
+        {
+            "value": "nvidia_nim/meta/llama-3.1-8b-instruct",
+            "label": "Llama 3.1 8B Instruct (fast, cheap)",
+        },
+        {
+            "value": "nvidia_nim/meta/llama-3.1-70b-instruct",
+            "label": "Llama 3.1 70B Instruct",
+        },
+        {
+            "value": "nvidia_nim/meta/llama-3.1-405b-instruct",
+            "label": "Llama 3.1 405B Instruct (best Meta)",
+        },
+        # Moonshot Kimi
+        {
+            "value": "nvidia_nim/moonshotai/kimi-k2-instruct",
+            "label": "Kimi K2 Instruct (Moonshot, long context)",
+        },
+        {
+            "value": "nvidia_nim/moonshotai/kimi-k2-thinking",
+            "label": "Kimi K2 Thinking (reasoning)",
+        },
+        # OpenAI GPT-OSS
+        {
+            "value": "nvidia_nim/openai/gpt-oss-120b",
+            "label": "GPT-OSS 120B (OpenAI open-weights, flagship)",
+        },
+        {
+            "value": "nvidia_nim/openai/gpt-oss-20b",
+            "label": "GPT-OSS 20B (OpenAI open-weights, fast)",
+        },
+        # Qwen
+        {
+            "value": "nvidia_nim/qwen/qwen3-235b-a22b",
+            "label": "Qwen3 235B (Alibaba, flagship)",
+        },
+        {
+            "value": "nvidia_nim/qwen/qwen2.5-coder-32b-instruct",
+            "label": "Qwen2.5 Coder 32B (code-tuned)",
+        },
+        # NVIDIA Nemotron
+        {
+            "value": "nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1",
+            "label": "Nemotron Super 49B (NVIDIA tuned)",
+        },
+        {
+            "value": "nvidia_nim/nvidia/llama-3.1-nemotron-70b-instruct",
+            "label": "Nemotron 70B (NVIDIA tuned)",
+        },
+        {
+            "value": "nvidia_nim/nvidia/nemotron-nano-9b-v2",
+            "label": "Nemotron Nano 9B v2 (fast, cheap)",
+        },
+        # DeepSeek
+        {
+            "value": "nvidia_nim/deepseek-ai/deepseek-r1",
+            "label": "DeepSeek R1 (reasoning)",
+        },
+        # Mistral
+        {
+            "value": "nvidia_nim/mistralai/mixtral-8x22b-instruct-v0.1",
+            "label": "Mixtral 8x22B Instruct",
+        },
+    ],
+    "deepseek": [
+        {"value": "deepseek/deepseek-chat", "label": "DeepSeek Chat"},
+        {"value": "deepseek/deepseek-reasoner", "label": "DeepSeek Reasoner (R1)"},
+    ],
+    "cohere": [
+        {"value": "cohere/command-r-plus", "label": "Command R+ (flagship)"},
+        {"value": "cohere/command-r", "label": "Command R"},
+    ],
+    "togetherai": [
+        {
+            "value": "together_ai/meta-llama/Llama-3.3-70B-Instruct-Turbo",
+            "label": "Llama 3.3 70B Turbo",
+        },
+        {
+            "value": "together_ai/meta-llama/Llama-3.1-8B-Instruct-Turbo",
+            "label": "Llama 3.1 8B Turbo (fast)",
+        },
+    ],
 }
 
 # Roles with descriptions and default preference order
@@ -451,101 +1229,332 @@ _ROLES: list[tuple[str, str, list[str]]] = [
     (
         "casual",
         "Casual chat — fast, everyday",
-        ["gemini", "openai", "github_copilot", "groq", "anthropic"],
+        [
+            "google_antigravity",
+            "claude_cli",
+            "gemini",
+            "openai",
+            "github_copilot",
+            "groq",
+            "nvidia_nim",
+            "anthropic",
+        ],
     ),
-    ("code", "Code generation & debugging", ["anthropic", "openai", "github_copilot", "groq"]),
-    ("analysis", "Analysis & deep research", ["gemini", "openai", "github_copilot", "anthropic"]),
-    ("review", "Code review & critique", ["anthropic", "openai", "github_copilot", "gemini"]),
-    ("kg", "Knowledge Graph extraction (background, always Gemini free tier)", ["gemini"]),
+    (
+        "code",
+        "Code generation & debugging",
+        [
+            "claude_cli",
+            "anthropic",
+            "openai_codex",
+            "openai",
+            "github_copilot",
+            "nvidia_nim",
+            "groq",
+        ],
+    ),
+    (
+        "analysis",
+        "Analysis & deep research",
+        [
+            "claude_cli",
+            "google_antigravity",
+            "openai_codex",
+            "gemini",
+            "openai",
+            "github_copilot",
+            "anthropic",
+            "nvidia_nim",
+        ],
+    ),
+    (
+        "review",
+        "Code review & critique",
+        [
+            "claude_cli",
+            "anthropic",
+            "openai_codex",
+            "openai",
+            "github_copilot",
+            "google_antigravity",
+            "gemini",
+            "nvidia_nim",
+        ],
+    ),
+    (
+        "kg",
+        "Knowledge Graph extraction (background, Gemini free tier recommended)",
+        ["google_antigravity", "gemini"],
+    ),
 ]
 
 
 def _auto_pick(providers: list[str], prefs: list[str], models_map: dict) -> str | None:
-    """Return the first available model for the first matching provider."""
+    """Return the first available model for the first matching provider (strict — no fallback)."""
     for prov in prefs:
         if prov in providers and prov in models_map:
             return models_map[prov][0]["value"]
     return None
 
 
+def _auto_pick_with_fallback(
+    providers: list[str], prefs: list[str], models_map: dict
+) -> str | None:
+    """Pick the best model from prefs; fall back to the user's first selected provider's
+    first known model if no pref matches.
+
+    This guarantees every role gets a model as long as the user picked at least one
+    provider with a known catalog.
+    """
+    picked = _auto_pick(providers, prefs, models_map)
+    if picked is not None:
+        return picked
+    # Fallback: first selected provider that has a known catalog
+    for prov in providers:
+        if prov in models_map and models_map[prov]:
+            return models_map[prov][0]["value"]
+    return None
+
+
 def _build_model_mappings(providers: list[str]) -> dict:
-    """Generate sensible model_mappings automatically (QuickStart / non-interactive)."""
+    """Generate sensible model_mappings automatically (QuickStart / non-interactive).
+
+    Every role gets a model via `_auto_pick_with_fallback` when the user's providers have
+    known catalogs. The KG role prefers Gemini (free tier, background quota friendly)
+    but falls back to the user's primary provider when Gemini is absent — the memory
+    engine still builds, just consumes the primary provider's quota.
+    """
     mappings: dict = {}
     for role, _desc, prefs in _ROLES:
         if role == "kg":
-            continue  # handled below — always Gemini Flash-Lite
-        model = _auto_pick(providers, prefs, _KNOWN_MODELS)
+            continue  # handled below with provider-specific logic
+        model = _auto_pick_with_fallback(providers, prefs, _KNOWN_MODELS)
         if model:
             mappings[role] = {"model": model, "fallback": None}
 
-    # vault: always ollama (local-only by design)
+    # vault: always ollama (local-only by design, enforces zero cloud leakage for spicy)
     if "ollama" in providers:
         mappings["vault"] = {"model": "ollama_chat/llama3.3", "fallback": None}
 
-    # kg: always Gemini Flash-Lite (free tier, 1000 req/day)
-    # This is independent of the user's chat provider choice.
+    # kg: Gemini Flash-Lite preferred (free tier, 1000 req/day) — falls back to user's
+    # primary provider when Gemini isn't configured. Memory engine needs *some* LLM.
     if "gemini" in providers:
         mappings["kg"] = {
             "model": "gemini/gemini-2.5-flash-lite",
             "fallback": "gemini/gemini-2.5-flash",
         }
+    else:
+        kg_fallback = _auto_pick_with_fallback(
+            providers, ["groq", "openai", "github_copilot", "nvidia_nim", "anthropic"], _KNOWN_MODELS
+        )
+        if kg_fallback:
+            mappings["kg"] = {"model": kg_fallback, "fallback": None}
 
     return mappings
 
 
-def _build_model_mappings_interactive(providers: list[str], prompter: "object") -> dict:
-    """Let the user pick a model for each role from their configured providers."""
-    # Build choices from all configured providers
-    available: list = []
-    try:
-        import questionary  # noqa: PLC0415
+def _count_available_models(providers: list[str]) -> int:
+    """Total number of known models across the user's selected providers."""
+    return sum(len(_KNOWN_MODELS.get(p, [])) for p in providers)
 
-        for prov in providers:
-            models = _KNOWN_MODELS.get(prov)
-            if not models:
-                continue
-            available.append(questionary.Separator(f"--- {prov} ---"))
-            for m in models:
-                available.append(questionary.Choice(m["label"], value=m["value"]))
-    except ImportError:
-        # No questionary — flat list of values
-        for prov in providers:
-            for m in _KNOWN_MODELS.get(prov, []):
-                available.append(m["value"])
 
-    if not available:
-        _print("[yellow]No known models for selected providers. Using defaults.[/]")
-        return _build_model_mappings(providers)
+def _print_mapping_summary(mappings: dict) -> None:
+    """Render the final role→model assignment as a Rich table (or plain list)."""
+    if not mappings:
+        _print("[yellow]No model_mappings generated. Edit synapse.json manually.[/]")
+        return
+
+    if _RICH_AVAILABLE and Table is not None and console is not None:
+        tbl = Table(title="Model Mappings", show_header=True, header_style="bold cyan")
+        tbl.add_column("Role", style="bold")
+        tbl.add_column("Model")
+        tbl.add_column("Fallback", style="dim")
+        for role, cfg in mappings.items():
+            tbl.add_row(role, cfg.get("model", "—"), cfg.get("fallback") or "—")
+        console.print(tbl)
+    else:
+        _print("\n[bold cyan]Model Mappings:[/]")
+        for role, cfg in mappings.items():
+            fb = cfg.get("fallback")
+            fb_str = f"  (fallback: {fb})" if fb else ""
+            _print(f"  {role:10s}  →  {cfg.get('model', '—')}{fb_str}")
+
+
+def _build_model_mappings_interactive(
+    providers: list[str], prompter: "object", config: dict
+) -> dict:
+    """Openclaw-style role picker backed by live /models catalogs.
+
+    UX contract:
+      1. Hit each provider's /models API with the user's key; fall back to
+         _KNOWN_MODELS only when the API is unreachable.
+      2. Present a single unified flat list of `provider/model` entries, each
+         annotated with a hint (ctx window + capability flags like `reasoning`).
+      3. When the catalog has >30 models AND >1 provider, ask the user to
+         optionally narrow to one provider before each role pick.
+      4. Use a searchable fuzzy picker (InquirerPy.fuzzy or questionary.autocomplete)
+         so the user types to filter. Always include an `[Enter model manually]`
+         escape hatch for models not in the catalog.
+      5. No pre-selected defaults. Even a single discovered model still goes
+         through the picker so the manual-entry escape hatch is available.
+         `vault` role is forced to Ollama.
+    """
+    _print("\n[bold cyan]--- Fetching available models from providers ---[/]")
+    catalog = _fetch_live_catalog(providers, config)
+    flat = _flatten_catalog(catalog)
+
+    if not flat:
+        _print(
+            "\n[yellow]No models available for your providers. "
+            "Edit synapse.json → model_mappings manually.[/]"
+        )
+        return {}
 
     _print("\n[bold cyan]--- Model Selection ---[/]")
-    _print("Choose a model for each role. You can use the same model for multiple roles.\n")
+    _print(
+        f"Type to search. {len(flat)} models across {len(catalog)} providers. "
+        "No defaults — pick every role explicitly.\n"
+    )
 
-    mappings: dict = {}
-    for role, desc, prefs in _ROLES:
-        if role == "kg":
-            continue  # handled below — always Gemini Flash-Lite
-        default = _auto_pick(providers, prefs, _KNOWN_MODELS)
-        selected = prompter.select(  # type: ignore[attr-defined]
-            f"{role} ({desc}):",
-            choices=available,
-            default=default,
-        )
+    # Optional provider-filter step (shown once when the catalog is large).
+    active_provider: str = _prompt_provider_filter(flat, prompter)
+    filtered = (
+        flat if active_provider == "*" else [m for m in flat if m.get("provider") == active_provider]
+    )
+
+    mappings = {}
+    for role, desc, _prefs in _ROLES:
+        selected = _pick_model_fuzzy(role, desc, filtered, prompter)
+        if not selected:
+            # Manual entry returned blank — keep prompting for this role.
+            _print(f"  [yellow]![/] {role}: empty entry, try again.")
+            selected = _pick_model_fuzzy(role, desc, filtered, prompter)
         mappings[role] = {"model": selected, "fallback": None}
 
-    # vault: always ollama (local-only by design)
+    # vault: always ollama (local-only by design — architectural invariant)
     if "ollama" in providers:
         mappings["vault"] = {"model": "ollama_chat/llama3.3", "fallback": None}
 
-    # kg: always Gemini Flash-Lite (free tier, 1000 req/day)
-    # Not user-configurable — memory engine runs on Gemini regardless of chat provider.
-    if "gemini" in providers:
-        mappings["kg"] = {
-            "model": "gemini/gemini-2.5-flash-lite",
-            "fallback": "gemini/gemini-2.5-flash",
-        }
-        _print("[dim]   KG role auto-set to Gemini 2.5 Flash-Lite (free tier)[/]")
-
+    _print_mapping_summary(mappings)
     return mappings
+
+
+# ---------------------------------------------------------------------------
+# Embedding prefetch — avoid surprise ~274 MB download on first memory query
+# ---------------------------------------------------------------------------
+
+
+def _prefetch_embedding_models(providers: list[str]) -> None:
+    """Warm the embedding stack so the user doesn't wait on first chat.
+
+    Steps:
+      1. Instantiate FastEmbed to trigger ONNX model download (~274 MB CPU / ~550 MB GPU).
+         This is the active runtime provider (see sci_fi_dashboard/embedding/factory.py).
+      2. If Ollama is among the user's selected providers AND reachable, also pull
+         `nomic-embed-text` via Ollama. Useful for users who want a fully-local backup
+         embedding path or plan to run vLLM + Ollama mixed.
+
+    Both steps are best-effort. Failure here is non-fatal — runtime will auto-download
+    on first use if we can't prefetch now.
+    """
+    _print("\n[bold cyan]--- Embedding Model Prefetch ---[/]")
+
+    # --- Step 1: FastEmbed (primary runtime provider) ---
+    try:
+        from sci_fi_dashboard.embedding.factory import (  # noqa: PLC0415
+            create_provider,
+            reset_provider,
+        )
+
+        if _RICH_AVAILABLE and console is not None:
+            with console.status(
+                "[yellow]Downloading FastEmbed model "
+                "(nomic-embed-text-v1.5, ~274 MB — one-time)...[/]",
+                spinner="dots",
+            ):
+                reset_provider()
+                prov = create_provider({"embedding": {"provider": "fastembed"}})
+                # Trigger actual download by requesting an embedding
+                prov.embed_documents(["warmup"])
+        else:
+            _print("  Downloading FastEmbed model (nomic-embed-text-v1.5, ~274 MB)...")
+            reset_provider()
+            prov = create_provider({"embedding": {"provider": "fastembed"}})
+            prov.embed_documents(["warmup"])
+
+        _print("  [green]✓[/] FastEmbed model cached — first chat will be instant.")
+    except ImportError:
+        _print(
+            "  [yellow]![/] fastembed not installed — embeddings will auto-download "
+            "on first memory query (~274 MB). Run: pip install fastembed"
+        )
+    except Exception as exc:  # noqa: BLE001
+        _print(
+            f"  [yellow]![/] FastEmbed prefetch failed (non-fatal): {exc}\n"
+            "  Runtime will download on first use."
+        )
+
+    # --- Step 2: Ollama nomic-embed-text (optional, only if user picked Ollama) ---
+    if "ollama" not in providers:
+        return
+
+    try:
+        from cli.provider_steps import validate_ollama  # noqa: PLC0415
+    except ImportError:
+        return
+
+    # Read ollama api_base from config-in-progress (caller passes it in env-agnostic way);
+    # default to localhost which matches validate_ollama's default.
+    api_base = "http://localhost:11434"
+    health = validate_ollama(api_base)
+    if not health.ok:
+        _print(
+            "  [yellow]![/] Ollama not reachable — skipping nomic-embed-text pull. "
+            "Start Ollama and run: ollama pull nomic-embed-text"
+        )
+        return
+
+    import subprocess  # noqa: PLC0415
+
+    ollama_bin = shutil.which("ollama")
+    if not ollama_bin:
+        _print("  [yellow]![/] `ollama` binary not in PATH — skipping Ollama embed pull.")
+        return
+
+    try:
+        if _RICH_AVAILABLE and console is not None:
+            with console.status(
+                "[yellow]Pulling nomic-embed-text via Ollama (offline fallback)...[/]",
+                spinner="dots",
+            ):
+                result = subprocess.run(
+                    [ollama_bin, "pull", "nomic-embed-text"],
+                    capture_output=True,
+                    text=True,
+                    timeout=600,
+                    check=False,
+                )
+        else:
+            _print("  Pulling nomic-embed-text via Ollama...")
+            result = subprocess.run(
+                [ollama_bin, "pull", "nomic-embed-text"],
+                capture_output=True,
+                text=True,
+                timeout=600,
+                check=False,
+            )
+
+        if result.returncode == 0:
+            _print("  [green]✓[/] Ollama nomic-embed-text ready (offline fallback available).")
+        else:
+            _print(
+                f"  [yellow]![/] Ollama pull returned {result.returncode}: "
+                f"{result.stderr.strip()[:200] if result.stderr else 'no detail'}"
+            )
+    except subprocess.TimeoutExpired:
+        _print("  [yellow]![/] Ollama pull timed out after 10 min — try again manually.")
+    except Exception as exc:  # noqa: BLE001
+        _print(f"  [yellow]![/] Ollama pull failed (non-fatal): {exc}")
 
 
 # ---------------------------------------------------------------------------
@@ -691,12 +1700,13 @@ def _run_advanced_flow(
         import questionary  # noqa: PLC0415
 
         channel_choices = [
+            questionary.Choice("WhatsApp (QR pairing)", value="whatsapp"),
             questionary.Choice("Telegram (bot token)", value="telegram"),
             questionary.Choice("Discord (bot token + MESSAGE_CONTENT intent)", value="discord"),
             questionary.Choice("Slack (xoxb- + xapp- tokens)", value="slack"),
         ]
     except ImportError:
-        channel_choices = ["telegram", "discord", "slack"]
+        channel_choices = ["whatsapp", "telegram", "discord", "slack"]
 
     selected_channels = prompter.multiselect(  # type: ignore[attr-defined]
         "Select additional channels to configure (optional — can be added later):",
@@ -736,6 +1746,56 @@ def _collect_provider_keys(
                 config["providers"]["github_copilot"] = {"token": token}
             else:
                 _print("[yellow]  Skipping GitHub Copilot (auth failed or timed out).[/]")
+            continue
+
+        # OpenAI Codex (ChatGPT subscription) — OAuth device flow, no API key.
+        if provider == "openai_codex":
+            while True:
+                metadata = asyncio.run(openai_codex_device_flow(console))
+                if metadata:
+                    config["providers"]["openai_codex"] = {
+                        "oauth_email": metadata.get("email") or "",
+                        "profile_name": metadata.get("profile_name") or "",
+                        "account_id": metadata.get("account_id") or "",
+                    }
+                    break
+                retry = prompter.confirm(  # type: ignore[attr-defined]
+                    "OpenAI Codex authorization incomplete. Retry device auth now?",
+                    default=True,
+                )
+                if retry:
+                    continue
+                _print("[yellow]  Skipping OpenAI Codex (authorization incomplete).[/]")
+                break
+            continue
+
+        # Claude Code CLI — no API key, no OAuth from Synapse. Synapse just
+        # spawns the local ``claude`` binary headlessly and lets Claude Code
+        # handle subscription auth. We only verify the binary exists.
+        if provider == "claude_cli":
+            metadata = claude_cli_setup(console)
+            if metadata:
+                config["providers"]["claude_cli"] = {
+                    "binary_path": metadata.get("binary_path") or "claude",
+                }
+            else:
+                _print("[yellow]  Skipping Claude CLI (binary missing or declined).[/]")
+            continue
+
+        # Google Antigravity — PKCE OAuth + localhost callback. Tokens are
+        # written to ~/.synapse/state/google-oauth.json; synapse.json only
+        # records the email/project metadata so other code can detect the
+        # provider is configured.
+        if provider == "google_antigravity":
+            metadata = asyncio.run(google_antigravity_oauth_flow(console))
+            if metadata:
+                config["providers"]["google_antigravity"] = {
+                    "oauth_email": metadata.get("email") or "",
+                    "project_id": metadata.get("project_id") or "",
+                    "tier": metadata.get("tier") or "",
+                }
+            else:
+                _print("[yellow]  Skipping Google Antigravity (auth failed or declined).[/]")
             continue
 
         # Ollama — api_base + httpx health check
@@ -817,9 +1877,8 @@ def _collect_provider_keys(
                     result = validate_provider("bedrock", aws_key)
             else:
                 result = validate_provider("bedrock", aws_key)
-            if result.ok or result.error == "quota_exceeded":
-                quota_note = " (quota exceeded — key accepted)" if result.error else ""
-                _print(f"  [green]Bedrock credentials valid[/]{quota_note}")
+            if result.ok:
+                _print("  [green]Bedrock credentials valid[/]")
                 config["providers"]["bedrock"] = {
                     "aws_access_key_id": aws_key,
                     "aws_secret_access_key": aws_secret,
@@ -884,9 +1943,8 @@ def _collect_provider_keys(
                     result = validate_provider("vertex_ai", project_id)
             else:
                 result = validate_provider("vertex_ai", project_id)
-            if result.ok or result.error == "quota_exceeded":
-                quota_note = " (quota exceeded — key accepted)" if result.error else ""
-                _print(f"  [green]Vertex AI credentials valid[/]{quota_note}")
+            if result.ok:
+                _print("  [green]Vertex AI credentials valid[/]")
                 config["providers"]["vertex_ai"] = {
                     "project_id": project_id,
                     "location": location,
@@ -894,6 +1952,38 @@ def _collect_provider_keys(
                 }
             else:
                 _print(f"  [red]Vertex AI validation failed: {result.error}[/]")
+            continue
+
+        # Baidu Qianfan — litellm needs both QIANFAN_AK and QIANFAN_SK.
+        if provider == "qianfan":
+            access_key = prompter.text("Qianfan Access Key [QIANFAN_AK]:", password=True)  # type: ignore[attr-defined]
+            secret_key = prompter.text("Qianfan Secret Key [QIANFAN_SK]:", password=True)  # type: ignore[attr-defined]
+            if not all([access_key, secret_key]):
+                continue
+            old_secret = os.environ.get("QIANFAN_SK")
+            os.environ["QIANFAN_SK"] = secret_key.strip()
+            try:
+                if _RICH_AVAILABLE and console is not None:
+                    with console.status("[yellow]Validating qianfan credentials...[/]"):
+                        result = validate_provider("qianfan", access_key.strip())
+                else:
+                    result = validate_provider("qianfan", access_key.strip())
+            finally:
+                if old_secret is None:
+                    os.environ.pop("QIANFAN_SK", None)
+                else:
+                    os.environ["QIANFAN_SK"] = old_secret
+            if result.ok:
+                _print("  [green]checkmark[/] qianfan credentials valid")
+                config["providers"]["qianfan"] = {
+                    "api_key": access_key.strip(),
+                    "access_key": access_key.strip(),
+                    "secret_key": secret_key.strip(),
+                }
+            elif result.error == "quota_exceeded":
+                _print("  [red]x[/] qianfan quota exhausted — not saving unusable credentials.")
+            else:
+                _print(f"  [red]x[/] qianfan: {result.error} — {result.detail or 'check key'}")
             continue
 
         # Standard cloud provider: password prompt + validate_provider()
@@ -916,16 +2006,16 @@ def _collect_provider_keys(
                 result = validate_provider(provider, key.strip())
 
             if result.ok:
-                quota_note = (
-                    " (quota exceeded — key accepted)" if result.error == "quota_exceeded" else ""
-                )
-                _print(f"  [green]checkmark[/] {provider} key valid{quota_note}")
+                _print(f"  [green]checkmark[/] {provider} key valid")
                 config["providers"][provider] = {"api_key": key.strip()}
                 break
             elif result.error == "quota_exceeded":
-                _print("  [yellow]  Key valid but quota exhausted — saving key.[/]")
-                config["providers"][provider] = {"api_key": key.strip()}
-                break
+                _print(
+                    "  [red]x[/] "
+                    f"{provider}: quota/rate limit exceeded on validation model — "
+                    "not saving an unusable provider. Check AI Studio quotas/billing "
+                    "or try a different key/project."
+                )
             elif result.error in ("timeout", "network_error") and attempt < MAX_KEY_ATTEMPTS - 1:
                 _print(f"  [yellow]  {result.error} — retrying in {NETWORK_RETRY_DELAY}s...[/]")
                 time.sleep(NETWORK_RETRY_DELAY)
@@ -944,11 +2034,13 @@ def _run_sbs_questions(prompter: "object", data_root: Path) -> None:
     Called at the end of _run_interactive_impl(), after config is written
     but before the daemon install step. Failure here must never crash the wizard.
 
-    Asks 4 targeted questions:
+    Asks targeted questions:
       1. Communication style preference
       2. Energy / mood level
       3. Topic interests (multi-select)
       4. Privacy sensitivity
+      5. Region / locality / preferred language
+      6. Optional local-language examples
 
     Then offers an optional WhatsApp history import.
     """
@@ -999,12 +2091,40 @@ def _run_sbs_questions(prompter: "object", data_root: Path) -> None:
         default="Selective - use judgment",
     )
 
+    # --- Q5: Region and language preference ---
+    region = prompter.text(  # type: ignore[attr-defined]
+        "What country or region should Synapse associate with your language/culture?",
+        default="",
+    ).strip()
+    locality = prompter.text(  # type: ignore[attr-defined]
+        "Any city, state, community, or locality Synapse should know? (optional)",
+        default="",
+    ).strip()
+    preferred_language = prompter.text(  # type: ignore[attr-defined]
+        "What language or language mix should Synapse use by default?",
+        default="English",
+    ).strip() or "English"
+    teach_local_language = prompter.confirm(  # type: ignore[attr-defined]
+        "Should Synapse ask you for examples when it is unsure about your local language or dialect?",
+        default=True,
+    )
+    example_text = prompter.text(  # type: ignore[attr-defined]
+        "Optional: teach one or two local phrases now (separate examples with |)",
+        default="",
+    ).strip()
+    local_examples = [item.strip() for item in example_text.split("|") if item.strip()]
+
     # --- Map display values to internal values ---
     answers = {
         "communication_style": STYLE_DISPLAY_MAP.get(style_display, "casual_and_witty"),
         "energy_level": ENERGY_DISPLAY_MAP.get(energy_display, "calm_and_steady"),
         "interests": [topic.lower() for topic in (interest_displays or [])],
         "privacy_level": PRIVACY_DISPLAY_MAP.get(privacy_display, "selective"),
+        "preferred_language": preferred_language,
+        "region": region,
+        "locality": locality,
+        "local_language_examples": local_examples,
+        "ask_user_to_teach_language": teach_local_language,
     }
 
     # --- Write profile layers ---
@@ -1051,6 +2171,7 @@ def _run_interactive(  # noqa: C901 — linear wizard, complexity is intentional
     prompter: "object | None" = None,
     flow: str = "quickstart",
     reset: str | None = None,
+    launch_chat: bool | None = None,
 ) -> None:
     """Full interactive wizard flow.
 
@@ -1083,7 +2204,12 @@ def _run_interactive(  # noqa: C901 — linear wizard, complexity is intentional
             prompter = QuestionaryPrompter()
 
     try:
-        _run_interactive_impl(prompter=prompter, flow=flow, reset=reset)
+        _run_interactive_impl(
+            prompter=prompter,
+            flow=flow,
+            reset=reset,
+            launch_chat=launch_chat,
+        )
     except WizardCancelledError:
         _print("[yellow]Wizard cancelled.[/]")
         raise typer.Exit(1) from None
@@ -1093,6 +2219,7 @@ def _run_interactive_impl(
     prompter: "object",
     flow: str,
     reset: str | None,
+    launch_chat: bool | None,
 ) -> None:  # noqa: C901 — linear wizard, complexity is intentional
     """Inner implementation of the interactive wizard (separated for exception isolation)."""
     # --- Step 1: Welcome banner ---
@@ -1105,6 +2232,7 @@ def _run_interactive_impl(
     # --- Handle reset ---
     if reset is not None:
         _handle_reset(reset, data_root)
+    existing_config = {} if reset is not None else _load_existing_config(data_root)
 
     # --- Step 2: Check for existing config ---
     config_path = data_root / "synapse.json"
@@ -1134,61 +2262,64 @@ def _run_interactive_impl(
         "providers": {},
         "model_mappings": {},
         "channels": {},
-        "session": {"dmScope": _ONBOARDING_DEFAULT_DM_SCOPE, "identityLinks": {}},
+        "session": {
+            "dmScope": _ONBOARDING_DEFAULT_DM_SCOPE,
+            "identityLinks": {},
+            "dual_cognition_enabled": True,
+            "dual_cognition_timeout": 10.0,
+            "dual_cognition_cloud_mode": "deep_only",
+            "dual_cognition_foreground_max_llm_calls": 1,
+        },
     }
+    _preserve_runtime_config(config, existing_config)
     selected_channels: list = []
 
     if flow == "quickstart":
         _run_quickstart_flow(prompter=prompter, config=config, data_root=data_root)
-        # QuickStart: no channel prompt (user can add later)
+        if prompter.confirm(  # type: ignore[attr-defined]
+            "Configure WhatsApp now? You can skip this and use CLI chat.", default=False
+        ):
+            selected_channels = ["whatsapp"]
     else:
         selected_channels, workspace_dir = _run_advanced_flow(
             prompter=prompter, config=config, data_root=data_root
         )
 
-    # --- Step 7: Per-channel setup (ONB-05, ONB-06) ---
-    _this_file = Path(__file__).resolve()
-    bridge_dir = _this_file.parent.parent.parent / "baileys-bridge"
-    if not bridge_dir.exists():
-        bridge_dir = _this_file.parent.parent / "baileys-bridge"
+    # --- Step 7: Optional channel setup (ONB-05, ONB-06) ---
+    bridge_dir = _resolve_whatsapp_bridge_dir()
 
-    # --- Step 7a: WhatsApp (mandatory) ---
-    from cli.channel_steps import NodeJsMissingError  # noqa: PLC0415
+    if "whatsapp" in selected_channels:
+        from cli.channel_steps import NodeJsMissingError  # noqa: PLC0415
 
-    _print("\n[bold cyan]--- WhatsApp (required) ---[/]")
-    _MAX_WA_RETRIES = 3  # noqa: N806
-    _wa_paired = False
-    for _attempt in range(1, _MAX_WA_RETRIES + 1):
-        try:
-            wa_cfg = setup_whatsapp(bridge_dir, non_interactive=False)
-        except NodeJsMissingError as exc:
-            _print(f"\n[red bold]{exc}[/]")
-            raise typer.Exit(1) from None
+        _print("\n[bold cyan]--- WhatsApp ---[/]")
+        _MAX_WA_RETRIES = 3  # noqa: N806
+        for _attempt in range(1, _MAX_WA_RETRIES + 1):
+            try:
+                wa_cfg = setup_whatsapp(bridge_dir, non_interactive=False)
+            except NodeJsMissingError as exc:
+                _print(f"\n[red bold]{exc}[/]")
+                raise typer.Exit(1) from None
 
-        if wa_cfg is not None:
-            config["channels"]["whatsapp"] = wa_cfg
-            _wa_paired = True
-            break
-
-        if _attempt < _MAX_WA_RETRIES:
-            _retry = prompter.confirm(  # type: ignore[attr-defined]
-                f"WhatsApp pairing failed (attempt {_attempt}/{_MAX_WA_RETRIES}). Retry?",
-                default=True,
-            )
-            if not _retry:
+            if wa_cfg is not None:
+                config["channels"]["whatsapp"] = wa_cfg
                 break
 
-    if not _wa_paired:
-        _print("[red bold]WhatsApp is required for Synapse to work. Cannot continue.[/]")
-        raise typer.Exit(1)
+            if _attempt < _MAX_WA_RETRIES:
+                _retry = prompter.confirm(  # type: ignore[attr-defined]
+                    f"WhatsApp pairing failed (attempt {_attempt}/{_MAX_WA_RETRIES}). Retry?",
+                    default=True,
+                )
+                if not _retry:
+                    break
 
-    # --- Step 7b: Optional channels ---
     channel_config_map = {
         "telegram": lambda: setup_telegram(non_interactive=False),
         "discord": lambda: setup_discord(non_interactive=False),
         "slack": lambda: setup_slack(non_interactive=False),
     }
     for ch in selected_channels or []:
+        if ch == "whatsapp":
+            continue
         ch_cfg = channel_config_map[ch]()
         if ch_cfg is not None:
             config["channels"][ch] = ch_cfg
@@ -1211,7 +2342,9 @@ def _run_interactive_impl(
     # --- Step 8: Gateway configuration ---
     from cli.gateway_steps import configure_gateway  # noqa: PLC0415
 
-    existing_gw = {}  # Fresh install — no existing gateway config
+    existing_gw = existing_config.get("gateway", {})
+    if not isinstance(existing_gw, dict):
+        existing_gw = {}
     gw_cfg = configure_gateway(
         flow=flow,
         existing_gateway=existing_gw,
@@ -1221,12 +2354,15 @@ def _run_interactive_impl(
     config["gateway"] = gw_cfg
 
     # --- Step 9: Generate model_mappings ---
-    if flow == "advanced":
-        config["model_mappings"] = _build_model_mappings_interactive(
-            list(config["providers"].keys()), prompter
-        )
-    else:
-        config["model_mappings"] = _build_model_mappings(list(config["providers"].keys()))
+    # Interactive picker always runs — user picks every role from each provider's live
+    # /models API. No pre-selected defaults regardless of flow. Headless path
+    # (_run_non_interactive) still auto-picks from env vars for CI/Docker.
+    config["model_mappings"] = _build_model_mappings_interactive(
+        list(config["providers"].keys()), prompter, config
+    )
+
+    # --- Step 9b: Prefetch embedding model (avoids surprise delay on first chat) ---
+    _prefetch_embedding_models(list(config["providers"].keys()))
 
     # --- Step 10: Write config (ONB-07) ---
     write_config(data_root, config)
@@ -1236,6 +2372,19 @@ def _run_interactive_impl(
     # SBS questions run after synapse.json is written so SynapseConfig.load()
     # inside initialize_sbs_from_wizard() resolves the correct profile path.
     _run_sbs_questions(prompter=prompter, data_root=data_root)
+
+    # --- Step 10c: Optional integrations (Google Calendar, Gmail, ...) ---
+    integration_results: dict[str, str] = {}
+    try:
+        from cli.integration_steps import setup_integrations_wizard  # noqa: PLC0415
+
+        integration_results = setup_integrations_wizard(
+            prompter,
+            data_root=data_root,
+            config=config,
+        )
+    except Exception as exc:  # noqa: BLE001
+        _print(f"[yellow]Integrations step skipped ({exc}); continuing.[/]")
 
     # --- Step 11: Daemon install ---
     _wizard_daemon_install(prompter=prompter, config=config, data_root=data_root, flow=flow)
@@ -1248,12 +2397,9 @@ def _run_interactive_impl(
         with contextlib.suppress(OSError):
             mode_str = f"\nPermissions: {oct(cfg_file.stat().st_mode & 0o777)}"
 
-    summary = (
-        f"[bold green]Setup complete![/]\n\n"
-        f"Config: {cfg_file}{mode_str}\n"
-        f"Providers: {', '.join(config['providers'].keys()) or '(none)'}\n"
-        f"Channels: {', '.join(config['channels'].keys()) or '(none)'}"
-    )
+    summary = _format_ready_summary(config, cfg_file)
+    if mode_str:
+        summary = f"{summary}{mode_str}"
 
     if _RICH_AVAILABLE and Panel is not None and console is not None:
         console.print(Panel(summary, title="Synapse-OSS Ready", expand=False))
@@ -1262,6 +2408,32 @@ def _run_interactive_impl(
 
     # --- Step 13: Environment validation ---
     _validate_environment(config)
+
+    from cli.post_onboard_launch import should_offer_cli_chat  # noqa: PLC0415
+
+    if should_offer_cli_chat(non_interactive=False, launch_chat=launch_chat):
+        start_now = prompter.confirm(  # type: ignore[attr-defined]
+            "Start local CLI chat now?", default=True
+        )
+        if start_now:
+            from cli.chat_loop import run_cli_chat  # noqa: PLC0415
+            from cli.post_onboard_launch import (  # noqa: PLC0415
+                build_post_onboard_chat_options,
+            )
+
+            port = int((config.get("gateway") or {}).get("port") or 8000)
+            options = build_post_onboard_chat_options(
+                workspace_dir=workspace_dir,
+                port=port,
+            )
+            code = run_cli_chat(options)
+            _raise_for_chat_exit_code(code)
+
+
+def _resolve_whatsapp_bridge_dir() -> Path:
+    from cli.install_home import baileys_bridge_dir
+
+    return baileys_bridge_dir()
 
 
 # ---------------------------------------------------------------------------
@@ -1309,21 +2481,16 @@ def _validate_environment(config: dict) -> None:
         _print("  [green]✓[/] python-magic: OK")
     except ImportError:
         _print("  [yellow]![/] python-magic: not installed (media MIME detection degraded)")
-        if sys.platform == "win32":
-            issues.append("  Fix: pip install python-magic-bin")
-        else:
-            issues.append("  Fix: pip install python-magic")
+        _print(
+            "  [dim]Optional: install python-magic-bin on Windows or python-magic elsewhere "
+            "for stronger MIME detection.[/]"
+        )
     except Exception as exc:  # noqa: BLE001
         _print(f"  [yellow]![/] python-magic: import error ({exc})")
-        if sys.platform == "win32":
-            issues.append(
-                "  Fix: pip install python-magic-bin  (Windows requires the -bin variant)"
-            )
-        else:
-            issues.append(
-                "  Fix: pip install python-magic"
-                "  (may also need: brew install libmagic  OR  apt install libmagic1)"
-            )
+        _print(
+            "  [dim]Optional: reinstall python-magic-bin on Windows or python-magic "
+            "elsewhere if media MIME detection matters.[/]"
+        )
 
     # --- Check 3: channel SDKs for configured channels ---
     _channel_sdk_map: dict[str, tuple[str, str]] = {

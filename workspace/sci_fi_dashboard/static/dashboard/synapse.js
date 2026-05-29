@@ -164,11 +164,6 @@ class SSEClient {
       this._handlers[type] = [];
     }
     this._handlers[type].push(handler);
-
-    // If source already exists, attach the listener immediately
-    if (this._source) {
-      this._source.addEventListener(type, (e) => this._dispatch(type, e));
-    }
   }
 
   _openSource() {

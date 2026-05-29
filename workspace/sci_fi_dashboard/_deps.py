@@ -87,13 +87,16 @@ except ImportError:
 skill_registry: "_SkillRegistry | None" = None
 skill_router: "_SkillRouter | None" = None
 skill_watcher: "_SkillWatcher | None" = None
+cron_service = None
 
 # ---------------------------------------------------------------------------
 # Tool execution loop constants
 # ---------------------------------------------------------------------------
-MAX_TOOL_ROUNDS = 5
+MAX_TOOL_ROUNDS = 12  # bumped from 5 — Jarvis-like chains need 8-10 steps
 TOOL_RESULT_MAX_CHARS = 4000
 MAX_TOTAL_TOOL_RESULT_CHARS = 20_000
+TOOL_LOOP_WALL_CLOCK_S = 180.0  # hard timeout on full agent loop
+TOOL_LOOP_TOKEN_RATIO_ABORT = 0.8  # abort if cumulative tokens > 80% of model context
 
 _tool_logger = logging.getLogger(__name__ + ".tools")
 
@@ -120,12 +123,12 @@ conversation_cache = ConversationCache(max_entries=200, ttl_s=300)
 # ---------------------------------------------------------------------------
 # Async Gateway Components
 # ---------------------------------------------------------------------------
-from channels.registry import ChannelRegistry  # noqa: E402
-from channels.stub import StubChannel  # noqa: E402
-from channels.whatsapp import WhatsAppChannel  # noqa: E402
-from gateway.dedup import MessageDeduplicator  # noqa: E402
-from gateway.flood import FloodGate  # noqa: E402
-from gateway.queue import TaskQueue  # noqa: E402
+from sci_fi_dashboard.channels.registry import ChannelRegistry  # noqa: E402
+from sci_fi_dashboard.channels.stub import StubChannel  # noqa: E402
+from sci_fi_dashboard.channels.whatsapp import WhatsAppChannel  # noqa: E402
+from sci_fi_dashboard.gateway.dedup import MessageDeduplicator  # noqa: E402
+from sci_fi_dashboard.gateway.flood import FloodGate  # noqa: E402
+from sci_fi_dashboard.gateway.queue import TaskQueue  # noqa: E402
 
 task_queue = TaskQueue(max_size=100)
 dedup = MessageDeduplicator(window_seconds=300)
@@ -157,7 +160,22 @@ init_sentinel(project_root=Path(__file__).parent)
 # ---------------------------------------------------------------------------
 from synapse_config import SynapseConfig as _SbsConfig  # noqa: E402
 
-SBS_DATA_DIR = str(_SbsConfig.load().sbs_dir)
+def _resolve_sbs_data_dir() -> str:
+    cfg = _SbsConfig.load()
+    sbs_dir = getattr(cfg, "sbs_dir", None)
+    if isinstance(sbs_dir, str | Path):
+        return str(sbs_dir)
+
+    # Tests often patch SynapseConfig.load() with only db_dir + kg config.
+    # Derive the normal path from db_dir so _deps import stays side-effect safe.
+    db_dir = getattr(cfg, "db_dir", None)
+    if db_dir:
+        return str(Path(db_dir).parent / "sci_fi_dashboard" / "synapse_data")
+
+    return str(Path.home() / ".synapse" / "workspace" / "sci_fi_dashboard" / "synapse_data")
+
+
+SBS_DATA_DIR = _resolve_sbs_data_dir()
 os.makedirs(SBS_DATA_DIR, exist_ok=True)
 
 
@@ -203,9 +221,22 @@ sbs_registry: dict[str, SBSOrchestrator] = {
 }
 
 
-def _check_rate_limit(request: "Request | None" = None) -> None:  # noqa: F821
-    """Rate-limit guard (not yet implemented — pass-through)."""
-    pass
+from sci_fi_dashboard.middleware import (  # noqa: E402, F401
+    BodySizeLimitMiddleware,
+    LoopbackOnlyMiddleware,
+    _check_rate_limit,
+    _require_gateway_auth,
+    validate_api_key,
+    validate_bridge_token,
+)
+from sci_fi_dashboard.schemas import (  # noqa: E402, F401
+    ChatRequest,
+    MemoryItem,
+    OpenAIRequest,
+    QueryItem,
+    WhatsAppEnqueueRequest,
+    WhatsAppLoopTestRequest,
+)
 
 
 def _resolve_target(raw_target: str) -> str:
@@ -233,15 +264,102 @@ load_env_file(anchor=Path(__file__))
 # references module-level helpers (_port_open, SynapseConfig) defined there.
 # The gateway itself calls validate_env() before creating the router.
 
-from synapse_config import SynapseConfig  # noqa: E402
+from synapse_config import (  # noqa: E402
+    KGExtractionConfig,
+    SBSConfig,
+    SessionAutoFlushConfig,
+    SynapseConfig,
+)
 
 from sci_fi_dashboard.llm_router import SynapseLLMRouter  # noqa: E402
 
 _synapse_cfg = SynapseConfig.load()
-synapse_llm_router = SynapseLLMRouter(_synapse_cfg)
+
+
+def _fallback_data_root_from_db_dir(cfg) -> Path:
+    db_dir = getattr(cfg, "db_dir", None)
+    if db_dir:
+        db_path = Path(db_dir)
+        if db_path.name == "db" and db_path.parent.name == "workspace":
+            return db_path.parent.parent
+        return db_path.parent
+    return Path.home() / ".synapse"
+
+
+if not isinstance(getattr(_synapse_cfg, "data_root", None), str | Path):
+    try:
+        setattr(_synapse_cfg, "data_root", _fallback_data_root_from_db_dir(_synapse_cfg))
+    except Exception:
+        pass
+
+if not isinstance(getattr(_synapse_cfg, "sbs_dir", None), str | Path):
+    try:
+        setattr(
+            _synapse_cfg,
+            "sbs_dir",
+            Path(getattr(_synapse_cfg, "data_root", Path.home() / ".synapse"))
+            / "workspace"
+            / "sci_fi_dashboard"
+            / "synapse_data",
+        )
+    except Exception:
+        pass
+
+for _mapping_name in ("providers", "channels", "model_mappings", "session", "mcp"):
+    if not isinstance(getattr(_synapse_cfg, _mapping_name, None), dict):
+        try:
+            setattr(_synapse_cfg, _mapping_name, {})
+        except Exception:
+            pass
+
+for _mapping_name in (
+    "embedding",
+    "vector_store",
+    "image_gen",
+    "tts",
+    "logging",
+    "reconnect_raw",
+    "heartbeat",
+    "bridge",
+):
+    if not isinstance(getattr(_synapse_cfg, _mapping_name, None), dict):
+        try:
+            setattr(_synapse_cfg, _mapping_name, {})
+        except Exception:
+            pass
+
+for _attr_name, _default_value, _expected_type in (
+    ("sbs", SBSConfig(), SBSConfig),
+    ("kg_extraction", KGExtractionConfig(), KGExtractionConfig),
+    ("session_auto_flush", SessionAutoFlushConfig(), SessionAutoFlushConfig),
+):
+    if not isinstance(getattr(_synapse_cfg, _attr_name, None), _expected_type):
+        try:
+            setattr(_synapse_cfg, _attr_name, _default_value)
+        except Exception:
+            pass
+
+
+class _UnavailableLLMRouter:
+    async def _do_call(self, *args, **kwargs):  # noqa: ANN002, ANN003
+        raise RuntimeError("SynapseLLMRouter unavailable: incomplete SynapseConfig")
+
+
+if isinstance(getattr(_synapse_cfg, "providers", None), dict) and isinstance(
+    getattr(_synapse_cfg, "model_mappings", None), dict
+):
+    synapse_llm_router = SynapseLLMRouter(_synapse_cfg)
+else:
+    synapse_llm_router = _UnavailableLLMRouter()
 
 # Module-level proactive engine reference — set in lifespan after engine starts
 _proactive_engine = None
+
+# Consent flow state — keyed by (channel_id, peer_id); populated by chat_pipeline
+pending_consents: dict = {}
+
+# ConsentProtocol singleton — optional, initialized in lifespan if SnapshotEngine available
+consent_protocol = None
 
 # ---------------------------------------------------------------------------
 # Phase 3: SubAgent System (optional — initialized in lifespan)

@@ -12,6 +12,7 @@ from .manifest import (
     CRITICAL_DIRECTORIES,
     CRITICAL_FILES,
     FORBIDDEN_OPERATIONS,
+    PROTECTED_DIRECTORIES,
     PROTECTED_FILES,
     WRITABLE_ZONES,
     ProtectionLevel,
@@ -44,6 +45,9 @@ class Sentinel:
         self._critical_abs = {(self.project_root / f).resolve() for f in CRITICAL_FILES}
         self._critical_dirs_abs = {(self.project_root / d).resolve() for d in CRITICAL_DIRECTORIES}
         self._protected_abs = {(self.project_root / f).resolve() for f in PROTECTED_FILES}
+        self._protected_dirs_abs = {
+            (self.project_root / d).resolve() for d in PROTECTED_DIRECTORIES
+        }
         self._writable_abs = {(self.project_root / z).resolve() for z in WRITABLE_ZONES}
 
         # Compute integrity hash of manifest itself (detect tampering)
@@ -256,15 +260,24 @@ class Sentinel:
             except ValueError:
                 continue
 
-        # Check PROTECTED files
+        # Check PROTECTED files (specific file list — highest priority among PROTECTED)
         if resolved in self._protected_abs:
             return ProtectionLevel.PROTECTED
 
-        # Check WRITABLE zones
+        # Check WRITABLE zones BEFORE protected directories so explicit writes
+        # (e.g. user_features/) still win against broader read-only scopes.
         for writable in self._writable_abs:
             try:
                 resolved.relative_to(writable)
                 return ProtectionLevel.MONITORED
+            except ValueError:
+                continue
+
+        # Check PROTECTED directories (read-only whole subtrees)
+        for protected_dir in self._protected_dirs_abs:
+            try:
+                resolved.relative_to(protected_dir)
+                return ProtectionLevel.PROTECTED
             except ValueError:
                 continue
 

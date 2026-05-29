@@ -4,8 +4,9 @@ import ast
 import json
 import logging
 from contextlib import suppress
+from typing import Optional
 
-from fastapi import APIRouter, BackgroundTasks, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 
 from sci_fi_dashboard import _deps as deps
 from sci_fi_dashboard.middleware import validate_api_key
@@ -14,6 +15,16 @@ from sci_fi_dashboard.schemas import MemoryItem, QueryItem
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+def _require_api_key(request: Request) -> None:
+    """FastAPI Depends shim so handlers can declare auth in their signature.
+
+    Mirrors the inline `validate_api_key(request)` pattern used by the rest
+    of this module — read-or-delete operations on memory must be gated by
+    the same gateway token.
+    """
+    validate_api_key(request)
 
 
 @router.post("/ingest")
@@ -112,3 +123,51 @@ async def query_memory(item: QueryItem, request: Request):
         "memory": memory_results,
         "graph_count": len(graph_results),
     }
+
+
+# ---------------------------------------------------------------------------
+# Memory inspector — PRODUCT_ISSUES.md §5.3
+# ---------------------------------------------------------------------------
+@router.get("/memory/list", summary="List stored memory documents (paginated)")
+async def list_memory(
+    user: str = Query(..., description="user id, e.g. the_creator"),
+    hemisphere: str = Query("safe", regex="^(safe|spicy)$"),
+    q: Optional[str] = Query(None, description="optional substring filter on doc text"),
+    limit: int = Query(50, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    _auth: None = Depends(_require_api_key),
+):
+    """Paginated read of stored memory rows.
+
+    The `user` parameter is required for forward-compat — current schema has
+    no per-user column, so results are listed across all docs in the chosen
+    hemisphere. Auth: gateway token via `x-api-key` (same as other routes
+    in this module).
+    """
+    try:
+        return deps.memory_engine.list_documents(
+            user=user, hemisphere=hemisphere, search=q, limit=limit, offset=offset
+        )
+    except Exception as e:
+        logger.exception("memory/list failed: %s", e)
+        raise HTTPException(status_code=500, detail=f"memory list failed: {e}") from e
+
+
+@router.delete("/memory/{doc_id}", summary="Delete a single memory document")
+async def delete_memory(
+    doc_id: str,
+    _auth: None = Depends(_require_api_key),
+):
+    """Delete a doc and cascade to FTS / sqlite-vec / LanceDB / KG triples.
+
+    See `MemoryEngine.delete_document` for the cascade contract and known
+    limitations (orphan KG nodes are NOT pruned here).
+    """
+    try:
+        deleted = deps.memory_engine.delete_document(doc_id)
+    except Exception as e:
+        logger.exception("memory delete failed for %s: %s", doc_id, e)
+        raise HTTPException(status_code=500, detail=f"memory delete failed: {e}") from e
+    if not deleted:
+        raise HTTPException(status_code=404, detail=f"doc not found: {doc_id}")
+    return {"ok": True, "doc_id": doc_id}

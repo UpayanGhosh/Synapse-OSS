@@ -21,6 +21,16 @@ def _make_flood_enqueue(channel_id: str):
     """
 
     async def _enqueue(channel_msg):
+        # First-contact owner auto-pairing (DMs only).
+        # Idempotent: only fills empty slots, never overwrites.
+        if not getattr(channel_msg, "is_group", False):
+            try:
+                from sci_fi_dashboard.owner_registry import register_first_contact
+
+                register_first_contact(channel_id, str(channel_msg.chat_id))
+            except Exception as _exc:  # pragma: no cover — never break inbound path
+                logger.warning("owner_registry hook failed: %s", _exc)
+
         # H-09: Generate UUID fallback if message_id is empty/None
         effective_id = channel_msg.message_id or str(uuid.uuid4())
         if deps.dedup.is_duplicate(effective_id):
@@ -48,7 +58,7 @@ def register_optional_channels():
     tg_token = ch_cfg.get("telegram", {}).get("token", "").strip()
     if tg_token:
         try:
-            from channels.telegram import TelegramChannel
+            from sci_fi_dashboard.channels.telegram import TelegramChannel
 
             tel_enqueue = _make_flood_enqueue("telegram")
             deps.channel_registry.register(TelegramChannel(token=tg_token, enqueue_fn=tel_enqueue))
@@ -68,7 +78,7 @@ def register_optional_channels():
     ds_token = ch_cfg.get("discord", {}).get("token", "").strip()
     if ds_token:
         try:
-            from channels.discord_channel import DiscordChannel
+            from sci_fi_dashboard.channels.discord_channel import DiscordChannel
 
             ds_allowed = [int(x) for x in ch_cfg.get("discord", {}).get("allowed_channel_ids", [])]
             dis_enqueue = _make_flood_enqueue("discord")
@@ -90,11 +100,13 @@ def register_optional_channels():
         )
 
     # --- Slack ---
-    slk_bot = ch_cfg.get("slack", {}).get("bot_token", "").strip()
-    slk_app = ch_cfg.get("slack", {}).get("app_token", "").strip()
-    if slk_bot and slk_app:
+    slk_cfg = ch_cfg.get("slack", {})
+    slk_enabled = bool(slk_cfg.get("enabled", False))
+    slk_bot = slk_cfg.get("bot_token", "").strip()
+    slk_app = slk_cfg.get("app_token", "").strip()
+    if slk_enabled and slk_bot and slk_app:
         try:
-            from channels.slack import SlackChannel
+            from sci_fi_dashboard.channels.slack import SlackChannel
 
             slk_enqueue = _make_flood_enqueue("slack")
             deps.channel_registry.register(
@@ -108,9 +120,12 @@ def register_optional_channels():
             )
         except ValueError as exc:
             logger.error("Slack channel configuration error — channel disabled: %s", exc)
+    elif slk_enabled:
+        logger.warning(
+            "Slack channel enabled but missing bot_token/app_token — channel disabled"
+        )
     else:
         logger.info(
-            "Slack channel not configured — skipping "
-            "(add channels.slack.bot_token and channels.slack.app_token "
-            "to synapse.json to enable)"
+            "Slack channel disabled — skipping "
+            "(set channels.slack.enabled=true with bot_token/app_token to enable)"
         )

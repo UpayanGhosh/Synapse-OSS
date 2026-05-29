@@ -77,6 +77,41 @@ class KGExtractionConfig:
 
 
 @dataclass(frozen=True)
+class SessionAutoFlushConfig:
+    """Configuration for the automatic session flush (archive + ingest) background scanner.
+
+    When a session has been idle for ``idle_seconds`` OR has accumulated
+    ``message_count`` messages, the scanner archives the transcript and fires
+    the standard memory-ingest pipeline — identical to the user running /new.
+
+    Override via the ``"session"`` block in ``synapse.json``.
+
+    Attributes:
+        enabled:           Master switch. Set ``auto_flush_enabled=false`` to disable
+                           entirely (e.g. low-resource environments). Default ``True``.
+        idle_seconds:      Seconds since the last memory flush/session window before
+                           a session is flushed. Default ``21600`` (6 hours).
+                           OR-combined with message_count.
+        message_count:     Message count ceiling before a session is flushed.
+                           Default ``50``. OR-combined with idle_seconds.
+        check_interval_seconds: How often the scanner wakes up to inspect sessions.
+                           Default ``60``. Shorter = more responsive; longer = less I/O.
+        min_messages:      Sessions with fewer messages than this are never auto-flushed
+                           (avoids ingesting trivial 1-2 message exchanges).
+                           Default ``5``.
+
+    Note: The scanner runs as a FastAPI background task (not inside gentle_worker_loop)
+    so that flush cadence is governed by gateway uptime, not battery/CPU state.
+    """
+
+    enabled: bool = True
+    idle_seconds: float = 21600.0
+    message_count: int = 50
+    check_interval_seconds: float = 60.0
+    min_messages: int = 5
+
+
+@dataclass(frozen=True)
 class SynapseConfig:
     """Immutable configuration snapshot for a single Synapse-OSS process.
 
@@ -104,8 +139,22 @@ class SynapseConfig:
     embedding: dict = field(default_factory=dict)
     vector_store: dict = field(default_factory=dict)
     kg_extraction: KGExtractionConfig = field(default_factory=KGExtractionConfig)
+    session_auto_flush: SessionAutoFlushConfig = field(default_factory=SessionAutoFlushConfig)
     image_gen: dict = field(default_factory=dict)
     tts: dict = field(default_factory=dict)
+    logging: dict = field(default_factory=dict)  # OBS-04: per-module log levels + formatter config
+    reconnect_raw: dict = field(default_factory=dict)
+    heartbeat: dict = field(
+        default_factory=dict
+    )  # Phase 16 HEART-01..05: scheduled pings config block
+    bridge: dict = field(
+        default_factory=dict
+    )  # Phase 16 BRIDGE-02/03: /health poll + subprocess restart config
+
+    @property
+    def reconnect(self):
+        """Lazy-materialized ReconnectPolicy from synapse.json['reconnect']."""
+        return reconnect_policy(self)
 
     @classmethod
     def load(cls) -> "SynapseConfig":
@@ -114,6 +163,13 @@ class SynapseConfig:
         Layer 1 (highest priority): SYNAPSE_HOME env var → data_root
         Layer 2: synapse.json in data_root → providers, channels, model_mappings
         Layer 3 (defaults): empty dicts for providers/channels/model_mappings
+
+        After model_mappings is populated a prompt-tier validation pass runs
+        (Phase 5) — each role's explicit ``prompt_tier`` is compared against the
+        tier inferred from its model string via ``prompt_tiers.MODEL_TIER_MAP``.
+        Mismatches emit WARNING (downgrade) or INFO (upgrade).  Set
+        ``session.tier_strict_mode=true`` in synapse.json to turn two-tier
+        downgrades into boot-blocking ``ConfigError`` exceptions.
 
         Returns a frozen dataclass.  Calling load() twice with different env vars
         returns different configs — this method is NOT cached.
@@ -139,6 +195,10 @@ class SynapseConfig:
         kg_extraction_raw: dict[str, Any] = {}
         image_gen: dict[str, Any] = {}
         tts_raw: dict[str, Any] = {}
+        logging_raw: dict[str, Any] = {}
+        reconnect_raw: dict[str, Any] = {}
+        heartbeat_raw: dict[str, Any] = {}
+        bridge_raw: dict[str, Any] = {}
 
         config_file = data_root / "synapse.json"
         validated = None
@@ -163,6 +223,10 @@ class SynapseConfig:
             kg_extraction_raw = raw.get("kg_extraction", {})
             image_gen = raw.get("image_gen", {})
             tts_raw = raw.get("tts", {})
+            logging_raw = raw.get("logging", {})
+            reconnect_raw = raw.get("reconnect", {})
+            heartbeat_raw = raw.get("heartbeat", {})
+            bridge_raw = raw.get("bridge", {})
 
         # Build SBSConfig from the "sbs" key (missing keys use dataclass defaults)
         sbs_config = SBSConfig(
@@ -177,6 +241,35 @@ class SynapseConfig:
                 if k in KGExtractionConfig.__dataclass_fields__
             }
         )
+
+        # Build SessionAutoFlushConfig from the "session" block.
+        # Keys are prefixed with "auto_flush_" in synapse.json; strip the prefix to match
+        # the dataclass field names.
+        _auto_flush_raw: dict[str, Any] = {}
+        for _k, _v in session.items():
+            if _k.startswith("auto_flush_"):
+                _field = _k[len("auto_flush_"):]  # e.g. "enabled", "idle_seconds"
+                if _field in SessionAutoFlushConfig.__dataclass_fields__:
+                    _auto_flush_raw[_field] = _v
+        session_auto_flush_config = SessionAutoFlushConfig(**_auto_flush_raw)
+
+        # Phase 5: validate each role's prompt_tier against the model string.
+        # strict=True raises ConfigError on a two-tier downgrade; default is warn-only.
+        tier_strict = bool(session.get("tier_strict_mode", False))
+        try:
+            from sci_fi_dashboard.prompt_tiers import ConfigError as _TierConfigError
+            from sci_fi_dashboard.prompt_tiers import validate_role_tier as _validate_role_tier
+
+            for _role, _role_cfg in model_mappings.items():
+                if not isinstance(_role_cfg, dict) or _role.startswith("_"):
+                    continue  # skip comment keys and non-dict entries
+                try:
+                    _validate_role_tier(_role, _role_cfg, strict=tier_strict)
+                except _TierConfigError:
+                    if tier_strict:
+                        raise
+        except ImportError:
+            _logger.debug("prompt_tiers unavailable — skipping tier validation", exc_info=True)
 
         return cls(
             data_root=data_root,
@@ -194,8 +287,13 @@ class SynapseConfig:
             embedding=embedding,
             vector_store=vector_store,
             kg_extraction=kg_config,
+            session_auto_flush=session_auto_flush_config,
             image_gen=image_gen,
             tts=tts_raw,
+            logging=logging_raw,
+            reconnect_raw=reconnect_raw,
+            heartbeat=heartbeat_raw,  # NEW — Phase 16 HEART-01..05
+            bridge=bridge_raw,  # NEW — Phase 16 BRIDGE-02/03
         )
 
 
@@ -341,3 +439,28 @@ def identity_links(config: SynapseConfig) -> dict:
     platform IDs that resolve to the canonical name.  Returns ``{}`` if absent.
     """
     return config.session.get("identityLinks", {})
+
+
+def reconnect_policy(config: "SynapseConfig"):
+    """Return the ReconnectPolicy materialized from config.reconnect_raw.
+
+    camelCase keys match synapse.json; snake_case used internally.
+    Missing keys use ReconnectPolicy defaults (1000/60000/2.0/0.2/5).
+    """
+    from sci_fi_dashboard.channels.supervisor import (
+        ReconnectPolicy,  # lazy import — avoids circular dep
+    )
+
+    raw = config.reconnect_raw or {}
+    key_map = {
+        "initialMs": "initial_ms",
+        "maxMs": "max_ms",
+        "factor": "factor",
+        "jitter": "jitter",
+        "maxAttempts": "max_attempts",
+    }
+    kwargs = {}
+    for camel, snake in key_map.items():
+        if camel in raw:
+            kwargs[snake] = raw[camel]
+    return ReconnectPolicy(**kwargs)

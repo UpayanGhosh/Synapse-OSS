@@ -1,13 +1,16 @@
 """
 workspace_seeding.py — Agent workspace seeding and state machine for Synapse-OSS.
 
-Seeds 7 Markdown template files into the agent workspace on first run and
+Seeds Markdown guidance files into the agent workspace on first run and
 maintains a workspace-state.json file that tracks bootstrapSeededAt and
 setupCompletedAt timestamps.  This prevents re-triggering the bootstrapping
 ritual on subsequent onboard runs.
 
 Template files:
-  AGENTS.md, BOOTSTRAP.md, IDENTITY.md, USER.md, SOUL.md, TOOLS.md, HEARTBEAT.md
+  INSTRUCTIONS.md, AGENTS.md, SOUL.md, CORE.md, CODE.md, IDENTITY.md, USER.md,
+  TOOLS.md, MEMORY.md, HEARTBEAT.md, BOOTSTRAP.md. INSTRUCTIONS.md, CORE.md,
+  and AGENTS.md are loaded from single canonical shipping sources in
+  sci_fi_dashboard/agent_workspace/.
 
 Exports:
   write_file_if_missing()     Exclusive-create a file; returns True if written
@@ -28,11 +31,15 @@ from pathlib import Path
 # ---------------------------------------------------------------------------
 
 _TEMPLATE_FILES: list[str] = [
+    "INSTRUCTIONS.md",
     "AGENTS.md",
     "SOUL.md",
+    "CORE.md",
+    "CODE.md",
     "IDENTITY.md",
     "USER.md",
     "TOOLS.md",
+    "MEMORY.md",
     "HEARTBEAT.md",
     "BOOTSTRAP.md",  # must be last — conditional seeding
 ]
@@ -119,7 +126,10 @@ def write_file_if_missing(path: Path, content: str) -> bool:
 
 
 def _load_template(filename: str) -> str:
-    """Load a template file from workspace/cli/templates/."""
+    """Load a runtime workspace template."""
+    if filename in {"INSTRUCTIONS.md", "CORE.md", "AGENTS.md"}:
+        canonical_path = Path(__file__).parents[1] / "sci_fi_dashboard" / "agent_workspace" / filename
+        return canonical_path.read_text(encoding="utf-8")
     template_dir = Path(__file__).parent / "templates"
     template_path = template_dir / filename
     return template_path.read_text(encoding="utf-8")

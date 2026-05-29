@@ -1,0 +1,98 @@
+import asyncio
+import os
+import sys
+
+# This script was relocated from workspace/sci_fi_dashboard/ to scripts/verify/.
+# Resolve workspace/ relative to repo root (two levels up from this file).
+_REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+sys.path.insert(0, os.path.join(_REPO_ROOT, "workspace"))
+sys.path.insert(0, os.path.join(_REPO_ROOT, "workspace", "sci_fi_dashboard"))
+
+from synapse_config import SynapseConfig  # noqa: E402
+
+# Also append paths derived from the user's configured Synapse data_root, in
+# case that differs from the repo location at runtime.
+_synapse_home = str(SynapseConfig.load().data_root)
+sys.path.insert(0, os.path.join(_synapse_home, "workspace", "sci_fi_dashboard"))
+sys.path.insert(0, os.path.join(_synapse_home, "workspace"))
+
+from dual_cognition import DualCognitionEngine  # noqa: E402
+
+
+# Mock dependencies
+class MockMemory:
+    def query(self, text, limit=5, with_graph=True):
+        return {
+            "results": [
+                {"content": "primary_user likes spicy food.", "source": "past_chat"},
+                {
+                    "content": "primary_user is working on an AI project called Synapse.",
+                    "source": "knowledge_base",
+                },
+            ],
+            "graph_context": "primary_user -> building -> Synapse",
+        }
+
+
+class MockGraph:
+    def get_entity_neighborhood(self, entity):
+        return f"Connections for {entity}: Friend of partner_user, Creator of Synapse."
+
+
+async def mock_llm(messages, temperature=0.7, max_tokens=500):
+    prompt = messages[-1]["content"]
+    print(f"\n[BOT] [Mock LLM] Processing prompt: {prompt[:100]}...")
+
+    if "Analyze this message" in prompt:
+        return """
+        {
+          "sentiment": "positive",
+          "intent": "statement",
+          "claims": ["I love spicy food"],
+          "emotional_state": "excited",
+          "topics": ["food", "preference"]
+        }
+        """
+    elif "You are the inner thinking process" in prompt:
+        return """
+        {
+          "tension_level": 0.2,
+          "tension_type": "none",
+          "contradictions": [],
+          "response_strategy": "support",
+          "suggested_tone": "warm",
+          "inner_monologue": "He's expressing a consistent preference for spicy food. I should keep the conversation light and friendly."
+        }
+        """
+    return "{}"
+
+
+async def main():
+    print("[INFO] Starting Dual Cognition Isolation Test...")
+
+    memory = MockMemory()
+    graph = MockGraph()
+    engine = DualCognitionEngine(memory_engine=memory, graph=graph)
+
+    user_msg = "I really love spicy food, it's the best!"
+
+    print(f"\n[USER] [User]: {user_msg}")
+
+    result = await engine.think(user_message=user_msg, chat_id="test_user", llm_fn=mock_llm)
+
+    print("\n[MEM] [Cognitive Merge Results]:")
+    print(f"   - Tension Level: {result.tension_level}")
+    print(f"   - Tension Type: {result.tension_type}")
+    print(f"   - Strategy: {result.response_strategy}")
+    print(f"   - Tone: {result.suggested_tone}")
+    print(f"   - Inner Monologue: {result.inner_monologue}")
+
+    context = engine.build_cognitive_context(result)
+    print("\n[LOG] [Injected Context]:")
+    print(context)
+
+    print("\n[OK] Isolation test completed.")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

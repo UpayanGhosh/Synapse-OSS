@@ -1,13 +1,101 @@
 # Synapse
 
-## An open-source personalized AI companion architecture
-
 ![Python](https://img.shields.io/badge/Python-3.11-3776AB?style=for-the-badge&logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white)
 ![SQLite](https://img.shields.io/badge/SQLite-003B57?style=for-the-badge&logo=sqlite&logoColor=white)
-![LanceDB](https://img.shields.io/badge/LanceDB-Embedded-5C2D91?style=for-the-badge)
+![LanceDB](https://img.shields.io/badge/LanceDB-Embedded-FF4F8B?style=for-the-badge)
 ![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
 ![CI](https://img.shields.io/github/actions/workflow/status/UpayanGhosh/Synapse-OSS/tests.yml?branch=main&style=for-the-badge&logo=github&label=CI)
+
+> **Personal AI with continuity** — multi-channel, hybrid-RAG memory, evolving behavioral profile, privacy-aware routing. Self-hostable, model-agnostic.
+
+<!-- screenshot: docs/img/playground.png -->
+
+## Quick Start
+
+For normal users, install the standalone Synapse command and let it create the product home under `~/.synapse`. You do not need the GitHub repo for this path.
+
+```bash
+npm install -g synapse-oss
+synapse install
+synapse onboard
+synapse start
+```
+
+Re-testing onboarding? Back up active setup state and launch the wizard again:
+
+```bash
+synapse reset --scope config --reonboard
+```
+
+Developer setup stays separate in [CONTRIBUTING.md](CONTRIBUTING.md) and [HOW_TO_RUN.md](HOW_TO_RUN.md).
+
+## Docs
+
+| Document | Purpose |
+|---|---|
+| [HOW_TO_RUN.md](HOW_TO_RUN.md) | Install, onboarding, provider testing, reset, and production paths |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Developer setup, test commands, and PR guidelines |
+| [docs/provider-testing.md](docs/provider-testing.md) | Offline and live provider compatibility checks |
+
+## Try it in 60 seconds
+
+```bash
+docker compose -f docker-compose.demo.yml up
+# then open the browser playground:
+open http://localhost:8000/
+```
+
+(Need a non-Docker path or want to use your own LLM keys? See [HOW_TO_RUN.md](HOW_TO_RUN.md).)
+
+## What it actually does
+
+- **Multi-channel** — WhatsApp, Telegram, Discord, Slack, CLI, browser playground.
+- **Hybrid RAG memory** — FastEmbed (default) or Gemini-embed, LanceDB ANN+FTS, FlashRank rerank.
+- **SBS (Soul-Brain Sync)** — an evolving 8-layer behavioral profile of you, rebuilt every 50 messages from your own conversation history.
+- **Dual Cognition** — an optional inner-monologue + tension-scoring pass before the LLM replies (configurable).
+- **Privacy-aware routing** — sensitive topics route to a local Ollama "Vault" model; nothing about them leaves your machine.
+- **Knowledge graph** — SPO triples in SQLite for entity recall (see [docs/kg-limits.md](docs/kg-limits.md)).
+
+## How Synapse compares
+
+| Tool | What it nails | Where Synapse differs |
+|---|---|---|
+| Mem0 | Drop-in memory layer for any LLM app | Synapse is a full personal-AI architecture, not a memory SDK; ships with channels, persona, routing |
+| MemGPT / Letta | Long-context simulated via tiered memory | Synapse explicitly models behavioral substrate (SBS), not just facts |
+| Pieces | Developer-context AI | Synapse targets personal continuity, not coding context |
+| ChatGPT memory items | Polished UX, locked to OpenAI | Synapse is self-hostable, model-agnostic, multi-channel |
+
+## Install
+
+Copy `.env.example` to `.env` and fill in `GEMINI_API_KEY` (only required key — see [.env.example.advanced](.env.example.advanced) for the full set).
+
+```bash
+git clone https://github.com/UpayanGhosh/Synapse-OSS.git
+cd Synapse-OSS
+( cd workspace && pip install -r requirements.txt )    # subshell — cwd auto-restores
+cp .env.example .env && $EDITOR .env
+( cd workspace && python main.py chat )
+```
+
+For Docker, no-cloud, or production deploys, see [HOW_TO_RUN.md](HOW_TO_RUN.md).
+
+## Architecture at a glance
+
+Synapse normalizes every inbound message (WhatsApp, Telegram, Discord, Slack, CLI, browser) into a unified DTO, runs it through an async gateway (flood-batch, dedup, bounded queue, concurrent workers), enriches it with hybrid-RAG memory and an evolving behavioral profile (SBS), optionally adds a Dual Cognition pre-pass, then routes to the right model — cloud or local — based on intent and privacy classification.
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the full request flow, route map, and module breakdown. The multiuser keying layer is documented separately in [docs/multiuser.md](docs/multiuser.md).
+
+## Project state
+
+- <!--METRIC:tests--> tests across <!--METRIC:test_files--> test files (CI-substituted; `bash scripts/collect_metrics.sh` to regenerate locally).
+- <!--METRIC:py_files--> Python source files.
+- Single-user-per-instance today. Multi-user is planned (see PRODUCT_ISSUES.md issue 7.1).
+- Solo-maintained. See [GOVERNANCE.md](GOVERNANCE.md).
+
+Security disclosures: see [SECURITY.md](SECURITY.md).
+
+## Vision
 
 > Most AI is smart in the moment and forgetful across time.
 >
@@ -31,7 +119,7 @@ The goal is not to build a better raw model than OpenAI, Anthropic, or Google.
 The goal is to build a better body around any capable model so the AI feels more
 personal, more continuous, more faithful to the user, and more alive over time.
 
-## Why Synapse Can Feel More Human
+### Why Synapse Can Feel More Human
 
 Most AI can sound human for a few messages.
 
@@ -59,7 +147,7 @@ then the interaction starts to feel less mechanical.
 
 That is the experience Synapse is aiming for.
 
-## In Plain English
+### In Plain English
 
 Synapse is for people who want an AI that:
 
@@ -80,7 +168,7 @@ It is trying to solve a different problem:
 > How do you build an AI that feels personal, continuous, and deeply familiar
 > instead of merely smart?
 
-## Brain, Heart, And Body
+### Brain, Heart, And Body
 
 The easiest way to understand Synapse is this:
 
@@ -110,7 +198,7 @@ The real product is the persistent system around the model:
 
 This is the real moat.
 
-## Founder Note
+### Founder Note
 
 Synapse started from a very simple frustration:
 
@@ -135,7 +223,7 @@ around it.
 That means memory, continuity, role fidelity, adaptive structure, and enough
 system depth for the relationship to survive changes in models, channels, and time.
 
-## The Product Bet
+### The Product Bet
 
 The bet behind Synapse is simple:
 
@@ -153,7 +241,7 @@ If personalization lives inside Synapse, the user keeps:
 
 even when the underlying model changes.
 
-## Why People Might Care
+### Why People Might Care
 
 Most current AI products are great at answering.
 
@@ -167,7 +255,7 @@ They are much weaker at:
 
 That gap is where Synapse lives.
 
-## The Vision
+### The Long-Term Vision
 
 Synapse is built around a simple idea:
 
@@ -194,7 +282,7 @@ The important part is not the label.
 The important part is that the AI remains faithful to the role the user wants,
 instead of collapsing back into a generic assistant voice.
 
-## What Makes Synapse Different
+### What Makes Synapse Different
 
 | What most AI feels like | What Synapse is trying to do |
 | --- | --- |
@@ -205,9 +293,9 @@ instead of collapsing back into a generic assistant voice.
 | Closed product logic | Open-source architecture you can inspect and shape |
 | Personalization as settings | Personalization as an evolving process |
 
-## The Two Core Ideas
+### The Two Core Ideas
 
-### SBS
+#### SBS
 
 SBS is the part of Synapse that gives it continuity.
 
@@ -221,7 +309,7 @@ In user terms, that means:
 In technical terms, SBS continuously distills interactions into structured
 behavior and persona layers that can be injected at inference time.
 
-### Dual Cognition
+#### Dual Cognition
 
 Dual Cognition is the part of Synapse that gives it depth.
 
@@ -239,7 +327,7 @@ Put simply:
 - SBS helps Synapse stay consistent across time
 - Dual Cognition helps Synapse think with more depth in the moment
 
-## Adaptive Architecture
+### Adaptive Architecture
 
 Synapse is not only trying to remember the user.
 
@@ -278,7 +366,7 @@ This is one of the most important ideas in Synapse:
 >
 > the architecture around the model can become more personal over time.
 
-## Why SBS Is The Heart Of Synapse
+### Why SBS Is The Heart Of Synapse
 
 If there is one idea at the center of Synapse, it is SBS.
 
@@ -315,20 +403,7 @@ works at Y."
 
 It is personalization at the level of behavioral continuity.
 
-| Metric | Before (v1.0) | After (Phoenix v3) | What Changed |
-| --- | --- | :---: | --- |
-| **Knowledge Graph Footprint** | ~155MB in-RAM (NetworkX) | **<1.2MB** (SQLite) | NetworkX loaded the entire graph into RAM, causing 81% memory pressure on an 8GB host. SQLite reads from disk on demand. **99.2% reduction.** |
-| **Host RAM Usage** | 81.3% | **<25%** | Consolidated 4 separate processes (LanceDB, NetworkX, memory server, gateway) into a single FastAPI app. LanceDB provides embedded vector search with zero Docker overhead. **3.3x lower.** |
-| **Retrieval Latency (P95)** | ~1.2s | **<350ms** | High-confidence results (>0.80) bypass FlashRank reranker entirely. Only ambiguous queries pay the reranking overhead. **3.4x faster.** |
-| **Vocabulary Diversity** | ~5,000 static terms | **37,868+** | Continuous ingestion from 4 years of conversation logs via the SBS batch pipeline. **7.6x richer.** |
-| **Message Pipeline** | Synchronous (webhook timeout) | **Async queue** (202 Accepted) | FloodGate batching (3s window) + deduplication (5-min window) + bounded TaskQueue (max 100) + 2 concurrent MessageWorkers. **Zero dropped messages** under single-user load. |
-| **Behavioral Profile** | None (static system prompt) | **2KB, rebuilt every 50 messages** | Soul-Brain Sync: 3-stage pipeline (realtime -> batch -> injection). 8 profile layers distilled from conversation patterns. |
-| **Cognitive Overhead (TTFT)** | N/A | **2-5s** | Dual Cognition pipeline: inner monologue generation + tension scoring before response. Quality-for-speed trade-off. |
-| **Test Coverage** | Manual | **3,000+ tests across 170+ files** | Unit, integration, smoke, performance, end-to-end, and acceptance tests. Async-native (`asyncio_mode = auto`). |
-| **Channel Support** | WhatsApp only | **4 channels** | WhatsApp, Telegram, Discord, Slack -- all normalized to a single DTO through `BaseChannel` ABC. |
-| **Bridge Recovery** | Manual restart | **5s auto-restart** | Exponential backoff (up to 5 attempts) on Baileys bridge crash. |
-
-## Why That Matters To The User
+### Why That Matters To The User
 
 When SBS is working well, the user should feel:
 
@@ -346,7 +421,7 @@ An SBS-shaped AI can feel familiar.
 
 That is a much stronger product experience.
 
-## Why This Stands Out In The Market
+### Why This Stands Out In The Market
 
 Synapse is not just saying "we have memory."
 
@@ -375,7 +450,7 @@ is not how most public AI systems are framed today.
 
 That makes Synapse stand out.
 
-## Practical Example: How SBS Actually Helps
+### Practical Example: How SBS Actually Helps
 
 Imagine a user who has been interacting with Synapse for a few months.
 
@@ -422,7 +497,7 @@ It is not just "AI with memory."
 
 It is AI that has started to learn how to be useful to a specific person.
 
-## Practical Example: How SBS And Dual Cognition Work Together
+### Practical Example: How SBS And Dual Cognition Work Together
 
 Here is the same flow in system terms:
 
@@ -443,7 +518,7 @@ That is the key distinction:
 
 Together, that creates a much stronger feeling of continuity than ordinary chat history alone.
 
-## Who Synapse Is For
+### Who Synapse Is For
 
 Synapse is especially interesting for:
 
@@ -454,7 +529,7 @@ Synapse is especially interesting for:
 - founders or operators who want an AI that remembers how they think
 - people who care about privacy and self-hosting
 
-## For Non-Technical Visitors
+### For Non-Technical Visitors
 
 You do not need to understand the architecture to understand the promise.
 
@@ -467,7 +542,7 @@ The promise is simple:
 
 That is what Synapse is aiming at.
 
-## For Technical Visitors
+### For Technical Visitors
 
 Under the hood, Synapse already includes:
 
@@ -484,7 +559,7 @@ Under the hood, Synapse already includes:
 
 For the deeper system view, see [ARCHITECTURE.md](ARCHITECTURE.md).
 
-## How Synapse Works
+### How Synapse Works
 
 The diagram below is the short version of the system:
 
@@ -510,7 +585,7 @@ In one sentence:
 > evolving personalization, applies the right level of reasoning, routes it to
 > the right model, and returns the result through the channel the user already uses.
 
-## Brain, Heart, Body Diagram
+### Brain, Heart, Body Diagram
 
 This is the higher-level mental model behind Synapse:
 
@@ -530,7 +605,7 @@ The important idea is simple:
 - the heart should persist
 - the body should keep adapting around the user
 
-## A Better Mental Model
+### A Better Mental Model
 
 Do not think of Synapse as "another AI app."
 
@@ -541,7 +616,7 @@ Think of it as:
 - a companion system framework
 - a relationship layer on top of modern language models
 
-## Example Use Cases
+### Example Use Cases
 
 Synapse could be used as:
 
@@ -551,7 +626,7 @@ Synapse could be used as:
 - a private AI that lives across Telegram, Slack, and other channels
 - a research platform for long-term personalization in AI
 
-## Why Open Source Matters Here
+### Why Open Source Matters Here
 
 Personalized AI is too important to exist only as black-box products.
 
@@ -567,99 +642,7 @@ system works.
 
 That is one of the strongest reasons Synapse exists as an open-source project.
 
-## Current Project Status
-
-Synapse is active and evolving.
-
-It is ambitious by design, which means:
-
-- some ideas are ahead of the polish
-- some capabilities are stronger than others
-- the repo reflects a serious architecture push, not a shallow demo
-- the long-term vision is bigger than the current packaging
-
-If you try it and hit issues, that is useful feedback.
-
-- [Open an issue](https://github.com/UpayanGhosh/Synapse-OSS/issues)
-- [Start a discussion](https://github.com/UpayanGhosh/Synapse-OSS/discussions)
-
-## Quick Start
-
-> **Full setup guide** (API keys, Ollama, channel linking): [HOW_TO_RUN.md](HOW_TO_RUN.md)
-
-If you want to run Synapse locally:
-
-### 1. Clone the repo
-
-```bash
-git clone https://github.com/UpayanGhosh/Synapse-OSS.git
-cd Synapse-OSS
-```
-
-### 2. Create a virtual environment and install dependencies
-
-Dependencies are split into focused groups — install only what you need. A `uv.lock` is also committed for reproducible installs via [uv](https://github.com/astral-sh/uv).
-
-```bash
-# macOS / Linux
-python3 -m venv .venv
-source .venv/bin/activate
-
-# Windows
-python -m venv .venv
-.venv\Scripts\activate.bat
-
-# Core (required)
-pip install -r requirements.txt
-
-# Channels (pick the ones you'll use)
-pip install -r requirements-channels.txt
-
-# ML / NLP (embeddings, reranker, toxicity scorer)
-pip install -r requirements-ml.txt
-
-# Optional extras (OCR, scheduling, etc.)
-pip install -r requirements-optional.txt
-```
-
-Alternatively, with `uv` for a fully-locked install:
-
-```bash
-uv sync
-```
-
-### 3. Run onboarding
-
-```bash
-# macOS / Linux
-chmod +x synapse_onboard.sh
-./synapse_onboard.sh
-
-# Windows
-synapse_onboard.bat
-```
-
-### 4. Start Synapse
-
-```bash
-# macOS / Linux
-./synapse_start.sh
-
-# Windows
-synapse_start.bat
-```
-
-For the full setup guide, use [HOW_TO_RUN.md](HOW_TO_RUN.md).
-
-## Docs
-
-- [HOW_TO_RUN.md](HOW_TO_RUN.md) - setup and operational guide
-- [ARCHITECTURE.md](ARCHITECTURE.md) - system architecture and subsystem map
-- [SETUP_PERSONA.md](SETUP_PERSONA.md) - persona and behavior configuration
-- [CONTRIBUTING.md](CONTRIBUTING.md) - contribution guidelines
-- [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) - community standards
-
-## If You Are Watching This Space
+### If You Are Watching This Space
 
 If you care about:
 
@@ -674,234 +657,7 @@ then Synapse is worth paying attention to.
 
 ## Contributing
 
-Contributions are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) first.
-
-## License
-
-> **Full setup guide** (Ollama, channel configuration, persona config): [HOW_TO_RUN.md](HOW_TO_RUN.md)
->
-> **Persona customization** (how to make Synapse yours): [SETUP_PERSONA.md](SETUP_PERSONA.md)
-
----
-
-## Key Features
-
-### Multi-Channel Support (WhatsApp, Telegram, Discord, Slack)
-
-All messaging channels implement a `BaseChannel` ABC, managed by a `ChannelRegistry` that runs each adapter as an `asyncio.create_task()` within the FastAPI lifespan. Every channel normalizes inbound events into a unified `ChannelMessage` DTO before they enter the shared pipeline -- memory, persona, and model routing work identically regardless of which channel a message arrives from.
-
-- **WhatsApp** -- self-managed Baileys Node.js bridge (spawned and supervised as a subprocess, port 5010 internal). QR pairing on first boot. Auto-restarts on crash with exponential backoff (5-second initial delay, up to 5 attempts). Requires Node.js 18+.
-- **Telegram** -- `python-telegram-bot` v22+ long polling. DMs and @mentions in groups both supported. Token configured via `synapse.json`.
-- **Discord** -- `discord.py` v2.x. DMs always dispatched; server messages only on @mention. Requires the MESSAGE_CONTENT privileged intent.
-- **Slack** -- `slack-bolt` AsyncApp with Socket Mode WebSocket transport. No public webhook URL required -- suitable for self-hosters behind NAT.
-
-### Async Gateway Pipeline
-
-Messages enter through a multi-stage async pipeline (`gateway/`) that prevents webhook timeouts. A `FloodGate` (3-second batch window) merges rapid-fire messages, a `MessageDeduplicator` (5-minute seen-set) absorbs retry storms, and a bounded `TaskQueue` (asyncio FIFO, max 100) feeds 2 concurrent `MessageWorker` instances. The webhook returns `202 Accepted` immediately -- the cognitive pipeline processes in the background. **Zero dropped messages** under single-user load (~50-100 messages/day).
-
-### Multi-Model Intent Router (Mixture of Agents)
-
-A lightweight intent classifier routes each message to the best-fit model through `litellm.Router`: Gemini Flash for casual chat, Claude Sonnet for code generation, Gemini Pro for deep analysis, Claude Opus for critical review, Groq for voice transcription, or a local Ollama instance for private conversations. All LLM calls use provider-prefixed model strings from `~/.synapse/synapse.json`. The router is completely vendor-agnostic -- swap providers by editing `model_mappings` in config, no code changes required. Per-role fallback models handle provider outages and rate limits automatically.
-
-### Hybrid Memory Retrieval (RAG)
-
-The `MemoryEngine` combines a SQLite knowledge graph (subject-predicate-object triples) with sqlite-vec embeddings and LanceDB vector search. A temporal scoring function blends semantic similarity with recency. High-confidence results (>0.80) skip the FlashRank reranker (ms-marco-TinyBERT) for speed; lower-confidence candidates pass through for precision. Result: **<350ms P95 retrieval** across 37,868+ vocabulary terms.
-
-Embeddings are produced through a pluggable provider layer (`sci_fi_dashboard.embedding.get_provider()`) with an auto-cascade: **FastEmbed** (ONNX, local, `nomic-ai/nomic-embed-text-v1.5-Q`) is the primary provider — zero external services required. It falls back to the **Gemini API** if `GEMINI_API_KEY` is set, and an explicit provider can be pinned via `embedding.provider` in `synapse.json`. Vector dimensions are detected from the provider at runtime, so the schema adapts to whichever model is configured.
-
-### Soul-Brain Sync (Continuous Behavioral Profiling)
-
-Rather than static system prompts, the SBS pipeline continuously builds and evolves a 2KB behavioral profile per conversation target:
-
-- **RealtimeProcessor**: rule-based sentiment + language detection on every message
-- **BatchProcessor**: triggers every 50 messages or 6 hours, distills patterns into 8 structured JSON layers (core_identity, linguistic, emotional_state, domain, interaction, vocabulary, exemplars, meta)
-- **PromptCompiler**: injects the compiled profile into the system prompt at inference time
-- **ImplicitFeedbackDetector**: watches for conversational corrections ("too long", "be more casual") and adjusts persona in real-time -- no explicit configuration needed
-
-Why not fine-tuning? Profile injection is model-agnostic and costs zero training compute. The persona adapts regardless of which LLM is active.
-
-### Dual Cognition Engine
-
-Before generating a reply, the `DualCognitionEngine` produces an inner monologue (chain-of-thought via Gemini Flash) and calculates a tension score (0.0--1.0) to detect emotional conflicts between retrieved memory and the current message. This cognitive context is injected into the prompt alongside memories and persona. The `LazyToxicScorer` (Toxic-BERT) loads on demand and auto-unloads after 30 seconds of idle to conserve RAM -- on an 8GB machine, every megabyte matters.
-
-### Air-Gapped Local Inference (The Vault)
-
-Sensitive conversations route to a local Ollama instance. Zero cloud API calls, zero external logging. Hemisphere integrity -- the physical separation between cloud-routed and local-only memories -- is verified by automated tests (`verify` CLI command). This is not a configuration flag. It is an architectural boundary with zero cross-contamination.
-
-### Voice Message Transcription (Groq Whisper)
-
-Voice notes are transcribed using the Groq API (Whisper-Large-v3). Cloud-based transcription with zero local RAM impact -- results in 2-4 seconds. Transcribed text enters the full cognitive pipeline (memory retrieval, persona injection, dual cognition) like any other message.
-
-### Web Browsing (Platform-Aware)
-
-The `ToolRegistry` dispatches headless browser sessions for real-time data (weather, news, live scores), extracts clean text, and feeds results back to the LLM. Content is truncated to 3,000 characters to protect context window limits. Platform-aware: **Crawl4AI** on Mac/Linux, **Playwright** on Windows -- the `search_web(url)` interface is identical on both. An SSRF guard rejects private/loopback/link-local addresses before the browser is ever launched -- the AI cannot be tricked into scraping the host's internal network.
-
-### Sentinel File Governance
-
-A fail-closed file governance system (`sbs/sentinel/`) that controls what the AI agent can read, write, or delete. Files are classified as CRITICAL (total lockout), PROTECTED (read-only), MONITORED (read-write with audit logging), or OPEN. All access decisions are logged to an immutable JSONL audit trail.
-
-### Thermal-Aware Background Maintenance (GentleWorker)
-
-A background worker that prunes stale knowledge graph triples and optimizes databases -- but only when the host machine is plugged in and CPU usage is below 20%. No maintenance on battery. No maintenance during active use. Designed for consumer hardware where the AI assistant shares the machine with a human.
-
----
-
-## Engineering Competencies Demonstrated
-
-| Competency | Evidence |
-| :--- | :--- |
-| **System Design** | Consolidated a 4-process architecture into a single FastAPI process. Replaced NetworkX (155MB) with SQLite (<1.2MB) after profiling showed 81% RAM pressure. **99.2% memory reduction.** |
-| **Async Systems** | Built an async queue-push message gateway with FloodGate batching, deduplication, bounded queue, and 2 concurrent workers. **Zero dropped messages** under real load. |
-| **Database Engineering** | Dual-database architecture (memory.db + knowledge_graph.db) with WAL mode, atomic transactions, sqlite-vec for ANN search, and LanceDB embedded vector store (zero Docker dependency). |
-| **ML Pipeline Orchestration** | Multi-model intent router dispatching to 6 providers through `litellm.Router` with per-role fallback configuration. Vendor-agnostic -- swap providers via JSON config. |
-| **Performance Optimization** | Lazy-loading patterns (Toxic-BERT on-demand, 30s idle unload), model eviction (`keep_alive: 0`), FlashRank fast-gate bypass for high-confidence queries, thermal-aware workers. |
-| **Privacy Engineering** | Hemisphere-enforced memory separation with zero cross-contamination. Air-gapped local inference. Automated integrity verification. |
-| **Testing** | 3,000+ tests across 170+ files: unit, integration, smoke, performance, end-to-end, and acceptance. Async-native with `asyncio_mode = auto`. Tests live on the `develop` branch; `main` stays production-only. |
-| **DevOps** | `launchd`-managed boot sequence, idempotent service control, 5-second auto-restart with exponential backoff, 12-hour backup rotation, real-time observability dashboard. |
-| **Continuous Profiling** | Soul-Brain Sync: autonomous ingestion, batch distillation, prompt injection pipeline. 8-layer behavioral profile rebuilt every 50 messages. |
-| **API Design** | OpenAI-compatible endpoints (`/v1/chat/completions`, `/v1/models`), channel-specific webhooks, dynamic persona routes from `personas.yaml`. |
-
----
-
-## Technical Stack
-
-| Category | Technologies |
-| :--- | :--- |
-| Languages | Python 3.11, JavaScript (Node.js 18+), Bash |
-| Frameworks | FastAPI, Uvicorn, asyncio |
-| LLM Routing | `litellm.Router` -- provider-agnostic, config-driven, per-role fallbacks |
-| Databases | SQLite (WAL mode), sqlite-vec (ANN embeddings), LanceDB (embedded vector search) |
-| AI/ML | Ollama, Google Gemini, Anthropic Claude, OpenRouter, Groq Whisper, Toxic-BERT, FlashRank (ms-marco-TinyBERT), sentence-transformers, Crawl4AI |
-| Messaging | Baileys (WhatsApp), python-telegram-bot (Telegram), discord.py (Discord), slack-bolt + slack-sdk (Slack) |
-| Infrastructure | macOS `launchd`, distributed compute (remote GPU node) |
-| Testing | pytest, asyncio_mode=auto, 302 tests (unit / integration / smoke / performance / e2e / acceptance) |
-| Config | `~/.synapse/synapse.json` -- single config file for all providers, channels, model mappings |
-
----
-
-## Service Ports
-
-| Service | Port |
-| --- | --- |
-| API Gateway (FastAPI) | 8000 |
-| LanceDB | embedded (`~/.synapse/workspace/db/lancedb/`) |
-| Ollama | 11434 |
-| Baileys bridge (WhatsApp, internal) | 5010 |
-
-The Baileys bridge is spawned and managed automatically by the WhatsApp channel adapter
-on gateway startup -- it is not a manually started service.
-
----
-
-## Repository Layout
-
-```
-workspace/
-├── sci_fi_dashboard/              # Core application
-│   ├── api_gateway.py             #   Central FastAPI gateway (~420 lines, trimmed from ~1,200 after extracting subsystems)
-│   ├── memory_engine.py           #   Hybrid RAG engine (Phoenix v3)
-│   ├── sqlite_graph.py            #   SQLite knowledge graph
-│   ├── dual_cognition.py          #   Inner monologue + tension engine
-│   ├── toxic_scorer_lazy.py       #   Lazy-loaded Toxic-BERT scorer
-│   ├── retriever.py               #   ANN + FTS + reranker pipeline
-│   ├── llm_router.py              #   litellm.Router wrapper (SynapseLLMRouter)
-│   ├── conflict_resolver.py       #   Conflict detection & dedup
-│   ├── smart_entity.py            #   FlashText entity extraction
-│   ├── chat_parser.py             #   Chat log parser
-│   ├── channels/                  #   Multi-channel abstraction layer
-│   │   ├── base.py                #     BaseChannel ABC + ChannelMessage DTO
-│   │   ├── registry.py            #     ChannelRegistry lifecycle manager
-│   │   ├── plugin.py              #     Channel plugin discovery
-│   │   ├── security.py            #     DM access control (pairing/allowlist/open/disabled)
-│   │   ├── whatsapp.py            #     Baileys bridge supervisor + HTTP client
-│   │   ├── telegram.py            #     python-telegram-bot v22+ adapter
-│   │   ├── discord_channel.py     #     discord.py v2.x adapter
-│   │   └── slack.py               #     slack-bolt Socket Mode adapter
-│   ├── gateway/                   #   Async message pipeline
-│   │   ├── queue.py               #     Bounded async task queue (max 100)
-│   │   ├── worker.py              #     Concurrent message workers (x2)
-│   │   ├── sender.py              #     Outbound message dispatch
-│   │   ├── dedup.py               #     5-minute deduplication window
-│   │   ├── flood.py               #     3-second batch aggregator
-│   │   ├── retry_queue.py         #     Durable outbound retry queue
-│   │   └── ws_server.py           #     WebSocket gateway (chat.send, sessions.*)
-│   ├── routes/                    #   FastAPI route modules (split out of api_gateway.py)
-│   │   ├── chat.py                #     Persona chat + OpenAI-compatible proxy
-│   │   ├── knowledge.py           #     /ingest, /add, /query
-│   │   ├── persona.py             #     /persona/rebuild, /persona/status
-│   │   ├── whatsapp.py            #     QR, relink, logout, job status
-│   │   ├── websocket.py           #     WebSocket endpoint (/ws)
-│   │   └── health.py, pipeline.py, sessions.py, snapshots.py, skills.py, agents.py, cron.py
-│   ├── embedding/                 #   Pluggable embedding providers
-│   │   ├── base.py                #     Provider interface
-│   │   ├── factory.py             #     get_provider() dispatcher
-│   │   ├── fastembed_provider.py  #     Local fastembed (no Ollama required)
-│   │   └── gemini_provider.py     #     Gemini cloud embeddings
-│   ├── media/                     #   Audio, images, SSRF guard
-│   │   ├── audio_transcriber.py   #     Groq Whisper transcription
-│   │   ├── audio_preflight.py     #     Audio sanity check before transcribe
-│   │   ├── ssrf.py                #     Blocks private/loopback/link-local URLs
-│   │   └── mime.py                #     MIME detection (magic bytes → header → ext)
-│   ├── mcp_servers/               #   MCP server processes (tools, memory, etc.)
-│   └── sbs/                       #   Soul-Brain Sync persona engine
-│       ├── orchestrator.py        #     SBS lifecycle manager
-│       ├── ingestion/             #     Raw log → JSONL pipeline
-│       ├── processing/            #     Realtime + batch analysis
-│       ├── injection/             #     Profile → system prompt compiler
-│       ├── profile/               #     8-layer behavioral profile store
-│       ├── feedback/              #     Implicit feedback detection
-│       └── sentinel/              #     File governance guardrails
-├── synapse_config.py              # Config root (~/.synapse/), path contract
-├── db/                            # Legacy database tools folder
-│   └── tools.py                   #   Platform-aware browser (Crawl4AI/Playwright) + SSRF guard
-├── scripts/                       # Maintenance & utilities
-├── monitor.py                     # Real-time observability dashboard
-├── main.py                        # CLI interface (chat, verify, ingest, vacuum)
-└── change_tracker.py              # Auto git commit tracker
-baileys-bridge/                    # Node.js WhatsApp bridge (Baileys)
-│   └── index.js                   #   HTTP server: /send /typing /seen /health /qr
-```
-
----
-
-## API Reference
-
-| Method | Route | Description |
-| --- | --- | --- |
-| `POST` | `/chat/<persona_id>` | Chat as a specific persona -- routes are dynamic, defined in `personas.yaml` |
-| `POST` | `/chat` | Generic fallback chat |
-| `POST` | `/channels/{channel_id}/webhook` | Generic inbound webhook (Baileys, Telegram webhook mode, etc.) |
-| `POST` | `/channels/whatsapp/relink` | Re-pair the WhatsApp bridge |
-| `POST` | `/channels/whatsapp/logout` | Log the WhatsApp session out |
-| `GET` | `/whatsapp/jobs/{message_id}` | Poll the status of an enqueued WhatsApp message |
-| `GET` | `/qr` | Fetch the WhatsApp QR code for pairing |
-| `POST` | `/persona/rebuild` | Rebuild persona profiles from logs |
-| `GET` | `/persona/status` | Profile statistics |
-| `POST` | `/ingest` | Ingest a structured fact into the knowledge graph |
-| `POST` | `/add` | Unstructured memory -- triple extraction |
-| `POST` | `/query` | Query the knowledge graph |
-| `GET` | `/health` | System health check |
-| `POST` | `/v1/chat/completions` | OpenAI-compatible chat proxy |
-| `WS` | `/ws` | WebSocket gateway -- `chat.send`, `channels.status`, `sessions.list`, heartbeat every 30s |
-
----
-
-## Functional Scope
-
-> *This is a single-user, single-node system -- not a distributed platform. But it covers a surface area of concerns typically split across multiple tools and teams:*
->
-> **Async message processing** -- **Multi-model intent routing** -- **Hybrid knowledge retrieval** (vector + graph + FTS) -- **Continuous behavioral profiling** -- **Privacy-first memory partitioning** -- **Multi-channel messaging** -- **Voice transcription** -- **Web browsing** -- **File governance** -- **Thermal-aware maintenance** -- **Service lifecycle management**
->
-> *Built and maintained by a single engineer on consumer hardware.*
-
----
-
-## Engineering Philosophy
-
-- **Constraint-Driven Design.** The entire system was engineered to run on a $999 laptop with 8GB RAM. Every architectural decision was made under real resource pressure -- not theoretical, not aspirational.
-- **Production Mindset.** This is not a demo. It processes real messages, from a real user, every day. Uptime, latency, and reliability are measured.
-- **Iterate From Feedback.** Every major subsystem was redesigned at least once based on production observations. NetworkX was replaced after RAM profiling. The channel layer was abstracted after the second platform was added. The LLM router was rebuilt on litellm after outgrowing direct API calls.
-- **End-to-End Ownership.** One engineer. Full stack. From SQLite schema design to async Python workers to shell-script orchestration to real-time monitoring dashboards.
+See [CONTRIBUTING.md](CONTRIBUTING.md) and [GOVERNANCE.md](GOVERNANCE.md).
 
 ---
 
@@ -919,7 +675,7 @@ Deep respect and gratitude to the OpenClaw creators. The spirit of "run your own
 
 ## Built By
 
-**Upayan Ghosh** -- Software engineer who built a 50,000+ line production AI system from scratch, on evenings and weekends, on consumer hardware.
+**Upayan Ghosh** -- Software engineer who built a 15,000+ line production AI system from scratch, on evenings and weekends, on consumer hardware.
 
 This project was built using AI coding tools (Claude, ChatGPT, Gemini) for implementation, with architecture design, system integration, performance profiling, and debugging done by hand. The architectural decisions -- replacing NetworkX with SQLite after profiling RAM pressure, designing the channel abstraction layer, building hemisphere-enforced memory isolation, engineering the SBS pipeline -- those came from staring at real problems and solving them.
 
@@ -952,5 +708,9 @@ Want to contribute? Check out [CONTRIBUTING.md](CONTRIBUTING.md) to get started.
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Full system architecture with Mermaid diagrams |
 | [HOW_TO_RUN.md](HOW_TO_RUN.md) | Complete setup and deployment guide |
 | [SETUP_PERSONA.md](SETUP_PERSONA.md) | Persona customization guide |
+| [docs/multiuser.md](docs/multiuser.md) | Multiuser keying and identity layer |
+| [docs/kg-limits.md](docs/kg-limits.md) | Knowledge graph scope and limits |
+| [SECURITY.md](SECURITY.md) | Security disclosure policy |
+| [GOVERNANCE.md](GOVERNANCE.md) | Project governance and maintainership |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Dev setup, test commands, and PR guidelines |
 | [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) | Community code of conduct |

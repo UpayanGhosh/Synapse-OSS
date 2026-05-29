@@ -48,16 +48,19 @@ synapse_start.bat           # Start all (Windows)
 ./synapse_stop.sh           # Stop all
 
 # API server only
-cd workspace/sci_fi_dashboard && uvicorn api_gateway:app --host 0.0.0.0 --port 8000 --reload
+( cd workspace/sci_fi_dashboard && uvicorn api_gateway:app --host 0.0.0.0 --port 8000 --reload )
+
+# Baileys WhatsApp bridge only (Node.js subprocess — normally auto-spawned by WhatsAppChannel)
+( cd baileys-bridge && npm install && node index.js )
 
 # Baileys WhatsApp bridge only (Node.js subprocess — normally auto-spawned by WhatsAppChannel)
 cd baileys-bridge && npm install && node index.js
 
 # CLI
-cd workspace && python main.py chat|ingest|vacuum|verify
+( cd workspace && python main.py chat|ingest|vacuum|verify )
 
 # Tests — run from workspace/
-cd workspace && pytest tests/ -v
+( cd workspace && pytest tests/ -v )
 pytest tests/ -m unit|integration|smoke          # filter by marker
 pytest tests/test_flood.py -v                    # single file
 pytest tests/test_flood.py::TestFloodGate::test_batch -v  # single test
@@ -89,17 +92,23 @@ Channel (WA/TG/Discord/Slack)
 ```
 
 ### LLM Routing (Traffic Cop → MoA)
-`route_traffic_cop()` in `api_gateway.py` auto-classifies every message before the LLM call. The LLM is **never** given tools during `persona_chat()` — no function calling in the chat path.
+`route_traffic_cop()` in `llm_wrappers.py` auto-classifies every message before the LLM call. The LLM is **never** given tools during `persona_chat()` — no function calling in the chat path.
 
 | Role | Model | Trigger |
 |------|-------|---------|
+| traffic_cop | Gemini Flash Lite (default) | classifier — picks role for every chat turn |
 | casual | Gemini Flash | default / Banglish |
 | code | Claude Sonnet (thinking) | code detected |
 | analysis | Gemini Pro | deep reasoning |
 | vault | Local Ollama | private/spicy content — zero cloud leakage |
 | review | configurable | explicit review tasks |
+| oracle | Gemini Flash Lite (default) | dual cognition: inner monologue + tension merge |
 
 Model strings are provider-prefixed (`gemini/gemini-2.0-flash-exp`, `anthropic/claude-3-5-sonnet-20241022`, `ollama_chat/mistral`) and come from `synapse.json → model_mappings`. Each role can declare a `fallback` model.
+
+> **Note:** `traffic_cop` is a separate role from `casual` as of Phase 8. If unset in `synapse.json`, falls back to `casual` for backward compat.
+
+> **Note:** `oracle` is the dual-cognition role added in Phase 7. `call_ag_oracle()` resolves the role dynamically: reads `session.dual_cognition_role` (user override), then checks `model_mappings`, falls back to `analysis` if `oracle` is absent (backwards compat). Pinned to `flash-lite` by default — avoids 429 cascades that occur when dual cog is pointed at a 1 RPM Pro model. With the oracle role configured, `dual_cognition_enabled: true` is safe. If using a local Ollama model for oracle, bump `session.dual_cognition_timeout` to `10.0`.
 
 ### Soul-Brain Sync (SBS) Persona Engine
 Pipeline: `RawMessage → RealtimeProcessor → BatchProcessor (every 50 msgs or 6h) → PromptCompiler → system prompt`
@@ -141,8 +150,6 @@ Per-channel policy via `DmPolicy` enum: `pairing | allowlist | open | disabled`.
 
 MCP tools are **not** offered to the LLM during persona chat — they are only called by `ProactiveAwarenessEngine` or external MCP clients.
 
-**Known bug in `tools_server.py`**: `read_file`/`write_file` call `Sentinel().agent_read_file()` which is incorrect — `agent_read_file` is a module-level function in `sbs/sentinel/tools.py`, not a method on `Sentinel`. These tools raise `TypeError` at runtime until fixed.
-
 ## Key Files
 
 ### Entry Points
@@ -181,6 +188,31 @@ Primary runtime config. Key sections:
 - `session.identityLinks` — maps canonical name to raw peer IDs across channels
 - `session.dual_cognition_enabled` — boolean (default `true`), disables DualCognitionEngine when `false`
 - `session.dual_cognition_timeout` — float seconds (default `5.0`), `asyncio.wait_for` timeout on `think()`
+- `session.dual_cognition_role` — string (default `"oracle"`), overrides which `model_mappings` role `call_ag_oracle()` dispatches to; falls back to `"analysis"` if the named role is absent
+- `model_mappings.<role>.prompt_tier` is auto-validated at load against the model string — see `prompt_tiers.MODEL_TIER_MAP`. Set `session.tier_strict_mode=true` to make two-tier downgrades boot-blocking.
+
+#### Auto-flush configuration (Phase 3)
+
+These keys live in the `session` block of `synapse.json`. The scanner runs as a
+FastAPI lifespan background task — **not** inside `gentle_worker_loop` — so flush
+cadence follows gateway uptime, not battery/CPU state.
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `auto_flush_enabled` | `true` | Master switch. Set `false` to disable entirely (e.g. low-resource hosts). |
+| `auto_flush_idle_seconds` | `1800` | Seconds of inactivity before a session is auto-archived. OR-combined with count. |
+| `auto_flush_message_count` | `50` | Message count ceiling; sessions exceeding this flush even if recently active. |
+| `auto_flush_check_interval_seconds` | `60` | Scanner wake-up cadence in seconds. |
+| `auto_flush_min_messages` | `5` | Sessions below this count are never auto-flushed (avoids trivial exchanges). |
+
+Auto-flush is identical to the user running `/new`: transcript is archived,
+`_ingest_session_background` fires vector+KG ingestion, `session_id` rotates.
+Hemisphere is always `"safe"` — the scanner never infers hemisphere from session
+metadata. Dedup: `SessionEntry.memory_flush_at` is checked; if a flush happened
+within the idle window, the session is skipped (prevents double-flush after manual `/new`).
+Telemetry: each auto-flush writes a row to `ingest_failures` with
+`phase='auto_flush_triggered'`; visible in `GET /memory_health` as
+`last_auto_flush_at`, `auto_flushes_last_24h`, `auto_flush_enabled`.
 
 ### Environment Variables
 `GEMINI_API_KEY`, `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `GROQ_API_KEY`, `WHATSAPP_BRIDGE_TOKEN`, `SYNAPSE_GATEWAY_TOKEN`
@@ -204,6 +236,8 @@ API:8000 | Baileys Bridge:5010 (internal) | Tools MCP:8989 | Ollama:11434 | OAut
 
 6. **Ollama models require `ollama_chat/` prefix** in `synapse.json`, not `ollama/`. The `api_base` is pulled from `providers.ollama.api_base`.
 
+   **Ollama silent context truncation** — Ollama defaults to `num_ctx=2048` regardless of the model's native window. Synapse's identity prompt is ~7k tokens — at the default, the trailing user message gets dropped and the bot replies with generic "how can I help" boilerplate. Fix is in `llm_router.py: _OLLAMA_DEFAULT_OPTS` (sets `num_ctx=8192`). Override per-role via `model_mappings.<role>.ollama_options.num_ctx`. Verify VRAM headroom: KV cache size grows linearly with `num_ctx`; on 8 GB GPUs avoid combining a 7B+ model with `num_ctx > 12k`.
+
 7. **`synapse_config.py` is imported by 50+ files** — even small changes there have wide blast radius.
 
 8. **Dual Cognition timeout** — `think()` is wrapped in `asyncio.wait_for(timeout=dual_cognition_timeout)`. If it times out, `CognitiveMerge()` (empty) is used and the message still gets a response. Tune via `session.dual_cognition_timeout` in `synapse.json` (default 5s).
@@ -211,6 +245,12 @@ API:8000 | Baileys Bridge:5010 (internal) | Tools MCP:8989 | Ollama:11434 | OAut
 9. **Traffic Cop skip** — When `CognitiveMerge.response_strategy` is `"be_direct"`, `"analytical"`, or `"explore_with_care"`, the traffic cop LLM call is skipped and a role is mapped directly (`STRATEGY_TO_ROLE` constant in `api_gateway.py`). Falls back to normal traffic cop for unmapped strategies.
 
 10. **Memory query is shared** — `MemoryEngine.query()` is called once in `persona_chat()` and results are passed to `dual_cognition.think(pre_cached_memory=...)`. Do NOT add a second memory query inside dual cognition.
+
+11. **`add_memory` returns `{"error": str(e)}`, does not raise** — any caller that ignores the return value will silently count failures as successes. Always check `isinstance(result, dict) and "error" in result` after calling `add_memory`. See `session_ingest.py` for the reference pattern. Do NOT refactor `add_memory` to raise instead — it has too many callers and the `@with_retry` decorator interacts with raise semantics.
+
+## Diagnostics
+
+- **`/memory_health`** — canonical health probe for the ingestion pipeline. Auth-gated (Bearer token). Returns last doc/KG/ingest timestamps, pending session message count, and up to 10 recent failure rows from the `ingest_failures` table. Use `synapse memory memory-health` from the CLI.
 
 ## Symbol Lookup
 Prefer `semantic_search_nodes_tool` (MCP) — searches 4700+ nodes by name or meaning in <2ms.

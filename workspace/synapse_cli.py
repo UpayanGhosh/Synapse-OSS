@@ -1,6 +1,6 @@
 """Synapse-OSS root CLI entry point.
 
-Exposes onboard, chat, ingest, vacuum, verify, daemon-install, daemon-uninstall
+Exposes onboard, chat, ingest, vacuum, verify, start, stop, daemon-install, daemon-uninstall
 as Typer subcommands.
 
 Run from the workspace/ directory:
@@ -11,6 +11,11 @@ Run from the workspace/ directory:
     python synapse_cli.py chat
 """
 
+import os
+import subprocess
+from datetime import UTC
+from pathlib import Path
+
 import typer
 
 app = typer.Typer(
@@ -18,6 +23,142 @@ app = typer.Typer(
     help="Synapse-OSS CLI",
     no_args_is_help=True,
 )
+
+# ---------------------------------------------------------------------------
+# Memory diagnostics subcommand group
+# ---------------------------------------------------------------------------
+memory_app = typer.Typer(name="memory", help="Memory pipeline diagnostics", no_args_is_help=True)
+app.add_typer(memory_app)
+
+
+@memory_app.command("memory-health")
+def memory_health(
+    port: int = typer.Option(8000, "--port", help="Gateway port"),
+) -> None:
+    """Show ingestion pipeline health: last ingest times, failure counts, pending messages."""
+
+    import httpx  # noqa: PLC0415
+    from rich.console import Console  # noqa: PLC0415
+    from rich.table import Table  # noqa: PLC0415
+    from synapse_config import SynapseConfig  # noqa: PLC0415
+
+    cfg = SynapseConfig.load()
+    token = cfg.gateway.get("token") if cfg.gateway else None
+
+    headers = {}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+
+    console = Console()
+    try:
+        resp = httpx.get(f"http://127.0.0.1:{port}/memory_health", headers=headers, timeout=10)
+        resp.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        console.print(f"[red]HTTP {exc.response.status_code}:[/red] {exc.response.text}")
+        raise typer.Exit(1) from None
+    except httpx.RequestError as exc:
+        console.print(f"[red]Could not reach gateway on port {port}:[/red] {exc}")
+        raise typer.Exit(1) from None
+
+    data = resp.json()
+
+    # Summary table
+    summary = Table(title="Memory Pipeline Health", show_header=True, header_style="bold cyan")
+    summary.add_column("Metric", style="dim")
+    summary.add_column("Value")
+    summary.add_row("Last doc added", data.get("last_doc_added_at") or "(none)")
+    summary.add_row("Last KG extraction", data.get("last_kg_extraction_at") or "(none)")
+    summary.add_row("Last ingest completed", data.get("last_ingest_completed_at") or "(none)")
+    summary.add_row("Last ingest failure", data.get("last_ingest_failure_at") or "(none)")
+    summary.add_row("Pending session messages", str(data.get("pending_session_message_count", 0)))
+    console.print(summary)
+
+    # Recent failures table
+    recent = data.get("recent_failures", [])
+    if recent:
+        fail_table = Table(title="Recent Failures (up to 10)", header_style="bold red")
+        fail_table.add_column("created_at")
+        fail_table.add_column("session_key")
+        fail_table.add_column("phase")
+        fail_table.add_column("exception_type")
+        fail_table.add_column("exception_msg")
+        for row in recent:
+            fail_table.add_row(
+                row.get("created_at") or "",
+                row.get("session_key") or "",
+                row.get("phase") or "",
+                row.get("exception_type") or "",
+                row.get("exception_msg") or "",
+            )
+        console.print(fail_table)
+    else:
+        console.print("[green]No recent failures.[/green]")
+
+    # Exit 1 if last failure is more recent than last completion
+    last_failure = data.get("last_ingest_failure_at")
+    last_completed = data.get("last_ingest_completed_at")
+    if last_failure and last_completed and last_failure > last_completed:
+        console.print("[yellow]WARNING: last failure is more recent than last completion.[/yellow]")
+        raise typer.Exit(1)
+    if last_failure and not last_completed:
+        console.print("[yellow]WARNING: failures recorded but no successful completion.[/yellow]")
+        raise typer.Exit(1)
+
+
+@memory_app.command("save-probe")
+def memory_save_probe(
+    content: str = typer.Option(
+        "synapse cli save-probe",
+        "--content",
+        help="Content payload to store as a memory probe.",
+    ),
+    category: str = typer.Option("cli_probe", "--category", help="Document category label."),
+    hemisphere: str = typer.Option("safe", "--hemisphere", help="safe or spicy"),
+) -> None:
+    """Store one memory and print persistence counters from memory.db."""
+    import sqlite3  # noqa: PLC0415
+
+    from sci_fi_dashboard.memory_engine import MemoryEngine  # noqa: PLC0415
+    from synapse_config import SynapseConfig  # noqa: PLC0415
+
+    result = MemoryEngine().add_memory(content, category=category, hemisphere=hemisphere)
+    typer.echo(f"save_result: {result}")
+    probe_error = result.get("error") if isinstance(result, dict) else None
+    if probe_error:
+        typer.echo(f"save_error: {probe_error}", err=True)
+
+    db_path = SynapseConfig.load().db_dir / "memory.db"
+    documents_count = 0
+    memory_affect_count = 0
+    documents_note = ""
+    memory_affect_note = ""
+
+    if db_path.exists():
+        try:
+            with sqlite3.connect(db_path) as conn:
+
+                def _safe_count(table_name: str) -> tuple[int, str]:
+                    try:
+                        count = int(conn.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0] or 0)
+                        return count, ""
+                    except sqlite3.OperationalError as exc:
+                        return 0, f" (unavailable: {exc})"
+
+                documents_count, documents_note = _safe_count("documents")
+                memory_affect_count, memory_affect_note = _safe_count("memory_affect")
+        except sqlite3.Error as exc:
+            documents_note = f" (unavailable: {exc})"
+            memory_affect_note = f" (unavailable: {exc})"
+    else:
+        documents_note = " (memory.db missing)"
+        memory_affect_note = " (memory.db missing)"
+
+    typer.echo(f"documents_count: {documents_count}{documents_note}")
+    typer.echo(f"memory_affect_count: {memory_affect_count}{memory_affect_note}")
+
+    if probe_error:
+        raise typer.Exit(1)
+
 
 # ---------------------------------------------------------------------------
 # WhatsApp subcommand group
@@ -56,6 +197,400 @@ def whatsapp_logout(
     logout_command(port=port)
 
 
+# ---------------------------------------------------------------------------
+# Google Antigravity OAuth subcommand group
+# ---------------------------------------------------------------------------
+ag_app = typer.Typer(
+    name="antigravity",
+    help="Google Antigravity (Gemini 3 via OAuth) — login / status / logout",
+    no_args_is_help=True,
+)
+app.add_typer(ag_app)
+
+
+@ag_app.command("login")
+def antigravity_login() -> None:
+    """Run the Google Antigravity OAuth flow and store credentials.
+
+    Opens a browser for Google sign-in, captures the redirect on
+    localhost:8085, exchanges the code for access + refresh tokens, and
+    saves them to ~/.synapse/state/google-oauth.json.
+    """
+    import asyncio  # noqa: PLC0415
+
+    from cli.provider_steps import google_antigravity_oauth_flow  # noqa: PLC0415
+    from rich.console import Console  # noqa: PLC0415
+
+    console = Console()
+    metadata = asyncio.run(google_antigravity_oauth_flow(console))
+    if not metadata:
+        raise typer.Exit(1)
+    typer.echo(
+        f"Logged in as {metadata.get('email') or '(unknown)'} "
+        f"on tier '{metadata.get('tier') or 'unknown'}', "
+        f"project '{metadata.get('project_id') or 'unknown'}'."
+    )
+
+
+@ag_app.command("status")
+def antigravity_status() -> None:
+    """Show the email, tier, and expiry of the saved Antigravity credentials."""
+    from datetime import datetime  # noqa: PLC0415
+
+    from sci_fi_dashboard import google_oauth  # noqa: PLC0415
+
+    creds = google_oauth.load_credentials()
+    if creds is None:
+        typer.echo("No Google Antigravity credentials saved.")
+        raise typer.Exit(1)
+    expires_at = datetime.fromtimestamp(creds.expires_at, tz=UTC)
+    typer.echo(f"email:       {creds.email or '(unknown)'}")
+    typer.echo(f"project_id:  {creds.project_id}")
+    typer.echo(f"tier:        {creds.tier or '(unknown)'}")
+    typer.echo(f"expires_at:  {expires_at.isoformat()}")
+    typer.echo(f"is_expired:  {creds.is_expired()}")
+
+
+@ag_app.command("logout")
+def antigravity_logout() -> None:
+    """Delete the saved Antigravity credentials from disk."""
+    from sci_fi_dashboard import google_oauth  # noqa: PLC0415
+
+    if google_oauth.delete_credentials():
+        typer.echo("Google Antigravity credentials wiped.")
+    else:
+        typer.echo("No saved credentials to remove.")
+
+
+# ---------------------------------------------------------------------------
+# Calendar connector subcommand group
+# ---------------------------------------------------------------------------
+calendar_app = typer.Typer(
+    name="calendar",
+    help="Google Calendar connector — connect / verify / status / disconnect",
+    no_args_is_help=True,
+)
+app.add_typer(calendar_app)
+
+
+@calendar_app.command("connect")
+def calendar_connect(
+    client_secret: Path | None = typer.Option(
+        None,
+        "--client-secret",
+        help=(
+            "Path to a Google OAuth desktop client JSON. Packaged Synapse builds should "
+            "provide this automatically; local OSS/dev installs can pass it once."
+        ),
+    ),
+    default_calendar_id: str = typer.Option(
+        "primary",
+        "--default-calendar-id",
+        help="Google Calendar ID to use for reads/writes.",
+    ),
+    timezone: str = typer.Option(
+        "Asia/Calcutta",
+        "--timezone",
+        help="Default timezone for natural-language calendar requests.",
+    ),
+    locale_country: str = typer.Option(
+        "IN",
+        "--locale-country",
+        help="Locale country code for holiday fallback answers.",
+    ),
+    trusted_quick_add: bool = typer.Option(
+        True,
+        "--trusted-quick-add/--confirm-all-adds",
+        help="Allow safe personal calendar events to be created without extra confirmation.",
+    ),
+    no_browser: bool = typer.Option(
+        False,
+        "--no-browser",
+        help="Do not automatically open the browser.",
+    ),
+) -> None:
+    """Connect Google Calendar with browser OAuth and update Synapse config."""
+    from cli.calendar_commands import CalendarConnectError, connect_calendar  # noqa: PLC0415
+
+    try:
+        result = connect_calendar(
+            client_secret_path=client_secret,
+            default_calendar_id=default_calendar_id,
+            timezone=timezone,
+            locale_country=locale_country,
+            trusted_quick_add=trusted_quick_add,
+            open_browser=not no_browser,
+        )
+    except CalendarConnectError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from None
+
+    typer.echo("Calendar connected.")
+    if result.account:
+        typer.echo(f"account: {result.account}")
+    if result.token_path:
+        typer.echo(f"token: {result.token_path}")
+    typer.echo(f"calendars: {result.calendar_count}")
+    typer.echo(f"upcoming_events: {result.upcoming_count}")
+
+
+@calendar_app.command("verify")
+def calendar_verify() -> None:
+    """Verify Calendar config, refresh token if needed, and list live counters."""
+    from cli.calendar_commands import verify_calendar_connection  # noqa: PLC0415
+
+    result = verify_calendar_connection()
+    if not result.connected:
+        typer.echo(result.error or "Calendar not connected.", err=True)
+        raise typer.Exit(1)
+    typer.echo("Calendar verified.")
+    if result.account:
+        typer.echo(f"account: {result.account}")
+    if result.token_path:
+        typer.echo(f"token: {result.token_path}")
+    typer.echo(f"calendars: {result.calendar_count}")
+    typer.echo(f"upcoming_events: {result.upcoming_count}")
+
+
+@calendar_app.command("status")
+def calendar_status_cmd() -> None:
+    """Show local Calendar connector status without network calls."""
+    from cli.calendar_commands import calendar_status  # noqa: PLC0415
+
+    result = calendar_status()
+    if not result.connected:
+        typer.echo(result.error or "Calendar not connected.")
+        raise typer.Exit(1)
+    typer.echo("Calendar configured.")
+    if result.token_path:
+        typer.echo(f"token: {result.token_path}")
+
+
+@calendar_app.command("disconnect")
+def calendar_disconnect() -> None:
+    """Disable Calendar connector and remove the saved token when present."""
+    from cli.calendar_commands import disconnect_calendar  # noqa: PLC0415
+
+    removed = disconnect_calendar()
+    typer.echo("Calendar disconnected.")
+    if removed:
+        typer.echo("Removed saved Calendar token.")
+
+
+# ---------------------------------------------------------------------------
+# Integrations Hub subcommand group
+# ---------------------------------------------------------------------------
+integrations_app = typer.Typer(
+    name="integrations",
+    help=(
+        "Connect, verify, list, or disconnect third-party integrations "
+        "(Google Calendar, Gmail, Notion, Slack, ...)."
+    ),
+    no_args_is_help=True,
+)
+app.add_typer(integrations_app)
+
+
+@integrations_app.command("list")
+def integrations_list_cmd() -> None:
+    """Show every known integration with its current connection status."""
+    from cli.integrations_commands import list_all  # noqa: PLC0415
+
+    results = list_all()
+    if not results:
+        typer.echo("No integrations registered.")
+        raise typer.Exit(0)
+    for result in results:
+        marker = "✓" if result.connected and result.enabled else "·"
+        line = f"  {marker}  {result.integration:24}  auth={result.auth_type:18}"
+        if result.connected:
+            line = f"{line}  token={result.token_path}"
+        elif result.error:
+            line = f"{line}  ({result.error})"
+        typer.echo(line)
+
+
+@integrations_app.command("connect")
+def integrations_connect_cmd(
+    name: str = typer.Argument(..., help="Integration name (e.g. google_calendar, gmail)."),
+    client_secret: Path | None = typer.Option(
+        None,
+        "--client-secret",
+        help=(
+            "Override the bundled OAuth client by passing a Google client_secret JSON. "
+            "Useful for power users running their own Google Cloud project."
+        ),
+    ),
+    no_browser: bool = typer.Option(
+        False,
+        "--no-browser",
+        help="Do not automatically open the browser.",
+    ),
+) -> None:
+    """Connect an integration (runs OAuth flow when applicable)."""
+    from sci_fi_dashboard.integrations import IntegrationError  # noqa: PLC0415
+    from cli.integrations_commands import connect_integration  # noqa: PLC0415
+
+    try:
+        result = connect_integration(
+            name,
+            override_client_path=client_secret,
+            open_browser=not no_browser,
+        )
+    except IntegrationError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from None
+    except KeyError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(2) from None
+
+    typer.echo(f"{result.integration} connected.")
+    if result.account_email:
+        typer.echo(f"account: {result.account_email}")
+    if result.token_path:
+        typer.echo(f"token: {result.token_path}")
+    if result.used_override:
+        typer.echo("auth: user-provided OAuth client")
+    for key, value in (result.details or {}).items():
+        typer.echo(f"{key}: {value}")
+
+
+@integrations_app.command("verify")
+def integrations_verify_cmd(
+    name: str = typer.Argument(..., help="Integration name."),
+) -> None:
+    """Refresh token if needed and run a smoke check against the integration."""
+    from cli.integrations_commands import verify_integration  # noqa: PLC0415
+
+    result = verify_integration(name)
+    if not result.connected:
+        typer.echo(result.error or f"{name} not connected.", err=True)
+        raise typer.Exit(1)
+    typer.echo(f"{result.integration} verified.")
+    if result.token_path:
+        typer.echo(f"token: {result.token_path}")
+    for key, value in (result.details or {}).items():
+        typer.echo(f"{key}: {value}")
+
+
+@integrations_app.command("status")
+def integrations_status_cmd(
+    name: str = typer.Argument(..., help="Integration name."),
+) -> None:
+    """Show local connection state for an integration without network calls."""
+    from cli.integrations_commands import integration_status  # noqa: PLC0415
+
+    result = integration_status(name)
+    enabled = "enabled" if result.enabled else "disabled"
+    has_token = "token-present" if result.connected else "no-token"
+    typer.echo(f"{result.integration}: {enabled}, {has_token}")
+    if result.token_path:
+        typer.echo(f"token: {result.token_path}")
+    if result.account_email:
+        typer.echo(f"account: {result.account_email}")
+
+
+@integrations_app.command("disconnect")
+def integrations_disconnect_cmd(
+    name: str = typer.Argument(..., help="Integration name."),
+) -> None:
+    """Disable an integration and remove its saved token."""
+    from cli.integrations_commands import disconnect_integration  # noqa: PLC0415
+
+    removed = disconnect_integration(name)
+    typer.echo(f"{name} disconnected.")
+    if removed:
+        typer.echo("Removed saved token.")
+
+
+@integrations_app.command("info")
+def integrations_info_cmd(
+    name: str = typer.Argument(..., help="Integration name."),
+) -> None:
+    """Show registry metadata (description, scopes, setup notes) for an integration."""
+    from cli.integrations_commands import integration_summary  # noqa: PLC0415
+    from sci_fi_dashboard.integrations import IntegrationError  # noqa: PLC0415
+
+    try:
+        info = integration_summary(name)
+    except IntegrationError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from None
+
+    typer.echo(f"{info['display_name']} ({info['name']})")
+    typer.echo(f"  auth_type: {info['auth_type']}")
+    typer.echo(f"  available: {info['available']}")
+    typer.echo(f"  scopes:")
+    for scope in info["scopes"]:
+        typer.echo(f"    - {scope}")
+    if info["description"]:
+        typer.echo(f"  description: {info['description']}")
+    if info["setup_notes"]:
+        typer.echo(f"  setup_notes: {info['setup_notes']}")
+
+
+@app.command()
+def install_home() -> None:
+    """Create or repair the standalone ~/.synapse product home."""
+    from cli.install_home import ensure_product_home
+
+    result = ensure_product_home()
+    typer.echo(f"Synapse product home ready: {result['data_root']}")
+
+
+@app.command("reset")
+def reset_synapse(
+    scope: str = typer.Option(
+        "config",
+        "--scope",
+        "-s",
+        help="Reset scope: config | config+creds+sessions | full",
+    ),
+    yes: bool = typer.Option(
+        False,
+        "--yes",
+        "-y",
+        help="Confirm the reset without prompting.",
+    ),
+    reonboard: bool = typer.Option(
+        False,
+        "--reonboard",
+        help="Launch onboarding immediately after the reset completes.",
+    ),
+    flow: str = typer.Option(
+        "quickstart",
+        "--flow",
+        help="Onboarding flow to use with --reonboard: quickstart or advanced.",
+    ),
+) -> None:
+    """Back up Synapse state so you can re-onboard or test a fresh setup."""
+    from cli.onboard import _RESET_SCOPES, _handle_reset, run_wizard  # noqa: PLC0415
+
+    data_root = Path(os.environ.get("SYNAPSE_HOME", Path.home() / ".synapse"))
+    if scope not in _RESET_SCOPES:
+        typer.echo(
+            f"Invalid reset scope {scope!r}. Valid values: {', '.join(_RESET_SCOPES)}",
+            err=True,
+        )
+        raise typer.Exit(1)
+
+    if not yes:
+        typer.echo(f"Synapse home: {data_root}")
+        typer.echo(
+            "Reset backs up matching files into <synapse-home>/backups/ before removing "
+            "them from the active install."
+        )
+        confirmed = typer.confirm(f"Continue with reset scope '{scope}'?", default=False)
+        if not confirmed:
+            typer.echo("Reset cancelled.")
+            raise typer.Exit(0)
+
+    _handle_reset(scope, data_root)
+
+    if reonboard:
+        run_wizard(flow=flow, force_interactive=True)
+
+
 @app.command()
 def onboard(
     non_interactive: bool = typer.Option(
@@ -85,6 +620,11 @@ def onboard(
             "Values: config | config+creds+sessions | full"
         ),
     ),
+    launch_chat: bool | None = typer.Option(
+        None,
+        "--launch-chat/--no-launch-chat",
+        help="Launch local CLI chat after setup completes.",
+    ),
 ) -> None:
     """Interactive setup wizard — configure LLM providers, channels, and write synapse.json."""
     from cli.onboard import run_wizard
@@ -94,6 +634,7 @@ def onboard(
         flow=flow,
         accept_risk=accept_risk,
         reset=reset,
+        launch_chat=launch_chat,
     )
 
 
@@ -131,6 +672,11 @@ def setup(
             "Values: config | config+creds+sessions | full"
         ),
     ),
+    launch_chat: bool | None = typer.Option(
+        None,
+        "--launch-chat/--no-launch-chat",
+        help="Launch local CLI chat after setup completes.",
+    ),
 ) -> None:
     """Setup Synapse — configure providers, channels, and persona profile."""
     if verify:
@@ -145,15 +691,41 @@ def setup(
             flow=flow,
             accept_risk=accept_risk,
             reset=reset,
+            launch_chat=launch_chat,
         )
 
 
 @app.command()
-def chat() -> None:
-    """Start the AI Gateway interactive chat interface."""
-    from main import start_chat
+def chat(
+    target: str = typer.Option("the_creator", "--target", help="Persona id to chat with."),
+    user_id: str = typer.Option("local_cli", "--user-id", help="Local CLI user id."),
+    session: str = typer.Option("safe", "--session", help="Initial session type: safe or spicy."),
+    port: int = typer.Option(8000, "--port", help="Gateway port."),
+    no_auto_start: bool = typer.Option(False, "--no-auto-start", help="Do not start the gateway."),
+    message: str | None = typer.Option(None, "--message", help="Send an initial message."),
+    exit_after_message: bool = typer.Option(False, "--exit-after-message", help="Exit after --message reply."),
+) -> None:
+    """Start Synapse's local CLI chat."""
+    from cli.chat_loop import run_cli_chat
+    from cli.chat_types import ChatLaunchOptions, normalize_session_type
 
-    start_chat()
+    try:
+        session_type = normalize_session_type(session)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc), param_hint="--session") from exc
+
+    code = run_cli_chat(
+        ChatLaunchOptions(
+            target=target,
+            user_id=user_id,
+            session_type=session_type,
+            port=port,
+            auto_start_gateway=not no_auto_start,
+            initial_message=message,
+            exit_after_initial=exit_after_message,
+        )
+    )
+    raise typer.Exit(code)
 
 
 @app.command()
@@ -173,11 +745,105 @@ def vacuum() -> None:
 
 
 @app.command()
-def verify() -> None:
-    """Run system health and integrity checks."""
-    from main import verify_system
+def verify(
+    non_interactive: bool = typer.Option(
+        False,
+        "--non-interactive",
+        envvar="SYNAPSE_NON_INTERACTIVE",
+        help="Disable prompts/spinners for scripted runs.",
+    ),
+    test_message: str = typer.Option(
+        "",
+        "--test-message",
+        help="Optional one-shot gateway probe message after config verify.",
+    ),
+    target: str = typer.Option(
+        "the_creator",
+        "--target",
+        help="Persona target for --test-message (route: /chat/<target>).",
+    ),
+    user_id: str = typer.Option(
+        "synapse_verify",
+        "--user-id",
+        help="User id for --test-message request.",
+    ),
+    session_type: str = typer.Option(
+        "safe",
+        "--session-type",
+        help="Session type for --test-message payload.",
+    ),
+    port: int = typer.Option(
+        8000,
+        "--port",
+        help="Gateway port for --test-message.",
+    ),
+    no_auto_start_gateway: bool = typer.Option(
+        False,
+        "--no-auto-start-gateway",
+        help="Fail probe if gateway is not already running.",
+    ),
+    timeout_sec: float = typer.Option(
+        45.0,
+        "--timeout-sec",
+        help="HTTP timeout for --test-message probe.",
+    ),
+    require_openai_codex: bool = typer.Option(
+        False,
+        "--require-openai-codex",
+        help="Fail if probe response model is not openai_codex/*.",
+    ),
+    probe_only: bool = typer.Option(
+        False,
+        "--probe-only",
+        help="Skip config verification and run only --test-message probe.",
+    ),
+) -> None:
+    """Run config verification and optional one-shot live message probe."""
+    from cli.verify_steps import run_verify  # noqa: PLC0415
+    from main import send_single_test_message  # noqa: PLC0415
 
-    verify_system()
+    if probe_only and not test_message:
+        typer.echo("--probe-only requires --test-message.", err=True)
+        raise typer.Exit(2)
+
+    verify_code = 0
+    if not probe_only:
+        verify_code = run_verify(non_interactive=non_interactive)
+        if verify_code != 0 and not test_message:
+            raise typer.Exit(verify_code)
+        if verify_code != 0:
+            typer.echo("Config verification failed; continuing with live probe.", err=True)
+
+    if not test_message:
+        raise typer.Exit(verify_code)
+
+    probe = send_single_test_message(
+        test_message,
+        target=target,
+        user_id=user_id,
+        session_type=session_type,
+        port=port,
+        auto_start_gateway=not no_auto_start_gateway,
+        timeout_sec=timeout_sec,
+    )
+    if not probe.get("ok"):
+        typer.echo(f"Probe failed: {probe.get('error', 'unknown error')}", err=True)
+        raise typer.Exit(1)
+
+    model = str(probe.get("model", "")).strip()
+    routed = bool(probe.get("routed_via_openai_codex", False))
+    typer.echo(f"Probe status: PASS (HTTP {probe.get('status_code', 200)})")
+    typer.echo(f"Probe model: {model or '(missing)'}")
+    typer.echo(f"Routed via openai_codex: {routed}")
+
+    if require_openai_codex and not routed:
+        typer.echo(
+            "Probe did not route via openai_codex. Check synapse.json model_mappings/provider trust.",
+            err=True,
+        )
+        raise typer.Exit(1)
+
+    raise typer.Exit(verify_code)
 
 
 @app.command()
@@ -209,6 +875,65 @@ def daemon_uninstall() -> None:
     except NotImplementedError as exc:
         typer.echo(f"ERROR: {exc}", err=True)
         raise typer.Exit(1) from None
+
+
+@app.command()
+def start() -> None:
+    """Start the Synapse gateway in the background."""
+    from cli.gateway_lifecycle import start_gateway  # noqa: PLC0415
+    from synapse_config import SynapseConfig  # noqa: PLC0415
+
+    try:
+        _started, message = start_gateway(SynapseConfig.load())
+        typer.echo(message)
+    except Exception as exc:  # pragma: no cover - defensive CLI boundary
+        typer.echo(f"ERROR: {exc}", err=True)
+        raise typer.Exit(1) from None
+
+
+@app.command()
+def stop() -> None:
+    """Stop the background Synapse gateway."""
+    from cli.gateway_lifecycle import stop_gateway  # noqa: PLC0415
+    from synapse_config import SynapseConfig  # noqa: PLC0415
+
+    try:
+        _stopped, message = stop_gateway(SynapseConfig.load())
+        typer.echo(message)
+    except Exception as exc:  # pragma: no cover - defensive CLI boundary
+        typer.echo(f"ERROR: {exc}", err=True)
+        raise typer.Exit(1) from None
+
+
+@app.command()
+def uninstall(
+    yes: bool = typer.Option(False, "--yes", "-y", help="Confirm permanent deletion."),
+    keep_npm: bool = typer.Option(False, "--keep-npm", help="Keep the global npm wrapper."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be deleted."),
+) -> None:
+    """Completely uninstall Synapse data/runtime via the product wrapper."""
+
+    npm_synapse = (
+        Path(os.environ.get("APPDATA", str(Path.home() / "AppData" / "Roaming")))
+        / "npm"
+        / "synapse.cmd"
+    )
+    if not npm_synapse.exists():
+        typer.echo(
+            "ERROR: global Synapse wrapper not found. Run uninstall from the npm-installed synapse command.",
+            err=True,
+        )
+        raise typer.Exit(1)
+
+    args = [str(npm_synapse), "uninstall"]
+    if yes:
+        args.append("--yes")
+    if keep_npm:
+        args.append("--keep-npm")
+    if dry_run:
+        args.append("--dry-run")
+    result = subprocess.run(args, check=False)
+    raise typer.Exit(result.returncode)
 
 
 @app.command()

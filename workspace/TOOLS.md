@@ -1,40 +1,30 @@
-# TOOLS.md - Local Notes
+# TOOLS.md - Local Tool Notes
 
-Skills define _how_ tools work. This file is for _your_ specifics — the stuff that's unique to your setup.
+Skills define tool behavior. This file stores local setup notes.
 
-## What Goes Here
+## Runtime
 
-Things like:
+- Gateway: `http://127.0.0.1:8000`
+- Health: `GET /health`
+- Memory DB: `~/.synapse/workspace/db/memory.db`
+- Knowledge graph DB: `~/.synapse/workspace/db/knowledge_graph.db`
+- Runtime config: `~/.synapse/synapse.json`
 
-- Camera names and locations
-- SSH hosts and aliases
-- Preferred voices for TTS
-- Speaker/room names
-- Device nicknames
-- Anything environment-specific
+## Tool Style
 
-## Examples
+- Use tools invisibly when the user wants results.
+- Explain tool failures plainly.
+- Do not expose raw diagnostics in chat channels.
+- Prefer local/private tools when available.
+- Ask before external side effects or sensitive transmission.
 
-```markdown
-### Cameras
+## Channel Formatting
 
-- living-room → Main area, 180° wide angle
-- front-door → Entrance, motion-triggered
+- Telegram/WhatsApp: short human paragraphs, no tables.
+- Discord/Slack: use reactions when they acknowledge without interrupting.
+- CLI/dashboard: more structure is acceptable.
 
-### SSH
+## Notes
 
-- home-server → 192.168.1.XXX, user: your_username
-
-### TTS
-
-- Preferred voice: "Nova" (warm, slightly British)
-- Default speaker: Kitchen HomePod
-```
-
-## Why Separate?
-
-Skills are shared. Your setup is yours. Keeping them apart means you can update skills without losing your notes, and share skills without leaking your infrastructure.
-
----
-
-Add whatever helps you do your job. This is your cheat sheet.
+Add local device names, voice IDs, browser setup, SSH aliases, and other non-secret
+environment details here.

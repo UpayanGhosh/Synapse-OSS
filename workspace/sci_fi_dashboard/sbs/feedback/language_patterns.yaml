@@ -1,25 +1,31 @@
 # Default patterns — English only. Add your own language entries below.
 # Each category accepts a list of regex patterns (case-insensitive).
-correction_formal:
+tone_more_casual:
   - "why (are you|so) formal"
   - "stop being (formal|robotic)"
   - "sound[s]? like a robot"
   # add your language patterns here, e.g.:
   # - "beshi formal hoyona"
 
-correction_casual:
+tone_more_professional:
   - "too casual"
-  - "be serious"
-  - "professional"
+  - "\\b(be|stay|keep it) serious\\b"
+  - "\\b(be|stay|sound|act)\\s+(more\\s+)?professional\\b"
+  - "\\bkeep it professional\\b"
+  - "\\buse a professional tone\\b"
+  - "\\bformal tone\\b"
+  - "\\bno jokes\\b"
+  - "\\bstop joking\\b"
+  - "\\bstop being (quirky|witty|playful|casual)\\b"
 
-correction_length:
+length_shorter:
   - "too long"
   - "keep it short"
   - "tl;dr"
   - "stop yapping"
   - "too much text"
 
-correction_short:
+length_more_detailed:
   - "elaborate"
   - "explain more"
   - "too short"

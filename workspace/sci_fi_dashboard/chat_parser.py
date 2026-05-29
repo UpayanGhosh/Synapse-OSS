@@ -739,7 +739,7 @@ def build_persona_profile(
     rules = [
         "Never use generic AI phrases like 'Great question!' or 'I'd be happy to help!'",
         "Always respond -- silence is failure",
-        "Use Banglish naturally (Bengali + English mix)",
+        "Use the user's own language mix naturally; do not assume a specific region",
         "Be direct, no fluff -- concise when needed, thorough when it matters",
     ]
 
