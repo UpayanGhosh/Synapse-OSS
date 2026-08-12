@@ -30,21 +30,27 @@ development apparatus, never features. Do not go looking for unmerged code — t
 | Application code | identical | identical |
 | `workspace/tests/` + `baileys-bridge/test/` | stripped | 273 + 9 files |
 | `workspace/AGENTS.md` | present | absent |
-| `.planning/` | not carried | 218 files |
+| `.planning/` | 218 files | 218 files |
 | `ruff` / `black` in CI | advisory (`continue-on-error`) | enforced |
 | `metrics.yml`, `parity.yml` | removed | present |
 
-`main` is the production/release branch and is deliberately test-free and planning-free (commits
-`3b1b328`, `86b7932`). `develop` is where code is written and where every change lands first.
+`main` is the production/release branch and is deliberately **test-free** (commits `3b1b328`,
+`86b7932`). `develop` is where code is written and where every change lands first. Documentation and
+`.planning/` **are** carried on `main` — it is the default branch and therefore the complete reference.
 
 Consequences when working in this repo:
-- **All PRs target `develop`.** Never open one against `main`.
-- `pytest` on a `main` checkout collects nothing. Switch to `develop` to run or add tests.
+- **Code PRs target `develop`.** Never open a code PR against `main`. Docs and `.planning/` updates may
+  land on `main` directly by PR.
+- `workspace/tests/` does not exist on `main`, so `pytest tests/` fails there (it is not an empty
+  collection). `workspace/tests/pytest.ini`, which defines the `unit` / `integration` / `smoke`
+  markers, is stripped with it. Switch to `develop` to run or add tests.
 - `scripts/collect_metrics.sh` fails on `main` (`set -euo pipefail` + `grep` over a non-existent
   `workspace/tests/`). It is a `develop`-only script.
-- `main` advances only by merging `develop`.
-- Milestone planning lives on `develop` in `.planning/ROADMAP.md` — v3.1 current, v4.0 (Bioinspired
-  Memory Architecture, phases 19–24) planned.
+- `main` advances by merging `develop` for code; docs/planning may be committed to `main` directly.
+- Milestone planning is in `.planning/ROADMAP.md` on **both** branches — v3.1 current, v4.0
+  (Bioinspired Memory Architecture, phases 19–24) planned. Keep the two copies in sync when editing.
+- `.planning/phases/**` (180 files) is agent working material. `ROADMAP.md`, `PROJECT.md`,
+  `REQUIREMENTS.md` and `STATE.md` are the durable entry points.
 
 ## Security reporting
 
