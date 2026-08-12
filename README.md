@@ -89,8 +89,8 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the full request flow, route map, and
 ## Project state
 
 - 335 Python source files under `workspace/`.
-- 258 pytest files plus 7 Node test files for the Baileys bridge — these live on `develop`, not on
-  `main`. See [Branch model](#branch-model) below.
+- 258 `test_*.py` suites plus 5 `*.test.js` suites (273 and 9 files in those trees, counting fixtures
+  and helpers). These live on `develop`, not on `main` — see [Branch model](#branch-model) below.
 - Single-user-per-instance today. Multi-user is planned (see PRODUCT_ISSUES.md issue 7.1).
 - Solo-maintained. See [GOVERNANCE.md](GOVERNANCE.md).
 
@@ -106,7 +106,8 @@ comparing them and expecting the difference to be features, it is not — **the 
 | | `main` | `develop` |
 |---|---|---|
 | Application code | ✅ identical to develop | ✅ identical to main |
-| Test suite (`workspace/tests/`, `baileys-bridge/test/`) | ❌ stripped | ✅ 258 + 7 files |
+| Test suites (`workspace/tests/`, `baileys-bridge/test/`) | ❌ stripped | ✅ 273 + 9 files |
+| `workspace/AGENTS.md` | ✅ present | ❌ absent |
 | `.planning/` (agent planning docs) | ❌ not carried | ✅ 218 files |
 | `ruff` / `black` in CI | advisory (`continue-on-error`) | enforced |
 | `metrics.yml`, `parity.yml` workflows | ❌ removed | ✅ present |

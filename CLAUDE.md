@@ -28,7 +28,8 @@ development apparatus, never features. Do not go looking for unmerged code — t
 | | `main` | `develop` |
 |---|---|---|
 | Application code | identical | identical |
-| `workspace/tests/` + `baileys-bridge/test/` | stripped | 258 + 7 files |
+| `workspace/tests/` + `baileys-bridge/test/` | stripped | 273 + 9 files |
+| `workspace/AGENTS.md` | present | absent |
 | `.planning/` | not carried | 218 files |
 | `ruff` / `black` in CI | advisory (`continue-on-error`) | enforced |
 | `metrics.yml`, `parity.yml` | removed | present |
