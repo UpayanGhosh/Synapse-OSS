@@ -7,7 +7,7 @@
 ![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
 ![CI](https://img.shields.io/github/actions/workflow/status/UpayanGhosh/Synapse-OSS/tests.yml?branch=main&style=for-the-badge&logo=github&label=CI)
 
-> **Personal AI with continuity** — multi-channel, hybrid-RAG memory, evolving behavioral profile, privacy-aware routing. Self-hostable, model-agnostic.
+> **Personal AI with continuity**: multi-channel, hybrid-RAG memory, evolving behavioral profile, privacy-aware routing. Self-hostable, model-agnostic.
 
 <!-- screenshot: docs/img/playground.png -->
 
@@ -50,12 +50,12 @@ open http://localhost:8000/
 
 ## What it actually does
 
-- **Multi-channel** — WhatsApp, Telegram, Discord, Slack, CLI, browser playground.
-- **Hybrid RAG memory** — FastEmbed (default) or Gemini-embed, LanceDB ANN+FTS, FlashRank rerank.
-- **SBS (Soul-Brain Sync)** — an evolving 8-layer behavioral profile of you, rebuilt every 50 messages from your own conversation history.
-- **Dual Cognition** — an optional inner-monologue + tension-scoring pass before the LLM replies (configurable).
-- **Privacy-aware routing** — sensitive topics route to a local Ollama "Vault" model; nothing about them leaves your machine.
-- **Knowledge graph** — SPO triples in SQLite for entity recall (see [docs/kg-limits.md](docs/kg-limits.md)).
+- **Multi-channel**: WhatsApp, Telegram, Discord, Slack, CLI, browser playground.
+- **Hybrid RAG memory**: FastEmbed (default) or Gemini-embed, LanceDB ANN+FTS, FlashRank rerank.
+- **SBS (Soul-Brain Sync)**: an evolving 8-layer behavioral profile of you, rebuilt every 50 messages from your own conversation history.
+- **Dual Cognition**: an optional inner-monologue + tension-scoring pass before the LLM replies (configurable).
+- **Privacy-aware routing**: sensitive topics route to a local Ollama "Vault" model; nothing about them leaves your machine.
+- **Knowledge graph**: SPO triples in SQLite for entity recall (see [docs/kg-limits.md](docs/kg-limits.md)).
 
 ## How Synapse compares
 
@@ -68,21 +68,21 @@ open http://localhost:8000/
 
 ## Install
 
-Copy `.env.example` to `.env` and fill in `GEMINI_API_KEY` (only required key — see [.env.example.advanced](.env.example.advanced) for the full set).
+Copy `.env.example` to `.env` and fill in `GEMINI_API_KEY` (only required key, see [.env.example.advanced](.env.example.advanced) for the full set).
 
 ```bash
 git clone https://github.com/UpayanGhosh/Synapse-OSS.git
 cd Synapse-OSS
 pip install -r requirements.txt                       # requirements.txt is at the repo root
 cp .env.example .env && $EDITOR .env
-( cd workspace && python main.py chat )                # subshell — cwd auto-restores
+( cd workspace && python main.py chat )                # subshell, cwd auto-restores
 ```
 
 For Docker, no-cloud, or production deploys, see [HOW_TO_RUN.md](HOW_TO_RUN.md).
 
 ## Architecture at a glance
 
-Synapse normalizes every inbound message (WhatsApp, Telegram, Discord, Slack, CLI, browser) into a unified DTO, runs it through an async gateway (flood-batch, dedup, bounded queue, concurrent workers), enriches it with hybrid-RAG memory and an evolving behavioral profile (SBS), optionally adds a Dual Cognition pre-pass, then routes to the right model — cloud or local — based on intent and privacy classification.
+Synapse normalizes every inbound message (WhatsApp, Telegram, Discord, Slack, CLI, browser) into a unified DTO, runs it through an async gateway (flood-batch, dedup, bounded queue, concurrent workers), enriches it with hybrid-RAG memory and an evolving behavioral profile (SBS), optionally adds a Dual Cognition pre-pass, then routes to the right model, cloud or local, based on intent and privacy classification.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the full request flow, route map, and module breakdown. The multiuser keying layer is documented separately in [docs/multiuser.md](docs/multiuser.md).
 
@@ -90,17 +90,17 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the full request flow, route map, and
 
 - 335 Python source files under `workspace/`.
 - 258 `test_*.py` suites plus 5 `*.test.js` suites (273 and 9 files in those trees, counting fixtures
-  and helpers). These live on `develop`, not on `main` — see [Branch model](#branch-model) below.
+  and helpers). These live on `develop`, not on `main`. See [Branch model](#branch-model) below.
 - Single-user-per-instance today. Multi-user is planned (see PRODUCT_ISSUES.md issue 7.1).
 - Solo-maintained. See [GOVERNANCE.md](GOVERNANCE.md).
 
 Security disclosures: see [SECURITY.md](SECURITY.md). Please do **not** open a public issue for a
-vulnerability — use a [draft advisory](https://github.com/UpayanGhosh/Synapse-OSS/security/advisories/new).
+vulnerability. Use a [draft advisory](https://github.com/UpayanGhosh/Synapse-OSS/security/advisories/new).
 
 ## Branch model
 
 This repository uses two long-lived branches with a deliberate split of responsibilities. If you are
-comparing them and expecting the difference to be features, it is not — **the application source on
+comparing them and expecting the difference to be features, it is not: **the application source on
 `main` and `develop` is identical**. Only the surrounding development apparatus differs.
 
 | | `main` | `develop` |
@@ -116,12 +116,12 @@ comparing them and expecting the difference to be features, it is not — **the 
 release checkout carries only what is needed to run Synapse. Lint and test enforcement belong to
 `develop`, which is where code is actually written and where every change lands first. Documentation
 and planning material, by contrast, are carried on `main` so the default branch is the complete
-reference — `main` is what visitors and release consumers actually read.
+reference, because `main` is what visitors and release consumers actually read.
 
 **What this means for contributors:**
 
 - **Open code pull requests against `develop`**, never against `main`.
-- Run the test suite from `develop` — `workspace/tests/` does not exist on `main`, so `pytest tests/`
+- Run the test suite from `develop`, because `workspace/tests/` does not exist on `main`, so `pytest tests/`
   fails there. `workspace/tests/pytest.ini`, which defines the `unit` / `integration` / `smoke`
   markers, is stripped along with it.
 - `bash scripts/collect_metrics.sh` only works on `develop`; it counts `workspace/tests/`, and its
@@ -129,7 +129,7 @@ reference — `main` is what visitors and release consumers actually read.
 - `main` advances by merging `develop` for code (see `da2d346` for the shape of a production sync);
   documentation and planning updates may land on `main` directly by PR.
 
-Milestone planning lives in [.planning/ROADMAP.md](.planning/ROADMAP.md) — currently **v3.1**
+Milestone planning lives in [.planning/ROADMAP.md](.planning/ROADMAP.md), currently **v3.1**
 (Reliability + OpenClaw Supervisor Patterns), with **v4.0** (Bioinspired Memory Architecture, phases
 19–24) planned. Note that `.planning/phases/**` is working material written by and for coding agents;
 `ROADMAP.md`, `PROJECT.md`, `REQUIREMENTS.md` and `STATE.md` are the durable entry points.
@@ -721,7 +721,7 @@ This project was built using AI coding tools (Claude, ChatGPT, Gemini) for imple
 I believe in using every tool available to build things that work.
 
 - GitHub: [@UpayanGhosh](https://github.com/UpayanGhosh)
-- LinkedIn: [https://linkedin.com/in/upayan](https://linkedin.com/in/upayan)
+- LinkedIn: [linkedin.com/in/upayan-ghosh](https://linkedin.com/in/upayan-ghosh)
 - Email: [upayan1231@gmail.com](mailto:upayan1231@gmail.com)
 
 **Currently open to:** Backend/AI engineering roles, freelance AI/chatbot projects, and conversations about RAG systems, async architectures, and privacy-first AI design.
