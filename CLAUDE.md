@@ -20,6 +20,38 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 2. Are all tokens/keys in `.gitignore`d files only?
 3. Does the code work for a fresh OSS install, not just this personal setup?
 
+## Branch model (read before diffing branches)
+
+**The application source on `main` and `develop` is identical.** A diff between them shows only
+development apparatus, never features. Do not go looking for unmerged code — there isn't any.
+
+| | `main` | `develop` |
+|---|---|---|
+| Application code | identical | identical |
+| `workspace/tests/` + `baileys-bridge/test/` | stripped | 258 + 7 files |
+| `.planning/` | not carried | 218 files |
+| `ruff` / `black` in CI | advisory (`continue-on-error`) | enforced |
+| `metrics.yml`, `parity.yml` | removed | present |
+
+`main` is the production/release branch and is deliberately test-free and planning-free (commits
+`3b1b328`, `86b7932`). `develop` is where code is written and where every change lands first.
+
+Consequences when working in this repo:
+- **All PRs target `develop`.** Never open one against `main`.
+- `pytest` on a `main` checkout collects nothing. Switch to `develop` to run or add tests.
+- `scripts/collect_metrics.sh` fails on `main` (`set -euo pipefail` + `grep` over a non-existent
+  `workspace/tests/`). It is a `develop`-only script.
+- `main` advances only by merging `develop`.
+- Milestone planning lives on `develop` in `.planning/ROADMAP.md` — v3.1 current, v4.0 (Bioinspired
+  Memory Architecture, phases 19–24) planned.
+
+## Security reporting
+
+Do **not** open public GitHub issues for vulnerabilities — `SECURITY.md` requires private
+disclosure via a [draft advisory](https://github.com/UpayanGhosh/Synapse-OSS/security/advisories/new).
+This applies to agent-generated audit findings too: route anything attacker-exploitable
+(auth bypass, RCE, SSRF, privilege escalation) to an advisory, not to the issue tracker.
+
 ## Code Graph (Default Behaviour)
 
 A persistent structural knowledge graph of this codebase is available via the `code-review-graph` MCP server.
@@ -52,9 +84,6 @@ synapse_start.bat           # Start all (Windows)
 
 # Baileys WhatsApp bridge only (Node.js subprocess — normally auto-spawned by WhatsAppChannel)
 ( cd baileys-bridge && npm install && node index.js )
-
-# Baileys WhatsApp bridge only (Node.js subprocess — normally auto-spawned by WhatsAppChannel)
-cd baileys-bridge && npm install && node index.js
 
 # CLI
 ( cd workspace && python main.py chat|ingest|vacuum|verify )
@@ -200,7 +229,7 @@ cadence follows gateway uptime, not battery/CPU state.
 | Key | Default | Description |
 |-----|---------|-------------|
 | `auto_flush_enabled` | `true` | Master switch. Set `false` to disable entirely (e.g. low-resource hosts). |
-| `auto_flush_idle_seconds` | `1800` | Seconds of inactivity before a session is auto-archived. OR-combined with count. |
+| `auto_flush_idle_seconds` | `21600` | Seconds of inactivity before a session is auto-archived (6 hours — see `SessionAutoFlushConfig` in `synapse_config.py`). OR-combined with count. |
 | `auto_flush_message_count` | `50` | Message count ceiling; sessions exceeding this flush even if recently active. |
 | `auto_flush_check_interval_seconds` | `60` | Scanner wake-up cadence in seconds. |
 | `auto_flush_min_messages` | `5` | Sessions below this count are never auto-flushed (avoids trivial exchanges). |
@@ -242,7 +271,7 @@ API:8000 | Baileys Bridge:5010 (internal) | Tools MCP:8989 | Ollama:11434 | OAut
 
 8. **Dual Cognition timeout** — `think()` is wrapped in `asyncio.wait_for(timeout=dual_cognition_timeout)`. If it times out, `CognitiveMerge()` (empty) is used and the message still gets a response. Tune via `session.dual_cognition_timeout` in `synapse.json` (default 5s).
 
-9. **Traffic Cop skip** — When `CognitiveMerge.response_strategy` is `"be_direct"`, `"analytical"`, or `"explore_with_care"`, the traffic cop LLM call is skipped and a role is mapped directly (`STRATEGY_TO_ROLE` constant in `api_gateway.py`). Falls back to normal traffic cop for unmapped strategies.
+9. **Traffic Cop skip** — When `CognitiveMerge.response_strategy` matches a key in the `STRATEGY_TO_ROLE` constant (defined in `llm_wrappers.py:90`, consumed at `chat_pipeline.py:2305`), the traffic cop LLM call is skipped and the role is mapped directly. Current mapping: `acknowledge` / `support` / `celebrate` / `redirect` → `CASUAL`; `challenge` / `quiz` → `ANALYSIS`. Falls back to the normal traffic cop for unmapped strategies.
 
 10. **Memory query is shared** — `MemoryEngine.query()` is called once in `persona_chat()` and results are passed to `dual_cognition.think(pre_cached_memory=...)`. Do NOT add a second memory query inside dual cognition.
 

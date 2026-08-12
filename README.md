@@ -73,9 +73,9 @@ Copy `.env.example` to `.env` and fill in `GEMINI_API_KEY` (only required key �
 ```bash
 git clone https://github.com/UpayanGhosh/Synapse-OSS.git
 cd Synapse-OSS
-( cd workspace && pip install -r requirements.txt )    # subshell — cwd auto-restores
+pip install -r requirements.txt                       # requirements.txt is at the repo root
 cp .env.example .env && $EDITOR .env
-( cd workspace && python main.py chat )
+( cd workspace && python main.py chat )                # subshell — cwd auto-restores
 ```
 
 For Docker, no-cloud, or production deploys, see [HOW_TO_RUN.md](HOW_TO_RUN.md).
@@ -88,12 +88,43 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the full request flow, route map, and
 
 ## Project state
 
-- <!--METRIC:tests--> tests across <!--METRIC:test_files--> test files (CI-substituted; `bash scripts/collect_metrics.sh` to regenerate locally).
-- <!--METRIC:py_files--> Python source files.
+- 335 Python source files under `workspace/`.
+- 258 pytest files plus 7 Node test files for the Baileys bridge — these live on `develop`, not on
+  `main`. See [Branch model](#branch-model) below.
 - Single-user-per-instance today. Multi-user is planned (see PRODUCT_ISSUES.md issue 7.1).
 - Solo-maintained. See [GOVERNANCE.md](GOVERNANCE.md).
 
-Security disclosures: see [SECURITY.md](SECURITY.md).
+Security disclosures: see [SECURITY.md](SECURITY.md). Please do **not** open a public issue for a
+vulnerability — use a [draft advisory](https://github.com/UpayanGhosh/Synapse-OSS/security/advisories/new).
+
+## Branch model
+
+This repository uses two long-lived branches with a deliberate split of responsibilities. If you are
+comparing them and expecting the difference to be features, it is not — **the application source on
+`main` and `develop` is identical**. Only the surrounding development apparatus differs.
+
+| | `main` | `develop` |
+|---|---|---|
+| Application code | ✅ identical to develop | ✅ identical to main |
+| Test suite (`workspace/tests/`, `baileys-bridge/test/`) | ❌ stripped | ✅ 258 + 7 files |
+| `.planning/` (agent planning docs) | ❌ not carried | ✅ 218 files |
+| `ruff` / `black` in CI | advisory (`continue-on-error`) | enforced |
+| `metrics.yml`, `parity.yml` workflows | ❌ removed | ✅ present |
+
+**Why:** `main` is the production/release branch. It is intentionally free of tests and planning
+material so a release checkout carries only what is needed to run Synapse. Lint and test enforcement
+belong to `develop`, which is where code is actually written and where every change lands first.
+
+**What this means for contributors:**
+
+- **Open pull requests against `develop`**, never against `main`.
+- Run the test suite from `develop` — `pytest` on a `main` checkout will collect nothing.
+- `bash scripts/collect_metrics.sh` only works on `develop`; it counts `workspace/tests/`, which does
+  not exist on `main`.
+- `main` advances only by merging `develop` (see PR #33 for the shape of a production sync).
+
+Milestone planning lives on `develop` in `.planning/ROADMAP.md` — currently v3.1 (Reliability +
+OpenClaw Supervisor Patterns), with v4.0 (Bioinspired Memory Architecture) planned.
 
 ## Vision
 
