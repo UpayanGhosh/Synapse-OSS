@@ -274,7 +274,7 @@ Every v3.1 requirement is mapped to exactly one phase. Total: 44/44 (100%).
 
 ## v4.0 Bioinspired Memory Architecture (Planned)
 
-**Milestone Goal:** Transform the single-channel vector search into a neuroscience-inspired memory system covering ~65% of human memory subsystems: dual-channel retrieval, Ebbinghaus adaptive decay, two-phase CLS consolidation (SWS gist + REM association), Modern Hopfield co-activation, reconsolidation on prediction error, state-dependent retrieval with mood repair, query intelligence, and a full embedding migration to bge-m3.
+**Milestone Goal:** Give Synapse a human-calibrated memory — see Overview for the full scope.
 
 **Status:** Planned. Not started. Begins after v3.1 (Phases 12-18) completes.
 
@@ -325,7 +325,7 @@ reset (see `.planning/STATE.md` Decisions).
 - Prior milestones (Phases 0-18) are documented above — v1.0/v2.0/v3.0 in the collapsed archive
   blocks, v3.1 in the section immediately preceding this one
 
-### Dependency Graph
+### Dependency Graph (v4.0)
 
 ```
 Phase 19 (Retrieval Foundation)
@@ -336,7 +336,7 @@ Phase 19 (Retrieval Foundation)
                            -> Phase 24 (Embedding Migration)
 ```
 
-### Phases
+### Phases (v4.0)
 
 - [ ] **Phase 19: Retrieval Foundation** — FTS5/BM25 sparse channel, RRF fusion replacing weighted-sum, hemisphere bug fix, query router with type classification
 - [ ] **Phase 20: Memory Lifecycle Schema** — Full schema migration (6 new columns + 3 new tables), Ebbinghaus strength tracking, emotional state tagging at write time, context tag classification
@@ -345,7 +345,7 @@ Phase 19 (Retrieval Foundation)
 - [ ] **Phase 23: Query Intelligence + Contextual Retrieval** — HyDE/Query2doc expansion, state-dependent retrieval with mood repair, contextual integrity filter, causal edge promotion
 - [ ] **Phase 24: Embedding Migration** — bge-m3 replaces nomic-embed-text, re-embedding pipeline, cache invalidation
 
-### Phase Details
+### Phase Details (v4.0)
 
 #### Phase 19: Retrieval Foundation
 **Goal**: Memory queries use two parallel retrieval channels (dense + sparse) fused with

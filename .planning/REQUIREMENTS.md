@@ -369,6 +369,10 @@ Explicitly excluded. Documented to prevent scope creep.
 | Native iOS/Android apps | Too much scope — mobile access via WhatsApp/Telegram channels |
 | Model fine-tuning | Synapse influences behavior through prompting, not weights |
 | Multi-user collaboration | Architecture is per-user by design |
+| GPU-accelerated Hopfield | CPU-only for OSS accessibility; GPU path deferred to scaling milestone |
+| Multimodal memory (images, audio) | Text-only memory ceiling ~80% of human subsystems; multimodal is v6.0+ |
+| External vector DB migration | LanceDB sufficient for personal scale (<100K docs); Qdrant upgrade path documented only |
+| Real-time distributed memory sync | Per-user, single-machine architecture by design |
 
 ## Traceability
 
