@@ -143,6 +143,143 @@ Which v3.1 phases cover which v3.1 requirements. Filled after v3.1 ROADMAP.md cr
 
 ---
 
+## v4.0 Requirements — Bioinspired Memory Architecture
+
+**Defined:** 2026-04-08 | **Migrated to `develop`:** 2026-08-12 (from `refactor/optimize`)
+**Status:** Planned — next milestone after v3.1. No v4.0 requirement is in flight.
+
+Requirements derived from 29 research papers, 57 Q&As, 7 follow-ups.
+Master spec: `memory-vault/research/architecture-spec.md`.
+
+> **Dangling reference warning:** `memory-vault/research/architecture-spec.md` does **not** exist in
+> this repository on any branch or in any commit — it is an external / uncommitted artifact. The 42
+> requirements below are the authoritative in-repo definition; do not plan work that assumes the
+> spec can be opened from the repo. See the v4.0 Overview in `.planning/ROADMAP.md`.
+
+**Phase numbering note:** the source documents on `refactor/optimize` mapped these requirements to
+Phases 6-11. Those numbers belong to v3.0 on `develop`, so v4.0 phases are renumbered **19-24**
+(6→19, 7→20, 8→21, 9→22, 10→23, 11→24). Requirement IDs are unchanged.
+
+### Retrieval Architecture
+
+- [ ] **RETR-01**: Memory queries use both dense (LanceDB ANN) and sparse (SQLite FTS5 BM25) channels in parallel, returning merged results
+- [ ] **RETR-02**: RRF fusion (score = Σ 1/(k + rank), k=20) replaces the hardcoded weighted-sum scoring
+- [ ] **RETR-03**: MMR diversification (λ=0.5) removes near-duplicate results before reranking
+- [ ] **RETR-04**: Hemisphere parameter (safe/spicy) is passed from chat pipeline to memory_engine.query() — spicy queries only search spicy memories
+- [ ] **RETR-05**: Query router classifies queries as entity_lookup | semantic | temporal_range | multi-hop and extracts time hints + named entities
+- [ ] **RETR-06**: Retrieval runs 4 parallel channels: dense, sparse, graph neighborhood, and Hopfield co-activation
+
+### Memory Lifecycle
+
+- [ ] **MEM-01**: Documents table has `strength` column (REAL, default 5.0) tracking memory strength via Ebbinghaus decay curve
+- [ ] **MEM-02**: Documents table has `retrieval_count` (INTEGER) and `last_accessed` (REAL) columns for access tracking
+- [ ] **MEM-03**: Retrieval count only increments when (now - last_accessed) > 1 hour (minimum reinforcement interval prevents cramming)
+- [ ] **MEM-04**: Memory strength formula: `base_importance * exp(-forgetting_rate * days_since_last_access) * min(retrieval_count, 20)^0.3`
+- [ ] **MEM-05**: Documents table has `emotional_state` column (TEXT) populated at write time by DualCognition sentiment analysis
+- [ ] **MEM-06**: Documents table has `context_tags` column (TEXT, JSON array) with multi-label context classification [work, health, relationships, creative, financial, personal]
+- [ ] **MEM-07**: Documents table has `schema_id` column (INTEGER, nullable FK) linking to consolidated schema patterns
+- [ ] **MEM-08**: Schema nodes table exists with id, name, pattern_description, domain, observation_count, confidence, timestamps
+
+### Consolidation Engine
+
+- [ ] **CONSOL-01**: SWS gist pass clusters episodic memories by topic/entity and extracts semantic patterns when cluster size >= 8 episodes
+- [ ] **CONSOL-02**: Schema-congruent memories integrate in one shot; schema-incongruent require multiple interleaved exposures
+- [ ] **CONSOL-03**: Episodic memories survive consolidation — linked to schema via schema_episodes table, never replaced
+- [ ] **CONSOL-04**: REM association pass finds cross-domain structural similarities and writes cross_domain_edge to KG with shares_pattern relation
+- [ ] **CONSOL-05**: Causal edge promotion triggers when correlation edge has observation_count >= 5 AND distinct_context_count >= 3 with consistent direction
+- [ ] **CONSOL-06**: Edges table has causal columns: is_causal, observation_count, distinct_context_count, causal_strength, exception_count
+- [ ] **CONSOL-07**: Ebbinghaus decay sweep marks memories with strength < 0.1 as dormant (retrieval-suppressed, not deleted)
+- [ ] **CONSOL-08**: Contradicted memories (flagged by reconsolidation) get strength *= 0.3 suppression factor
+- [ ] **CONSOL-09**: Consolidation prioritizes by: emotional valence > novelty > frequency
+
+### Associative & Contextual Memory
+
+- [ ] **ASSOC-01**: Modern Hopfield co-activation layer returns memories that co-occur with retrieved results via softmax attention over memory matrix
+- [ ] **ASSOC-02**: Hopfield matrix X only stores memories with cosine similarity < 0.95 to all existing patterns (dedup threshold)
+- [ ] **ASSOC-03**: State-dependent retrieval boosts mood-congruent memories by ~25% based on current emotional state from DualCognition
+- [ ] **ASSOC-04**: Sustained negative mood activates mood repair — boosts positive/achievement memories alongside congruent ones
+- [ ] **ASSOC-05**: Contextual integrity filter suppresses memories whose context_tags don't overlap with current conversation context (last 5 messages)
+- [ ] **ASSOC-06**: Multi-context memories must satisfy ALL overlapping context norms; user can override explicitly
+
+### Query Intelligence
+
+- [ ] **QUERY-01**: HyDE generates 5 hypothetical memory entries for vague/abstract queries, averages their embeddings for search
+- [ ] **QUERY-02**: HyDE is skipped for entity-specific or numerical queries (raw embedding used instead)
+- [ ] **QUERY-03**: Query2doc expansion available as lightweight alternative to HyDE for moderately unclear queries
+- [ ] **QUERY-04**: Metamemory FOK pre-check (<5ms) estimates retrieval confidence before full search using entity_exists + doc_count heuristics
+- [ ] **QUERY-05**: FOK returns confidence levels: high (entity exists + doc_count > 3), partial (doc_count > 0), none (can say "I don't think we've discussed that")
+
+### Post-Retrieval
+
+- [ ] **POST-01**: Reconsolidation check fires when 0.3 < tension_level < 0.8 — updates retrieved memory's emotional_tags + importance within 6-hour window
+- [ ] **POST-02**: High tension (> 0.8) triggers extinction — creates NEW competing memory trace; old memory gets strength penalty
+- [ ] **POST-03**: Reconsolidation threshold scales with memory strength — strong memories require higher prediction error to destabilize
+- [ ] **POST-04**: Retrieval-induced forgetting applies small strength penalty to competing near-duplicates (cosine > 0.85) that were NOT returned
+- [ ] **POST-05**: Retrieval-induced forgetting penalties are temporary — decay over 7 days
+
+### Embedding Migration
+
+- [ ] **EMBED-01**: bge-m3 replaces nomic-embed-text as the default embedding model (multilingual, 1024 dims, Matryoshka-compatible)
+- [ ] **EMBED-02**: Re-embedding pipeline migrates all existing documents to bge-m3 vectors without data loss
+- [ ] **EMBED-03**: Embedding cache invalidation triggers on model swap (current lru_cache has no invalidation)
+
+### v4.0 Traceability
+
+Which v4.0 phases cover which v4.0 requirements. Phase numbers are develop-renumbered (19-24).
+
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| RETR-01 | Phase 19 | Pending |
+| RETR-02 | Phase 19 | Pending |
+| RETR-04 | Phase 19 | Pending |
+| RETR-05 | Phase 19 | Pending |
+| MEM-01 | Phase 20 | Pending |
+| MEM-02 | Phase 20 | Pending |
+| MEM-03 | Phase 20 | Pending |
+| MEM-04 | Phase 20 | Pending |
+| MEM-05 | Phase 20 | Pending |
+| MEM-06 | Phase 20 | Pending |
+| MEM-07 | Phase 20 | Pending |
+| MEM-08 | Phase 20 | Pending |
+| CONSOL-01 | Phase 21 | Pending |
+| CONSOL-02 | Phase 21 | Pending |
+| CONSOL-03 | Phase 21 | Pending |
+| CONSOL-07 | Phase 21 | Pending |
+| CONSOL-08 | Phase 21 | Pending |
+| CONSOL-09 | Phase 21 | Pending |
+| RETR-03 | Phase 21 | Pending |
+| QUERY-04 | Phase 21 | Pending |
+| QUERY-05 | Phase 21 | Pending |
+| RETR-06 | Phase 22 | Pending |
+| ASSOC-01 | Phase 22 | Pending |
+| ASSOC-02 | Phase 22 | Pending |
+| CONSOL-04 | Phase 22 | Pending |
+| POST-01 | Phase 22 | Pending |
+| POST-02 | Phase 22 | Pending |
+| POST-03 | Phase 22 | Pending |
+| POST-04 | Phase 22 | Pending |
+| POST-05 | Phase 22 | Pending |
+| ASSOC-03 | Phase 23 | Pending |
+| ASSOC-04 | Phase 23 | Pending |
+| ASSOC-05 | Phase 23 | Pending |
+| ASSOC-06 | Phase 23 | Pending |
+| CONSOL-05 | Phase 23 | Pending |
+| CONSOL-06 | Phase 23 | Pending |
+| QUERY-01 | Phase 23 | Pending |
+| QUERY-02 | Phase 23 | Pending |
+| QUERY-03 | Phase 23 | Pending |
+| EMBED-01 | Phase 24 | Pending |
+| EMBED-02 | Phase 24 | Pending |
+| EMBED-03 | Phase 24 | Pending |
+
+**v4.0 Coverage:**
+- v4.0 requirements: 42 total (0 complete, 42 pending)
+- Mapped to phases: 42
+- Unmapped: 0
+- Coverage: 100%
+
+---
+
 ## v3.0 Requirements
 
 Requirements for this milestone. Each maps to roadmap phases.
@@ -279,4 +416,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 ---
 *Requirements defined: 2026-04-08*
-*Last updated: 2026-04-21 — v3.1 traceability added (44 REQ-IDs mapped to phases 12-18 at 100% coverage)*
+*Last updated: 2026-08-12 — v4.0 Bioinspired Memory Architecture requirements migrated from `refactor/optimize` (42 REQ-IDs mapped to renumbered phases 19-24 at 100% coverage). Previously: 2026-04-21 — v3.1 traceability added (44 REQ-IDs mapped to phases 12-18 at 100% coverage).*

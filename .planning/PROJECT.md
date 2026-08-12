@@ -116,6 +116,42 @@ first — all on your machine, with your data, under your full control.
 - **v3.1 specific:** The Python↔Node HTTP bridge is a distributed-systems seam — any reliability improvement must treat it as such (no fire-and-forget coroutines, no silent drops, mutual health checks)
 - **v3.1 specific:** Baileys 7.x has breaking changes in `useMultiFileAuthState` and `sendMessage` media shapes — validate pairing/media/groups before shipping
 
+## Next Milestone: v4.0 Bioinspired Memory Architecture (after v3.1)
+
+**Status:** Planned — not started. Begins after v3.1 (Phases 12-18) completes. Phases 19-24.
+
+**Goal:** Transform Synapse's memory from single-channel vector search into a neuroscience-inspired
+system with dual retrieval, adaptive forgetting, consolidation, associative recall, and contextual
+integrity — covering ~65% of human memory subsystems.
+
+**Target features:**
+- Hybrid retrieval (BM25 + dense + RRF + MMR + reranker)
+- Ebbinghaus memory strength with spacing-aware reinforcement
+- Emotional state tagging + state-dependent retrieval bias
+- Contextual Integrity norms as retrieval filter
+- CLS two-phase consolidation (SWS gist + REM association)
+- Modern Hopfield co-activation layer
+- Reconsolidation on prediction error
+- Metamemory FOK pre-check
+- Causal edge promotion
+- HyDE/Query2doc query expansion
+- Schema-guided encoding
+- bge-m3 embedding migration
+
+**Research basis:** 29 papers, 57 Q&As, 7 follow-ups. Master spec at
+`memory-vault/research/architecture-spec.md`. 17 tunable parameters locked.
+
+> **Dangling reference warning:** `memory-vault/research/architecture-spec.md` does **not** exist in
+> this repository on any branch or in any commit — it is an external / uncommitted artifact. The
+> authoritative in-repo definition is the 42 v4.0 requirements in `.planning/REQUIREMENTS.md` and
+> the phase success criteria in `.planning/ROADMAP.md`.
+
+**Requirements + phases:** 42 REQ-IDs (RETR / MEM / CONSOL / ASSOC / QUERY / POST / EMBED) across
+Phases 19-24. See `.planning/REQUIREMENTS.md` (v4.0 section) and `.planning/ROADMAP.md` (v4.0
+section) for full detail, including the source→develop phase renumbering (6-11 → 19-24). v4.0 items
+are deliberately **not** listed under `### Active` above — that section tracks the current
+milestone's in-flight scope only.
+
 ## Constraints
 
 - **Tech stack:** Python 3.11, FastAPI/uvicorn, litellm, SQLite WAL, LanceDB, asyncio
@@ -134,6 +170,9 @@ first — all on your machine, with your data, under your full control.
 | Skills as directories, not Python plugins | Human-readable, AI-writable, version-controllable | — Pending |
 | Zone 1/Zone 2 hard split | Prevents catastrophic self-modification | — Pending |
 | Phase 6 ships WITH rollback | Self-mod without rollback is not an option (Jarvis lesson) | — Pending |
+| Bioinspired memory architecture (v4.0) | 29 papers consolidated into master spec; CLS, Hopfield, Ebbinghaus, CI | — Pending |
+| bge-m3 replaces nomic-embed-text (v4.0) | Multilingual, Matryoshka-compatible, MTEB leader | — Pending |
+| RRF k=20 for personal scale (v4.0) | Paper default k=60 is for large benchmarks; k=20 tuned for <100K docs | — Pending |
 
 ## Evolution
 
@@ -153,4 +192,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-21 — v3.1 milestone started (Reliability + OpenClaw Supervisor Patterns)*
+*Last updated: 2026-08-12 — v4.0 Bioinspired Memory Architecture registered as the next milestone (Phases 19-24), migrated from `refactor/optimize`. Current milestone remains v3.1. Previously: 2026-04-21 — v3.1 milestone started (Reliability + OpenClaw Supervisor Patterns).*

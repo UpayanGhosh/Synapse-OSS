@@ -40,7 +40,9 @@ Progress (v3.1): [░░░░░░░░░░] 0% (0/7 phases complete)
 | v2.0 | 2026-04-08 | COMPLETE | The Adaptive Core — skills, self-mod, subagents, browser |
 | v3.0 | 2026 | 96% (Phase 11 open) | OpenClaw Feature Harvest — providers, skills library, TTS, image gen, cron v2, dashboard; Realtime Voice carrying over |
 | v3.1 | 2026 | CURRENT | Reliability + OpenClaw Supervisor Patterns — WhatsApp bug fixes + watchdog, echo tracker, heartbeat, structured logging, multi-account, Baileys 7.x. Phases 12-18 |
-| v4.0 | Future | Planned | The Jarvis Threshold |
+| v4.0 | Future | NEXT (planned) | Bioinspired Memory Architecture — neuroscience-inspired retrieval, consolidation, decay. Phases 19-24, 42 REQs. Migrated from `refactor/optimize` 2026-08-12 |
+| v5.0 | Future | Planned | Proactive Architecture Evolution |
+| v6.0 | Future | Planned | The Jarvis Threshold |
 
 ## v3.1 Phase Map (at a glance)
 
@@ -78,6 +80,8 @@ Decisions are logged in PROJECT.md Key Decisions table. Recent decisions affecti
 - [Phase 15]: Synthetic OGG Opus fixture written via hand-crafted Node.js page builder (ffmpeg absent) — 129 bytes, valid OggS header, zero PII
 - [Phase 15]: _readRaw() duplicated in creds_queue.js to avoid forward dep on Plan 02 readCredsJsonRaw — Plan 02 can optionally refactor to import from restore.js
 - [Phase 15]: Gate 1 corrupt-creds detection requires inner try/catch in CommonJS synchronous port — outer catch must not swallow corrupt-creds case or restoration never runs
+- [v4.0 migration 2026-08-12]: v4.0 phases numbered 19-24 (continuous from v3.1 which ends at Phase 18 — no renumber of existing phases, no reset). The source planning docs on `refactor/optimize` numbered them 6-11, which collide with v3.0's Phases 6-11 on develop (and with existing directories such as `.planning/phases/06-llm-provider-expansion/`). Mapping: 6→19, 7→20, 8→21, 9→22, 10→23, 11→24. Requirement IDs unchanged.
+- [v4.0 migration 2026-08-12]: `memory-vault/research/architecture-spec.md` (cited as the v4.0 master spec) does not exist on any branch or in any commit — it is an external/uncommitted artifact. The 42 REQs + phase success criteria in `.planning/` are the authoritative in-repo definition.
 
 ### Pending Todos
 

@@ -6,6 +6,7 @@
 - [x] **v2.0 The Adaptive Core** - Phases 0-5 (shipped 2026-04-08)
 - [ ] **v3.0 OpenClaw Feature Harvest** - Phases 6-11 (96% — Phase 11 Realtime Voice Streaming carrying over)
 - [ ] **v3.1 Reliability + OpenClaw Supervisor Patterns** - Phases 12-18 (current)
+- [ ] **v4.0 Bioinspired Memory Architecture** - Phases 19-24 (planned — next milestone after v3.1)
 
 ---
 
@@ -271,6 +272,234 @@ Every v3.1 requirement is mapped to exactly one phase. Total: 44/44 (100%).
 
 ---
 
+## v4.0 Bioinspired Memory Architecture (Planned)
+
+**Milestone Goal:** Transform the single-channel vector search into a neuroscience-inspired memory system covering ~65% of human memory subsystems: dual-channel retrieval, Ebbinghaus adaptive decay, two-phase CLS consolidation (SWS gist + REM association), Modern Hopfield co-activation, reconsolidation on prediction error, state-dependent retrieval with mood repair, query intelligence, and a full embedding migration to bge-m3.
+
+**Status:** Planned. Not started. Begins after v3.1 (Phases 12-18) completes.
+
+### Overview
+
+v2.0 gave Synapse extensibility (skills, self-modification, subagents). v3.0 gives it new
+capabilities (providers, TTS, image gen, voice). v4.0 gives it a human-calibrated memory. This
+milestone transforms the single-channel vector search into a neuroscience-inspired system covering
+~65% of human memory subsystems: dual-channel retrieval, Ebbinghaus adaptive decay, two-phase CLS
+consolidation (SWS gist + REM association), Modern Hopfield co-activation, reconsolidation on
+prediction error, state-dependent retrieval with mood repair, query intelligence, and a full
+embedding migration to bge-m3.
+
+The research basis is 29 papers, 57 Q&As, and 7 follow-ups consolidated into a master spec at
+`memory-vault/research/architecture-spec.md`. All 17 tunable parameters are locked.
+
+> **Dangling reference warning:** `memory-vault/research/architecture-spec.md` is **NOT present in
+> this repository on any branch** — not on `develop`, not on `main`, not on `refactor/optimize`
+> (the branch this milestone was migrated from), and not in any commit's history. It is an
+> external / uncommitted artifact held outside version control. Every requirement and success
+> criterion below must therefore be treated as self-contained: do not plan work that assumes the
+> spec can be opened from the repo, and do not cite it as an in-repo source of truth. The same
+> caveat applies to the citations of this path in `.planning/REQUIREMENTS.md` and
+> `.planning/PROJECT.md`.
+
+### Phase Numbering
+
+v4.0 phases are numbered **19-24**, continuing from v3.1 (which ends at Phase 18).
+
+The source planning documents on `refactor/optimize` numbered these phases **6-11** (continuing
+from v2.0, which ended at Phase 5). Those numbers are already taken on `develop`: Phases 6-11 are
+v3.0's OpenClaw Feature Harvest phases, and directories such as
+`.planning/phases/06-llm-provider-expansion/` already exist on disk. Renumbering to 19-24 follows
+develop's documented convention of continuous numbering from the highest existing phase, with no
+reset (see `.planning/STATE.md` Decisions).
+
+| v4.0 source phase (`refactor/optimize`) | Phase on `develop` | Name |
+|---|---|---|
+| Phase 6 | **Phase 19** | Retrieval Foundation |
+| Phase 7 | **Phase 20** | Memory Lifecycle Schema |
+| Phase 8 | **Phase 21** | Consolidation Engine |
+| Phase 9 | **Phase 22** | Associative Memory |
+| Phase 10 | **Phase 23** | Query Intelligence + Contextual Retrieval |
+| Phase 11 | **Phase 24** | Embedding Migration |
+
+- Integer phases (19-24): v4.0 milestone work
+- Decimal phases (N.1, N.2): urgent insertions created via `/gsd:insert-phase`
+- Prior milestones (Phases 0-18) are documented above — v1.0/v2.0/v3.0 in the collapsed archive
+  blocks, v3.1 in the section immediately preceding this one
+
+### Dependency Graph
+
+```
+Phase 19 (Retrieval Foundation)
+   -> Phase 20 (Memory Lifecycle Schema)
+         -> Phase 21 (Consolidation Engine)
+               -> Phase 22 (Associative Memory)
+                     -> Phase 23 (Query Intelligence + Contextual Retrieval)
+                           -> Phase 24 (Embedding Migration)
+```
+
+### Phases
+
+- [ ] **Phase 19: Retrieval Foundation** — FTS5/BM25 sparse channel, RRF fusion replacing weighted-sum, hemisphere bug fix, query router with type classification
+- [ ] **Phase 20: Memory Lifecycle Schema** — Full schema migration (6 new columns + 3 new tables), Ebbinghaus strength tracking, emotional state tagging at write time, context tag classification
+- [ ] **Phase 21: Consolidation Engine** — SWS gist pass, schema formation, MMR diversification, Ebbinghaus decay sweep, metamemory FOK pre-check
+- [ ] **Phase 22: Associative Memory** — Modern Hopfield co-activation, REM association pass, reconsolidation, post-retrieval forgetting
+- [ ] **Phase 23: Query Intelligence + Contextual Retrieval** — HyDE/Query2doc expansion, state-dependent retrieval with mood repair, contextual integrity filter, causal edge promotion
+- [ ] **Phase 24: Embedding Migration** — bge-m3 replaces nomic-embed-text, re-embedding pipeline, cache invalidation
+
+### Phase Details
+
+#### Phase 19: Retrieval Foundation
+**Goal**: Memory queries use two parallel retrieval channels (dense + sparse) fused with
+RRF, the hemisphere isolation bug is fixed, and the query router classifies every incoming
+query before search begins.
+**Depends on**: Nothing within v4.0 — Phase 19 is the foundation for all subsequent v4.0 phases. (Source stated the precondition as "v2.0 phases complete (refactor/optimize merged to main)"; that branch precondition is obsolete on `develop`, where v2.0 shipped 2026-04-08.)
+**Requirements**: RETR-01, RETR-02, RETR-04, RETR-05
+**Success Criteria** (what must be TRUE):
+  1. A keyword search ("what did I say about my Python project") returns results from the BM25/FTS5 channel that the dense-only path misses — confirmed by comparing result sets before and after
+  2. A semantic query ("something about feeling anxious at work") surfaces results from the dense channel that BM25 misses — results from both channels appear in the final fused list
+  3. A spicy-hemisphere query only surfaces memories tagged `hemisphere=spicy` — confirmed by sending a privacy-flagged message and inspecting which rows are returned
+  4. The query router correctly classifies a direct name lookup as `entity_lookup`, a feeling-based query as `semantic`, "what did I say last Tuesday" as `temporal_range` — confirmed by unit tests with assertions on the returned type
+  5. RRF fusion scoring is observable: result set includes `source_channel` metadata per returned document
+**Plans**: TBD
+
+#### Phase 20: Memory Lifecycle Schema
+**Goal**: The database schema captures the full bioinspired memory lifecycle — memory
+strength, access history, emotional context, context categorization, and schema linkage —
+with all columns migrated cleanly for existing documents.
+**Depends on**: Phase 19 (FTS5 table required for FOK counts; schema migration must run after FTS5 virtual table creation)
+**Requirements**: MEM-01, MEM-02, MEM-03, MEM-04, MEM-05, MEM-06, MEM-07, MEM-08
+**Success Criteria** (what must be TRUE):
+  1. After migration, all existing documents have `strength=5.0`, `retrieval_count=0`, `last_accessed=NULL`, `emotional_state=NULL`, `context_tags='[]'`, `schema_id=NULL` — confirmed by `SELECT COUNT(*) FROM documents WHERE strength IS NULL` returning 0
+  2. When a new message arrives in a work conversation, the stored document has a non-null `context_tags` value containing "work" — confirmed by inspecting the row after write
+  3. When a message arrives during a detected anxious exchange, `emotional_state` is populated at write time (not at retrieval time) — confirmed by DualCognition integration test
+  4. Retrieving a memory a second time within the same hour does NOT increment `retrieval_count` — confirmed by sending the same query twice within 60 seconds and asserting count stays at 1
+  5. The `schemas` and `schema_episodes` tables exist and are queryable — `SELECT * FROM schemas LIMIT 1` returns without error on a fresh installation
+**Plans**: TBD
+
+#### Phase 21: Consolidation Engine
+**Goal**: Memories consolidate nightly into reusable semantic schemas (SWS gist pass),
+redundant retrieval results are diversified (MMR), dormant memories are marked for
+suppression (Ebbinghaus sweep), and the system can estimate retrieval confidence before
+running a full search (FOK).
+**Depends on**: Phase 20 (schema table must exist; strength/emotional_state columns required for consolidation prioritization)
+**Requirements**: CONSOL-01, CONSOL-02, CONSOL-03, CONSOL-07, CONSOL-08, CONSOL-09, RETR-03, QUERY-04, QUERY-05
+**Success Criteria** (what must be TRUE):
+  1. After 8+ conversations about the same topic accumulate, the nightly consolidation pass creates at least one entry in the `schemas` table — confirmed by checking `SELECT COUNT(*) FROM schemas` before and after a simulated consolidation run
+  2. The consolidated schema row has `schema_episodes` links to the source episodic memories — the originals are NOT deleted, confirmed by verifying their `id` values still appear in `documents`
+  3. A retrieved result set with 3 near-duplicate memories about the same event is diversified by MMR — the final returned set contains at most one of the near-duplicates, confirmed by injecting controlled test documents
+  4. After 31 days without access, a low-importance memory has `strength < 0.1` and is excluded from normal retrieval results — confirmed by simulating time passage in a test
+  5. Asking "what do you know about my dentist?" when no dentist-related memories exist returns a response indicating low confidence ("I don't think we've discussed that") — FOK returns `confidence=none` in under 5ms
+**Plans**: TBD
+
+#### Phase 22: Associative Memory
+**Goal**: Retrieved memories surface their co-occurring associations (Hopfield), cross-domain
+structural similarities are written to the knowledge graph (REM pass), prediction errors
+trigger memory trace updates or competing traces (reconsolidation), and retrieving a memory
+slightly weakens its near-duplicate competitors (retrieval-induced forgetting).
+**Depends on**: Phase 21 (consolidation produces the schema corpus that REM operates on; Hopfield matrix is populated from Phase 20 write path; reconsolidation requires access tracking)
+**Requirements**: RETR-06, ASSOC-01, ASSOC-02, CONSOL-04, POST-01, POST-02, POST-03, POST-04, POST-05
+**Success Criteria** (what must be TRUE):
+  1. Retrieving a memory about "Python debugging frustration" also surfaces a memory about "cooking a failed recipe" via Hopfield co-activation — the result includes `source_channel=hopfield` in its metadata
+  2. After the REM association pass runs, the knowledge graph contains at least one `shares_pattern` edge linking memories from different topic communities — confirmed by `SELECT * FROM edges WHERE relation='shares_pattern' LIMIT 1`
+  3. When a conversation produces `tension_level=0.6` (reconsolidation window), the retrieved memory's `emotional_state` column is updated within the 6-hour window — confirmed by querying the document row before and after
+  4. When `tension_level=0.9` (extinction), a NEW competing memory trace is created in `documents` rather than modifying the original — confirmed by asserting the original row is unchanged and a new row exists
+  5. A memory that was NOT returned but scored cosine > 0.85 against a returned memory has a lower `strength` value immediately after retrieval — the penalty is confirmed by comparing strength before and after a controlled query
+**Plans**: TBD
+
+#### Phase 23: Query Intelligence + Contextual Retrieval
+**Goal**: Vague queries expand to hypothetical embeddings before search (HyDE), emotional
+context biases retrieval toward mood-congruent memories with mood repair for sustained
+negative states, contextual integrity filters prevent out-of-context information surfacing,
+and causally-linked edges are promoted from correlations when evidence is sufficient.
+**Depends on**: Phase 22 (Hopfield and associative layers must exist; reconsolidation and state tracking required for mood repair; causal promotion needs the extended edges table from Phase 20)
+**Requirements**: ASSOC-03, ASSOC-04, ASSOC-05, ASSOC-06, CONSOL-05, CONSOL-06, QUERY-01, QUERY-02, QUERY-03
+**Success Criteria** (what must be TRUE):
+  1. A vague query ("something that made me feel proud") retrieves better results with HyDE enabled than without — confirmed by A/B comparison: disabled path returns fewer relevant results for the same query
+  2. A direct entity lookup ("what is my sister's birthday") skips HyDE and uses the raw query embedding — confirmed by the query router logging `hyde_skipped=true` for entity-type queries
+  3. When the user is currently in an anxious conversation, memories tagged `emotional_state=anxious` score ~25% higher in the result ranking than neutral memories — observable from the score metadata
+  4. When the user has been in a negative state for 3+ consecutive messages, positive/achievement memories are included alongside mood-congruent ones — confirmed by checking returned `emotional_state` values include "positive" or "achievement"
+  5. Memories tagged `context_tags=["health"]` are suppressed when the current conversation context is detected as "work" — confirmed by injecting health memories into a work-context conversation and verifying they do not appear in results
+  6. After 5+ observations of a correlated edge across 3+ distinct conversation contexts, that edge's `is_causal` flag is set to `1` in the database — confirmed by simulating the threshold conditions in an integration test
+**Plans**: TBD
+
+#### Phase 24: Embedding Migration
+**Goal**: The nomic-embed-text embedding model is replaced by bge-m3 across all write and
+read paths. All existing documents are re-embedded to bge-m3 vectors without data loss.
+The embedding cache is invalidated on model swap so stale nomic vectors are never returned.
+**Depends on**: Phase 23 (all retrieval logic must be stable before changing the vector representation that all channels operate on — migrating mid-build would invalidate prior tests)
+**Requirements**: EMBED-01, EMBED-02, EMBED-03
+**Success Criteria** (what must be TRUE):
+  1. After migration, the embedding provider is `bge-m3` (1024 dims) — confirmed by `SELECT embedding FROM documents LIMIT 1` and asserting the vector dimension is 1024, not 768 (nomic)
+  2. The re-embedding pipeline completes on a 10K-document database without errors and without deleting any documents — confirmed by comparing document counts before and after
+  3. Running the re-embedding pipeline twice on the same database is idempotent — no duplicate documents, no changed row counts, confirmed by second run finishing without writes
+  4. Swapping the model in `synapse.json` from nomic to bge-m3 and back triggers cache invalidation — confirmed by asserting the lru_cache is cleared and the first subsequent embed call uses the new model
+  5. Multilingual text (Bengali/Bangla) embeds with bge-m3 and returns semantically valid results — confirmed by embedding a Bengali phrase and its English translation and asserting cosine similarity > 0.7
+**Plans**: TBD
+
+### Coverage Table (v4.0)
+
+Every v4.0 requirement is mapped to exactly one phase. Total: 42/42 (100%).
+
+| REQ-ID | Category | Phase |
+|--------|----------|-------|
+| RETR-01 | Retrieval Architecture | 19 |
+| RETR-02 | Retrieval Architecture | 19 |
+| RETR-04 | Retrieval Architecture | 19 |
+| RETR-05 | Retrieval Architecture | 19 |
+| MEM-01 | Memory Lifecycle | 20 |
+| MEM-02 | Memory Lifecycle | 20 |
+| MEM-03 | Memory Lifecycle | 20 |
+| MEM-04 | Memory Lifecycle | 20 |
+| MEM-05 | Memory Lifecycle | 20 |
+| MEM-06 | Memory Lifecycle | 20 |
+| MEM-07 | Memory Lifecycle | 20 |
+| MEM-08 | Memory Lifecycle | 20 |
+| CONSOL-01 | Consolidation Engine | 21 |
+| CONSOL-02 | Consolidation Engine | 21 |
+| CONSOL-03 | Consolidation Engine | 21 |
+| CONSOL-07 | Consolidation Engine | 21 |
+| CONSOL-08 | Consolidation Engine | 21 |
+| CONSOL-09 | Consolidation Engine | 21 |
+| RETR-03 | Retrieval Architecture | 21 |
+| QUERY-04 | Query Intelligence | 21 |
+| QUERY-05 | Query Intelligence | 21 |
+| RETR-06 | Retrieval Architecture | 22 |
+| ASSOC-01 | Associative & Contextual Memory | 22 |
+| ASSOC-02 | Associative & Contextual Memory | 22 |
+| CONSOL-04 | Consolidation Engine | 22 |
+| POST-01 | Post-Retrieval | 22 |
+| POST-02 | Post-Retrieval | 22 |
+| POST-03 | Post-Retrieval | 22 |
+| POST-04 | Post-Retrieval | 22 |
+| POST-05 | Post-Retrieval | 22 |
+| ASSOC-03 | Associative & Contextual Memory | 23 |
+| ASSOC-04 | Associative & Contextual Memory | 23 |
+| ASSOC-05 | Associative & Contextual Memory | 23 |
+| ASSOC-06 | Associative & Contextual Memory | 23 |
+| CONSOL-05 | Consolidation Engine | 23 |
+| CONSOL-06 | Consolidation Engine | 23 |
+| QUERY-01 | Query Intelligence | 23 |
+| QUERY-02 | Query Intelligence | 23 |
+| QUERY-03 | Query Intelligence | 23 |
+| EMBED-01 | Embedding Migration | 24 |
+| EMBED-02 | Embedding Migration | 24 |
+| EMBED-03 | Embedding Migration | 24 |
+
+### Progress (v4.0)
+
+**Execution Order (v4.0):**
+Phases execute in dependency order: 19 -> 20 -> 21 -> 22 -> 23 -> 24
+
+| Phase | Plans Complete | Status | Completed |
+|-------|----------------|--------|-----------|
+| 19. Retrieval Foundation | 0/TBD | Not started | - |
+| 20. Memory Lifecycle Schema | 0/TBD | Not started | - |
+| 21. Consolidation Engine | 0/TBD | Not started | - |
+| 22. Associative Memory | 0/TBD | Not started | - |
+| 23. Query Intelligence + Contextual Retrieval | 0/TBD | Not started | - |
+| 24. Embedding Migration | 0/TBD | Not started | - |
+
+---
+
 ## Progress
 
 **Execution Order (v3.1):**
@@ -297,3 +526,9 @@ Phases execute in dependency order: 12 -> 13 -> 14 -> 15 -> 16 -> 17 -> 18
 | 16. Heartbeat + Bridge Hardening | v3.1 | 0/TBD | Not started | - |
 | 17. Pipeline Decomposition + Inbound Gate | v3.1 | 0/TBD | Not started | - |
 | 18. Multi-Account WhatsApp | v3.1 | 0/TBD | Not started | - |
+| 19. Retrieval Foundation | v4.0 | 0/TBD | Not started | - |
+| 20. Memory Lifecycle Schema | v4.0 | 0/TBD | Not started | - |
+| 21. Consolidation Engine | v4.0 | 0/TBD | Not started | - |
+| 22. Associative Memory | v4.0 | 0/TBD | Not started | - |
+| 23. Query Intelligence + Contextual Retrieval | v4.0 | 0/TBD | Not started | - |
+| 24. Embedding Migration | v4.0 | 0/TBD | Not started | - |
