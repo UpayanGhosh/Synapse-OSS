@@ -108,24 +108,31 @@ comparing them and expecting the difference to be features, it is not — **the 
 | Application code | ✅ identical to develop | ✅ identical to main |
 | Test suites (`workspace/tests/`, `baileys-bridge/test/`) | ❌ stripped | ✅ 273 + 9 files |
 | `workspace/AGENTS.md` | ✅ present | ❌ absent |
-| `.planning/` (agent planning docs) | ❌ not carried | ✅ 218 files |
+| `.planning/` (roadmap + phase docs) | ✅ 218 files | ✅ 218 files |
 | `ruff` / `black` in CI | advisory (`continue-on-error`) | enforced |
 | `metrics.yml`, `parity.yml` workflows | ❌ removed | ✅ present |
 
-**Why:** `main` is the production/release branch. It is intentionally free of tests and planning
-material so a release checkout carries only what is needed to run Synapse. Lint and test enforcement
-belong to `develop`, which is where code is actually written and where every change lands first.
+**Why:** `main` is the production/release branch. It is intentionally free of the **test suite** so a
+release checkout carries only what is needed to run Synapse. Lint and test enforcement belong to
+`develop`, which is where code is actually written and where every change lands first. Documentation
+and planning material, by contrast, are carried on `main` so the default branch is the complete
+reference — `main` is what visitors and release consumers actually read.
 
 **What this means for contributors:**
 
-- **Open pull requests against `develop`**, never against `main`.
-- Run the test suite from `develop` — `pytest` on a `main` checkout will collect nothing.
-- `bash scripts/collect_metrics.sh` only works on `develop`; it counts `workspace/tests/`, which does
-  not exist on `main`.
-- `main` advances only by merging `develop` (see PR #33 for the shape of a production sync).
+- **Open code pull requests against `develop`**, never against `main`.
+- Run the test suite from `develop` — `workspace/tests/` does not exist on `main`, so `pytest tests/`
+  fails there. `workspace/tests/pytest.ini`, which defines the `unit` / `integration` / `smoke`
+  markers, is stripped along with it.
+- `bash scripts/collect_metrics.sh` only works on `develop`; it counts `workspace/tests/`, and its
+  `set -euo pipefail` makes the missing directory a hard failure on `main`.
+- `main` advances by merging `develop` for code (see `da2d346` for the shape of a production sync);
+  documentation and planning updates may land on `main` directly by PR.
 
-Milestone planning lives on `develop` in `.planning/ROADMAP.md` — currently v3.1 (Reliability +
-OpenClaw Supervisor Patterns), with v4.0 (Bioinspired Memory Architecture) planned.
+Milestone planning lives in [.planning/ROADMAP.md](.planning/ROADMAP.md) — currently **v3.1**
+(Reliability + OpenClaw Supervisor Patterns), with **v4.0** (Bioinspired Memory Architecture, phases
+19–24) planned. Note that `.planning/phases/**` is working material written by and for coding agents;
+`ROADMAP.md`, `PROJECT.md`, `REQUIREMENTS.md` and `STATE.md` are the durable entry points.
 
 ## Vision
 
