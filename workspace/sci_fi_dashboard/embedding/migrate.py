@@ -5,6 +5,7 @@ Invoked by: synapse re-embed [--dry-run] [--batch-size N] [--db PATH]
 Responsibilities:
 - Find all documents whose embedding_model differs from the active provider.
 - Re-embed them in configurable batch sizes.
+- Persist the vectors in sqlite-vec and LanceDB before marking them migrated.
 - Update provenance columns (embedding_model, embedding_version) on success.
 - Support --dry-run to preview the plan without touching data.
 """
@@ -13,11 +14,14 @@ from __future__ import annotations
 
 import logging
 import sqlite3
+import struct
+from contextlib import closing
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from sci_fi_dashboard.embedding.base import EmbeddingProvider
+    from sci_fi_dashboard.vector_store.base import VectorStore
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +31,7 @@ def re_embed_documents(
     provider: EmbeddingProvider,
     batch_size: int = 64,
     dry_run: bool = False,
+    vector_store: VectorStore | None = None,
 ) -> dict[str, int]:
     """
     Re-embed all documents that don't have embeddings from the current provider.
@@ -41,6 +46,8 @@ def re_embed_documents(
         batch_size: Number of documents to embed per round-trip to the model.
         dry_run:    When ``True``, count rows that need re-embedding but do not
                     write anything to the database.
+        vector_store: Optional vector store used for the re-embedded vectors.
+            When omitted, the default :class:`LanceDBVectorStore` is used.
 
     Returns:
         A dict with keys ``"processed"``, ``"skipped"``, and ``"errors"`` where
@@ -49,10 +56,11 @@ def re_embed_documents(
     stats: dict[str, int] = {"processed": 0, "skipped": 0, "errors": 0}
     provider_info = provider.info()
 
-    with sqlite3.connect(str(db_path)) as conn:
+    owns_vector_store = False
+    with closing(sqlite3.connect(str(db_path))) as conn:
         # Rows that need re-embedding: model mismatch or no model recorded yet.
         cursor = conn.execute(
-            "SELECT id, content FROM documents"
+            "SELECT id, content, hemisphere_tag, unix_timestamp, importance FROM documents"
             " WHERE embedding_model != ? OR embedding_model IS NULL",
             (provider_info.model,),
         )
@@ -63,35 +71,74 @@ def re_embed_documents(
             stats["processed"] = len(rows)
             return stats
 
-        for i in range(0, len(rows), batch_size):
-            batch = rows[i : i + batch_size]
-            ids = [r[0] for r in batch]
-            texts = [r[1] for r in batch]
+        try:
+            if vector_store is None:
+                from sci_fi_dashboard.vector_store import LanceDBVectorStore
 
-            try:
-                vectors = provider.embed_documents(texts)
-                for row_id, _vector in zip(ids, vectors, strict=False):
-                    # Update provenance metadata.
-                    # The actual embedding bytes are written by the ingestion
-                    # pipeline's vec_items upsert — this function only updates
-                    # the tracking columns so the row won't be re-processed
-                    # on the next run.
-                    conn.execute(
-                        "UPDATE documents"
-                        " SET embedding_model = ?, embedding_version = ?"
-                        " WHERE id = ?",
-                        (provider_info.model, f"{provider_info.name}-v1", row_id),
+                vector_store = LanceDBVectorStore()
+                owns_vector_store = True
+
+            for i in range(0, len(rows), batch_size):
+                batch = rows[i : i + batch_size]
+                texts = [r[1] for r in batch]
+
+                try:
+                    vectors = provider.embed_documents(texts)
+                    if len(vectors) != len(batch):
+                        raise ValueError(
+                            f"Embedding provider returned {len(vectors)} vectors for "
+                            f"{len(batch)} documents"
+                        )
+
+                    facts = []
+                    for row, vector in zip(batch, vectors, strict=True):
+                        row_id, content, hemisphere_tag, unix_timestamp, importance = row
+                        vec_blob = struct.pack(f"{len(vector)}f", *vector)
+                        conn.execute(
+                            "DELETE FROM vec_items WHERE document_id = ?",
+                            (row_id,),
+                        )
+                        conn.execute(
+                            "INSERT INTO vec_items(document_id, embedding) VALUES (?, ?)",
+                            (row_id, vec_blob),
+                        )
+                        conn.execute(
+                            "UPDATE documents"
+                            " SET embedding_model = ?, embedding_version = ?"
+                            " WHERE id = ?",
+                            (provider_info.model, f"{provider_info.name}-v1", row_id),
+                        )
+                        facts.append(
+                            {
+                                "id": row_id,
+                                "vector": vector,
+                                "metadata": {
+                                    "text": content,
+                                    "hemisphere_tag": hemisphere_tag or "safe",
+                                    "unix_timestamp": unix_timestamp or 0,
+                                    "importance": importance if importance is not None else 5,
+                                },
+                            }
+                        )
+
+                    vector_store.upsert_facts(facts)
+                    conn.commit()
+                    stats["processed"] += len(batch)
+                    logger.info(
+                        "[ReEmbed] Processed batch %d, %d total",
+                        i // batch_size + 1,
+                        stats["processed"],
                     )
-                    stats["processed"] += 1
-                conn.commit()
-                logger.info(
-                    "[ReEmbed] Processed batch %d, %d total",
-                    i // batch_size + 1,
-                    stats["processed"],
-                )
-            except Exception as exc:
-                logger.error("[ReEmbed] Batch error: %s", exc)
-                stats["errors"] += len(batch)
+                except Exception as exc:
+                    conn.rollback()
+                    logger.error("[ReEmbed] Batch error: %s", exc)
+                    stats["errors"] += len(batch)
+        except Exception as exc:
+            logger.error("[ReEmbed] Vector store initialization error: %s", exc)
+            stats["errors"] = len(rows)
+        finally:
+            if owns_vector_store and vector_store is not None:
+                vector_store.close()
 
     return stats
 
