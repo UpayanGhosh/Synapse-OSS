@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import re
 import sqlite3
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from sci_fi_dashboard.memory_affect import AffectTags, extract_affect
 
@@ -24,6 +24,7 @@ class UserMemoryFact:
     evidence: str
     affect: AffectTags = field(default_factory=AffectTags)
     status: str = "active"
+    source_episode_id: str | None = None
 
 
 _RESPONSE_STYLE_RULES: tuple[tuple[str, tuple[str, ...], str, float], ...] = (
@@ -128,6 +129,30 @@ def _clean_value(value: str, *, max_len: int = 96) -> str:
     return " ".join(str(value or "").strip().strip(".,!?;:\"'`").split())[:max_len].strip()
 
 
+def _normalized_claim(value: str) -> str:
+    return " ".join(str(value or "").casefold().strip().strip(".,!?;:").split())
+
+
+def _ensure_fact_support_table(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS personal_fact_support (
+            owner_key TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            key TEXT NOT NULL,
+            value TEXT NOT NULL,
+            evidence TEXT NOT NULL,
+            source_episode_id TEXT NOT NULL,
+            occurred_at TEXT NOT NULL,
+            recorded_at TEXT NOT NULL,
+            PRIMARY KEY(owner_key,kind,key,source_episode_id)
+        )"""
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS personal_fact_support_source "
+        "ON personal_fact_support(owner_key,source_episode_id)"
+    )
+
+
 def ensure_user_memory_facts_table(conn: sqlite3.Connection) -> None:
     """Create structured user-memory table and indexes idempotently."""
     conn.execute("""
@@ -140,6 +165,7 @@ def ensure_user_memory_facts_table(conn: sqlite3.Connection) -> None:
             summary         TEXT NOT NULL,
             confidence      REAL NOT NULL DEFAULT 0.0,
             source_doc_id   INTEGER,
+            source_episode_id TEXT,
             evidence        TEXT,
             status          TEXT NOT NULL DEFAULT 'active',
             sentiment       TEXT NOT NULL DEFAULT 'neutral',
@@ -157,6 +183,7 @@ def ensure_user_memory_facts_table(conn: sqlite3.Connection) -> None:
     """)
     existing_cols = {row[1] for row in conn.execute("PRAGMA table_info(user_memory_facts)")}
     migrations = {
+        "source_episode_id": "TEXT",
         "sentiment": "TEXT NOT NULL DEFAULT 'neutral'",
         "mood": "TEXT NOT NULL DEFAULT 'neutral'",
         "emotional_intensity": "REAL NOT NULL DEFAULT 0.0",
@@ -198,6 +225,10 @@ def ensure_user_memory_facts_table(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_user_memory_facts_source_doc_id
             ON user_memory_facts(source_doc_id)
         """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_user_memory_facts_source_episode_id "
+        "ON user_memory_facts(source_episode_id)"
     )
 
 
@@ -737,19 +768,67 @@ def upsert_user_memory_facts(conn: sqlite3.Connection, facts: list[UserMemoryFac
     ensure_user_memory_facts_table(conn)
     count = 0
     for fact in facts:
+        existing = conn.execute(
+            "SELECT source_episode_id FROM user_memory_facts "
+            "WHERE user_id=? AND kind=? AND key=?",
+            (fact.user_id, fact.kind, fact.key),
+        ).fetchone()
+        if fact.source_episode_id:
+            _ensure_fact_support_table(conn)
+            source = conn.execute(
+                "SELECT owner_key,person_id,role,visibility,occurred_at,recorded_at,content "
+                "FROM personal_episodes WHERE episode_id=?",
+                (fact.source_episode_id,),
+            ).fetchone()
+            if (
+                source is None or source[0] != f"person:{fact.user_id}"
+                or source[1] != fact.user_id or source[2] != "user"
+                or source[3] != "private"
+            ):
+                raise ValueError("fact source is not a same-owner user episode")
+            grounded_excerpt = " ".join(fact.evidence.casefold().split())
+            if not grounded_excerpt or grounded_excerpt not in " ".join(source[6].casefold().split()):
+                raise ValueError("fact evidence is absent from the user source episode")
+            support_owner = f"person:{fact.user_id}"
+            support = conn.execute(
+                "SELECT value,evidence FROM personal_fact_support "
+                "WHERE owner_key=? AND kind=? AND key=? AND source_episode_id=?",
+                (support_owner, fact.kind, fact.key, fact.source_episode_id),
+            ).fetchone()
+            if support and _normalized_claim(support[0]) != _normalized_claim(fact.value):
+                raise ValueError("one source episode cannot support conflicting fact values")
+            conn.execute(
+                """INSERT OR IGNORE INTO personal_fact_support
+                   (owner_key,kind,key,value,evidence,source_episode_id,occurred_at,recorded_at)
+                   VALUES (?,?,?,?,?,?,?,?)""",
+                (support_owner, fact.kind, fact.key, fact.value, fact.evidence,
+                 fact.source_episode_id, source[4], source[5]),
+            )
+            if existing and existing[0] and existing[0] != fact.source_episode_id:
+                prior = conn.execute(
+                    "SELECT occurred_at,recorded_at FROM personal_episodes WHERE episode_id=?",
+                    (existing[0],),
+                ).fetchone()
+                if prior and (prior[0], prior[1]) > (source[4], source[5]):
+                    _supersede_pure_fact_sources(conn, fact.user_id, fact.kind, fact.key)
+                    continue
+        elif existing and existing[0]:
+            # An old ownerless miner may still finish after a scoped fact commit.
+            continue
         conn.execute(
             """
             INSERT INTO user_memory_facts
                 (user_id, kind, key, value, summary, confidence,
-                 source_doc_id, evidence, status, sentiment, mood, emotional_intensity,
+                 source_doc_id, source_episode_id, evidence, status, sentiment, mood, emotional_intensity,
                  tension_type, user_need, response_style_hint, emotion_tags_json, affect_topics_json,
                  first_seen, last_seen)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
             ON CONFLICT(user_id, kind, key) DO UPDATE SET
                 value = excluded.value,
                 summary = excluded.summary,
                 confidence = excluded.confidence,
                 source_doc_id = excluded.source_doc_id,
+                source_episode_id = excluded.source_episode_id,
                 evidence = excluded.evidence,
                 status = excluded.status,
                 sentiment = excluded.sentiment,
@@ -761,6 +840,8 @@ def upsert_user_memory_facts(conn: sqlite3.Connection, facts: list[UserMemoryFac
                 emotion_tags_json = excluded.emotion_tags_json,
                 affect_topics_json = excluded.affect_topics_json,
                 last_seen = CURRENT_TIMESTAMP
+            WHERE user_memory_facts.source_episode_id IS NULL
+               OR excluded.source_episode_id IS NOT NULL
             """,
             (
                 fact.user_id,
@@ -770,6 +851,7 @@ def upsert_user_memory_facts(conn: sqlite3.Connection, facts: list[UserMemoryFac
                 fact.summary,
                 float(fact.confidence),
                 fact.source_doc_id,
+                fact.source_episode_id,
                 fact.evidence,
                 fact.status,
                 fact.affect.sentiment,
@@ -782,8 +864,41 @@ def upsert_user_memory_facts(conn: sqlite3.Connection, facts: list[UserMemoryFac
                 json.dumps(fact.affect.topics, separators=(",", ":")),
             ),
         )
+        if fact.source_episode_id:
+            _supersede_pure_fact_sources(conn, fact.user_id, fact.kind, fact.key)
         count += 1
     return count
+
+
+def _supersede_pure_fact_sources(
+    conn: sqlite3.Connection, user_id: str, kind: str, key: str
+) -> None:
+    current = conn.execute(
+        "SELECT value,source_episode_id FROM user_memory_facts "
+        "WHERE user_id=? AND kind=? AND key=?",
+        (user_id, kind, key),
+    ).fetchone()
+    if not current or not current[1]:
+        return
+    owner = f"person:{user_id}"
+    prior_rows = conn.execute(
+        """SELECT s.value,s.evidence,s.source_episode_id,e.content
+           FROM personal_fact_support s JOIN personal_episodes e
+           ON e.episode_id=s.source_episode_id AND e.owner_key=s.owner_key
+           WHERE s.owner_key=? AND s.kind=? AND s.key=? AND s.source_episode_id!=?""",
+        (owner, kind, key, current[1]),
+    ).fetchall()
+    for old_value, old_evidence, old_source_id, old_content in prior_rows:
+        if (
+            _normalized_claim(old_value) != _normalized_claim(current[0])
+            and " ".join(old_content.casefold().split())
+            == " ".join(old_evidence.casefold().split())
+        ):
+            conn.execute(
+                "UPDATE personal_episodes SET status='superseded',superseded_by=? "
+                "WHERE owner_key=? AND episode_id=?",
+                (current[1], owner, old_source_id),
+            )
 
 
 def distill_and_upsert_user_memory_facts(
@@ -793,6 +908,7 @@ def distill_and_upsert_user_memory_facts(
     user_id: str,
     source_doc_id: int | None,
     status: str = "active",
+    source_episode_id: str | None = None,
 ) -> list[UserMemoryFact]:
     """Distill facts from text and upsert into user_memory_facts."""
     facts = distill_user_memory_facts(
@@ -801,6 +917,8 @@ def distill_and_upsert_user_memory_facts(
         source_doc_id=source_doc_id,
         status=status,
     )
+    if source_episode_id:
+        facts = [replace(fact, source_episode_id=source_episode_id) for fact in facts]
     if facts:
         upsert_user_memory_facts(conn, facts)
     else:

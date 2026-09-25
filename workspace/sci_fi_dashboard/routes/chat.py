@@ -7,13 +7,27 @@ import uuid
 from fastapi import APIRouter, BackgroundTasks, Depends, Request
 
 from sci_fi_dashboard import _deps as deps
-from sci_fi_dashboard.middleware import validate_api_key
+from sci_fi_dashboard.middleware import _expected_gateway_token, validate_api_key
 from sci_fi_dashboard.observability import mint_run_id
+from sci_fi_dashboard.personal_memory import resolve_person_memory_context
 from sci_fi_dashboard.pipeline_helpers import process_direct_persona_chat
 from sci_fi_dashboard.schemas import ChatRequest
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+def _trusted_api_person_context():
+    cfg = getattr(deps, "_synapse_cfg", None)
+    session_cfg = getattr(cfg, "session", {}) or {}
+    return resolve_person_memory_context(
+        channel_id="api",
+        peer_id=None,
+        conversation_id="api:local-api-owner",
+        identity_links=session_cfg.get("identityLinks", {}),
+        origin="api",
+        api_authenticated=bool(_expected_gateway_token()),
+    )
 
 
 @router.post("/chat", dependencies=[Depends(deps._check_rate_limit)])
@@ -70,6 +84,8 @@ async def chat_webhook(request: Request):
             "message_id": message_id,
             "sender_name": sender_name,
             "run_id": run_id,
+            "person_origin": "api",
+            "api_authenticated": bool(_expected_gateway_token()),
         },
     )
 
@@ -90,12 +106,16 @@ def _make_persona_handler(persona_id: str):
         mint_run_id()
         deps._check_rate_limit(http_request)  # H-04: rate limit persona chat
         validate_api_key(http_request)
+        person_context = _trusted_api_person_context()
         override_role = http_request.headers.get("X-Synapse-Model-Role", "").strip()
         if override_role and _parity_role_override_enabled():
             return await _run_with_parity_role_override(
-                request, persona_id, background_tasks, override_role
+                request, persona_id, background_tasks, override_role,
+                person_context=person_context,
             )
-        return await process_direct_persona_chat(request, persona_id, background_tasks)
+        return await process_direct_persona_chat(
+            request, persona_id, background_tasks, person_context=person_context
+        )
 
     handler.__name__ = f"chat_{persona_id}"
     return handler
@@ -115,6 +135,8 @@ async def _run_with_parity_role_override(
     persona_id: str,
     background_tasks: BackgroundTasks,
     override_role: str,
+    *,
+    person_context=None,
 ):
     mappings = getattr(deps._synapse_cfg, "model_mappings", {}) or {}
     if override_role not in mappings:
@@ -135,7 +157,9 @@ async def _run_with_parity_role_override(
     previous = get_model_override(chat_id)
     set_model_override(chat_id, override_role)
     try:
-        return await process_direct_persona_chat(request, persona_id, background_tasks)
+        return await process_direct_persona_chat(
+            request, persona_id, background_tasks, person_context=person_context
+        )
     finally:
         if previous:
             set_model_override(chat_id, previous)

@@ -8,6 +8,7 @@ import os
 import re
 import sqlite3
 import time
+from dataclasses import replace
 from pathlib import Path
 
 from fastapi import BackgroundTasks
@@ -21,6 +22,7 @@ from sci_fi_dashboard.action_receipts import (
 from sci_fi_dashboard.dual_cognition import CognitiveMerge
 from sci_fi_dashboard.llm_router import LLMResult
 from sci_fi_dashboard.observability import get_child_logger
+from sci_fi_dashboard.personal_memory import PersonMemoryContext
 from sci_fi_dashboard.pipeline_emitter import get_emitter as _get_emitter
 from sci_fi_dashboard.prompt_tiers import (
     PromptTierPolicy,
@@ -38,6 +40,97 @@ from sci_fi_dashboard.style_policy import (
 
 logger = logging.getLogger(__name__)
 _log = get_child_logger("pipeline.chat")  # OBS-01 structured logger carrying runId
+
+_RELATIONSHIP_TONES = {
+    "formal": "professional_precise",
+    "professional": "professional_precise",
+    "professional_precise": "professional_precise",
+    "casual": "casual_witty",
+    "friendly": "casual_witty",
+    "warm": "casual_witty",
+    "casual_witty": "casual_witty",
+    "playful": "creative_playful",
+    "funny": "creative_playful",
+    "creative_playful": "creative_playful",
+    "technical": "technical_depth",
+    "technical_depth": "technical_depth",
+}
+_RELATIONSHIP_LENGTHS = {
+    "short": "concise", "brief": "concise", "concise": "concise",
+    "normal": "normal", "balanced": "normal",
+    "detailed": "detailed", "long": "detailed",
+}
+
+
+def _apply_scoped_relationship_style(
+    policy: StylePolicy, user_msg: str, relationship: dict
+) -> StylePolicy:
+    """Map evidence-backed preferences to fixed style values; current-turn intent wins."""
+    intent = detect_style_intent(user_msg)
+
+    def pick(fields: tuple[str, ...], choices: dict[str, str]) -> tuple[str | None, str | None]:
+        for layer in ("preferences", "inferred"):
+            entries = relationship.get(layer, {})
+            if not isinstance(entries, dict):
+                continue
+            for field in fields:
+                entry = entries.get(field)
+                raw = entry.get("value") if isinstance(entry, dict) else entry
+                value = choices.get(str(raw or "").strip().casefold())
+                if value:
+                    return value, layer
+        return None, None
+
+    runtime_style = relationship.get("runtime_style", {})
+    if not isinstance(runtime_style, dict):
+        runtime_style = {}
+    canonical_tone = runtime_style.get("tone")
+    if canonical_tone not in set(_RELATIONSHIP_TONES.values()):
+        canonical_tone = None
+    canonical_length = runtime_style.get("verbosity")
+    if canonical_length not in set(_RELATIONSHIP_LENGTHS.values()):
+        canonical_length = None
+    tone, tone_source = pick(("tone",), _RELATIONSHIP_TONES)
+    length, length_source = pick(("verbosity",), _RELATIONSHIP_LENGTHS)
+    tone = canonical_tone or tone
+    length = canonical_length or length
+    if canonical_tone:
+        tone_source = "runtime_style"
+    if canonical_length:
+        length_source = "runtime_style"
+    tone = intent.tone if intent and intent.tone else tone
+    length = intent.length if intent and intent.length else length
+    if tone is None and length is None:
+        return policy
+    sources = ",".join(dict.fromkeys(source for source in (tone_source, length_source) if source))
+    return replace(
+        policy,
+        tone=tone or policy.tone,
+        length=length or policy.length,
+        source="current_turn+relationship" if intent else f"relationship_{sources}",
+        reason="verified person's bounded communication preference; current turn overrides",
+    )
+
+
+def _scoped_recalled_episode_parts(episode) -> tuple[str, str]:
+    corrections = getattr(episode, "corrections", ())
+    labels = [
+        "CORRECTED CLAIM "
+        f"{note['kind']}/{note['key']}: {note['obsolete_evidence']!r} is historical; "
+        f"current value is {note['current_value']!r} "
+        f"(source {note['current_occurred_at']})."
+        for note in corrections
+    ]
+    raw = (
+        f"Conversation at {episode.occurred_at} "
+        f"({episode.occurred_at_source}, {episode.role} said): {episode.content}"
+    )
+    return "\n".join(labels), raw
+
+
+def _format_scoped_recalled_episode(episode) -> str:
+    labels, raw = _scoped_recalled_episode_parts(episode)
+    return "\n".join(part for part in (labels, raw) if part)
 
 # ---------------------------------------------------------------------------
 # Agent Workspace Prefix (RT2)
@@ -73,7 +166,20 @@ _USER_AGENT_WORKSPACE: Path = Path.home() / ".synapse" / "workspace"
 
 # Module-level cache keyed by file mtimes + prompt tier for cheap invalidation.
 _agent_workspace_cache: dict = {"content": "", "content_by_tier": {}, "mtimes": {}}
-_agent_workspace_session_cache: dict[tuple[str, str], str] = {}
+_agent_workspace_session_cache: dict[tuple, str] = {}
+_PERSONAL_WORKSPACE_FILES = frozenset({"USER", "MEMORY"})
+
+
+def _safe_workspace_prefix(content: str) -> str:
+    """Remove shared personal documents from a cached or freshly loaded prefix."""
+    sections = _split_agent_workspace_sections(content)
+    if not sections:
+        return ""
+    return "\n\n".join(
+        f"# ===== {name}.md =====\n{sections[name]}"
+        for name in _AGENT_WORKSPACE_FILES
+        if name not in _PERSONAL_WORKSPACE_FILES and sections.get(name)
+    )
 
 
 def _repo_agent_workspace_default(name: str) -> Path:
@@ -116,19 +222,30 @@ def clear_agent_workspace_session_prefix(session_key: str | None = None) -> None
 def _load_agent_workspace_prefix_for_session(
     session_key: str | None,
     prompt_tier: str = "frontier",
+    *,
+    include_personal_documents: bool = False,
 ) -> str:
     """Load the identity prefix once per session and reuse it for later turns."""
     tier = get_prompt_tier_policy(prompt_tier).tier
-    key = (str(session_key or "default"), tier)
+    key = (str(session_key or "default"), tier, include_personal_documents)
     cached = _agent_workspace_session_cache.get(key)
+    if cached is None and not include_personal_documents:
+        # Old two-part cache entries may predate scoped prompt assembly.
+        cached = _agent_workspace_session_cache.get(key[:2])
     if cached is not None:
-        return cached
-    content = _load_agent_workspace_prefix(tier)
+        safe = cached if include_personal_documents else _safe_workspace_prefix(cached)
+        _agent_workspace_session_cache[key] = safe
+        return safe
+    content = _load_agent_workspace_prefix(
+        tier, include_personal_documents=include_personal_documents
+    )
     _agent_workspace_session_cache[key] = content
     return content
 
 
-def _load_agent_workspace_prefix(prompt_tier: str = "frontier") -> str:
+def _load_agent_workspace_prefix(
+    prompt_tier: str = "frontier", *, include_personal_documents: bool = False
+) -> str:
     """Load and concatenate the 7 agent workspace markdown files into a stable prompt prefix.
 
     Files loaded in order: SOUL -> CORE -> IDENTITY -> USER -> TOOLS -> MEMORY -> AGENTS.
@@ -155,7 +272,7 @@ def _load_agent_workspace_prefix(prompt_tier: str = "frontier") -> str:
     if not resolved:
         cached_any = _agent_workspace_cache.get("content") or ""
         if cached_any:
-            return cached_any
+            return cached_any if include_personal_documents else _safe_workspace_prefix(cached_any)
         _log.warning(
             "agent_workspace_empty",
             extra={
@@ -174,14 +291,18 @@ def _load_agent_workspace_prefix(prompt_tier: str = "frontier") -> str:
             current_mtimes[path] = 0.0
 
     content_by_tier = _agent_workspace_cache.setdefault("content_by_tier", {})
-    if _agent_workspace_cache["mtimes"] == current_mtimes and tier in content_by_tier:
-        return content_by_tier[tier]
+    cache_key = (tier, include_personal_documents)
+    if _agent_workspace_cache["mtimes"] == current_mtimes and cache_key in content_by_tier:
+        content = content_by_tier[cache_key]
+        return content if include_personal_documents else _safe_workspace_prefix(content)
 
     if _agent_workspace_cache["mtimes"] != current_mtimes:
         content_by_tier.clear()
 
     sections: list[str] = []
     for name in _AGENT_WORKSPACE_FILES:
+        if not include_personal_documents and name in _PERSONAL_WORKSPACE_FILES:
+            continue
         path = resolved.get(name)
         if path is None:
             continue
@@ -198,8 +319,8 @@ def _load_agent_workspace_prefix(prompt_tier: str = "frontier") -> str:
         sections.append(f"# ===== {name}.md =====\n{body}")
 
     content = "\n\n".join(sections)
-    content_by_tier[tier] = content
-    if tier == "frontier":
+    content_by_tier[cache_key] = content
+    if tier == "frontier" and not include_personal_documents:
         _agent_workspace_cache["content"] = content
     _agent_workspace_cache["mtimes"] = current_mtimes
     return content
@@ -293,10 +414,33 @@ def _format_memory_context_for_tier(
     profile_block = "\n".join(
         f"* {_truncate_text(fact, policy.profile_fact_chars)}" for fact in profile_facts if fact
     )
+    def _memory_line(item: dict) -> str:
+        char_limit = policy.profile_fact_chars
+        if item.get("has_corrections"):
+            char_limit = max(char_limit, 360)
+            labels = item.get("correction_labels")
+            raw = item.get("raw_memory")
+            # An unstructured correction cannot be clipped safely: omit it.
+            if not isinstance(labels, str) or not labels or not isinstance(raw, str):
+                return ""
+            labels = " ".join(labels.split())
+            if len(labels) > char_limit:
+                return ""
+            remaining = char_limit - len(labels) - 1
+            raw = " ".join(raw.split())
+            if len(raw) > remaining:
+                marker = " ... [truncated]"
+                if remaining <= len(marker):
+                    return f"* {labels}"
+                raw = raw[: remaining - len(marker)].rstrip() + marker
+            if not raw:
+                return f"* {labels}"
+            return f"* {labels} {raw}"
+        return f"* {_truncate_text(str(item['content']), char_limit)}"
+
     dynamic_facts = "\n".join(
-        f"* {_truncate_text(str(item.get('content', '')), policy.profile_fact_chars)}"
-        for item in selected
-        if item.get("content")
+        line for item in selected if item.get("content")
+        if (line := _memory_line(item))
     )
 
     parts = []
@@ -443,7 +587,7 @@ def _format_profile_reminder(permanent_facts: list[str], policy: PromptTierPolic
     ]
     if not lines:
         return ""
-    return "USER PROFILE (always true, use this to personalize your reply):\n" + "\n".join(lines)
+    return "USER PROFILE EVIDENCE (may change; use only when relevant):\n" + "\n".join(lines)
 
 
 def _format_tool_inventory(session_tools: list, policy: PromptTierPolicy) -> str:
@@ -845,7 +989,7 @@ def _compact_prompt_policy(base_policy: PromptTierPolicy, prompt_depth: str) -> 
         return PromptTierPolicy(
             tier="small",
             token_target=2_000,
-            memory_limit=0,
+            memory_limit=2,
             memory_min_score=None,
             include_graph_context=False,
             include_mcp_context=False,
@@ -949,18 +1093,18 @@ def _build_compact_workspace_excerpt(workspace_prefix: str) -> str:
 
     selected: list[str] = []
     section_limits = {
+        "INSTRUCTIONS": 300,
         "SOUL": 520,
         "CORE": 620,
-        "USER": 520,
-        "MEMORY": 460,
+        "CODE": 260,
+        "IDENTITY": 300,
+        "TOOLS": 260,
         "AGENTS": 620,
     }
-    for name in ("SOUL", "CORE", "USER", "MEMORY", "AGENTS"):
+    for name in ("INSTRUCTIONS", "SOUL", "CORE", "CODE", "IDENTITY", "TOOLS", "AGENTS"):
         body = sections.get(name, "").strip()
         if not body:
             continue
-        if name in {"USER", "MEMORY"}:
-            body = _extract_dynamic_profile_block(body) or body
         selected.append(f"[{name}]\n{_truncate_text(body, section_limits[name])}")
     return "\n\n".join(selected).strip()
 
@@ -1683,9 +1827,7 @@ def _has_explicit_skill_trigger(user_msg: str, skills: list) -> bool:
 def _should_enable_tools_for_turn(user_msg: str, role: str, session_mode: str) -> bool:
     if session_mode == "spicy":
         return False
-    if str(role).lower() == "casual" and not _message_requests_external_action(user_msg):
-        return False
-    return True
+    return str(role).lower() != "casual" or _message_requests_external_action(user_msg)
 
 
 def _is_rate_limit_error(exc: Exception) -> bool:
@@ -1708,14 +1850,6 @@ def _is_rate_limit_error(exc: Exception) -> bool:
             "quota exceeded",
         )
     )
-
-
-def _ends_with_sentence_terminal(text: str) -> bool:
-    cleaned = str(text or "").strip()
-    while cleaned and cleaned[-1] in "*_`~":
-        cleaned = cleaned[:-1].rstrip()
-    terminals = (".", "!", "?", '"', "'", ")", "]", "}")
-    return cleaned.endswith(terminals)
 
 
 def _has_user_visible_reply(text: str) -> bool:
@@ -1885,11 +2019,24 @@ def _is_owner_sender(user_id: str | None) -> bool:
 # ---------------------------------------------------------------------------
 
 
+class _BaseSBS:
+    """Unlearned prompt behavior when no private owner is verified."""
+
+    def on_message(self, *_args, **_kwargs) -> dict:
+        return {}
+
+    def get_system_prompt(self, base_instructions: str, proactive_block: str) -> str:
+        return "\n\n".join(part for part in (base_instructions, proactive_block) if part)
+
+
 async def persona_chat(
     request: ChatRequest,
     target: str,
     background_tasks: BackgroundTasks | None = None,
     mcp_context: str = "",
+    *,
+    person_context: PersonMemoryContext | None = None,
+    exclude_episode_id: str | None = None,
 ):
     user_msg = request.message
     _log.info(
@@ -2028,8 +2175,9 @@ async def persona_chat(
     # --- End Phase 2 Consent Protocol ---
 
     # 1. Memory Retrieval (Phoenix v3 Unified Engine)
-    mem_response = None
+    mem_response = {"results": [], "graph_context": ""}
     _permanent_facts: list[str] = []
+    relationship: dict = {"preferences": {}, "inferred": {}}
     memory_context = "(No relevant memories retrieved)"
     retrieval_method = "standard"
     try:
@@ -2038,35 +2186,43 @@ async def persona_chat(
         if session_mode not in ["safe", "spicy"]:
             session_mode = "safe"
 
-        # Layer 1: Always inject permanent profile docs (relationship_memories + distillations).
-        # These 10-15 docs are the core knowledge about the user -- always relevant, ~500 tokens.
-        # They live in memory.db but are tiny enough to include every time.
-        try:
-            from sci_fi_dashboard.db import get_db_connection as _get_db
-
-            _db = _get_db()
-            # Relationship memories first (core knowledge, compact)
-            _rel = _db.execute(
-                "SELECT content FROM documents WHERE filename='relationship_memory' ORDER BY id ASC"
-            ).fetchall()
-            # Latest distillation only (avoid token bloat)
-            _dist = _db.execute(
-                "SELECT content FROM documents WHERE filename='memory_distillation' ORDER BY id DESC LIMIT 1"
-            ).fetchall()
-            _db.close()
-            _permanent_facts = [r[0] for r in _rel if r[0]] + [r[0] for r in _dist if r[0]]
-        except Exception:
-            pass
-
-        # Layer 2: Vector search for conversation-specific context (WhatsApp chunks etc.)
-        # seed_entities: real-world names for the persona so first-person queries
-        # ("my medical condition") still trigger a KG graph lookup.
-        # Configure via synapse.json -> session -> selfEntityNames -> <target>
-        _self_names = deps._synapse_cfg.session.get("selfEntityNames", {})
-        _seed = _self_names.get(target, []) if isinstance(_self_names, dict) else []
-        mem_response = deps.memory_engine.query(
-            user_msg, limit=5, with_graph=True, seed_entities=_seed or None
-        )
+        personal_service = getattr(deps, "personal_memory_service", None)
+        if person_context is not None and personal_service is not None:
+            episodes = await asyncio.wait_for(
+                personal_service.recall(
+                    person_context, user_msg, limit=3,
+                    exclude_episode_id=exclude_episode_id,
+                ),
+                timeout=2.0,
+            )
+            mem_response = {
+                "results": [
+                    {
+                        "content": _format_scoped_recalled_episode(episode),
+                        "correction_labels": _scoped_recalled_episode_parts(episode)[0],
+                        "raw_memory": _scoped_recalled_episode_parts(episode)[1],
+                        "score": episode.score,
+                        "has_corrections": bool(episode.corrections),
+                    }
+                    for episode in episodes
+                ],
+                "graph_context": "",
+                "tier": "scoped",
+            }
+            if person_context.visibility == "private":
+                relationship = personal_service.store.get_relationship(person_context)
+                scoped_facts = personal_service.store.get_scoped_facts(person_context)
+                _permanent_facts = [
+                    f"Current fact ({fact['occurred_at']} source): {fact['summary']}"
+                    for fact in scoped_facts
+                ] + [
+                    f"Explicit {field}: {value}"
+                    for field, value in relationship.get("preferences", {}).items()
+                ] + [
+                    f"Tentative {field}: {detail['value']}"
+                    for field, detail in relationship.get("inferred", {}).items()
+                    if isinstance(detail, dict) and detail.get("value")
+                ]
         with contextlib.suppress(Exception):
             _get_emitter().emit(
                 "memory.query_done",
@@ -2077,22 +2233,12 @@ async def persona_chat(
                 },
             )
 
-        # Format results for the prompt -- permanent profile first, then dynamic context
-        results_list = mem_response.get("results", [])
-        dynamic_facts = "\n".join([f"* {r['content']}" for r in results_list])
-        profile_block = "\n".join([f"* {f}" for f in _permanent_facts])
-        graph_ctx = mem_response.get("graph_context", "")
-
-        memory_context = (
-            f"[PERMANENT USER PROFILE]\n{profile_block}\n\n"
-            f"[RECENT CONTEXT FROM MEMORY]\n{dynamic_facts}\n\n"
-            f"{graph_ctx}"
-        ).strip()
-        retrieval_method = mem_response.get("tier", "standard")
+        retrieval_method = "scoped" if person_context is not None else "generic"
     except Exception as e:
-        _log.warning("memory_engine_error", extra={"error": str(e)})
-        memory_context = "(Memory retrieval unavailable)"
-        retrieval_method = "failed"
+        _log.warning("scoped_memory_error", extra={"error_type": type(e).__name__})
+        mem_response = {"results": [], "graph_context": ""}
+        _permanent_facts = []
+        retrieval_method = "scoped_unavailable"
 
     # 2. Toxicity Check
     toxicity = deps.toxic_scorer.score(user_msg)
@@ -2124,6 +2270,7 @@ async def persona_chat(
                     target=target,
                     llm_fn=cognition_llm_fn,
                     pre_cached_memory=mem_response,
+                    allow_legacy_personal_sources=False,
                     max_llm_calls=int(
                         deps._synapse_cfg.session.get("dual_cognition_foreground_max_llm_calls", 1)
                     ),
@@ -2212,7 +2359,10 @@ async def persona_chat(
             _situational_block = f"LENGTH RULE: {_length_hint}"
 
     # 3. Assemble System Prompt
-    sbs_orchestrator = deps.get_sbs_for_target(target)
+    if person_context is not None and person_context.visibility == "private" and person_context.person_id:
+        sbs_orchestrator = deps.get_sbs_for_target(target, person_id=person_context.person_id)
+    else:
+        sbs_orchestrator = _BaseSBS()
 
     # Log user message here via orchestrator
     user_log = sbs_orchestrator.on_message("user", user_msg, request.user_id or "default")
@@ -2223,6 +2373,10 @@ async def persona_chat(
         _load_sbs_profile_for_style(sbs_orchestrator),
         request.history,
     )
+    if person_context is not None and person_context.visibility == "private":
+        _style_policy = _apply_scoped_relationship_style(
+            _style_policy, user_msg, relationship
+        )
     with contextlib.suppress(Exception):
         _get_emitter().emit(
             "style.policy_resolved",
@@ -2275,13 +2429,6 @@ async def persona_chat(
 
             # Log via SBS
             sbs_orchestrator.on_message("assistant", reply, request.user_id or "default")
-
-            # Store in memory (CRITICAL: method is add_memory, NOT store)
-            with contextlib.suppress(Exception):
-                deps.memory_engine.add_memory(
-                    content=f"[Skill: {matched_skill.name}] User: {user_msg}\nAssistant: {reply}",
-                    category="skill_execution",
-                )
 
             return {
                 "reply": reply,
@@ -2413,17 +2560,6 @@ async def persona_chat(
     prompt_depth = _prompt_depth_for_turn(user_msg, role, session_mode, request.history)
     prompt_policy = _compact_prompt_policy(base_prompt_policy, prompt_depth)
     memory_context = _format_memory_context_for_tier(_permanent_facts, mem_response, prompt_policy)
-    recent_session_context = ""
-    _db_dir = getattr(deps._synapse_cfg, "db_dir", None)
-    if _db_dir is not None:
-        recent_session_context = _fetch_recent_session_recall_context(
-            user_msg,
-            Path(_db_dir) / "memory.db",
-            limit=2,
-            max_chars=1800 if prompt_depth == "full" else 1200,
-        )
-    if recent_session_context:
-        memory_context = f"{recent_session_context}\n\n{memory_context}"
     cognitive_context = _build_cognitive_context_for_tier(cognitive_merge, prompt_policy)
 
     with contextlib.suppress(Exception):
@@ -2441,7 +2577,9 @@ async def persona_chat(
         "You are Synapse. Follow the persona profile below precisely. "
         "A block of RETRIEVED MEMORIES will follow. Use those memories to give contextual, "
         "relevant replies. Only reference what is explicitly in the memories -- never invent "
-        "people, events, or details that are not there."
+        "people, events, or details that are not there. Use relevant past context naturally; "
+        "do not force a nostalgic mention or say you remember unless it fits. Keep ordinary "
+        "replies short unless the user asks for detail."
     )
     _proactive_raw = deps._proactive_engine.get_prompt_injection() if deps._proactive_engine else ""
     # Merge proactive context + situational awareness block
@@ -2492,25 +2630,16 @@ async def persona_chat(
                 if prompt_depth != "full"
                 else (
                     f"--- RETRIEVED MEMORIES ---\n"
-                    f"These are real facts about the user's life retrieved from memory. "
-                    f"Use ONLY what is in these memories -- do not invent, hallucinate, or add "
+                    f"These are scoped conversation evidence, including labeled assistant replies. "
+                    f"Assistant replies are not facts about the user. Use ONLY what is in this "
+                    f"evidence -- do not invent, hallucinate, or add "
                     f"names, people, events, or details that are not explicitly present below.\n\n"
                     f"{memory_context}\n--- END MEMORIES ---"
                 )
             ),
         },
     ]
-    # Phase 3.3 -- Emotional Trajectory injection
-    # Append 72h peak-end weighted trajectory to cognitive context for richer merges.
-    _trajectory_summary = ""
-    try:
-        if deps.dual_cognition.trajectory:
-            _summary = deps.dual_cognition.trajectory.get_summary()
-            _trajectory_summary = _summary if isinstance(_summary, str) else ""
-    except Exception:
-        pass
-
-    _full_cognitive = "\n\n".join(p for p in [cognitive_context, _trajectory_summary] if p)
+    _full_cognitive = cognitive_context
     if _full_cognitive:
         messages.append({"role": "system", "content": _full_cognitive})
     if mcp_context and prompt_policy.include_mcp_context:
@@ -2594,6 +2723,9 @@ async def persona_chat(
             workspace_dir=str(deps.WORKSPACE_ROOT),
             config=deps._synapse_cfg.session,
             channel_id=request_channel_id,
+            person_context=person_context,
+            personal_memory_store=getattr(personal_service, "store", None),
+            exclude_episode_id=exclude_episode_id,
         )
         session_tools = deps.tool_registry.resolve(tool_context)
 
@@ -3400,24 +3532,9 @@ async def persona_chat(
     )
 
     # Log assistant message
-    sbs_orchestrator = deps.get_sbs_for_target(target)
     sbs_orchestrator.on_message(
         "assistant", reply, request.user_id or "default", response_to=user_msg_id
     )
-
-    # --- AUTO-CONTINUE LOGIC ---
-    is_long = len(reply) > 50
-    ends_with_terminal = _ends_with_sentence_terminal(reply)
-
-    if is_long and not ends_with_terminal:
-        _log.info("auto_continue_triggered")
-        from sci_fi_dashboard.pipeline_helpers import continue_conversation
-
-        if background_tasks:
-            background_tasks.add_task(continue_conversation, request.user_id, messages, reply)
-        else:
-            _log.warning("auto_continue_no_background_tasks")
-            asyncio.create_task(continue_conversation(request.user_id, messages, reply))
 
     result_dict = {
         "reply": final_reply,

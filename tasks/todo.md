@@ -1,0 +1,40 @@
+# Durable personal task slice — 2026-09-25
+
+Scope: implement the first general task-engine slice around reliable reminders and channel replies. Keep existing CronService JSON jobs and channel adapters; no MCP, memory, persona, or shopping work. No live sends.
+
+1. [x] RED: add focused tests for inbound durability before ACK, Tuesday-to-Saturday restart, failed send/retry, stable occurrence dedupe, change/cancel, and two-user isolation. Baseline 2026-09-25: `PYTHONPATH=workspace python -m pytest -q -p no:cacheprovider tests/scheduler/test_reminder_delivery_reliability.py` → 1 failed, 3 passed; failed one-shot `delivery.status` was `error` rather than durable `pending` after `channel.send=False`. Inbound's first RED was an absent-class collection failure; a behavioral route test then covered capture/ACK ordering.
+2. [x] Durable I/O: add a SQLite inbox and common outbox under Synapse data root. Persist channel inbound before webhook ACK; replay unfinished captured turns on startup. Enqueue every reply/reminder outbound before attempting transport; retry from the same outbox after restart. Track queued, accepted, cancelled, and dead-letter states with stable keys. Device delivery/read receipts remain outside this slice.
+3. [x] Person-owned reminders: retain CronStore compatibility, add owner/revision to jobs with defaults for old JSON, bind reminder to channel peer and timezone, add owner-checked change/cancel path, and recheck job existence/revision immediately before outbox dispatch. Failed transport leaves actionable outbox work rather than silently exhausting a one-shot job.
+4. [x] GREEN and review: 28 focused tests pass, touched source and test Ruff checks pass, and `git diff --check` passes. Legacy JSON loading, missed-while-offline catch-up, source revision cancellation, and reply receipt semantics are covered. See the audit `VALIDATION.md` for runtime and reference-parity limits.
+5. [x] Online inbound recovery: behavioral RED showed transient and permanent worker failures remained pending while the gateway stayed alive. Atomic inbox claims, bounded stored backoff, online replay, and a terminal notice committed to the shared outbox before dead-lettering now pass. A separate behavioral RED caught async FloodGate callback failure stranding a claimed row; callback failure now uses the same retry state. Concurrent claim guard passes.
+
+Owned source surfaces: `gateway/durable_io.py` (new), `gateway/{queue,worker,flood}.py`, `routes/whatsapp.py`, `pipeline_helpers.py`, `cron/{types,store,service,delivery}.py`, `api_gateway.py`, and narrow reminder control routes if needed. Luna owns disjoint acceptance tests under `tests/scheduler/test_reminder_delivery_reliability.py` and `tests/gateway/test_inbound_durable_ack.py`.
+
+## Dynamic personal memory slice
+
+Architecture owner: root. Approved scope and unresolved contracts are recorded in [memory-phase/01-design.md](../docs/audits/2026-09-25-personal-assistant/memory-phase/01-design.md). Preserve the durable reminder changes and the existing 28 tests.
+
+1. [x] Root finalized direct API person-trust rule, scoped SBS, public store APIs, and same-SQLite embedding enrichment; delegated workers reported source hooks and recorded the contract.
+2. [x] Luna and Sol captured behavioral RED before scoped storage, channel/API identity, prompt/tool isolation, assistant delivery evidence, V2 enrichment, embeddings, and bounded style corrections.
+3. [x] Sol wired owner-scoped SQLite episodes/relationships, provenance-backed typed facts, channel/direct capture, per-person sessions/SBS, bounded enrichment, semantic/lexical recall, assistant outbox reconciliation, and gateway lifecycle.
+4. [x] Integrated enumerated 26-file suite: 108 passed, 1 skipped under default Python; final run of the same set with the isolated runtime target: 109 passed, no skips, including the real FastAPI lifespan with fake external boundaries. Touched prompt source/test Ruff, compileall, and diff check passed after final correction formatting. Limits and reference-unavailable status: [memory-phase/VALIDATION-memory.md](../docs/audits/2026-09-25-personal-assistant/memory-phase/VALIDATION-memory.md).
+
+Memory phase checkpoint (2026-09-25): this approved bounded slice is implemented and synthetically validated. Provenance-backed fact support keeps corrected historical sources, and prompt budgets retain complete correction labels or omit the item. The next product proof is longitudinal live-model evaluation; legacy ownerless memory migration, consensual household sharing, personalized proactive reminders, and external MCP memory access control remain outside this slice. Preserve prior dirty reminder work; no commit or push was requested.
+
+## Learned style-control projection
+
+Architecture owner: root. Preserve raw relationship phrase/evidence; only persist validated canonical `tone` and `verbosity` controls. No humor/formality-to-tone inference. Inferred controls require two distinct sources agreeing on the same canonical field/control. Current-turn override remains higher priority than learned control; legacy exact tone/verbosity aliases are fallback only for the latest active row.
+
+1. [x] RED: added natural-phrase, humor isolation, inferred agreement, invalid-control atomicity, and strict field-specific enum tests. Initial run: 18 failed against absent canonical projection/validator. Same-row legacy re-extraction RED: one failure because `INSERT OR IGNORE` discarded a newly grounded control.
+2. [x] GREEN: added nullable same-row `style_control` with backward-compatible SQLite column migration, strict `validate_style_control`, raw-value-preserving service application, owner-scoped runtime projection, canonical adapter precedence, and extractor guidance. Null-only conflict update supports re-extraction while preserving raw evidence/timestamps and any non-null control; inactive/superseded episodes stay excluded.
+3. [x] Final integrated regression and review: **144 passed** across `tests/memory`, `tests/gateway`, and `tests/scheduler`; separate relay carryover run **8 passed**. Touched Ruff, compileall, and `git diff --check` pass. Evidence and exact commands are in [STYLE-CONTROLS.md](../docs/audits/2026-09-25-personal-assistant/memory-phase/STYLE-CONTROLS.md). Old processed profile phrases remain descriptive until grounded re-extraction or a new explicit preference; model-classified intent is not deterministic semantic proof.
+
+## Legacy style re-extraction and Luna rerun
+
+Use the prior definitive synthetic run DB as input through SQLite backup into a new isolated home. Never mutate the source run. Sol owns narrowly scoped NULL-control re-extraction; Luna owns the test-only relay harness and live synthetic run.
+
+1. [ ] Back up `.tmp/synapse-luna-sim/run-definitive-20260925/synapse-home/workspace/db/memory.db` into a new run directory using `sqlite3.Connection.backup`; transcripts/session files stay fresh and absent.
+2. [ ] Invoke the approved owner-scoped tone/verbosity-only backfill against Alice's active `alice-correction` rows; capture before/after source fields and classification prompts/results. No facts, raw text, timestamps, existing non-null controls, or superseded rows may be rewritten.
+3. [ ] Fresh Luna agent-mediated rerun, <=8 inbound turns including `/new`: inspect migrated Alice formal/brief policy, one-turn playful override and unchanged default, Bob's saved lunch episode via actual `query_memory`, then Alice `/new` and explicit umbrella memory query. Tool selection remains auto; never fabricate a tool call.
+4. [ ] Save raw request/response packets, accepted fake-channel receipts, owner/query results, no-leak checks, and external-I/O guard report under the new `.tmp` run plus a concise audit. No live transport/API sends or network.
+5. [ ] Verify old source database unchanged by read-only logical snapshot; report generated versus accepted messages, model-inference counts, relay/counterfactual limits, reference parity unavailable, and any factual/style misses without retrying hidden fallbacks.

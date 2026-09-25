@@ -6,6 +6,7 @@ spawn logic independently testable without importing the full chat pipeline.
 
 import logging
 import uuid
+from dataclasses import asdict, is_dataclass
 
 from sci_fi_dashboard import _deps as deps
 from sci_fi_dashboard.subagent.intent import detect_spawn_intent
@@ -19,6 +20,9 @@ async def maybe_spawn_agent(
     chat_id: str,
     channel_id: str,
     session_key: str,
+    *,
+    person_context=None,
+    personal_memory_store=None,
 ) -> "str | None":
     """Detect spawn intent and fire-and-forget a sub-agent if matched.
 
@@ -68,20 +72,17 @@ async def maybe_spawn_agent(
             context_snap = list(cached[-10:])
 
     # ------------------------------------------------------------------
-    # Build memory snapshot: query memory engine for the task description.
-    # CRITICAL: memory_engine.query() returns a dict with
-    #   {"results": [...], "tier": ..., "entities": ..., "graph_context": ...}
-    # NOT a list.  We must unwrap via .get("results", []).
+    # Build a frozen snapshot from verified, scoped episodes.
     # ------------------------------------------------------------------
     memory_snap: list[dict] = []
-    if deps.memory_engine is not None:
+    if person_context is not None and personal_memory_store is not None:
         try:
-            mem_results = deps.memory_engine.query(task_desc, limit=5)
-            memory_snap = mem_results.get("results", []) if isinstance(mem_results, dict) else []
+            rows = personal_memory_store.recall(person_context, task_desc, limit=3)
+            memory_snap = [asdict(row) if is_dataclass(row) else dict(row) for row in rows]
         except Exception:  # noqa: BLE001
             # Memory query failure is not fatal — agent still spawns without
             # pre-seeded memories.
-            logger.debug("maybe_spawn_agent: memory query failed (non-fatal)", exc_info=True)
+            logger.debug("maybe_spawn_agent: scoped recall failed (non-fatal)", exc_info=True)
 
     # ------------------------------------------------------------------
     # Construct SubAgent and spawn

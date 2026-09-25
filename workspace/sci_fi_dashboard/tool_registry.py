@@ -75,6 +75,9 @@ class ToolContext:
     workspace_dir: str
     config: dict
     channel_id: str | None = None
+    person_context: Any | None = None
+    personal_memory_store: Any | None = None
+    exclude_episode_id: str | None = None
 
 
 @dataclass
@@ -369,24 +372,33 @@ def _web_query_factory(_ctx: ToolContext) -> SynapseTool:
 
 
 def _query_memory_factory(memory_engine: Any) -> ToolFactory:
-    """Return a factory that captures a MemoryEngine reference."""
+    """Resolve a memory tool using only the server-supplied personal scope."""
 
-    def _factory(_ctx: ToolContext) -> SynapseTool:
+    def _factory(ctx: ToolContext) -> SynapseTool:
         async def _execute(arguments: dict) -> ToolResult:
             try:
-                result = memory_engine.query(
-                    text=arguments["query"],
-                    limit=arguments.get("limit", 5),
+                if ctx.person_context is None or ctx.personal_memory_store is None:
+                    return json_result([])
+                from dataclasses import asdict
+
+                recall_options = {"limit": max(1, min(int(arguments.get("limit", 3)), 8))}
+                if ctx.exclude_episode_id is not None:
+                    recall_options["exclude_episode_id"] = ctx.exclude_episode_id
+                rows = ctx.personal_memory_store.recall(
+                    ctx.person_context, arguments["query"], **recall_options,
                 )
-                return json_result(result)
-            except Exception as e:
-                return error_result(f"query_memory failed: {e}")
+                return json_result([asdict(row) if hasattr(row, "__dataclass_fields__") else vars(row) for row in rows])
+            except (KeyError, TypeError, ValueError):
+                return error_result("query_memory requires a valid query and limit")
+            except Exception:
+                logger.exception("Scoped query_memory failed")
+                return error_result("query_memory is temporarily unavailable")
 
         return SynapseTool(
             name="query_memory",
             description=(
-                "Search the knowledge base using hybrid RAG "
-                "(vector + full-text + rerank). Returns ranked results."
+                "Search relevant memories shared in this verified conversation scope. "
+                "A result's corrections list labels obsolete source claims; use its current_value."
             ),
             parameters={
                 "type": "object",

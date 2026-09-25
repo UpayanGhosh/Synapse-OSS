@@ -11,9 +11,11 @@ Storage: ~/.synapse/state/retry_queue.db
 
 import asyncio
 import contextlib
+import inspect
 import logging
 import sqlite3
-from datetime import datetime, timedelta
+from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -22,6 +24,11 @@ logger = logging.getLogger(__name__)
 RETRY_DELAYS = [30, 60, 120, 300, 600]  # seconds: 30s, 1m, 2m, 5m, 10m
 POLL_INTERVAL = 10  # seconds between queue checks
 MAX_ATTEMPTS = len(RETRY_DELAYS) + 1  # 6 total attempts (1 original + 5 retries)
+
+
+def _utc_now() -> datetime:
+    """Naive UTC for the existing SQLite timestamp format."""
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 class RetryQueue:
@@ -40,6 +47,8 @@ class RetryQueue:
         self._db_path = Path(data_root) / "state" / "retry_queue.db"
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
         self._channel = None  # injected via start()
+        self._source_validator: Callable[[str, int], bool] | None = None
+        self._delivery_observer = None
         self._task: asyncio.Task | None = None
         self._init_db()
 
@@ -62,13 +71,155 @@ class RetryQueue:
                     status TEXT NOT NULL DEFAULT 'pending'
                 )
             """)
+            # Existing installs already have retry_queue.db. Add outbox metadata
+            # in place so failed legacy replies remain retryable after upgrade.
+            columns = {row[1] for row in conn.execute("PRAGMA table_info(retry_queue)")}
+            additions = {
+                "message_key": "TEXT",
+                "owner_id": "TEXT",
+                "source_job_id": "TEXT",
+                "source_revision": "INTEGER",
+                "lease_until": "TEXT",
+                "group_key": "TEXT",
+                "sequence": "INTEGER",
+                "personal_context_json": "TEXT",
+                "parent_episode_id": "TEXT",
+                "personal_projected_at": "TEXT",
+            }
+            for name, sql_type in additions.items():
+                if name not in columns:
+                    conn.execute(f"ALTER TABLE retry_queue ADD COLUMN {name} {sql_type}")
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_retry_status ON retry_queue(status, next_retry_at)"
             )
+            conn.execute("DROP INDEX IF EXISTS idx_retry_message_key")
+            conn.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_retry_owner_message_key "
+                "ON retry_queue(owner_id, message_key) WHERE message_key IS NOT NULL"
+            )
             conn.commit()
+
+    def set_source_validator(self, validator: Callable[[str, int], bool]) -> None:
+        """Check a scheduled job's current revision immediately before sending."""
+        self._source_validator = validator
+
+    def set_delivery_observer(self, observer) -> None:
+        """Notify a best-effort projection only after transport state commits."""
+        self._delivery_observer = observer
+
+    def attach(self, channel_or_registry) -> None:
+        """Set the transport without starting the background poller."""
+        self._channel = channel_or_registry
+
+    async def enqueue_outbound(
+        self,
+        *,
+        channel_id: str,
+        chat_id: str,
+        text: str,
+        message_key: str,
+        owner_id: str,
+        source_job_id: str | None = None,
+        source_revision: int | None = None,
+        group_key: str | None = None,
+        sequence: int | None = None,
+        personal_context_json: str | None = None,
+        parent_episode_id: str | None = None,
+    ) -> int:
+        """Persist an outbound message before its first transport attempt.
+
+        The stable key makes an occurrence/replayed reply idempotent within this
+        local outbox. It cannot guarantee exactly-once at an external provider.
+        """
+        if not message_key or not channel_id or not chat_id or not owner_id:
+            raise ValueError("outbound requires key, channel, recipient, and owner")
+        now = _utc_now().isoformat()
+
+        def _insert() -> int:
+            with sqlite3.connect(self._db_path) as conn:
+                conn.execute(
+                    """INSERT OR IGNORE INTO retry_queue
+                       (channel_id, chat_id, text, created_at, next_retry_at,
+                        attempt_count, max_attempts, status, message_key, owner_id,
+                        source_job_id, source_revision, group_key, sequence,
+                        personal_context_json, parent_episode_id)
+                       VALUES (?, ?, ?, ?, ?, 0, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        channel_id,
+                        chat_id,
+                        text,
+                        now,
+                        now,
+                        MAX_ATTEMPTS,
+                        message_key,
+                        owner_id,
+                        source_job_id,
+                        source_revision,
+                        group_key,
+                        sequence,
+                        personal_context_json,
+                        parent_episode_id,
+                    ),
+                )
+                row = conn.execute(
+                    "SELECT id, channel_id, chat_id, text, source_job_id, source_revision, "
+                    "group_key, sequence, personal_context_json, parent_episode_id "
+                    "FROM retry_queue WHERE owner_id = ? AND message_key = ?",
+                    (owner_id, message_key),
+                ).fetchone()
+                assert row is not None
+                if row[1:] != (
+                    channel_id, chat_id, text, source_job_id, source_revision, group_key,
+                    sequence, personal_context_json, parent_episode_id
+                ):
+                    raise ValueError("outbound message key reused with different destination or content")
+                return int(row[0])
+
+        return await asyncio.get_running_loop().run_in_executor(None, _insert)
+
+    def cancel_source(self, source_job_id: str) -> int:
+        """Invalidate pending sends when a task is cancelled or changed."""
+        with sqlite3.connect(self._db_path) as conn:
+            cur = conn.execute(
+                "UPDATE retry_queue SET status = 'cancelled' "
+                "WHERE source_job_id = ? AND status IN ('pending', 'sending')",
+                (source_job_id,),
+            )
+            conn.commit()
+            return cur.rowcount
+
+    def pending_for_source(self, source_job_id: str) -> bool:
+        with sqlite3.connect(self._db_path) as conn:
+            row = conn.execute(
+                "SELECT 1 FROM retry_queue WHERE source_job_id = ? "
+                "AND status IN ('pending', 'sending') LIMIT 1",
+                (source_job_id,),
+            ).fetchone()
+            return row is not None
+
+    def _cancel_entry(self, entry_id: int) -> None:
+        with sqlite3.connect(self._db_path) as conn:
+            conn.execute(
+                "UPDATE retry_queue SET status = 'cancelled', lease_until = NULL "
+                "WHERE id = ? AND status IN ('pending', 'sending')",
+                (entry_id,),
+            )
+
+    async def get_entry(self, entry_id: int) -> dict | None:
+        def _read():
+            with sqlite3.connect(self._db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                row = conn.execute(
+                    "SELECT * FROM retry_queue WHERE id = ?", (entry_id,)
+                ).fetchone()
+                return dict(row) if row else None
+
+        return await asyncio.get_running_loop().run_in_executor(None, _read)
 
     async def start(self, channel) -> None:
         """Start background polling task. Call from api_gateway lifespan."""
+        if self._task and not self._task.done():
+            return
         self._channel = channel
         self._task = asyncio.create_task(self._poll_loop())
         logger.info("[RetryQueue] Started — polling every %ds", POLL_INTERVAL)
@@ -92,7 +243,7 @@ class RetryQueue:
         error: str = "",
     ) -> int:
         """Add a failed message to the retry queue. Returns the new entry id."""
-        now = datetime.utcnow()
+        now = _utc_now()
         next_retry = now + timedelta(seconds=RETRY_DELAYS[0])
 
         def _insert():
@@ -126,7 +277,7 @@ class RetryQueue:
         """Force immediate retry of all pending entries. Returns count attempted."""
 
         def _mark_due():
-            now = datetime.utcnow().isoformat()
+            now = _utc_now().isoformat()
             with sqlite3.connect(self._db_path) as conn:
                 conn.execute(
                     "UPDATE retry_queue SET next_retry_at = ? WHERE status = 'pending'",
@@ -137,14 +288,25 @@ class RetryQueue:
         await asyncio.get_running_loop().run_in_executor(None, _mark_due)
         return await self._retry_due()
 
+    async def attempt_now(self, entry_id: int) -> str:
+        """Attempt a committed message once and return its durable state."""
+        entry = await self.get_entry(entry_id)
+        if entry is None:
+            raise KeyError(entry_id)
+        if entry["status"] == "pending":
+            await self._attempt_send(entry)
+        current = await self.get_entry(entry_id)
+        assert current is not None
+        return str(current["status"])
+
     async def list_pending(self) -> list[dict]:
-        """Return all non-dead-letter entries as dicts."""
+        """Return messages still awaiting channel acceptance."""
 
         def _query():
             with sqlite3.connect(self._db_path) as conn:
                 conn.row_factory = sqlite3.Row
                 rows = conn.execute(
-                    "SELECT * FROM retry_queue WHERE status != 'dead_letter' ORDER BY id"
+                    "SELECT * FROM retry_queue WHERE status IN ('pending', 'sending') ORDER BY id"
                 ).fetchall()
             return [dict(r) for r in rows]
 
@@ -178,13 +340,15 @@ class RetryQueue:
             return 0
 
         def _fetch_due():
-            now = datetime.utcnow().isoformat()
+            now = _utc_now().isoformat()
             with sqlite3.connect(self._db_path) as conn:
                 conn.row_factory = sqlite3.Row
                 return conn.execute(
-                    "SELECT * FROM retry_queue WHERE status = 'pending' AND next_retry_at <= ? "
+                    "SELECT * FROM retry_queue WHERE "
+                    "(status = 'pending' AND next_retry_at <= ?) OR "
+                    "(status = 'sending' AND lease_until <= ?) "
                     "ORDER BY id LIMIT 20",
-                    (now,),
+                    (now, now),
                 ).fetchall()
 
         rows = await asyncio.get_running_loop().run_in_executor(None, _fetch_due)
@@ -199,13 +363,60 @@ class RetryQueue:
 
     async def _attempt_send(self, entry: dict) -> None:
         """Attempt to send one entry. Updates DB based on result."""
-        channel = self._channel
+        if self._channel is None:
+            return
+        source_id = entry.get("source_job_id")
+        revision = int(entry.get("source_revision") or 0)
+        if source_id:
+            if self._source_validator is None:
+                # CronService may not have loaded yet on gateway startup.
+                return
+            if not self._source_validator(source_id, revision):
+                self._cancel_entry(entry["id"])
+                return
+
+        if entry.get("group_key") is not None and entry.get("sequence") is not None:
+            def _predecessors_accepted() -> bool:
+                with sqlite3.connect(self._db_path) as conn:
+                    row = conn.execute(
+                        "SELECT COUNT(*) FROM retry_queue WHERE group_key = ? "
+                        "AND owner_id = ? AND sequence < ? AND status != 'accepted'",
+                        (entry["group_key"], entry["owner_id"], entry["sequence"]),
+                    ).fetchone()
+                    return bool(row and row[0] == 0)
+
+            if not await asyncio.get_running_loop().run_in_executor(None, _predecessors_accepted):
+                return
+
+        def _claim() -> bool:
+            now = _utc_now().isoformat()
+            lease = (_utc_now() + timedelta(minutes=2)).isoformat()
+            with sqlite3.connect(self._db_path) as conn:
+                cur = conn.execute(
+                    "UPDATE retry_queue SET status = 'sending', lease_until = ? "
+                    "WHERE id = ? AND ((status = 'pending' AND next_retry_at <= ?) "
+                    "OR (status = 'sending' AND lease_until <= ?))",
+                    (lease, entry["id"], now, now),
+                )
+                conn.commit()
+                return cur.rowcount == 1
+
+        if not await asyncio.get_running_loop().run_in_executor(None, _claim):
+            return
+
+        if source_id and not self._source_validator(source_id, revision):
+            self._cancel_entry(entry["id"])
+            return
+
+        channel = self._channel.get(entry["channel_id"]) if hasattr(self._channel, "get") else self._channel
         attempt = entry["attempt_count"] + 1
         success = False
-        error = ""
+        error = "channel unavailable" if channel is None else ""
 
         try:
-            if entry.get("media_url"):
+            if channel is None:
+                success = False
+            elif entry.get("media_url"):
                 success = await channel.send_media(
                     entry["chat_id"],
                     entry["media_url"],
@@ -221,16 +432,17 @@ class RetryQueue:
             with sqlite3.connect(self._db_path) as conn:
                 if success:
                     conn.execute(
-                        "UPDATE retry_queue SET status = 'delivered', attempt_count = ? WHERE id = ?",
+                        "UPDATE retry_queue SET status = 'accepted', attempt_count = ?, "
+                        "lease_until = NULL WHERE id = ? AND status = 'sending'",
                         (attempt, entry["id"]),
                     )
                     logger.info(
-                        "[RetryQueue] Entry %d delivered on attempt %d", entry["id"], attempt
+                        "[RetryQueue] Entry %d accepted by channel on attempt %d", entry["id"], attempt
                     )
                 elif attempt >= entry["max_attempts"]:
                     conn.execute(
                         "UPDATE retry_queue SET status = 'dead_letter', attempt_count = ?, "
-                        "last_error = ? WHERE id = ?",
+                        "last_error = ?, lease_until = NULL WHERE id = ? AND status = 'sending'",
                         (attempt, error or "max attempts reached", entry["id"]),
                     )
                     logger.warning(
@@ -240,12 +452,22 @@ class RetryQueue:
                     )
                 else:
                     delay = RETRY_DELAYS[min(attempt, len(RETRY_DELAYS) - 1)]
-                    next_retry = (datetime.utcnow() + timedelta(seconds=delay)).isoformat()
+                    next_retry = (_utc_now() + timedelta(seconds=delay)).isoformat()
                     conn.execute(
                         "UPDATE retry_queue SET status = 'pending', attempt_count = ?, "
-                        "next_retry_at = ?, last_error = ? WHERE id = ?",
+                        "next_retry_at = ?, last_error = ?, lease_until = NULL "
+                        "WHERE id = ? AND status = 'sending'",
                         (attempt, next_retry, error or None, entry["id"]),
                     )
                 conn.commit()
 
         await asyncio.get_running_loop().run_in_executor(None, _update, success, attempt, error)
+        if self._delivery_observer is not None and entry.get("personal_context_json"):
+            current = await self.get_entry(entry["id"])
+            if current is not None and current["status"] == "accepted":
+                try:
+                    observed = self._delivery_observer(current)
+                    if inspect.isawaitable(observed):
+                        await observed
+                except Exception:
+                    logger.warning("Assistant memory projection deferred; accepted send is durable")

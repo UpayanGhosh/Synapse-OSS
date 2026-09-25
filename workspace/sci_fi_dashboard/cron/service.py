@@ -16,6 +16,8 @@ import uuid
 from collections.abc import Callable, Coroutine
 from typing import Any
 
+from sci_fi_dashboard.gateway.retry_queue import RetryQueue
+
 from .alerting import check_and_send_failure_alert
 from .delivery import deliver_output
 from .isolated_agent import run_isolated_agent
@@ -48,15 +50,23 @@ class CronService:
         data_root: str,
         execute_fn: Callable[..., Coroutine[Any, Any, str]] | None = None,
         channel_registry: Any | None = None,
+        retry_queue: RetryQueue | None = None,
     ):
         self._agent_id = agent_id
         self._data_root = data_root
         self._execute_fn = execute_fn
         self._channel_registry = channel_registry
+        self._retry_queue = retry_queue or (RetryQueue(data_root) if channel_registry else None)
+        self._owns_retry_queue = retry_queue is None and self._retry_queue is not None
+        if self._retry_queue is not None:
+            self._retry_queue.attach(channel_registry)
+            self._retry_queue.set_source_validator(self._is_current_occurrence)
 
         self._store = CronStore(agent_id, data_root)
         self._run_log = RunLog(data_root)
-        self._jobs: list[CronJob] = []
+        # Load before registering as the outbox's source validator. Pending
+        # sends may be retried as soon as the gateway starts its dispatcher.
+        self._jobs: list[CronJob] = self._store.load()
         self._timer_task: asyncio.Task | None = None
         self._wakeup_event: asyncio.Event | None = None
         self._running = False
@@ -69,6 +79,8 @@ class CronService:
         """Load the store, catch up missed jobs, and start the timer loop."""
         self._jobs = self._store.load()
         logger.info("Loaded %d cron jobs for agent %s", len(self._jobs), self._agent_id)
+        if self._owns_retry_queue:
+            await self._retry_queue.start(self._channel_registry)
         await self._catch_up_missed_jobs()
         self._running = True
         self._wakeup_event = asyncio.Event()
@@ -83,6 +95,8 @@ class CronService:
             with contextlib.suppress(asyncio.CancelledError):
                 await self._timer_task
         self._store.save(self._jobs)
+        if self._owns_retry_queue:
+            await self._retry_queue.stop()
         self._wakeup_event = None
         logger.info("Cron service stopped for agent %s", self._agent_id)
 
@@ -92,6 +106,11 @@ class CronService:
 
     def add(self, job_input: dict[str, Any]) -> CronJob:
         """Create a new job from a dict specification, assign a UUID, and persist."""
+        source_message_key = job_input.get("source_message_key")
+        if source_message_key:
+            for existing in self._jobs:
+                if existing.source_message_key == source_message_key:
+                    return existing
         job_id = uuid.uuid4().hex
         now_ms = int(time.time() * 1000)
 
@@ -115,6 +134,9 @@ class CronService:
             enabled=job_input.get("enabled", True),
             state=state,
             created_at_ms=now_ms,
+            owner_id=job_input.get("owner_id") or f"{delivery.channel or 'unknown'}:{delivery.to or 'unknown'}",
+            revision=1,
+            source_message_key=source_message_key,
         )
 
         self._jobs.append(job)
@@ -157,7 +179,10 @@ class CronService:
         if schedule_changed:
             job.state.next_run_at_ms = compute_next_run_at_ms(job.schedule, now_ms)
 
+        job.revision += 1
         self._store.save(self._jobs)
+        if self._retry_queue is not None:
+            self._retry_queue.cancel_source(job_id)
         self._wake_timer()
         logger.info("Updated cron job %s", job_id)
         return job
@@ -169,6 +194,8 @@ class CronService:
         removed = len(self._jobs) < before
         if removed:
             self._store.save(self._jobs)
+            if self._retry_queue is not None:
+                self._retry_queue.cancel_source(job_id)
             self._wake_timer()
             logger.info("Removed cron job %s", job_id)
         return removed
@@ -178,6 +205,28 @@ class CronService:
         if enabled_only:
             return [j for j in self._jobs if j.enabled]
         return list(self._jobs)
+
+    def list_for_owner(self, owner_id: str, enabled_only: bool = False) -> list[CronJob]:
+        return [job for job in self.list(enabled_only=enabled_only) if job.owner_id == owner_id]
+
+    def has_pending_delivery(self, job_id: str) -> bool:
+        return bool(self._retry_queue and self._retry_queue.pending_for_source(job_id))
+
+    def remove_for_owner(self, job_id: str, owner_id: str) -> bool:
+        job = self._find_job(job_id)
+        return self.remove(job_id) if job is not None and job.owner_id == owner_id else False
+
+    def update_for_owner(self, job_id: str, owner_id: str, patch: dict[str, Any]) -> CronJob:
+        job = self._find_job(job_id)
+        if job is None or job.owner_id != owner_id:
+            raise KeyError(f"Job {job_id!r} not found for owner")
+        if "delivery" in patch:
+            raise ValueError("owner-scoped update cannot change delivery destination")
+        return self.update(job_id, patch)
+
+    def _is_current_occurrence(self, job_id: str, revision: int) -> bool:
+        job = self._find_job(job_id)
+        return bool(job and job.enabled and job.revision == revision)
 
     async def run(self, job_id: str, mode: str = "due") -> dict[str, Any]:
         """Force-run a job regardless of schedule.
@@ -312,7 +361,17 @@ class CronService:
             job.state.consecutive_errors = 0
 
             # Delivery
-            delivery_result = await deliver_output(output, job.delivery, self._channel_registry)
+            occurrence_ms = job.state.next_run_at_ms or now_ms
+            delivery_result = await deliver_output(
+                output,
+                job.delivery,
+                self._channel_registry,
+                retry_queue=self._retry_queue,
+                message_key=f"cron:{self._agent_id}:{job.id}:{job.revision}:{occurrence_ms}",
+                owner_id=job.owner_id,
+                source_job_id=job.id,
+                source_revision=job.revision,
+            )
             job.state.last_delivery_status = delivery_result.get("status")
             result["delivery"] = delivery_result
             result["output"] = output

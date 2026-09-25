@@ -189,4 +189,7 @@ class CronStore:
             enabled=d.get("enabled", True),
             state=state,
             created_at_ms=d.get("created_at_ms", 0),
+            owner_id=d.get("owner_id") or f"{delivery.channel or 'unknown'}:{delivery.to or 'unknown'}",
+            revision=d.get("revision", 1),
+            source_message_key=d.get("source_message_key"),
         )

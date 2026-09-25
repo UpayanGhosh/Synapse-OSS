@@ -96,20 +96,39 @@ async def lifespan(app: FastAPI):
     ensure_bridge_db()
     worker_task = asyncio.create_task(gentle_worker_loop())
 
+    from gateway.retry_queue import RetryQueue
+
+    from sci_fi_dashboard.gateway.durable_io import InboxStore
+
+    app.state.inbox_store = InboxStore(deps._synapse_cfg.data_root)
+    deps.flood.set_inbox_store(app.state.inbox_store)
+    app.state.retry_queue = RetryQueue(data_root=deps._synapse_cfg.data_root)
+    app.state.retry_queue.attach(deps.channel_registry)
+
+    from sci_fi_dashboard.personal_memory import PersonalMemoryStore
+    from sci_fi_dashboard.personal_memory_service import PersonalMemoryService
+
+    personal_store = PersonalMemoryStore(_Path(deps._synapse_cfg.db_dir) / "memory.db")
+    app.state.personal_memory_service = PersonalMemoryService(
+        personal_store,
+        retry_queue=app.state.retry_queue,
+        router=deps.synapse_llm_router,
+        embedding_config={
+            "embedding": dict(getattr(deps._synapse_cfg, "embedding", {}) or {}),
+            "providers": dict(getattr(deps._synapse_cfg, "providers", {}) or {}),
+        },
+    )
+    deps.personal_memory_service = app.state.personal_memory_service
+
     # Start channel adapters
     await deps.channel_registry.start_all()
 
-    # Wire retry queue into WhatsApp channel
+    # Keep the bridge reconnect hook pointed at the same shared outbox.
     from sci_fi_dashboard.channels.whatsapp import WhatsAppChannel
-    from gateway.retry_queue import RetryQueue
 
     wa_ch = deps.channel_registry.get("whatsapp")
     if isinstance(wa_ch, WhatsAppChannel):
-        _retry_queue = RetryQueue(data_root=deps._synapse_cfg.data_root)
-        wa_ch._retry_queue = _retry_queue
-        await _retry_queue.start(wa_ch)
-        app.state.retry_queue = _retry_queue
-        print("[INFO] WhatsApp retry queue started.")
+        wa_ch._retry_queue = app.state.retry_queue
 
     # Phase 16 BRIDGE-02/03: Bridge /health poller with gated restart
     app.state.bridge_health_poller = None
@@ -151,9 +170,11 @@ async def lifespan(app: FastAPI):
         channel_registry=deps.channel_registry,
         process_fn=process_message_pipeline,
         num_workers=2,
+        retry_queue=app.state.retry_queue,
+        inbox_store=app.state.inbox_store,
+        inbox_replay=deps.flood.replay,
+        personal_memory_service=app.state.personal_memory_service,
     )
-    await app.state.worker.start()
-    print("[INFO] Async Gateway Pipeline started.")
 
     # Phase 3: Initialize ToolRegistry
     if deps._TOOL_REGISTRY_AVAILABLE:
@@ -300,7 +321,7 @@ async def lifespan(app: FastAPI):
             )
             try:
                 result = await asyncio.wait_for(
-                    persona_chat(req, "the_creator"),
+                    persona_chat(req, deps._resolve_target(user_id)),
                     timeout=timeout_s,
                 )
             except TimeoutError:
@@ -317,6 +338,7 @@ async def lifespan(app: FastAPI):
             data_root=str(deps._synapse_cfg.data_root),
             execute_fn=_cron_execute_fn,
             channel_registry=deps.channel_registry,
+            retry_queue=app.state.retry_queue,
         )
         deps.cron_service = app.state.cron_service
         await app.state.cron_service.start()
@@ -324,6 +346,14 @@ async def lifespan(app: FastAPI):
     except Exception as _cron_exc:
         deps.cron_service = None
         logger.warning("[CRON] CronService init failed (non-fatal): %s", _cron_exc)
+
+    # Dispatch persisted sends only after CronStore has restored jobs and
+    # installed the revision validator. Reply sends may enqueue meanwhile.
+    await app.state.retry_queue.start(deps.channel_registry)
+    print("[INFO] Shared delivery outbox started.")
+    await app.state.worker.start()
+    print("[INFO] Async Gateway Pipeline started.")
+    await app.state.personal_memory_service.start()
 
     # Phase 16 HEART-01..05: Heartbeat runner — scheduled outbound pings
     app.state.heartbeat_runner = None
@@ -482,6 +512,10 @@ async def lifespan(app: FastAPI):
         logger.info("[AutoFlush] Disabled via config (session.auto_flush_enabled=false)")
     app.state.auto_flusher = _flusher
 
+    # Replay only after the scheduler and all gateway services are ready.
+    for pending in app.state.inbox_store.unfinished():
+        deps.flood.replay(pending)
+
     yield
 
     # --- Shutdown ---
@@ -508,6 +542,11 @@ async def lifespan(app: FastAPI):
     worker_task.cancel()
     if hasattr(app.state, "proactive_engine") and app.state.proactive_engine:
         await app.state.proactive_engine.stop()
+    if hasattr(app.state, "worker"):
+        await app.state.worker.stop()
+    if hasattr(app.state, "personal_memory_service"):
+        await app.state.personal_memory_service.stop()
+        deps.personal_memory_service = None
     if hasattr(app.state, "cron_service") and app.state.cron_service:
         await app.state.cron_service.stop()
     if hasattr(app.state, "mcp_client") and app.state.mcp_client:
@@ -525,8 +564,6 @@ async def lifespan(app: FastAPI):
         with suppress(Exception):
             await app.state.bridge_health_poller.stop()
     await deps.channel_registry.stop_all()
-    if hasattr(app.state, "worker"):
-        await app.state.worker.stop()
     with suppress(asyncio.CancelledError):
         await worker_task
 

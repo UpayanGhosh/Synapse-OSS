@@ -80,21 +80,28 @@ async def unified_webhook(channel_id: str, request: Request):
         )
         return {"status": "skipped", "reason": "self-echo", "accepted": True}
 
-    # H-09: Generate UUID fallback if message_id is empty/None
+    # H-09: Generate UUID fallback if the provider did not supply a stable ID.
+    # Such providers cannot deduplicate retries across distinct callbacks.
     effective_msg_id = msg.message_id or raw.get("message_id", "") or str(uuid.uuid4())
-    if deps.dedup.is_duplicate(effective_msg_id):
+    if deps.flood.inbox_store is None:
+        raise HTTPException(status_code=503, detail="Inbound persistence is unavailable")
+    try:
+        is_new = await deps.flood.incoming(
+            chat_id=msg.chat_id,
+            message=msg.text,
+            metadata={
+                "message_id": effective_msg_id,
+                "sender_name": msg.sender_name,
+                "channel_id": channel_id,
+                "is_group": getattr(msg, "is_group", False),
+                "run_id": run_id,
+            },
+        )
+    except Exception as exc:
+        logger.error("Inbound capture failed for %s: %s", channel_id, exc)
+        raise HTTPException(status_code=503, detail="Inbound persistence failed") from exc
+    if not is_new:
         return {"status": "skipped", "reason": "duplicate", "accepted": True}
-
-    await deps.flood.incoming(
-        chat_id=msg.chat_id,
-        message=msg.text,
-        metadata={
-            "message_id": msg.message_id,
-            "sender_name": msg.sender_name,
-            "channel_id": msg.channel_id,  # CRITICAL: must be in metadata for on_batch_ready
-            "run_id": run_id,
-        },
-    )
     return {"status": "queued", "accepted": True, "task_queue_depth": deps.task_queue.pending_count}
 
 

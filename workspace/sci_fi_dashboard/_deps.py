@@ -250,8 +250,24 @@ def _resolve_target(raw_target: str) -> str:
     return PERSONAS_CONFIG.get("default_persona", "the_creator")
 
 
-def get_sbs_for_target(target: str) -> SBSOrchestrator:
-    return sbs_registry.get(target, sbs_registry[PERSONAS_CONFIG["default_persona"]])
+_scoped_sbs_registry: dict[tuple[str, str], SBSOrchestrator] = {}
+
+
+def get_sbs_for_target(target: str, *, person_id: str | None = None) -> SBSOrchestrator:
+    if not person_id:
+        return sbs_registry.get(target, sbs_registry[PERSONAS_CONFIG["default_persona"]])
+    target = target if target in sbs_registry else PERSONAS_CONFIG["default_persona"]
+    cache_key = (target, person_id)
+    if cache_key not in _scoped_sbs_registry:
+        import hashlib
+
+        root = Path(_synapse_cfg.data_root) / "person-memory"
+        digest = hashlib.sha256(person_id.encode("utf-8")).hexdigest()
+        owned_dir = root / digest / target
+        _scoped_sbs_registry[cache_key] = SBSOrchestrator(
+            str(owned_dir / "sbs"), workspace_dir=owned_dir / "workspace"
+        )
+    return _scoped_sbs_registry[cache_key]
 
 
 # ---------------------------------------------------------------------------

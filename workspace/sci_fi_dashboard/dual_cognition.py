@@ -216,6 +216,8 @@ class DualCognitionEngine:
         llm_fn=None,
         pre_cached_memory: dict = None,
         max_llm_calls: int | None = None,
+        *,
+        allow_legacy_personal_sources: bool = False,
     ) -> CognitiveMerge:
         """Main entry: routes through fast/standard/deep paths based on complexity."""
 
@@ -254,7 +256,8 @@ class DualCognitionEngine:
                         "cognition.recall_start", {"from_cache": pre_cached_memory is not None}
                     )
                 memory = await self._recall_memory(
-                    user_message, chat_id, target, pre_cached_memory
+                    user_message, chat_id, target, pre_cached_memory,
+                    allow_legacy_personal_sources=allow_legacy_personal_sources,
                 )
                 with contextlib.suppress(Exception):
                     _get_emitter().emit(
@@ -270,8 +273,9 @@ class DualCognitionEngine:
                     target,
                     llm_fn,
                     use_cot=(complexity == "deep"),
+                    allow_legacy_personal_sources=allow_legacy_personal_sources,
                 )
-                if self.trajectory:
+                if allow_legacy_personal_sources and self.trajectory:
                     self.trajectory.record(merge, present.topics)
                 return merge
 
@@ -285,7 +289,10 @@ class DualCognitionEngine:
                     )
                 present, memory = await asyncio.gather(
                     self._analyze_present(user_message, conversation_history, llm_fn),
-                    self._recall_memory(user_message, chat_id, target, pre_cached_memory),
+                    self._recall_memory(
+                        user_message, chat_id, target, pre_cached_memory,
+                        allow_legacy_personal_sources=allow_legacy_personal_sources,
+                    ),
                 )
                 with contextlib.suppress(Exception):
                     _get_emitter().emit(
@@ -310,8 +317,11 @@ class DualCognitionEngine:
                     )
                 with contextlib.suppress(Exception):
                     _get_emitter().emit("cognition.merge_start", {"use_cot": False})
-                merge = await self._merge_streams(present, memory, target, llm_fn, use_cot=False)
-                if self.trajectory:
+                merge = await self._merge_streams(
+                    present, memory, target, llm_fn, use_cot=False,
+                    allow_legacy_personal_sources=allow_legacy_personal_sources,
+                )
+                if allow_legacy_personal_sources and self.trajectory:
                     self.trajectory.record(merge, present.topics)
                 return merge
 
@@ -328,7 +338,10 @@ class DualCognitionEngine:
                 )
             present, memory = await asyncio.gather(
                 self._analyze_present(user_message, conversation_history, llm_fn),
-                self._recall_memory(user_message, chat_id, target, pre_cached_memory),
+                self._recall_memory(
+                    user_message, chat_id, target, pre_cached_memory,
+                    allow_legacy_personal_sources=allow_legacy_personal_sources,
+                ),
             )
             with contextlib.suppress(Exception):
                 _get_emitter().emit(
@@ -353,8 +366,11 @@ class DualCognitionEngine:
             # Step 3: CoT merge
             with contextlib.suppress(Exception):
                 _get_emitter().emit("cognition.merge_start", {"use_cot": True})
-            merge = await self._merge_streams(present, memory, target, llm_fn, use_cot=True)
-            if self.trajectory:
+            merge = await self._merge_streams(
+                present, memory, target, llm_fn, use_cot=True,
+                allow_legacy_personal_sources=allow_legacy_personal_sources,
+            )
+            if allow_legacy_personal_sources and self.trajectory:
                 self.trajectory.record(merge, present.topics)
             return merge
 
@@ -504,16 +520,16 @@ JSON only:"""
         chat_id: str,
         target: str,
         pre_cached_memory: dict = None,
+        *,
+        allow_legacy_personal_sources: bool = False,
     ) -> MemoryStream:
         """Stream 2: Query memory. Uses pre_cached_memory if available to avoid duplicate queries."""
         memory = MemoryStream()
 
         try:
-            results = (
-                pre_cached_memory
-                if pre_cached_memory
-                else self.memory.query(message, limit=5, with_graph=True)
-            )
+            results = pre_cached_memory if pre_cached_memory is not None else {}
+            if pre_cached_memory is None and allow_legacy_personal_sources:
+                results = self.memory.query(message, limit=5, with_graph=True)
             memory.relevant_facts = [r["content"] for r in results.get("results", [])]
             memory.graph_connections = results.get("graph_context", "")
             memory.affect_hints = str(results.get("affect_hints", "") or "")
@@ -522,12 +538,12 @@ JSON only:"""
         except Exception as e:
             logger.warning("Memory recall failed (database/connection error): %s", e)
 
-        try:
-            target_name = "primary_partner" if "the_partner" in target.lower() else "primary_user"
-            memory.relationship_context = self.graph.get_entity_neighborhood(target_name)
-        except Exception as e:
-            # L-05: Log instead of silently dropping graph errors
-            logger.debug("Graph neighborhood lookup failed: %s", e)
+        if allow_legacy_personal_sources:
+            try:
+                target_name = "primary_partner" if "the_partner" in target.lower() else "primary_user"
+                memory.relationship_context = self.graph.get_entity_neighborhood(target_name)
+            except Exception as e:
+                logger.debug("Graph neighborhood lookup failed: %s", e)
 
         return memory
 
@@ -538,6 +554,8 @@ JSON only:"""
         target: str,
         llm_fn=None,
         use_cot: bool = False,
+        *,
+        allow_legacy_personal_sources: bool = False,
     ) -> CognitiveMerge:
         """Merge: compare present vs memory. CoT reasoning on deep path."""
         merge = CognitiveMerge()
@@ -548,7 +566,7 @@ JSON only:"""
 
         # Emotional trajectory injection
         trajectory_section = ""
-        if self.trajectory:
+        if allow_legacy_personal_sources and self.trajectory:
             summary = self.trajectory.get_summary()
             if summary:
                 trajectory_section = f"\n{summary}\n"

@@ -119,6 +119,9 @@ class CronJob:
     enabled: bool = True
     state: CronJobState = field(default_factory=CronJobState)
     created_at_ms: int = 0
+    owner_id: str = ""
+    revision: int = 1
+    source_message_key: str | None = None
 
     def __post_init__(self):
         if self.created_at_ms == 0:

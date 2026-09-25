@@ -25,6 +25,9 @@ workspace/tmp_codex_verify/
 workspace/tmp_task*/
 workspace/_pytest*/
 workspace/tests/pytest-cache-files-*/
+/pytest-cache-files-*/
+/tests/memory/_pytest_*/
+/v/cache/
 workspace/tests/tmp_run_codex_review/
 workspace/tests/state/pytest-affect-run/
 workspace/tests/workspace/.tmp_pytest*/

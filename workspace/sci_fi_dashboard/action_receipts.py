@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, Literal
 
-ReceiptStatus = Literal["verified", "failed", "unavailable", "inferred"]
+ReceiptStatus = Literal["verified", "failed", "unavailable", "inferred", "pending"]
 
 
 _ACTION_ALIASES: dict[str, tuple[str, ...]] = {
@@ -15,7 +16,7 @@ _ACTION_ALIASES: dict[str, tuple[str, ...]] = {
     "memory_save": ("save", "remember"),
     "message_capture": ("capture",),
     "reminder_schedule": ("schedule", "nudge", "remind"),
-    "channel_send": ("send", "deliver"),
+    "channel_send": ("send",),
 }
 
 
@@ -63,14 +64,14 @@ class ActionReceipt:
         }
 
     @classmethod
-    def from_mapping(cls, value: Any) -> "ActionReceipt | None":
+    def from_mapping(cls, value: Any) -> ActionReceipt | None:
         if isinstance(value, ActionReceipt):
             return value
         if not isinstance(value, dict):
             return None
         action = str(value.get("action") or "").strip()
         status = str(value.get("status") or "").strip().lower()
-        if not action or status not in {"verified", "failed", "unavailable", "inferred"}:
+        if not action or status not in {"verified", "failed", "unavailable", "inferred", "pending"}:
             return None
         metadata = value.get("metadata")
         return cls(
@@ -229,12 +230,8 @@ def _one_line(value: str, max_chars: int) -> str:
 
 
 def _search_regex(pattern: str, text: str) -> re.Match[str] | None:
-    import re
-
     return re.search(pattern, text, flags=re.IGNORECASE)
 
 
 def _replace_regex(pattern: str, repl: str, text: str) -> str:
-    import re
-
     return re.sub(pattern, repl, text, flags=re.IGNORECASE)

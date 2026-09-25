@@ -54,6 +54,12 @@ async def deliver_output(
     output: str,
     delivery: CronDelivery,
     channel_registry: Any | None = None,
+    *,
+    retry_queue: Any | None = None,
+    message_key: str | None = None,
+    owner_id: str | None = None,
+    source_job_id: str | None = None,
+    source_revision: int | None = None,
 ) -> dict[str, Any]:
     """Send *output* according to the delivery configuration.
 
@@ -65,7 +71,16 @@ async def deliver_output(
         return {"status": "skipped", "reason": "delivery mode is none"}
 
     if mode == DeliveryMode.ANNOUNCE:
-        return await _deliver_announce(output, delivery, channel_registry)
+        return await _deliver_announce(
+            output,
+            delivery,
+            channel_registry,
+            retry_queue=retry_queue,
+            message_key=message_key,
+            owner_id=owner_id,
+            source_job_id=source_job_id,
+            source_revision=source_revision,
+        )
 
     if mode == DeliveryMode.WEBHOOK:
         return await _deliver_webhook(output, delivery)
@@ -77,6 +92,12 @@ async def _deliver_announce(
     output: str,
     delivery: CronDelivery,
     channel_registry: Any | None,
+    *,
+    retry_queue: Any | None = None,
+    message_key: str | None = None,
+    owner_id: str | None = None,
+    source_job_id: str | None = None,
+    source_revision: int | None = None,
 ) -> dict[str, Any]:
     """Announce via a registered channel."""
     if channel_registry is None:
@@ -87,6 +108,36 @@ async def _deliver_announce(
     channel_id = delivery.channel
     if not channel_id:
         return {"status": "error", "reason": "no channel specified for announce delivery"}
+
+    if retry_queue is not None and message_key:
+        recipient = delivery.to or channel_id
+        entry_id = await retry_queue.enqueue_outbound(
+            channel_id=channel_id,
+            chat_id=recipient,
+            text=_sanitize_announce_output(output),
+            message_key=message_key,
+            owner_id=owner_id or f"{channel_id}:{recipient}",
+            source_job_id=source_job_id,
+            source_revision=source_revision,
+        )
+        state = await retry_queue.attempt_now(entry_id)
+        receipt = ActionReceipt(
+            action="channel_send",
+            status="verified" if state == "accepted" else "pending",
+            evidence=(
+                f"channel accepted outbox entry {entry_id}"
+                if state == "accepted"
+                else f"outbox entry {entry_id} awaits retry"
+            ),
+            confidence=0.9 if state == "accepted" else 0.5,
+        )
+        return {
+            "status": "accepted" if state == "accepted" else "pending",
+            "mode": "announce",
+            "channel": channel_id,
+            "outbox_id": entry_id,
+            "action_receipts": [receipt],
+        }
 
     try:
         channel = channel_registry.get(channel_id)

@@ -56,7 +56,7 @@ class StylePolicy:
             "normal": "Use normal chat length and mirror the user's level of detail.",
         }.get(self.length, "Use normal chat length and mirror the user's level of detail.")
         return (
-            "STYLE POLICY - highest priority runtime style contract:\n"
+            "STYLE POLICY - runtime voice contract within core identity and tool rules:\n"
             f"- Tone: {self.tone}. {tone_rule}\n"
             f"- Length: {self.length}. {length_rule}\n"
             f"- Scope: {self.scope}; source: {self.source}.\n"
@@ -157,15 +157,23 @@ def detect_style_intent(user_msg: str) -> _StyleIntent | None:
     tone: Tone | None = None
     length: Length | None = None
     reasons: list[str] = []
+    playful_directive = _PLAYFUL_DIRECTIVE_PATTERN.match(msg)
 
     if _matches_any(msg, _PROFESSIONAL_PATTERNS):
         tone = "professional_precise"
         reasons.append("user requested professional/precise tone")
+    elif playful_directive:
+        tone = "creative_playful"
+        reasons.append("user requested playful tone")
     elif _matches_any(msg, _CASUAL_PATTERNS):
         tone = "casual_witty"
         reasons.append("user requested casual tone")
 
-    if _matches_any(msg, _CONCISE_PATTERNS):
+    if _matches_any(msg, _CONCISE_PATTERNS) or (
+        tone == "creative_playful"
+        and playful_directive
+        and _PLAYFUL_BRIEF_PATTERN.match(playful_directive.group("tail"))
+    ):
         length = "concise"
         reasons.append("user requested shorter replies")
     elif _matches_any(msg, _DETAILED_PATTERNS):
@@ -175,7 +183,10 @@ def detect_style_intent(user_msg: str) -> _StyleIntent | None:
     if tone is None and length is None:
         return None
 
-    scope = "turn" if _matches_any(msg, _TURN_SCOPE_PATTERNS) else "session"
+    if tone == "creative_playful" and playful_directive:
+        scope = "session" if playful_directive.group("session_scope") else "turn"
+    else:
+        scope = "turn" if _matches_any(msg, _TURN_SCOPE_PATTERNS) else "session"
     return _StyleIntent(
         tone=tone,
         length=length,
@@ -288,6 +299,15 @@ _CASUAL_PATTERNS = _compile(
         r"\bwhy (are you|so) formal\b",
     )
 )
+
+_PLAYFUL_DIRECTIVE_PATTERN = re.compile(
+    r"^(?:(?P<turn_scope>for (?:this|the) (?:answer|reply|response|turn) only)\s*[,;:]?\s*"
+    r"|(?P<session_scope>from now on)\s*[,;:]?\s*)?"
+    r"(?:please\s+)?(?:make (?:it|this|the answer|the reply)\s+playful|be playful)\b"
+    r"(?P<tail>.*)$",
+    re.IGNORECASE,
+)
+_PLAYFUL_BRIEF_PATTERN = re.compile(r"^\s*(?:and\s+)?keep it brief\b", re.IGNORECASE)
 
 _CONCISE_PATTERNS = _compile(
     (

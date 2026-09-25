@@ -36,6 +36,10 @@ class MessageTask:
     processing_time_ms: int = 0
     mcp_context: str = ""  # MCP memory enrichment, set by MessageWorker before pipeline
     run_id: str | None = None  # OBS-01: correlation ID minted at webhook entry
+    inbox_ids: list[int] = field(default_factory=list)
+    inbox_claimed: bool = False
+    person_origin: str = "channel"
+    api_authenticated: bool = False
 
 
 class TaskQueue:

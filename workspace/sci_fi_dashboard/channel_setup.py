@@ -33,13 +33,11 @@ def _make_flood_enqueue(channel_id: str):
 
         # H-09: Generate UUID fallback if message_id is empty/None
         effective_id = channel_msg.message_id or str(uuid.uuid4())
-        if deps.dedup.is_duplicate(effective_id):
-            return
         await deps.flood.incoming(
             chat_id=channel_msg.chat_id,
             message=channel_msg.text,
             metadata={
-                "message_id": channel_msg.message_id,
+                "message_id": effective_id,
                 "sender_name": channel_msg.sender_name,
                 "channel_id": channel_id,
                 "is_group": getattr(channel_msg, "is_group", False),

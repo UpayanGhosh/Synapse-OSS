@@ -8,6 +8,7 @@
 # --- Testing ---
 pytest>=7.4.0
 pytest-asyncio>=0.23.0
+hypothesis==6.168.1
 
 # --- Linting & Formatting ---
 ruff>=0.1.0

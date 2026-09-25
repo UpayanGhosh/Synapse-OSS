@@ -1,0 +1,17 @@
+# Local caches and generated output
+.tmp/**
+.venv/**
+venv/**
+node_modules/**
+__pycache__/**
+.hypothesis/**
+.ruff_cache/**
+
+# Environment and credential files, including accidentally tracked copies
+.env*
+**/.env*
+**/client_secret.json
+**/*credentials*.json
+**/*service-account*.json
+**/*.pem
+**/*.key
